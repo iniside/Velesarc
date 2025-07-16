@@ -1,0 +1,44 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcGameplayDebugger",
+	"Description": "",
+	"Category": "Other",
+	"CreatedBy": "Lukasz Baran",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcGameplayDebugger",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetConfigurationDenyList": [ "Shipping" ]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "Iris",
+			"Enabled": true
+		},
+		{
+			"Name": "SlateIM",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcGun",
+			"Enabled": true
+		}
+	]
+}
