@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -28,7 +28,6 @@
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "ArcCoreGameplayAbility.h"
-#include "ArcCore/AbilitySystem/ArcAbilityTargetingComponent.h"
 
 #include "ArcCore/AbilitySystem/ArcAbilitiesTypes.h"
 #include "Targeting/ArcTargetingSourceContext.h"

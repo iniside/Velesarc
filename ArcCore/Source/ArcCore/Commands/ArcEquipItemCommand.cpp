@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -23,6 +23,7 @@
 
 #include "Commands/ArcEquipItemCommand.h"
 
+#include "Core/ArcCoreAssetManager.h"
 #include "Equipment/ArcEquipmentComponent.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemData.h"
@@ -78,8 +79,11 @@ bool FArcEquipItemCommand::CanSendCommand() const
 
 void FArcEquipItemCommand::PreSendCommand()
 {
-	ItemsStore->LockSlot(SlotId);
-	ItemsStore->LockItem(Item);
+	if (ItemsStore->GetNetMode() == ENetMode::NM_Client)
+	{
+		ItemsStore->LockSlot(SlotId);
+		ItemsStore->LockItem(Item);
+	}
 }
 
 bool FArcEquipItemCommand::Execute()
@@ -118,6 +122,81 @@ bool FArcEquipItemCommand::Execute()
 	ItemsStore->AddItemToSlot(Item, SlotId);
 
 	EquipmentComponent->EquipItem(ItemsStore, Item, SlotId);
+	
+	return true;	
+}
+
+bool FArcEquipNewItemCommand::CanSendCommand() const
+{
+	if (EquipmentComponent == nullptr)
+	{
+		return false;
+	}
+	
+	if (ItemsStore == nullptr)
+	{
+		return false;	
+	}
+
+	if (ItemDefinitionId.IsValid() == false)
+	{
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("ItemDefinitionId is not valid."))
+		return false;
+	}
+	if (ItemsStore->IsSlotLocked(SlotId))
+	{
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("%s Is currently edited."), *SlotId.ToString())
+		return false;
+	}
+
+	if (EquipmentComponent->CanEquipItem(ItemDefinitionId, SlotId) == false)
+	{
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("Cannot equip item %s to slot %s"), *ItemDefinitionId.ToString(), *SlotId.ToString())
+		return false;
+	}
+	
+	return true;
+}
+
+void FArcEquipNewItemCommand::PreSendCommand()
+{
+	ItemsStore->LockSlot(SlotId);
+}
+
+bool FArcEquipNewItemCommand::Execute()
+{	
+	if (ItemsStore == nullptr)
+	{
+		return false;
+	}
+
+	static int32 CommandIdx = 0;
+	CommandIdx++;
+	UE_LOG(LogArcEquipItemCommand, Log, TEXT("FArcEquipItemCommand::Execute %d"), CommandIdx)
+
+	const FArcItemData* SlotEntry = ItemsStore->GetItemFromSlot(SlotId);
+	if (SlotEntry != nullptr)
+	{		
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("1. Remove Item %s From %s"), *GetNameSafe(SlotEntry->GetItemDefinition()), *GetNameSafe(ItemsStore))
+		if (bRemoveExistingItemFromStore)
+		{
+			ItemsStore->RemoveItem(SlotEntry->GetItemId(), -1, true);
+		}
+		else
+		{
+			ItemsStore->RemoveItemFromSlot(SlotEntry->GetItemId());	
+		}
+	}
+	
+	FArcItemSpec Spec = FArcItemSpec::NewItem(ItemDefinitionId, 1, 1);
+	Spec.SetItemDefinition(ItemDefinitionId).SetAmount(1);
+	FArcItemId NewItem = ItemsStore->AddItem(Spec, FArcItemId::InvalidId);
+	
+	
+	UE_LOG(LogArcEquipItemCommand, Log, TEXT("4. Add Item %s Slot %s To %s From %s"), *GetNameSafe(Spec.GetItemDefinition()), *SlotId.ToString(), *GetNameSafe(ItemsStore), *GetNameSafe(ItemsStore))
+	ItemsStore->AddItemToSlot(NewItem, SlotId);
+
+	EquipmentComponent->EquipItem(ItemsStore, NewItem, SlotId);
 	
 	return true;	
 }

@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -35,7 +35,6 @@
 #include "GameplayEffectExecutionCalculation.h"
 #include "ArcAbilitiesTypes.h"
 
-#include "ArcCore/AbilitySystem/ArcAbilityTargetingComponent.h"
 #include "ArcCore/AbilitySystem/ArcTargetingBPF.h"
 #include "ArcCore/Items/ArcItemDefinition.h"
 #include "ArcCore/Items/ArcItemsComponent.h"
@@ -43,7 +42,6 @@
 
 #include "ArcCore/AbilitySystem/ArcAbilityCost.h"
 #include "ArcCore/ArcCoreModule.h"
-#include "ArcCore/Camera/ArcCameraMode.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -474,6 +472,12 @@ void UArcCoreGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Handle
 		, TEXT("[%s] EndAbility [%s]")
 		, *Role
 		, *GetName());
+
+	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get());
+	if (ArcASC)
+	{
+		ArcASC->ClearAbilityActivationStartTime(Handle);
+	}
 	
 	Super::EndAbility(Handle
 		, ActorInfo
@@ -552,12 +556,16 @@ void UArcCoreGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle H
 	, const FGameplayAbilityActivationInfo ActivationInfo
 	, const FGameplayEventData* TriggerEventData)
 {
+	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(ActorInfo->AbilitySystemComponent);
+
+	ArcASC->SetAbilityActivationStartTime(Handle, FPlatformTime::Seconds());
+	
 	Super::ActivateAbility(Handle
 		, ActorInfo
 		, ActivationInfo
 		, TriggerEventData);
 
-	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(ActorInfo->AbilitySystemComponent);
+	
 
 	ArcASC->OnAbilityActivatedDynamic.Broadcast(Handle, this);
 }

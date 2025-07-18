@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -27,9 +27,7 @@
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "GameFramework/PlayerState.h"
 
-#include "ArcCore/AbilitySystem/ArcAbilityTargetingComponent.h"
 #include "Pawn/ArcPawnExtensionComponent.h"
-#include "Camera/ArcCameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Core/ArcCoreAssetManager.h"
@@ -37,8 +35,7 @@
 #include "Engine/AssetManager.h"
 #include "GameFramework/GameplayCameraComponent.h"
 #include "GameFramework/GameplayCameraSystemComponent.h"
-#include "GameMode/ArcExperienceData.h"
-#include "GameMode/ArcCoreWorldSettings.h"
+
 #include "Net/UnrealNetwork.h"
 #include "Pawn/ArcPawnData.h"
 
@@ -81,9 +78,8 @@ AArcCoreCharacter::AArcCoreCharacter(const FObjectInitializer& ObjectInitializer
 	GetCapsuleComponent()->PrimaryComponentTick.bCanEverTick = false;
 	GetCapsuleComponent()->PrimaryComponentTick.bStartWithTickEnabled = false;
 
-	//GameplayCameraComponent3 = CreateDefaultSubobject<UGameplayCameraComponent>(TEXT("GameplayCameraComponent3"));
-	//GameplayCameraComponent3->SetupAttachment(RootComponent);
-	//GameplayCameraComponent->Setu
+	GameplayCameraComponent = CreateDefaultSubobject<UGameplayCameraComponent>(TEXT("GameplayCameraComponent"));
+	GameplayCameraComponent->SetupAttachment(RootComponent);
 }
 
 void AArcCoreCharacter::PossessedBy(AController* NewController)
@@ -112,6 +108,11 @@ void AArcCoreCharacter::PossessedBy(AController* NewController)
 	if (PC)
 	{
 		GameplayCameraSystemHost = PC->GetGameplayCameraSystemHost();
+
+		if (GetNetMode() == NM_Standalone)
+		{
+			GameplayCameraComponent->ActivateCameraForPlayerController(PC);
+		}
 	}
 }
 
@@ -143,6 +144,8 @@ void AArcCoreCharacter::OnRep_Controller()
 		{
 			OnPlayerControllerReplicated(PC);
 			GameplayCameraSystemHost = PC->GetGameplayCameraSystemHost();
+
+			GameplayCameraComponent->ActivateCameraForPlayerController(PC);
 		}
 	}
 }

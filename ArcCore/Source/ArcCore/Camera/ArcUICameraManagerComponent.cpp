@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -20,18 +20,12 @@
  */
 
 #include "ArcCore/Camera/ArcUICameraManagerComponent.h"
-#include "Algo/Transform.h"
-#include "Blueprint/WidgetLayoutLibrary.h"
-#include "DrawDebugHelpers.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
-#include "Engine/LocalPlayer.h"
 #include "EngineUtils.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
-#include "Slate/SceneViewport.h"
 
-#include "ArcCore/Camera/ArcCameraMode.h"
 #include "ArcCore/Camera/ArcPlayerCameraManager.h"
 
 UArcUICameraManagerComponent* UArcUICameraManagerComponent::GetComponent(APlayerController* PC)

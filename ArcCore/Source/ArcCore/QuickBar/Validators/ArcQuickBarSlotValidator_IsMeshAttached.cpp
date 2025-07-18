@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -46,7 +46,7 @@ bool FArcQuickBarSlotValidator_IsMeshAttached::IsValid(UArcQuickBarComponent* In
 		return true;
 	}
 
-	const FArcItemData* Slot = InQuickBarComp->FindSlotData(InQuickBar.BarId, InSlot.QuickBarSlotId);
+	const FArcItemData* Slot = InQuickBarComp->FindQuickSlotItem(InQuickBar.BarId, InSlot.QuickBarSlotId);
 	if (Slot == nullptr)
 	{
 		return true;

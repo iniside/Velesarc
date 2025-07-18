@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -21,9 +21,34 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+
 #include "K2Node_CallFunction.h"
 #include "ArcK2Node_GetItemFragment.generated.h"
+
+UCLASS()
+class ARCCOREEDITOR_API UArcK2Node_GetItemFragmentFromItemDefinition : public UK2Node_CallFunction
+{
+	GENERATED_BODY()
+
+public:
+	UArcK2Node_GetItemFragmentFromItemDefinition();
+
+	//~ Begin UEdGraphNode Interface.
+	virtual void PostReconstructNode() override;
+
+	virtual void PinDefaultValueChanged(UEdGraphPin* ChangedPin) override;
+
+	virtual FText GetTooltipText() const override;
+
+	//~ End UEdGraphNode Interface.
+
+	//~ Begin K2Node Interface
+	virtual bool IsNodePure() const override;
+
+	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& InActionRegistrar) const override;
+
+	//~ End K2Node Interface
+};
 
 /**
  *

@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+
 #include "StructUtils/InstancedStruct.h"
 #include "Components/GameFrameworkComponent.h"
 #include "Engine/DataAsset.h"
@@ -52,6 +52,9 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UArcEquipmentSlotPreset> EquipmentSlotPreset;
 
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
+	
 	UPROPERTY(Transient, SaveGame)
 	TMap<FGameplayTag, FArcItemId> EquippedItems;
 	
@@ -63,13 +66,19 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
+	bool CanEquipItem(const UArcItemDefinition* InItemDefinition, const FArcItemData* InItemData, const FGameplayTag& InSlotId) const;
+	
 public:
 	bool CanEquipItem(const FArcItemId& InItemId, UArcItemsStoreComponent* ItemStore, const FGameplayTag& InSlotId) const;
 
+	bool CanEquipItem(const FPrimaryAssetId& ItemDefinitionId, const FGameplayTag& InSlotId) const;
+	
 	void GetTagsForSlot(const FGameplayTag& InSlotId, FGameplayTagContainer& OutRequiredTags, FGameplayTagContainer& OutIgnoreTags) const;
 
 	void EquipItem(UArcItemsStoreComponent* FromItemsStore, const FArcItemId& InNewItem, const FGameplayTag& ToSlot);
 
+	TArray<const FArcItemData*> GetItemsFromStoreForSlot(UArcItemsStoreComponent* FromItemsStore, const FGameplayTag& InSlotId) const;
+	
 	TArray<FArcEquipmentSlot> GetMatchingSlots(const FGameplayTag& InTag) const;
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Core")
@@ -81,7 +90,7 @@ struct ARCCORE_API FArcEquipmentSlotCondition
 {
 	GENERATED_BODY()
 
-	bool CanEquip(const FArcItemData* InItemData) const { return true; }
+	bool CanEquip(AActor* OwnerActor, const UArcItemDefinition* InItemDefinition, const FArcItemData* InItemData) const { return true; }
 };
 
 USTRUCT()
@@ -90,7 +99,7 @@ struct ARCCORE_API FArcEquipmentSlot
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, meta = (Categories = "SlotId"))
+	UPROPERTY(EditAnywhere, meta = (Categories = "QuickSlotId"))
 	FGameplayTag SlotId;
 
 	/* If set item must have all of those tags. */
@@ -130,7 +139,7 @@ struct FArcEquipmentSlotDefaultItem
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, meta = (Categories = "SlotId"))
+	UPROPERTY(EditAnywhere, meta = (Categories = "QuickSlotId"))
 	FGameplayTag SlotId;
 
 	/* If set item must have all of those tags. */

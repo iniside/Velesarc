@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -197,6 +197,41 @@ void UArcItemDefinition::GetAssetRegistryTags(FAssetRegistryTagsContext Context)
 		S.GetPtr<FArcItemFragment>()->GetAssetRegistryTags(Context);
 	}
 }
+
+DEFINE_FUNCTION(UArcItemDefinition::execBP_FindItemFragment)
+{
+	P_GET_OBJECT(UScriptStruct, InFragmentType);
+
+	Stack.MostRecentPropertyAddress = nullptr;
+	Stack.StepCompiledIn<FStructProperty>(nullptr);
+
+	void* OutItemDataPtr = Stack.MostRecentPropertyAddress;
+	FStructProperty* OutItemProp = CastField<FStructProperty>(Stack.MostRecentProperty);
+	
+	P_FINISH;
+	bool bSuccess = false;
+
+	
+	
+	{
+		P_NATIVE_BEGIN;
+		const uint8* Fragment = P_THIS->GetFragment(InFragmentType);
+		//ItemData->FindFragment(InFragmentType);
+		UScriptStruct* OutputStruct = OutItemProp->Struct;
+		// Make sure the type we are trying to get through the blueprint node matches the
+		// type of the message payload received.
+		if ((OutItemProp != nullptr) && (OutItemProp->Struct != nullptr) && (Fragment != nullptr) && (
+				OutItemProp->Struct == InFragmentType))
+		{
+			OutItemProp->Struct->CopyScriptStruct(OutItemDataPtr, Fragment);
+			bSuccess = true;
+		}
+		P_NATIVE_END;
+	}
+
+	*(bool*)RESULT_PARAM = bSuccess;
+}
+
 
 float UArcItemDefinition::GetValue(const FArcScalableCurveFloat& InScalableFloat) const
 {

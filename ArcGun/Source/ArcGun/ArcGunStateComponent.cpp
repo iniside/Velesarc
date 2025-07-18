@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -31,7 +31,6 @@
 #include "ArcGunRecoilInstance.h"
 #include "ArcWorldDelegates.h"
 #include "DisplayDebugHelpers.h"
-#include "AbilitySystem/ArcAbilityTargetingComponent.h"
 #include "Camera/ArcPlayerCameraManager.h"
 #include "Camera/CameraComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
@@ -395,13 +394,12 @@ void UArcGunStateComponent::HandleComponentReady()
 	OnWeaponComponentReady();
 }
 
-void UArcGunStateComponent::HandleQuickSlotSelected(FGameplayTag BarId
-											   , FGameplayTag QuickSlotId)
+void UArcGunStateComponent::HandleQuickSlotSelected(FGameplayTag BarId, FGameplayTag QuickSlotId)
 {
 	UArcQuickBarComponent* QuickBar = UArcQuickBarComponent::GetQuickBar(GetOwner());
 
 	FArcItemId ItemId = QuickBar->GetItemId(BarId, QuickSlotId);
-	const FArcItemData* ItemData = QuickBar->FindSlotData(BarId, QuickSlotId);	
+	const FArcItemData* ItemData = QuickBar->FindQuickSlotItem(BarId, QuickSlotId);	
 
 	FArcGunFireMode* CurrentFireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>();
 
@@ -474,7 +472,7 @@ void UArcGunStateComponent::HandleQuickSlotDeselected(FGameplayTag BarId
 {
 	UArcQuickBarComponent* QuickBar = UArcQuickBarComponent::GetQuickBar(GetOwner());
 	FArcItemId OldItemId = QuickBar->GetItemId(BarId, QuickSlotId);
-	const FArcItemData* OldItemData = QuickBar->FindSlotData(BarId, QuickSlotId);	
+	const FArcItemData* OldItemData = QuickBar->FindQuickSlotItem(BarId, QuickSlotId);	
 
 	if(OldItemId.IsValid() == false)
 	{
@@ -615,7 +613,7 @@ void UArcGunStateComponent::HandleOnItemAddedToSlot(UArcItemsStoreComponent* Ite
 	OnGunSelectedDelegate.Broadcast(SelectedGun);
 
 	UArcQuickBarComponent* QuickBar = UArcQuickBarComponent::GetQuickBar(GetOwner());
-	QuickBar->SetBarSlotDeselected(SelectedGun.QuickBarId, SelectedGun.QuickSlotId);
+	//QuickBar->SetBarSlotDeselected(SelectedGun.QuickBarId, SelectedGun.QuickSlotId);
 	
 	MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, SelectedGun, this);
 	

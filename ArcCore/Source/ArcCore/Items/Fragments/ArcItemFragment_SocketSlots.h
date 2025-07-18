@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -21,7 +21,7 @@
 
 #pragma once
 #include "ArcCore/Items/Fragments/ArcItemFragment.h"
-#include "CoreMinimal.h"
+
 #include "GameplayTagContainer.h"
 #include "Engine/DataAsset.h"
 
@@ -35,7 +35,7 @@ struct ARCCORE_API FArcSocketSlot
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (Categories = "SlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (Categories = "QuickSlotId"))
 	FGameplayTag SlotId;
 
 	UPROPERTY(EditAnywhere)
@@ -67,7 +67,7 @@ class UArcItemSocketSlotsPreset : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "SlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "QuickSlotId"))
 	TArray<FArcSocketSlot> Slots;
 };
 
@@ -77,10 +77,10 @@ struct ARCCORE_API FArcItemFragment_SocketSlots : public FArcItemFragment
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "SlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "QuickSlotId"))
 	TArray<FArcSocketSlot> Slots;
 
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "SlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "QuickSlotId"))
 	TObjectPtr<UArcItemSocketSlotsPreset> Preset;
 	
 public:

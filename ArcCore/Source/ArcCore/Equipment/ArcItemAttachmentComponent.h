@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -23,7 +23,7 @@
 
 #include "ArcCore/Items/ArcItemId.h"
 #include "Components/ActorComponent.h"
-#include "CoreMinimal.h"
+
 #include "ArcNamedPrimaryAssetId.h"
 #include "StructUtils/InstancedStruct.h"
 #include "NativeGameplayTags.h"
@@ -35,6 +35,7 @@
 #include "Equipment/Fragments/ArcItemFragment_ItemAttachmentSlots.h"
 #include "Items/ArcItemDefinition.h"
 #include "Animation/AnimInstance.h"
+#include "Subsystems/GameInstanceSubsystem.h"
 #include "ArcItemAttachmentComponent.generated.h"
 
 class USkeletalMesh;
@@ -45,9 +46,7 @@ struct FArcItemAttachmentContainer;
 class UArcItemAttachmentComponent;
 class UArcItemsStoreComponent;
 
-DECLARE_LOG_CATEGORY_EXTERN(LogArcItemAttachment
-	, Log
-	, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogArcItemAttachment, Log, All);
 
 
 
@@ -239,7 +238,7 @@ struct ARCCORE_API FArcItemAttachmentSlotContainer
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, meta = (TitleProperty = "SlotId"))
+	UPROPERTY(EditAnywhere, meta = (TitleProperty = "QuickSlotId"))
 	TArray<FArcItemAttachmentSlot> Slots;
 };
 
@@ -293,7 +292,42 @@ public:
 	TObjectPtr<const UArcItemDefinition> SourceItemDefinition;
 	
 	UPROPERTY()
-	FArcItemId OwningItem; ;
+	FArcItemId OwningItem;
+};
+
+class UAnimSequence;
+
+USTRUCT(BlueprintType)
+struct FArcItemFragment_ItemLayerCore : public FArcItemFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
+	TSoftObjectPtr<UAnimSequence> ItemPose;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float ItemPoseBlendStrength = 1.0f;
+};
+
+class UArcItemAttachmentComponent;
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FArcItemAttachmentDynamicDelegate
+	, UArcItemAttachmentComponent*, AttachmentComponent
+	, const UArcItemDefinition*, ItemDefinition
+	, const FGameplayTag&, SlotId);
+/**
+ * 
+ */
+UCLASS()
+class ARCCORE_API UArcItemAttachmentSubsystem : public UGameInstanceSubsystem
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable)
+	FArcItemAttachmentDynamicDelegate OnItemAttachedDynamic;
+
+	UPROPERTY(BlueprintAssignable)
+	FArcItemAttachmentDynamicDelegate OnItemDetachedDynamic;
 };
 
 ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Invalid_Item_Slot);
@@ -362,6 +396,22 @@ private:
 
 
 public:
+	const FArcItemAttachmentSlotContainer& GetStaticAttachmentSlots() const
+	{
+		return StaticAttachmentSlots;
+	}
+
+	const FArcItemAttachmentContainer& GetReplicatedAttachments() const
+	{
+		return ReplicatedAttachments;
+	}
+	
+	const TMap<FArcItemId, FArcItemId>& GetPendingAttachments() const
+	{
+		return PendingAttachments;
+	}
+
+	UClass* GetItemStoreClass() const;
 #if WITH_EDITORONLY_DATA
 	/** This scans the class for AssetBundles metadata on asset properties and initializes the AssetBundleData with InitializeAssetBundlesFromMetadata */
 	virtual void UpdateAssetBundleData();
@@ -626,4 +676,8 @@ protected:
 	virtual void OnRep_LinkedAnimLayer(const FArcLinkedAnimLayer& OldLinkedLayer);
 
 	void HandleOnPlayerPawnReady(class APawn* InPawn);
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Attachment")
+	static const UArcItemDefinition* GetItemDefinitionFromAttachment(AActor* Owner, FGameplayTag SlotId);
+	
 };

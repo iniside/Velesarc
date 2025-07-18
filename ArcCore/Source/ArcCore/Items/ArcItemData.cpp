@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -674,13 +674,15 @@ void FArcItemData::PreReplicatedRemove(const FArcItemsArray& InArraySerializer)
 		GetItemsStoreComponent()->UnlockSlot(Slot);
 	}
 	
-	GetItemsStoreComponent()->UnlockItem(GetItemId());
+	GetItemsStoreComponent()->UnlockItem(ItemId);
+	GetItemsStoreComponent()->UnlockSlot(Slot);
+	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
 }
 
 void FArcItemData::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
 {
 	OwnerComponent = InArraySerializer.Owner;
-
+	
 	SetItemInstances(ItemInstances);
 
 	ItemDefinition = UArcCoreAssetManager::Get().GetAssetWithBundles<UArcItemDefinition>(InArraySerializer.Owner
@@ -696,6 +698,10 @@ void FArcItemData::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
 	
 	//TODO Replicate if duplicated ?
 	Initialize(InArraySerializer.Owner);
+
+	GetItemsStoreComponent()->UnlockItem(ItemId);
+	GetItemsStoreComponent()->UnlockSlot(Slot);
+	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
 	
 	OnItemAdded();
 	
@@ -747,6 +753,10 @@ void FArcItemData::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
 void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 {
 	SetItemInstances(ItemInstances);
+
+	GetItemsStoreComponent()->UnlockItem(ItemId);
+	GetItemsStoreComponent()->UnlockSlot(Slot);
+	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
 	
 	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
@@ -850,8 +860,6 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 			ItemsSubsystem->BroadcastActorOnRemovedFromSlotMap(GetItemsStoreComponent()->GetOwner(), GetSlotId(), GetItemsStoreComponent(), this);
 		}
 	}
-
-	GetItemsStoreComponent()->UnlockItem(GetItemId());
 	
 	OnItemChanged();
 

@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -32,7 +32,6 @@
 #include "Misc/App.h"
 #include "Misc/AssertionMacros.h"
 #include "Misc/CommandLine.h"
-#include "Persistence/ArcCorePersistanceSubsystem.h"
 #include "Templates/Casts.h"
 
 UArcCoreGameInstance::UArcCoreGameInstance(const FObjectInitializer& ObjectInitializer)
@@ -65,11 +64,6 @@ void UArcCoreGameInstance::Init()
 			, GameplayTags.InitState_DataInitialized);
 	}
 
-	GetSubsystem<UArcCorePersistenceSubsystem>();
-	if (GetWorld() && GetWorld()->WorldType == EWorldType::PIE)
-	{
-		GetSelectedGameExperience();
-	}
 	//TODO: Extend it check for similiar states in PlayerStateExtension
 }
 

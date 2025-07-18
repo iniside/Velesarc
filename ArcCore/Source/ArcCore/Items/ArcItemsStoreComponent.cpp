@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -372,7 +372,13 @@ void UArcItemsStoreComponent::RemoveItem(const FArcItemId& Item, int32 Stacks, b
 	{
 		const int32 StackNum = StacksInstance->GetStacks();
 
-		if (ItemData != nullptr && (StackNum <= Stacks) && bRemoveOnZeroStacks)
+		bool bRemove = (StackNum <= Stacks);
+		if (Stacks < 0)
+		{
+			bRemove = true;
+		}
+		
+		if (ItemData != nullptr && bRemove && bRemoveOnZeroStacks)
 		{
 			ItemsSubsystem->BroadcastActorOnItemRemovedFromStoreMap(GetOwner(), Item, this, ItemData);
 

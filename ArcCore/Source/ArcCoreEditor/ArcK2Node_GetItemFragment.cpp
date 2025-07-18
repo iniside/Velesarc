@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -28,7 +28,81 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "KismetCompiler.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "Items/ArcItemDefinition.h"
 
+UArcK2Node_GetItemFragmentFromItemDefinition::UArcK2Node_GetItemFragmentFromItemDefinition()
+{
+	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcItemDefinition
+			, BP_FindItemFragment)
+		, UArcItemDefinition::StaticClass());
+}
+
+void UArcK2Node_GetItemFragmentFromItemDefinition::PostReconstructNode()
+{
+	Super::PostReconstructNode();
+	UEdGraphPin* PayloadPin = FindPin(FName("OutFragment"));
+	UEdGraphPin* PayloadTypePin = FindPinChecked(FName("InFragmentType"));
+
+	if (PayloadTypePin->DefaultObject != PayloadPin->PinType.PinSubCategoryObject)
+	{
+		PayloadPin->PinType.PinSubCategoryObject = PayloadTypePin->DefaultObject;
+		PayloadPin->PinType.PinCategory = (PayloadTypePin->DefaultObject == nullptr)
+										  ? UEdGraphSchema_K2::PC_Wildcard
+										  : UEdGraphSchema_K2::PC_Struct;
+	}
+}
+
+void UArcK2Node_GetItemFragmentFromItemDefinition::PinDefaultValueChanged(UEdGraphPin* ChangedPin)
+{
+	Super::PinDefaultValueChanged(ChangedPin);
+	UEdGraphPin* Pin = FindPin(FName("InFragmentType"));
+	if (ChangedPin == Pin)
+	{
+		if (ChangedPin->LinkedTo.Num() == 0)
+		{
+			UEdGraphPin* PayloadPin = FindPin(FName("OutFragment"));
+			UEdGraphPin* PayloadTypePin = FindPinChecked(FName("InFragmentType"));
+
+			if (PayloadTypePin->DefaultObject != PayloadPin->PinType.PinSubCategoryObject)
+			{
+				if (PayloadPin->SubPins.Num() > 0)
+				{
+					GetSchema()->RecombinePin(PayloadPin);
+				}
+
+				PayloadPin->PinType.PinSubCategoryObject = PayloadTypePin->DefaultObject;
+				PayloadPin->PinType.PinCategory = (PayloadTypePin->DefaultObject == nullptr)
+												  ? UEdGraphSchema_K2::PC_Wildcard
+												  : UEdGraphSchema_K2::PC_Struct;
+			}
+		}
+	}
+}
+
+FText UArcK2Node_GetItemFragmentFromItemDefinition::GetTooltipText() const
+{
+	return FText::FromString("Get Item Fragment from Item Definition");
+}
+
+bool UArcK2Node_GetItemFragmentFromItemDefinition::IsNodePure() const
+{
+	return false;
+}
+
+void UArcK2Node_GetItemFragmentFromItemDefinition::GetMenuActions(FBlueprintActionDatabaseRegistrar& InActionRegistrar) const
+{
+	const UClass* ActionKey = GetClass();
+	if (InActionRegistrar.IsOpenForRegistration(ActionKey))
+	{
+		UBlueprintNodeSpawner* NodeSpawner = UBlueprintNodeSpawner::Create(GetClass());
+		check(NodeSpawner != nullptr);
+
+		InActionRegistrar.AddBlueprintAction(ActionKey
+			, NodeSpawner);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
 UArcK2Node_GetItemFragment::UArcK2Node_GetItemFragment()
 {
 	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcItemsBPF

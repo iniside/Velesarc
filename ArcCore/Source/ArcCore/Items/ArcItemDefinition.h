@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -82,6 +82,12 @@ protected:
 	TSet<FArcInstancedStruct> EditorFragmentSet;
 	
 public:
+	UFUNCTION(BlueprintCallable, CustomThunk, BlueprintInternalUseOnly, Category = "Arc Core|Items", meta = (CustomStructureParam = "OutFragment", ExpandBoolAsExecs = "ReturnValue"))
+	bool BP_FindItemFragment(UPARAM(meta = (MetaStruct = "/Script/ArcCore.ArcItemFragment")) UScriptStruct* InFragmentType
+						  , int32& OutFragment);
+ 
+	DECLARE_FUNCTION(execBP_FindItemFragment);
+	
 	template <typename T>
 	const T* FindEditorFragment() const
 	{

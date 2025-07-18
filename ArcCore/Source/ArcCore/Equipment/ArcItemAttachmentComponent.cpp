@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -119,6 +119,10 @@ bool FArcItemAttachment::operator==(const FArcItemAttachment& Other) const
 		}
 	}
 	return bDifferent;
+}
+UClass* UArcItemAttachmentComponent::GetItemStoreClass() const
+{
+	return ItemSlotClass;
 }
 
 #if WITH_EDITORONLY_DATA
@@ -684,6 +688,9 @@ void UArcItemAttachmentComponent::HandleItemAddedFromReplication(const FArcItemI
 
 	
 	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
+
+	UArcItemAttachmentSubsystem* IAS = GetWorld()->GetGameInstance()->GetSubsystem<UArcItemAttachmentSubsystem>();
+	IAS->OnItemAttachedDynamic.Broadcast(this, ItemAttachment.ItemDefinition.Get(), ItemAttachment.SlotId);
 	
 	if (ItemAttachment.OwnerId.IsValid() == true)
 	{
@@ -793,6 +800,10 @@ void UArcItemAttachmentComponent::HandleItemRemovedFromReplication(const FArcIte
 	//	AttachedComponent->DestroyComponent();
 	//	AttachedComponent = nullptr;
 	//}
+
+	
+	UArcItemAttachmentSubsystem* IAS = GetWorld()->GetGameInstance()->GetSubsystem<UArcItemAttachmentSubsystem>();
+	IAS->OnItemDetachedDynamic.Broadcast(this, ItemAttachment.ItemDefinition.Get(), ItemAttachment.SlotId);
 	
 	for (const FArcItemAttachmentSlot& AttachmentSlot : StaticAttachmentSlots.Slots)
 	{
@@ -1109,4 +1120,44 @@ void UArcItemAttachmentComponent::HandleOnPlayerPawnReady(APawn* InPawn)
 		
 		HandleItemAddedFromReplication(AttachmentContainer.ItemId);
 	}
+}
+
+const UArcItemDefinition* UArcItemAttachmentComponent::GetItemDefinitionFromAttachment(AActor* Owner, FGameplayTag SlotId)
+{
+	if (!Owner)
+	{
+		return nullptr;
+	}
+	
+	UArcItemAttachmentComponent* ItemAttachmentComponent = Owner->FindComponentByClass<UArcItemAttachmentComponent>();
+	if (ItemAttachmentComponent == nullptr)
+	{
+		ACharacter* Character = Cast<ACharacter>(Owner);
+		if (Character)
+		{
+			APlayerState* PS = Character->GetPlayerState();
+			if (PS)
+			{
+				ItemAttachmentComponent = PS->FindComponentByClass<UArcItemAttachmentComponent>();
+			}
+		}
+	}
+
+	if (ItemAttachmentComponent == nullptr)
+	{
+		return nullptr;
+	}
+
+	for (const FArcItemAttachment& Item : ItemAttachmentComponent->ReplicatedAttachments.Items)
+	{
+		if (Item.SlotId == SlotId)
+		{
+			if (Item.ItemDefinition)
+			{
+				return Item.ItemDefinition.Get();
+			}
+		}
+	}
+	
+	return nullptr;
 }

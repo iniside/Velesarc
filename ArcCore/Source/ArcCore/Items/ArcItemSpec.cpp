@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -52,6 +52,18 @@ FArcItemSpec FArcItemSpec::NewItem(const UArcItemDefinition* NewItem
 	NewEntry.ItemId = FArcItemId::Generate();
 	NewEntry.Level = Level;
 	NewEntry.Amount = Amount;
+	return NewEntry;
+}
+
+FArcItemSpec FArcItemSpec::NewItem(const FPrimaryAssetId& NewItem, uint8 Level, int32 Amount)
+{
+	FArcItemSpec NewEntry;
+	
+	NewEntry.ItemId = FArcItemId::Generate();
+	NewEntry.Level = Level;
+	NewEntry.Amount = Amount;
+	NewEntry.SetItemDefinition(NewItem);
+
 	return NewEntry;
 }
 

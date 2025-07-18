@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -359,8 +359,29 @@ public:
 private:
 	void HandleCooldownTimeEnded(FGameplayAbilitySpecHandle InAbility);
 
-	// Animations
+	TMap<FGameplayAbilitySpecHandle, double> AbilityActivationStartTimes;
+
 public:
+	void SetAbilityActivationStartTime(FGameplayAbilitySpecHandle InAbility, double StartTime)
+	{
+		AbilityActivationStartTimes.FindOrAdd(InAbility) = StartTime;
+	}
+
+	void ClearAbilityActivationStartTime(FGameplayAbilitySpecHandle InAbility)
+	{
+		AbilityActivationStartTimes.Remove(InAbility);
+	}
+
+	double GetAbilityActivationStartTime(FGameplayAbilitySpecHandle InAbility) const
+	{
+		if (const double* StartTime = AbilityActivationStartTimes.Find(InAbility))
+		{
+			return *StartTime;
+		}
+		return -1;
+	}
+	// Animations
+
 	bool PlayAnimMontage(UGameplayAbility* InAnimatingAbility
 						 , UAnimMontage* NewAnimMontage
 						 , float InPlayRate

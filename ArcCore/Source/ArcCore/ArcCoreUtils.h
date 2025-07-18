@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -32,7 +32,7 @@ namespace Arcx::Utils
 	{
 		return Cast<T>(Owner->GetComponentByClass(Type));
 	}
-	
+
 	template <typename T>
 	TArray<T*> GetComponents(AActor* Owner
 					, TSubclassOf<T> Type)

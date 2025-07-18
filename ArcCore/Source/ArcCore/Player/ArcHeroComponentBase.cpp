@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -34,8 +34,6 @@
 #include "ArcLogs.h"
 #include "ArcCorePlayerController.h"
 #include "InputMappingContext.h"
-#include "Camera/ArcCameraComponent.h"
-#include "Camera/ArcCameraMode.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Player/ArcPlayerStateExtensionComponent.h"
@@ -46,7 +44,6 @@
 #include "KismetAnimationLibrary.h"
 
 #include "PlayerMappableInputConfig.h"
-#include "AbilitySystem/ArcAbilityTargetingComponent.h"
 
 #include "GameMode/ArcExperienceData.h"
 #include "Misc/UObjectToken.h"

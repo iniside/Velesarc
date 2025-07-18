@@ -144,10 +144,6 @@
 			"Enabled": true
 		},
 		{
-			"Name": "ArcGameplayDebugger",
-			"Enabled": true
-		},
-		{
 			"Name": "ArcPersistence",
 			"Enabled": true
 		},

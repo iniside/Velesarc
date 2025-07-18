@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -27,6 +27,7 @@
 
 #include "Commands/ArcEquipItemCommand.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
+#include "Core/ArcCoreAssetManager.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "Logging/StructuredLog.h"
@@ -54,20 +55,8 @@ void UArcEquipmentComponent::BeginPlay()
 	
 }
 
-bool UArcEquipmentComponent::CanEquipItem(const FArcItemId& InItemId, UArcItemsStoreComponent* ItemStore, const FGameplayTag& InSlotId) const
+bool UArcEquipmentComponent::CanEquipItem(const UArcItemDefinition* InItemDefinition, const FArcItemData* InItemData, const FGameplayTag& InSlotId) const
 {
-	if (ItemStore == nullptr)
-	{
-		return false;
-	}
-
-	const FArcItemData* InItemData = ItemStore->GetItemPtr(InItemId);
-	if (InItemData == nullptr)
-	{
-		UE_LOG(LogArcEquipmentComponent, Error, TEXT("Invalid Item"))
-		return false;
-	}
-
 	if (InSlotId.IsValid() == false)
 	{
 		UE_LOG(LogArcEquipmentComponent, Error, TEXT("Invalid Slot"))
@@ -96,10 +85,10 @@ bool UArcEquipmentComponent::CanEquipItem(const FArcItemId& InItemId, UArcItemsS
 	bool bCustomConditionPassed = true;
 	if (CustomCondition != nullptr)
 	{
-		bCustomConditionPassed = CustomCondition->CanEquip(InItemData);
+		bCustomConditionPassed = CustomCondition->CanEquip(GetOwner(), InItemDefinition, InItemData);
 	}
 
-	const FArcItemFragment_Tags* TagsFragment = ArcItems::FindFragment<FArcItemFragment_Tags>(InItemData);
+	const FArcItemFragment_Tags* TagsFragment = InItemDefinition->FindFragment<FArcItemFragment_Tags>();
 	bool bTagsPassed = false;
 	if (TagsFragment != nullptr)
 	{
@@ -110,13 +99,37 @@ bool UArcEquipmentComponent::CanEquipItem(const FArcItemId& InItemId, UArcItemsS
 		}
 	}
 
-	UE_LOGFMT(LogArcEquipmentComponent, Log, "Custom Condition {bCustomConditionPassed}, Tags {bTagsPassed}", bCustomConditionPassed, bTagsPassed);
+	//UE_LOGFMT(LogArcEquipmentComponent, Log, "Custom Condition {bCustomConditionPassed}, Tags {bTagsPassed}", bCustomConditionPassed, bTagsPassed);
 	return bCustomConditionPassed && bTagsPassed;
 }
 
+bool UArcEquipmentComponent::CanEquipItem(const FArcItemId& InItemId, UArcItemsStoreComponent* ItemStore, const FGameplayTag& InSlotId) const
+{
+	if (ItemStore == nullptr)
+	{
+		return false;
+	}
+
+	const FArcItemData* InItemData = ItemStore->GetItemPtr(InItemId);
+	if (InItemData == nullptr)
+	{
+		UE_LOG(LogArcEquipmentComponent, Error, TEXT("Invalid Item"))
+		return false;
+	}
+
+	return CanEquipItem(InItemData->GetItemDefinition(), InItemData, InSlotId);
+}
+
+bool UArcEquipmentComponent::CanEquipItem(const FPrimaryAssetId& ItemDefinitionId, const FGameplayTag& InSlotId) const
+{
+	UArcItemDefinition* ItemDef = UArcCoreAssetManager::GetAsset<UArcItemDefinition>(ItemDefinitionId, false);
+	
+	return CanEquipItem(ItemDef, nullptr, InSlotId);
+}
+
 void UArcEquipmentComponent::GetTagsForSlot(const FGameplayTag& InSlotId
-	, FGameplayTagContainer& OutRequiredTags
-	, FGameplayTagContainer& OutIgnoreTags) const
+											, FGameplayTagContainer& OutRequiredTags
+											, FGameplayTagContainer& OutIgnoreTags) const
 {
 	FGameplayTag SlotId = InSlotId;
 	int32 EquipSlotIdx = EquipmentSlotPreset->EquipmentSlots.IndexOfByPredicate([SlotId](const FArcEquipmentSlot& InSlot)
@@ -138,6 +151,31 @@ void UArcEquipmentComponent::EquipItem(UArcItemsStoreComponent* FromItemsStore
 	, const FArcItemId& InNewItem
 	, const FGameplayTag& ToSlot)
 {
+}
+
+TArray<const FArcItemData*> UArcEquipmentComponent::GetItemsFromStoreForSlot(UArcItemsStoreComponent* FromItemsStore, const FGameplayTag& InSlotId) const
+{
+	TArray<const FArcItemData*> Items;
+	if (FromItemsStore == nullptr || EquipmentSlotPreset == nullptr)
+	{
+		return Items;
+	}
+
+	TArray<const FArcItemData*> StoreItems = FromItemsStore->GetItems();
+	for (const FArcItemData* ItemData : StoreItems)
+	{
+		if (ItemData == nullptr)
+		{
+			continue;
+		}
+
+		if (CanEquipItem(ItemData->GetItemId(), FromItemsStore, InSlotId))
+		{
+			Items.Add(ItemData);
+		}
+	}
+
+	return Items;
 }
 
 TArray<FArcEquipmentSlot> UArcEquipmentComponent::GetMatchingSlots(const FGameplayTag& InTag) const

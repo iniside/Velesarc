@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -35,7 +35,7 @@ struct ARCCORE_API FArcItemAttachmentSlotEntry
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, meta=(Categories="SlotId"))
+	UPROPERTY(EditAnywhere, meta=(Categories="QuickSlotId"))
 	FGameplayTag SlotId;
 
 	/**

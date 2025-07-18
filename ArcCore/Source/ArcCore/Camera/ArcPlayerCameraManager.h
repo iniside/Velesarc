@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -22,15 +22,10 @@
 #pragma once
 
 #include "Camera/PlayerCameraManager.h"
-#include "CoreMinimal.h"
 
-#include "Core/CameraNode.h"
-#include "Core/CameraParameters.h"
-#include "Core/CameraOperation.h"
+
 #include "GameFramework/GameplayCamerasPlayerCameraManager.h"
 #include "Nodes/Input/CameraRigInput2DSlot.h"
-#include "Nodes/Input/Input2DCameraNode.h"
-
 #include "ArcPlayerCameraManager.generated.h"
 
 constexpr float OAK_CAMERA_DEFAULT_FOV(90.0f);
@@ -69,86 +64,3 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UArcUICameraManagerComponent> UICamera;
 };
-
-class UCameraValueInterpolator;
-
-UCLASS(meta=(CameraNodeCategories="Attachment"))
-class ARCCORE_API UArcAttachToPawnSocket : public UCameraNode
-{
-	GENERATED_BODY()
-
-protected:
-
-	// UCameraNode interface.
-	virtual FCameraNodeEvaluatorPtr OnBuildEvaluator(FCameraNodeEvaluatorBuilder& Builder) const override;
-
-public:
-	UPROPERTY(EditAnywhere)
-	FName SocketName;
-
-	UPROPERTY(EditAnywhere)
-	FName ComponentTag = NAME_None;
-	
-	UPROPERTY(EditAnywhere)
-	bool bUsePawnBaseEyeHeight = false;
-
-	UPROPERTY(EditAnywhere, Category="Collision")
-	TObjectPtr<UCameraValueInterpolator> OffsetInterpolator;
-
-	UPROPERTY(EditAnywhere, Category="Collision")
-	TObjectPtr<UCameraValueInterpolator> OffsetInterpolatorZ;
-};
-
-UCLASS(meta=(CameraNodeCategories="Input",
-			ObjectTreeGraphSelfPinDirection="Output",
-			ObjectTreeGraphDefaultPropertyPinDirection="Input"))
-class ARCCORE_API UArcControlRotationOffset : public UInput2DCameraNode
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(meta=(ObjectTreeGraphPinDirection=Input))
-	TObjectPtr<UInput2DCameraNode> InputSlot;
-	
-	// UCameraNode interface.
-	virtual void OnBuild(FCameraObjectBuildContext& BuildContext) override;
-	virtual FCameraNodeEvaluatorPtr OnBuildEvaluator(FCameraNodeEvaluatorBuilder& Builder) const override;
-
-	FCameraVariableID GetVariableID() const { return VariableID; }
-	
-	UPROPERTY()
-	FCameraVariableID VariableID;
-
-};
-
-class UInputAction;
-
-/**
- * An input node that reads player input from an input action.
- */
-UCLASS(MinimalAPI, meta=(CameraNodeCategories="Input"))
-class UArcInputAxisBinding2DCameraNode : public UCameraRigInput2DSlot
-{
-	GENERATED_BODY()
-
-public:
-
-	/** The axis input action(s) to read from. */
-	UPROPERTY(EditAnywhere, Category="Input")
-	TArray<TObjectPtr<UInputAction>> AxisActions;
-
-	/** A multiplier to use on the input values. */
-	UPROPERTY(EditAnywhere, Category="Input Processing")
-	FVector2dCameraParameter Multiplier;
-
-public:
-
-	UArcInputAxisBinding2DCameraNode(const FObjectInitializer& ObjInit);
-	
-protected:
-
-	// UCameraNode interface.
-	
-	virtual FCameraNodeEvaluatorPtr OnBuildEvaluator(FCameraNodeEvaluatorBuilder& Builder) const override;
-};
-

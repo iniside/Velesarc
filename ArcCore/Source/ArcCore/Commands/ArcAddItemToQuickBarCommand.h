@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+
 
 #include "Commands/ArcReplicatedCommand.h"
 #include "GameplayTagContainer.h"
@@ -59,12 +59,6 @@ struct ARCCORE_API FArcAddItemToQuickBarCommand : public FArcReplicatedCommand
 	FArcItemId ItemId;
 
 	/**
-	 * Item slot. If it is not already slotted it will be added to this slot.
-	 */
-	UPROPERTY(BlueprintReadWrite)
-	FGameplayTag ItemSlot;
-
-	/**
 	 * Id quick bar to which we will add item.
 	 */
 	UPROPERTY(BlueprintReadWrite)
@@ -88,13 +82,11 @@ public:
 	FArcAddItemToQuickBarCommand(UArcQuickBarComponent* InQuickBarComponent
 			, UArcItemsStoreComponent* InItemsStoreComponent
 			, const FArcItemId& InItemId
-			, const FGameplayTag& InItemSlot
 			, const FGameplayTag& InQuickBar
 			, const FGameplayTag& InQuickSlot)
 		: QuickBarComponent(InQuickBarComponent)
 		, ItemsStoreComponent(InItemsStoreComponent)
 		, ItemId(InItemId)
-		, ItemSlot(InItemSlot)
 		, QuickBar(InQuickBar)
 		, QuickSlot(InQuickSlot)
 	{}
@@ -179,4 +171,71 @@ public:
 		return FArcAddItemToQuickBarNoItemSlotCommand::StaticStruct();
 	}
 	virtual ~FArcAddItemToQuickBarNoItemSlotCommand() override {}
+};
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAddNewItemToQuickBarCommand : public FArcReplicatedCommand
+{
+	GENERATED_BODY()
+
+	/**
+	 * Quick to which we will try add item
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	TObjectPtr<UArcQuickBarComponent> QuickBarComponent;
+
+	/**
+	 * Items component which own item we will add to quick bar.
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	TObjectPtr<UArcItemsStoreComponent> ItemsStoreComponent;
+
+	/**
+	 * Id of item which will be added to quick bar.
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	FPrimaryAssetId ItemDefinitionId;
+
+	/**
+	 * Id quick bar to which we will add item.
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	FGameplayTag QuickBar;
+
+	/** 
+	 * Id of QuickSlot to which we will add item.
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	FGameplayTag QuickSlot;
+	
+public:
+	FArcAddNewItemToQuickBarCommand()
+		: QuickBarComponent(nullptr)
+		, ItemsStoreComponent(nullptr)
+		, ItemDefinitionId()
+		, QuickBar()
+		, QuickSlot()
+	{}
+
+	FArcAddNewItemToQuickBarCommand(UArcQuickBarComponent* InQuickBarComponent
+			, UArcItemsStoreComponent* InItemsStoreComponent
+			, const FPrimaryAssetId& InItemId
+			, const FGameplayTag& InQuickBar
+			, const FGameplayTag& InQuickSlot)
+		: QuickBarComponent(InQuickBarComponent)
+		, ItemsStoreComponent(InItemsStoreComponent)
+		, ItemDefinitionId(InItemId)
+		, QuickBar(InQuickBar)
+		, QuickSlot(InQuickSlot)
+	{}
+	
+	virtual bool CanSendCommand() const override;
+	virtual void PreSendCommand() override;
+	virtual bool Execute() override;
+
+	virtual UScriptStruct* GetScriptStruct() const override
+	{
+		return FArcAddNewItemToQuickBarCommand::StaticStruct();
+	}
+	virtual ~FArcAddNewItemToQuickBarCommand() override {}
 };

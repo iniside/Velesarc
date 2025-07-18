@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -30,7 +30,6 @@
 #include "Items/ArcItemsComponent.h"
 #include "ArcCoreUtils.h"
 #include "ArcLogs.h"
-#include "AbilitySystem/ArcAbilityTargetingComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/AssetManager.h"
 
@@ -192,7 +191,7 @@ void FArcPawnDataFragment_AddItemsToQuickbar::GiveFragment(class APawn* InCharac
 			IC->AddItemToSlot(AddedItemId, DSI.ItemSlot);
 		}
 
-		QBC->AddItemToBarOrRegisterDelegate(DSI.BarId, DSI.QuickSlot, AddedItemId);
+		QBC->AddAndActivateQuickSlot(DSI.BarId, DSI.QuickSlot, AddedItemId);
 	}
 }
 

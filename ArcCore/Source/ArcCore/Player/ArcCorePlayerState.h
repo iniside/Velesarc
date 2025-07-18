@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -21,12 +21,11 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+
 #include "GameplayTagAssetInterface.h"
 #include "GameplayTagContainer.h"
 #include "ModularPlayerState.h"
 #include "Components/PlayerStateComponent.h"
-#include "Persistence/ArcCorePersistanceSubsystem.h"
 #include "ArcCorePlayerState.generated.h"
 
 class AArcCorePlayerController;

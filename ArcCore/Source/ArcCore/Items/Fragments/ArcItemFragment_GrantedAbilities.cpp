@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -126,7 +126,9 @@ void FArcItemFragment_GrantedAbilities::HandleOnAbilityGiven(FGameplayAbilitySpe
 void FArcItemFragment_GrantedAbilities::UpdatePendingAbility(const FArcItemData* InItem) const
 {
 	FArcItemInstance_GrantedAbilities* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
-	for (const FGameplayAbilitySpecHandle& AbilityHandle : Instance->GrantedAbilities)
+
+	TArray<FGameplayAbilitySpecHandle> Copy = Instance->PendingAbilities;
+	for (const FGameplayAbilitySpecHandle& AbilityHandle : Copy)
 	{
 		FGameplayAbilitySpec* Spec = Instance->ArcASC->FindAbilitySpecFromHandle(AbilityHandle);
 		if (Spec == nullptr)

@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -22,7 +22,7 @@
 #pragma once
 #include "Abilities/Tasks/AbilityTask.h"
 #include "Animation/AnimMontage.h"
-#include "CoreMinimal.h"
+
 #include "AbilitySystem/Delegates/ArcPlayMontageAndWaitForEventDynamic.h"
 #include "ArcAT_WaitPlayMontageUntilInputRelease.generated.h"
 

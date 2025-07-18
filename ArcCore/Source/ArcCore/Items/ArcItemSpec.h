@@ -1,5 +1,5 @@
 /**
- * This file is part of ArcX.
+ * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
  * Licensed under the European Union Public License (EUPL), Version 1.2 or –
@@ -266,6 +266,10 @@ public:
 								, uint8 Level
 								, int32 Amount);
 
+	static FArcItemSpec NewItem(const FPrimaryAssetId& NewItem
+								, uint8 Level
+								, int32 Amount);
+	
 	/**
 	 * @brief Adds instance of of fragment T. Must be derived from  FArcItemFragment_ItemInstanceBase.
 	 * Each type of fragment added must be unique.
