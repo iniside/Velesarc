@@ -6,3 +6,9 @@ Code is likely to DO NOT COMPILE. It does require some changes in engine. These 
 API and code in general is subject to sweeping changes that will break everything.
 
 This is dump of my Perforce repo, of code I made over span of years. 
+
+# Pull Request
+
+List of pull requests which are required to compile plugins. List is ever changing as I refactor code to require less engine changes, or potentially PR are merged to engine.
+
+* https://github.com/EpicGames/UnrealEngine/pull/12987
