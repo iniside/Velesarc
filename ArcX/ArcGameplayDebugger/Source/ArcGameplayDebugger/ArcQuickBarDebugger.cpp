@@ -1,5 +1,6 @@
 ﻿#include "ArcQuickBarDebugger.h"
 
+#include "ArcItemInstanceDataDebugger.h"
 #include "EnhancedInputSubsystems.h"
 #include "imgui.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
@@ -155,7 +156,8 @@ void FArcQuickBarDebugger::Draw()
 						
 						if (ImGui::Button("Remove"))
 						{
-							
+							Arcx::SendServerCommand<FArcRemoveItemFromQuickSlotCommand>(PC, QuickBarComponent,
+								QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId, false);
 						}
 
 						const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItems::FindInstance<FArcItemInstance_GrantedAbilities>(ItemData);
@@ -171,12 +173,7 @@ void FArcQuickBarDebugger::Draw()
 										continue;
 									}
 									
-									FString AbilityName = GetNameSafe(AbilitySpec->GetPrimaryInstance());
-									if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityName)))
-									{
-										ImGui::Text("DynamicTags: %s", TCHAR_TO_ANSI(*AbilitySpec->GetDynamicSpecSourceTags().ToString()));
-										ImGui::TreePop();
-									}
+									FArcItemInstanceDebugger::DrawGameplayAbilitySpec(AbilitySystem, AbilitySpec);
 								}
 								ImGui::TreePop();
 							}
@@ -202,15 +199,16 @@ void FArcQuickBarDebugger::Draw()
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0);
 
+						ImGui::SameLine();
 						ImGui::PushID(TCHAR_TO_ANSI(*Item->GetItemId().ToString()));
 						FString ItemDisplayName = FString::Printf(TEXT("Add (%s)"), *ItemName);
+
+						ImGui::SameLine();
 						if (ImGui::Button(TCHAR_TO_ANSI(*ItemDisplayName)))
 						{
 							Arcx::SendServerCommand<FArcAddItemToQuickBarCommand>(PC, QuickBarComponent, QuickBarStore
 								, Item->GetItemId(), QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId);
 						}
-
-						
 						ImGui::PopID();
 					}
 					ImGui::EndTable();

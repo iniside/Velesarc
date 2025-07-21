@@ -217,6 +217,7 @@ void FArcDebuggerItems::Draw()
 									if (ImGui::TreeNode(TCHAR_TO_ANSI(*Instance->GetScriptStruct()->GetName())))
 									{
 										FArcItemInstanceDebugger::DrawGrantedAbilities(InItemData, Instance);
+										FArcItemInstanceDataDebugger::DrawAbilityEffectsToApply(InItemData, Instance);
 										ImGui::TreePop();
 									}
 								});

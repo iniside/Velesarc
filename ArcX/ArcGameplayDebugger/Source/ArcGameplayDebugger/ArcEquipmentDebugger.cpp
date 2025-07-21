@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "Commands/ArcEquipItemCommand.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
+#include "Commands/ArcUnequipItemCommand.h"
 #include "Equipment/ArcEquipmentComponent.h"
 #include "GameFramework/PlayerState.h"
 #include "Items/ArcItemsStoreComponent.h"
@@ -85,7 +86,7 @@ void FArcEquipmentDebugger::Draw()
 			ImGui::Text(TCHAR_TO_ANSI(*SlotLocked));
 			if (ImGui::Button("Unequip"))
 			{
-				
+				Arcx::SendServerCommand<FArcUnequipItemCommand>(PC, EquipmentComponent, EquipmentSlot.SlotId);
 			}
 			
 			ImGui::BeginTable("EquipmentTable", 1);
