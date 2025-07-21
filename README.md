@@ -11,4 +11,5 @@ This is dump of my Perforce repo, of code I made over span of years.
 
 List of pull requests which are required to compile plugins. List is ever changing as I refactor code to require less engine changes, or potentially PR are merged to engine.
 
-* https://github.com/EpicGames/UnrealEngine/pull/12987
+* https://github.com/EpicGames/UnrealEngine/pull/12987 - Adds FInstanceStruct to FGameplayAbilitySpec
+* https://github.com/EpicGames/UnrealEngine/pull/13603 - Exports some GameplayCamera structs and classes.
