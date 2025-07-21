@@ -2,10 +2,17 @@
 
 All code is provided as is. 
 As of now, I do not provide any support for it.
-Code is likely to DO NOT COMPILE. It does require some changes in engine. These changes are usually some type exports.
-API and code in general is subject to sweeping changes that will break everything.
+Be advised that as of now code is tested and compiled agains ue5-main branch. 
 
-This is dump of my Perforce repo, of code I made over span of years. 
+# Features
+* Items System - generic way of creaing data assets, with any set of properties to be configured inside editor. Items can be instanced and replicated.
+* Inventory - No direct implementation, but it is subset functionality of Items System.
+* Attachment System - a way to generically handle attachments when equiping items.
+* Quick Bar - a generic way to create sets of editable and activatable slots, which can be edited by player, by inserting items into it.
+* Replicated Commands - a way to encapsulate command to execute, and then send it from client to server or vice verse.
+* Extend Game Framework - Based on lyra preconfigured way of createding custom game modes made of components, ability system and way to extend pawn without overriding base class.
+* Targeting - integrated Targeting System from engine.
+* Recoil & Spread - implemented mechanics for customizable recoil and spread, which can be controlled by player.
 
 # Pull Request
 
