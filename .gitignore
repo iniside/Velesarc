@@ -75,3 +75,19 @@ Plugins/**/Intermediate/*
 */Intermediate/*
 # Cache files for the editor to use
 DerivedDataCache/*
+
+*
+!.gitignore
+
+!ArcX/
+!ArcX/**/
+!ArcX/**.md
+!ArcX/**.uplugin
+!ArcX/**/*.md
+!ArcX/**/*.uplugin
+
+!ArcX/**/Config/**
+!ArcX/**/Source/**
+!ImGui/
+!ImGui/**
+!ImGui/**/**
