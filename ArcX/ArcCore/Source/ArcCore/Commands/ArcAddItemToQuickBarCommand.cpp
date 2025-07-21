@@ -82,30 +82,21 @@ bool FArcAddItemToQuickBarCommand::Execute()
 
 	FGameplayTag ItemSlot = QuickSlotIdx != INDEX_NONE ? OutQuickBar.Slots[QuickSlotIdx].DefaultItemSlotId : FGameplayTag::EmptyTag;
 
-	const bool bIsOnAnyQuickSlot = QuickBarComponent->IsItemOnAnyQuickSlot(ItemId);
 	TPair<FGameplayTag, FGameplayTag> ExistingQuickBarSlot = QuickBarComponent->FindQuickSlotForItemId(ItemId);
-
+	if (ExistingQuickBarSlot.Key.IsValid() && ExistingQuickBarSlot.Value.IsValid())
+	{
+		QuickBarComponent->RemoveQuickSlot(ExistingQuickBarSlot.Key, ExistingQuickBarSlot.Value);
+	}
+	
 	bool bIsTaken = QuickBarComponent->IsItemOnQuickSlot(QuickBar, QuickSlot);
 
 	FArcItemId ExistingItemId = QuickBarComponent->GetItemId(QuickBar, QuickSlot);
-	if (bIsTaken && ExistingQuickBarSlot.Key.IsValid() && ExistingQuickBarSlot.Value.IsValid() && ExistingItemId.IsValid())
+	if (bIsTaken && ExistingItemId.IsValid())
 	{
 		QuickBarComponent->RemoveQuickSlot(QuickBar, QuickSlot);
 		//  We need to swap items.
 
 		QuickBarComponent->AddAndActivateQuickSlot(ExistingQuickBarSlot.Key, ExistingQuickBarSlot.Value, ExistingItemId);
-	}
-	else if (!ExistingQuickBarSlot.Key.IsValid() && !ExistingQuickBarSlot.Value.IsValid() && bIsTaken)
-	{
-		const FArcItemData* ExistingItemData = ISC->GetItemPtr(ExistingItemId);
-		if (ExistingItemData && ExistingItemData->GetSlotId().IsValid())
-		{
-			ISC->RemoveItemFromSlot(ExistingItemId);
-		}
-		//	/**
-		//	 * This is not replicated to server by QuickBar we need to also call it on server.
-		//	 */
-		QuickBarComponent->RemoveQuickSlot(QuickBar, QuickSlot);
 	}
 	
 	const FArcItemData* OldItemData = ISC->GetItemPtr(ExistingItemId);
@@ -257,7 +248,6 @@ bool FArcAddNewItemToQuickBarCommand::Execute()
 
 	const bool bIsOnAnyQuickSlot = QuickBarComponent->IsItemOnAnyQuickSlot(ItemId);
 	
-	
 	// If it was on any quick bar slot, remove it first to correctly trigger events, like input unbind.
 	if (bIsOnAnyQuickSlot)
 	{
@@ -302,6 +292,69 @@ bool FArcAddNewItemToQuickBarCommand::Execute()
 		ISC->AddItemToSlot(ItemId, ItemSlot);
 	}
 	QuickBarComponent->AddAndActivateQuickSlot(QuickBar, QuickSlot, ItemId);
+	
+	return true;
+}
+
+bool FArcRemoveItemFromQuickSlotCommand::CanSendCommand() const
+{
+	if (QuickBarComponent == nullptr)
+	{
+		return false;
+	}
+
+	if (QuickBar.IsValid() == false)
+	{
+		return false;
+	}
+
+	if (QuickSlot.IsValid() == false)
+	{
+		return false;
+	}
+
+	if (bRemoveFromItemSlot && QuickBarComponent->IsQuickSlotLocked(QuickBar, QuickSlot))
+	{
+		return false;
+	}
+
+	if (QuickBarComponent->IsQuickBarLocked())
+	{
+		return false;
+	}
+
+	FArcItemId ItemId = QuickBarComponent->GetItemId(QuickBar, QuickSlot);
+	if (!ItemId.IsValid())
+	{
+		return false;
+	}
+
+	if (bRemoveFromItemSlot)
+	{
+		UArcItemsStoreComponent* ISC = QuickBarComponent->GetItemStoreComponent(QuickBar);
+	
+		if (ISC->IsItemLocked(QuickBarComponent->GetItemId(QuickBar, QuickSlot)))
+		{
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+void FArcRemoveItemFromQuickSlotCommand::PreSendCommand()
+{
+}
+
+bool FArcRemoveItemFromQuickSlotCommand::Execute()
+{
+	UArcItemsStoreComponent* ISC = QuickBarComponent->GetItemStoreComponent(QuickBar);
+
+	QuickBarComponent->RemoveQuickSlot(QuickBar, QuickSlot);
+	if (bRemoveFromItemSlot)
+	{
+		ISC->RemoveItemFromSlot(QuickBarComponent->GetItemId(QuickBar, QuickSlot));
+	}
 	
 	return true;
 }

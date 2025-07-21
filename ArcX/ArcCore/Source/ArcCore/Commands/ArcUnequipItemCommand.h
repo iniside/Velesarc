@@ -28,7 +28,7 @@
 #include "GameplayTagContainer.h"
 #include "ArcUnequipItemCommand.generated.h"
 
-class UArcItemsStoreComponent;
+class UArcEquipmentComponent;
 
 /**
  * 
@@ -40,7 +40,7 @@ struct ARCCORE_API FArcUnequipItemCommand : public FArcReplicatedCommand
 	
 protected:
 	UPROPERTY()
-	TObjectPtr<UArcItemsStoreComponent> ToComponent = nullptr;
+	TObjectPtr<UArcEquipmentComponent> EquipmentComponent = nullptr;
 	
 	UPROPERTY()
 	FGameplayTag SlotId;
@@ -52,12 +52,12 @@ public:
 
 
 	FArcUnequipItemCommand()
-		: ToComponent(nullptr)
+		: EquipmentComponent(nullptr)
 	{}
 	
-	FArcUnequipItemCommand(UArcItemsStoreComponent* InToComponent
+	FArcUnequipItemCommand(UArcEquipmentComponent* InEquipmentComponent
 		, const FGameplayTag& InSlotId)
-		: ToComponent(InToComponent)
+		: EquipmentComponent(InEquipmentComponent)
 		, SlotId(InSlotId)
 	{
 

@@ -19,8 +19,6 @@
  * and limitations under the License.
  */
 
-
-
 #include "ArcUnequipItemCommand.h"
 
 #include "Equipment/ArcEquipmentComponent.h"
@@ -29,7 +27,7 @@
 
 bool FArcUnequipItemCommand::CanSendCommand() const
 {
-	if (ToComponent == nullptr)
+	if (EquipmentComponent == nullptr)
 	{
 		return false;
 	}
@@ -38,8 +36,14 @@ bool FArcUnequipItemCommand::CanSendCommand() const
 	{
 		return false;
 	}
+
+	UArcItemsStoreComponent* ItemsStore = EquipmentComponent->GetItemsStore();
+	if (!ItemsStore)
+	{
+		return false;
+	}
 	
-	const FArcItemData* ItemPtr = ToComponent->GetItemFromSlot(SlotId);
+	const FArcItemData* ItemPtr = ItemsStore->GetItemFromSlot(SlotId);
 	if (ItemPtr == nullptr)
 	{
 		return false;
@@ -55,10 +59,21 @@ void FArcUnequipItemCommand::PreSendCommand()
 
 bool FArcUnequipItemCommand::Execute()
 {
- 	if (ToComponent)
+	if (EquipmentComponent == nullptr)
 	{
-		const FArcItemData* ItemPtr = ToComponent->GetItemFromSlot(SlotId);
-		ToComponent->RemoveItemFromSlot(ItemPtr->GetItemId());
+		return false;
+	}
+	
+	UArcItemsStoreComponent* ItemsStore = EquipmentComponent->GetItemsStore();
+	if (!ItemsStore)
+	{
+		return false;
+	}
+	
+ 	if (ItemsStore)
+	{
+		const FArcItemData* ItemPtr = ItemsStore->GetItemFromSlot(SlotId);
+		ItemsStore->RemoveItemFromSlot(ItemPtr->GetItemId());
 	}
 	
 	return true;

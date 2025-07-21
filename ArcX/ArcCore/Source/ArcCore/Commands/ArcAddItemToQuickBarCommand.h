@@ -239,3 +239,60 @@ public:
 	}
 	virtual ~FArcAddNewItemToQuickBarCommand() override {}
 };
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcRemoveItemFromQuickSlotCommand : public FArcReplicatedCommand
+{
+	GENERATED_BODY()
+
+	/**
+	 * Quick to which we will try add item
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	TObjectPtr<UArcQuickBarComponent> QuickBarComponent;
+
+	/**
+	 * Id quick bar to which we will add item.
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	FGameplayTag QuickBar;
+
+	/**
+	 * Id of QuickSlot to which we will add item.
+	 */
+	UPROPERTY(BlueprintReadWrite)
+	FGameplayTag QuickSlot;
+
+	UPROPERTY(BlueprintReadWrite)
+	bool bRemoveFromItemSlot = false;
+	
+public:
+	FArcRemoveItemFromQuickSlotCommand()
+		: QuickBarComponent(nullptr)
+		, QuickBar()
+		, QuickSlot()
+		, bRemoveFromItemSlot(false)
+	{
+	}
+
+	FArcRemoveItemFromQuickSlotCommand(UArcQuickBarComponent* InQuickBarComponent
+		, const FGameplayTag& InQuickBar
+		, const FGameplayTag& InQuickSlot
+		, bool bInRemoveFromItemSlot = false)
+		: QuickBarComponent(InQuickBarComponent)
+		, QuickBar(InQuickBar)
+		, QuickSlot(InQuickSlot)
+		, bRemoveFromItemSlot(bInRemoveFromItemSlot)
+	{
+	}
+
+	virtual bool CanSendCommand() const override;
+	virtual void PreSendCommand() override;
+	virtual bool Execute() override;
+
+	virtual UScriptStruct* GetScriptStruct() const override
+	{
+		return FArcRemoveItemFromQuickSlotCommand::StaticStruct();
+	}
+	virtual ~FArcRemoveItemFromQuickSlotCommand() override {}
+};
