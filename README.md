@@ -4,6 +4,10 @@ All code is provided as is.
 As of now, I do not provide any support for it.
 Be advised that as of now code is tested and compiled agains ue5-main branch. 
 
+Planned more stable version is for 5.7 onward. 
+Current plan is for 5.7 to create branch with features, and continue work on main. This means that new features are unlikely to be back ported for old versions.
+Plugins usually take some advantage of new engine features where possible to reduce amount of code.
+
 # Features
 * Items System - generic way of creaing data assets, with any set of properties to be configured inside editor. Items can be instanced and replicated.
 * Inventory - No direct implementation, but it is subset functionality of Items System.
