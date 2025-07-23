@@ -37,12 +37,15 @@ void FArcDebuggerItems::Initialize()
 			ItemList.Add(ItemData.AssetName.ToString());	
 		}
 	}
+
+	ItemSpecCreator.Initialize();
 }
 
 void FArcDebuggerItems::Uninitialize()
 {
 	ItemDefinitions.Reset();
 	ItemList.Reset();
+	ItemSpecCreator.Uninitialize();
 }
 
 void FArcDebuggerItems::Draw()
@@ -140,7 +143,30 @@ void FArcDebuggerItems::Draw()
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0);
 				ImGui::Text(TCHAR_TO_ANSI(*ItemName));
-			
+				if (ImGui::BeginPopupContextItem(TCHAR_TO_ANSI(*ItemName))) // <-- use last item id as popup id
+				{
+					ImGui::Text("This a popup for \"%s\"!", TCHAR_TO_ANSI(*ItemName));
+					if (ImGui::Button("Make Item Spec"))
+					{
+						ImGui::OpenPopup("New Item Spec");
+					}
+					if (ImGui::BeginPopupModal("New Item Spec"))
+					{
+						if (ItemsStores.IsValidIndex(SelectedItemStoreIndex))
+						{
+							UArcItemDefinition* ItemDef = Cast<UArcItemDefinition>(ItemDefinitions[Idx].GetAsset());
+							ItemSpecCreator.CreateItemSpec(ItemsStores[SelectedItemStoreIndex], ItemDef);	
+						}
+												
+						if (ImGui::Button("Close"))
+						{
+							ImGui::CloseCurrentPopup();
+						}
+						ImGui::EndPopup();
+					}
+					ImGui::EndPopup();
+				}
+				
 				ImGui::TableSetColumnIndex(1);
 				ImGui::PushID(TCHAR_TO_ANSI(*ItemName));
 				if (ImGui::Button("Add Item"))

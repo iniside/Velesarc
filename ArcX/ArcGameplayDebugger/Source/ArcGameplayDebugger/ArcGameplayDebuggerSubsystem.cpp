@@ -90,9 +90,9 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					}
 					ImGui::EndMenu();
 				}
-				if (ImGui::BeginMenu("Character"))
+				if (ImGui::BeginMenu("Items"))
 				{
-					if (ImGui::MenuItem("Items"))
+					if (ImGui::MenuItem("Items Store"))
 					{
 						if (DebuggerItems.bShow == false)
 						{

@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "ArcItemDebuggerCreateItemSpec.h"
 
 class FArcDebuggerItems
 {
@@ -12,6 +13,8 @@ public:
 
 	TArray<FAssetData> ItemDefinitions;
 	TArray<FString> ItemList;
+
+	FArcItemDebuggerItemSpecCreator ItemSpecCreator;
 };
 
 class FArcItemDebuggerItems
