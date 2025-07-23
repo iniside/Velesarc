@@ -4,7 +4,7 @@ All code is provided as is.
 As of now, I do not provide any support for it.
 Be advised that as of now code is tested and compiled agains ue5-main branch. 
 
-Planned more stable version is fo 5.7 onward. 
+Planned more stable version is for 5.7 onward. 
 Current plan is for 5.7 to create branch with features, and continue work on main. This means that new features are unlikely to be back ported for old versions.
 Plugins usually take some advantage of new engine features where possible to reduce amount of code.
 
