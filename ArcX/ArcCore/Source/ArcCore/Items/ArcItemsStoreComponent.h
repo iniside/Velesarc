@@ -250,7 +250,7 @@ public:
 		, const FArcItemId& AttachedId
 		, const FGameplayTag& InAttachSlot);
 
-	void DetachItemFrom(const FArcItemId& InOwnerId, const FArcItemId& InAttachmentId);
+	void DetachItemFrom(const FArcItemId& InAttachmentId);
 	void DetachItemFromSlot(const FArcItemId& InOwnerId, const FGameplayTag& InAttachSlot);
 
 

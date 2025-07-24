@@ -74,3 +74,41 @@ public:
 	}
 	virtual ~FArcAddItemToItemSocketCommand() override = default;
 };
+
+USTRUCT()
+struct ARCCORE_API FArcRemoveItemFromItemSocketCommand : public FArcReplicatedCommand
+{
+	
+	GENERATED_BODY()
+	
+protected:
+	UPROPERTY()
+	TObjectPtr<UArcItemsStoreComponent> ItemsStore = nullptr;
+	
+	UPROPERTY()
+	FArcItemId AttachmentItem;
+	
+public:
+	virtual bool CanSendCommand() const override;
+	virtual void PreSendCommand() override;
+	virtual bool Execute() override;
+
+
+	FArcRemoveItemFromItemSocketCommand()
+		: ItemsStore(nullptr)
+		, AttachmentItem()
+	{}
+	
+	FArcRemoveItemFromItemSocketCommand(UArcItemsStoreComponent* InItemsStore
+		, const FArcItemId& InAttachmentItem)
+		: ItemsStore(InItemsStore)
+		, AttachmentItem(InAttachmentItem)
+	{
+
+	}
+	virtual UScriptStruct* GetScriptStruct() const override
+	{
+		return FArcRemoveItemFromItemSocketCommand::StaticStruct();
+	}
+	virtual ~FArcRemoveItemFromItemSocketCommand() override = default;
+};

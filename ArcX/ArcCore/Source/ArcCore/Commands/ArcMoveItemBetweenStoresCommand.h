@@ -41,10 +41,10 @@ struct ARCCORE_API FArcMoveItemBetweenStoresCommand : public FArcReplicatedComma
 	GENERATED_BODY()
 protected:
 	UPROPERTY()
-	TObjectPtr<class UArcItemsStoreComponent> SourceStore;
+	TObjectPtr<UArcItemsStoreComponent> SourceStore;
 	
 	UPROPERTY()
-	TObjectPtr<class UArcItemsStoreComponent> TargetStore;
+	TObjectPtr<UArcItemsStoreComponent> TargetStore;
 	
 	UPROPERTY()
 	FArcItemId ItemId;
@@ -67,7 +67,7 @@ public:
 	FArcMoveItemBetweenStoresCommand(UArcItemsStoreComponent* InSourceStore
 									, UArcItemsStoreComponent* InTargetStore
 									, const FArcItemId& InItemId
-									, int32 InStacks = 1)
+									, int32 InStacks)
 		: SourceStore(InSourceStore)
 		, TargetStore(InTargetStore)
 		, ItemId(InItemId)

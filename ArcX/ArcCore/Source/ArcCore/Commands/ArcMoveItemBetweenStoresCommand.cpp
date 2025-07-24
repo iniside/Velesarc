@@ -48,6 +48,19 @@ void FArcMoveItemBetweenStoresCommand::PreSendCommand()
 
 bool FArcMoveItemBetweenStoresCommand::Execute()
 {
+	const FArcItemData* ItemData = SourceStore->GetItemPtr(ItemId);
+	if (!ItemData)
+	{
+		return false;
+	}
+
+	FArcItemCopyContainerHelper Copy = SourceStore->GetItemCopyHelper(ItemId);
+	Copy.SlotId = FGameplayTag::EmptyTag;
+	
+	TargetStore->AddItemDataInternal(Copy);
+
+	SourceStore->DestroyItem(ItemId);
+	
 	return true;
 }
 

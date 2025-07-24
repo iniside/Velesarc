@@ -65,10 +65,43 @@ bool FArcAddItemToItemSocketCommand::Execute()
 		
 	if (CurrentlyAttachedItem)
 	{
-		ToComponent->DetachItemFrom(TargetItem, CurrentlyAttachedItem->GetItemId());
+		ToComponent->DetachItemFrom(CurrentlyAttachedItem->GetItemId());
 	}
 	
 	ToComponent->InternalAttachToItem(TargetItem, AttachmentItem, SocketSlot);
 	
+	return true;
+}
+
+bool FArcRemoveItemFromItemSocketCommand::CanSendCommand() const
+{
+	if (ItemsStore == nullptr)
+	{
+		return false;
+	}
+
+	if (AttachmentItem.IsValid() == false)
+	{
+		return false;
+	}
+
+	FArcItemData* ItemData = ItemsStore->GetItemPtr(AttachmentItem);
+	if (ItemData == nullptr)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+void FArcRemoveItemFromItemSocketCommand::PreSendCommand()
+{
+	ItemsStore->LockItem(AttachmentItem);
+}
+
+bool FArcRemoveItemFromItemSocketCommand::Execute()
+{
+	ItemsStore->DetachItemFrom(AttachmentItem);
+
 	return true;
 }

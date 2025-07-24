@@ -682,17 +682,16 @@ FArcItemId UArcItemsStoreComponent::InternalAttachToItem(const FArcItemId& Owner
 	return AttachedId;
 }
 
-void UArcItemsStoreComponent::DetachItemFrom(const FArcItemId& InOwnerId
-	, const FArcItemId& InAttachmentId)
+void UArcItemsStoreComponent::DetachItemFrom(const FArcItemId& InAttachmentId)
 {
-	const FArcItemData* OwnerData = GetItemPtr(InOwnerId);
-	if (OwnerData == nullptr)
+	const FArcItemData* AttachmentData = GetItemPtr(InAttachmentId);
+	if (AttachmentData == nullptr)
 	{
 		return;
 	}
-
-	const FArcItemData* AttachmentData = GetItemPtr(InAttachmentId);
-	if (AttachmentData == nullptr)
+	
+	const FArcItemData* OwnerData = GetItemPtr(AttachmentData->GetOwnerId());
+	if (OwnerData == nullptr)
 	{
 		return;
 	}
