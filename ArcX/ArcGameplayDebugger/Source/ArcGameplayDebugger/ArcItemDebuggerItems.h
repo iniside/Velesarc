@@ -16,11 +16,3 @@ public:
 
 	FArcItemDebuggerItemSpecCreator ItemSpecCreator;
 };
-
-class FArcItemDebuggerItems
-{
-public:
-	void Initialize();
-	void Uninitialize();
-	void Draw();
-};

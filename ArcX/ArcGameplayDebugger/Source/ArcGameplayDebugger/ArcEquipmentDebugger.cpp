@@ -88,31 +88,39 @@ void FArcEquipmentDebugger::Draw()
 			{
 				Arcx::SendServerCommand<FArcUnequipItemCommand>(PC, EquipmentComponent, EquipmentSlot.SlotId);
 			}
-			
-			ImGui::BeginTable("EquipmentTable", 1);
-			TArray<const FArcItemData*> Items = EquipmentComponent->GetItemsFromStoreForSlot(EquipmentSlot.SlotId);
-			for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
+
+			const FArcItemData* ExistingItem = EquipmentItemsStore->GetItemFromSlot(EquipmentSlot.SlotId);
+			FString PreviewText = "Select Item to Equip";
+			if (ExistingItem)
 			{
-				const FArcItemData* ItemData = Items[ItemIdx];
-				if (!ItemData || !ItemData->GetItemDefinition())
-				{
-					continue;
-				}
-
-				FString ItemName = GetNameSafe(ItemData->GetItemDefinition());
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-
-				ImGui::PushID(TCHAR_TO_ANSI(*ItemData->GetItemId().ToString()));
-				FString ItemDisplayName = FString::Printf(TEXT("Equip (%s)"), *ItemName);
-				if (ImGui::Button(TCHAR_TO_ANSI(*ItemDisplayName)))
-				{
-					Arcx::SendServerCommand<FArcEquipItemCommand>(PC,
-						EquipmentComponent->GetItemsStore(), EquipmentComponent, ItemData->GetItemId(), EquipmentSlot.SlotId);
-				}
-				ImGui::PopID();
+				PreviewText = GetNameSafe(ExistingItem->GetItemDefinition());
 			}
-			ImGui::EndTable();
+			if (ImGui::BeginCombo("EquipmentTable", TCHAR_TO_ANSI(*PreviewText)))
+			{
+				TArray<const FArcItemData*> Items = EquipmentComponent->GetItemsFromStoreForSlot(EquipmentSlot.SlotId);
+				for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
+				{
+					const FArcItemData* ItemData = Items[ItemIdx];
+					if (!ItemData || !ItemData->GetItemDefinition())
+					{
+						continue;
+					}
+
+					FString ItemName = GetNameSafe(ItemData->GetItemDefinition());
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+
+					ImGui::PushID(TCHAR_TO_ANSI(*ItemData->GetItemId().ToString()));
+					FString ItemDisplayName = FString::Printf(TEXT("Equip (%s)"), *ItemName);
+					if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemDisplayName)))
+					{
+						Arcx::SendServerCommand<FArcEquipItemCommand>(PC,
+							EquipmentComponent->GetItemsStore(), EquipmentComponent, ItemData->GetItemId(), EquipmentSlot.SlotId);
+					}
+					ImGui::PopID();
+				}
+				ImGui::EndCombo();
+			}
 			ImGui::TreePop();
 		}
 	}
