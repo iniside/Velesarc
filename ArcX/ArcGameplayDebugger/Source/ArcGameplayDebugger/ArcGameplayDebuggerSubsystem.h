@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "ArcEquipmentDebugger.h"
 #include "ArcGameplayAbilitiesDebugger.h"
+#include "ArcGameplayEffectsDebugger.h"
 #include "ArcItemAttachmentDebugger.h"
 #include "ArcItemDebuggerItems.h"
 #include "ArcQuickBarDebugger.h"
@@ -27,6 +28,7 @@ private:
 	FArcQuickBarDebugger QuickBarDebugger;
 	FArcItemAttachmentDebugger ItemAttachmentDebugger;
 	FArcGameplayAbilitiesDebugger GameplayAbilitiesDebugger;
+	FArcGameplayEffectsDebugger GameplayEffectsDebugger;
 	
 	void Toggle();
 	

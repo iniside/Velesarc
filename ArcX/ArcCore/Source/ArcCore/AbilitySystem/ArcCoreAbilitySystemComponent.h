@@ -299,6 +299,21 @@ public:
 
 	TArray<FInstancedStruct>& GetActiveGameplayEffectActions(FActiveGameplayEffectHandle Handle);
 
+	const FGameplayTagCountContainer& GetGameplayTagCountContainer() const
+	{
+		return GameplayTagCountContainer;
+	}
+
+	const FMinimalReplicationTagCountMap& GetMinimalReplicationCountTags() const
+	{
+		return GetMinimalReplicationTags();
+	}
+
+	const FMinimalReplicationTagCountMap& GetReplicatedLooseCountTags() const
+	{
+		return GetReplicatedLooseTags();
+	}
+	
 	// Attributes
 public:
 	UFUNCTION(Client, Reliable)

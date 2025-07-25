@@ -173,6 +173,16 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 
 					if (ImGui::MenuItem("Gameplay Effects"))
 					{
+						if (GameplayEffectsDebugger.bShow == false)
+						{
+							GameplayEffectsDebugger.bShow = true;
+							GameplayEffectsDebugger.Initialize();
+						}
+						else
+						{
+							GameplayEffectsDebugger.bShow = false;
+							GameplayEffectsDebugger.Uninitialize();
+						}
 					}
 
 					if (ImGui::MenuItem("Attributes"))
@@ -222,6 +232,10 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				if (GameplayAbilitiesDebugger.bShow)
 				{
 					GameplayAbilitiesDebugger.Draw();
+				}
+				if (GameplayEffectsDebugger.bShow)
+				{
+					GameplayEffectsDebugger.Draw();
 				}
 				if (bDrawDebug)
 				{
