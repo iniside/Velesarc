@@ -60,7 +60,6 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 		return;
 	}
 
-	UWorld* World = AbilitySystem->GetWorld();
 	const double WorldTime = AbilitySystem->GetWorld()->GetTimeSeconds();
 	auto BoolToText = [](bool InBool)
 	{
