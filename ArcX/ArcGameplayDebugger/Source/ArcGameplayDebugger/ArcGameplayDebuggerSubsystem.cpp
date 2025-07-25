@@ -191,7 +191,16 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 
 					if (ImGui::MenuItem("Targeting"))
 					{
-						// Current Global targeting results.
+						if (GlobalTargetingDebugger.bShow == false)
+						{
+							GlobalTargetingDebugger.bShow = true;
+							GlobalTargetingDebugger.Initialize();
+						}
+						else
+						{
+							GlobalTargetingDebugger.bShow = false;
+							GlobalTargetingDebugger.Uninitialize();
+						}
 					}
 					
 					ImGui::EndMenu();
@@ -236,6 +245,10 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				if (GameplayEffectsDebugger.bShow)
 				{
 					GameplayEffectsDebugger.Draw();
+				}
+				if (GlobalTargetingDebugger.bShow)
+				{
+					GlobalTargetingDebugger.Draw();
 				}
 				if (bDrawDebug)
 				{

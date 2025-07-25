@@ -6,6 +6,7 @@
 #include "ArcEquipmentDebugger.h"
 #include "ArcGameplayAbilitiesDebugger.h"
 #include "ArcGameplayEffectsDebugger.h"
+#include "ArcGlobalAbilityTargetingDebugger.h"
 #include "ArcItemAttachmentDebugger.h"
 #include "ArcItemDebuggerItems.h"
 #include "ArcQuickBarDebugger.h"
@@ -29,6 +30,8 @@ private:
 	FArcItemAttachmentDebugger ItemAttachmentDebugger;
 	FArcGameplayAbilitiesDebugger GameplayAbilitiesDebugger;
 	FArcGameplayEffectsDebugger GameplayEffectsDebugger;
+
+	FArcGlobalAbilityTargetingDebugger GlobalTargetingDebugger;
 	
 	void Toggle();
 	

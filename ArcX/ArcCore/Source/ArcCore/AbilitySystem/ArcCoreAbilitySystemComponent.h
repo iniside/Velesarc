@@ -556,6 +556,11 @@ private:
 	TMap<FGameplayAbilitySpecHandle, TMap<FArcTargetDataId, TArray<FHitResult>>> PredictedTargetData;
 	
 public:
+	const TMap<FGameplayAbilitySpecHandle, TMap<FArcTargetDataId, TArray<FHitResult>>>& GetPredictedTargetDatA() const
+	{
+		return PredictedTargetData;
+	}
+	
 	/**
      * @brief Adds currently predicted hits.
      * @param SpecHandle Ability which wants to add predicted target data
@@ -631,6 +636,11 @@ public:
 									, const FGameplayAbilitySpecHandle& RequestHandle);
 
 	TMap<FGameplayTag, FArcCoreGlobalTargetingEntry> TargetingPresets;
+
+	const TMap<FGameplayTag, FArcCoreGlobalTargetingEntry>& GetTargetingPresets() const
+	{
+		return TargetingPresets;
+	}
 	
 	void HandleTargetingCompleted(FTargetingRequestHandle TargetingRequestHandle, FGameplayTag TargetingTag);
 	void GiveGlobalTargetingPreset(const TMap<FGameplayTag, FArcCoreGlobalTargetingEntry>& Preset);
