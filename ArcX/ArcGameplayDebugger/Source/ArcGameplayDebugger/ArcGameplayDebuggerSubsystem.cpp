@@ -155,6 +155,52 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ImGui::EndMenu();
 				}
 				
+				if (ImGui::BeginMenu("Local Ability System"))
+				{
+					if (ImGui::MenuItem("Gameplay Abilities"))
+					{
+						if (GameplayAbilitiesDebugger.bShow == false)
+						{
+							GameplayAbilitiesDebugger.bShow = true;
+							GameplayAbilitiesDebugger.Initialize();
+						}
+						else
+						{
+							GameplayAbilitiesDebugger.bShow = false;
+							GameplayAbilitiesDebugger.Uninitialize();
+						}
+					}
+
+					if (ImGui::MenuItem("Gameplay Effects"))
+					{
+					}
+
+					if (ImGui::MenuItem("Attributes"))
+					{
+					}
+
+					if (ImGui::MenuItem("Targeting"))
+					{
+						// Current Global targeting results.
+					}
+					
+					ImGui::EndMenu();
+				}
+
+				// Sim proxies ability systems. They have less info available, so I will separate them into different windows.
+				if (ImGui::BeginMenu("Proxy Ability System"))
+				{
+					if (ImGui::MenuItem("Gameplay Effects"))
+					{
+					}
+
+					if (ImGui::MenuItem("Attributes"))
+					{
+					}
+	
+					ImGui::EndMenu();
+				}
+				
 				ImGui::EndMainMenuBar();
 
 				if (DebuggerItems.bShow)
@@ -172,6 +218,10 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				if (ItemAttachmentDebugger.bShow)
 				{
 					ItemAttachmentDebugger.Draw();
+				}
+				if (GameplayAbilitiesDebugger.bShow)
+				{
+					GameplayAbilitiesDebugger.Draw();
 				}
 				if (bDrawDebug)
 				{

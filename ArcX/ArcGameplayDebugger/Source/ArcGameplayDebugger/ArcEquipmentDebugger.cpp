@@ -107,9 +107,7 @@ void FArcEquipmentDebugger::Draw()
 					}
 
 					FString ItemName = GetNameSafe(ItemData->GetItemDefinition());
-					ImGui::TableNextRow();
-					ImGui::TableSetColumnIndex(0);
-
+					
 					ImGui::PushID(TCHAR_TO_ANSI(*ItemData->GetItemId().ToString()));
 					FString ItemDisplayName = FString::Printf(TEXT("Equip (%s)"), *ItemName);
 					if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemDisplayName)))
@@ -121,6 +119,16 @@ void FArcEquipmentDebugger::Draw()
 				}
 				ImGui::EndCombo();
 			}
+
+			if (ExistingItem)
+			{
+				FString ItemId = FString::Printf(TEXT("ItemId: %s"), *ExistingItem->GetItemId().ToString());
+				ImGui::Text(TCHAR_TO_ANSI(*ItemId));
+
+				FString ItemsStore = FString::Printf(TEXT("ItemsStore: %s"), *GetNameSafe(ExistingItem->GetItemsStoreComponent()));
+				ImGui::Text(TCHAR_TO_ANSI(*ItemsStore));
+			}
+			
 			ImGui::TreePop();
 		}
 	}
