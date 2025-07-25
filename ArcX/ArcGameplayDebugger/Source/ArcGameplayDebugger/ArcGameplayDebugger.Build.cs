@@ -33,7 +33,9 @@ public class ArcGameplayDebugger : ModuleRules
 				"GameplayAbilities",
 				"ImGui",
 				"InputCore",
-				"EnhancedInput"
+				"EnhancedInput",
+				"TargetingSystem"
+				
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

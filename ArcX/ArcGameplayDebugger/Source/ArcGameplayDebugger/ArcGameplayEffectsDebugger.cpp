@@ -66,6 +66,8 @@ void FArcGameplayEffectsDebugger::Draw()
 		return InBool ? TEXT("True") : TEXT("False");
 	};
 
+	ImGui::Begin("Gameplay Effects");
+	
 	if (ImGui::TreeNode("Gameplay Tag Count"))
 	{
 		const FGameplayTagCountContainer& Tags = AbilitySystem->GetGameplayTagCountContainer();
@@ -263,4 +265,6 @@ void FArcGameplayEffectsDebugger::Draw()
 			}
 		}
 	}
+
+	ImGui::End();
 }

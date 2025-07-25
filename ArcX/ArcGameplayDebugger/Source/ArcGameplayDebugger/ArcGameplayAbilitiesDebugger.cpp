@@ -85,7 +85,13 @@ void FArcGameplayAbilitiesDebugger::Draw()
 
 		return true;
 	};
+
+	auto BoolToText = [](bool b)
+	{
+		return b ? TEXT("True") : TEXT("False");
+	};
 	
+	ImGui::Begin("Gameplay Abilities");
 	for (const FGameplayAbilitySpec& AbilitySpec : ActivatableAbilities)
 	{
 		UGameplayAbility* Ability = AbilitySpec.GetPrimaryInstance();
@@ -94,14 +100,15 @@ void FArcGameplayAbilitiesDebugger::Draw()
 			continue;
 		}
 
-		auto BoolToText = [](bool b)
-		{
-			return b ? TEXT("True") : TEXT("False");
-		};
-
 		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Ability);
 		
 		FString AbilityName = GetNameSafe(Ability);
+		if (ArcAbility)
+		{
+			AbilityName += "(  ";
+			AbilityName += GetNameSafe(ArcAbility->GetSourceItemData());
+			AbilityName += "  )";
+		}
 		if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityName)))
 		{
 			const FGameplayAbilityActorInfo* CurrentActorInfo = Ability->GetCurrentActorInfo();
@@ -209,4 +216,6 @@ void FArcGameplayAbilitiesDebugger::Draw()
 			ImGui::TreePop();
 		}
 	}
+
+	ImGui::End();
 }
