@@ -98,6 +98,8 @@ void FArcGameplayAbilitiesDebugger::Draw()
 		{
 			return b ? TEXT("True") : TEXT("False");
 		};
+
+		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Ability);
 		
 		FString AbilityName = GetNameSafe(Ability);
 		if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityName)))
@@ -137,7 +139,7 @@ void FArcGameplayAbilitiesDebugger::Draw()
 			FString AbilitySatisfyTagRequirements = FString::Printf(TEXT("Ability Satisfy Tag Requirements %s"), BoolToText(bAbilitySatisfyTagRequirements));
 			ImGui::Text(TCHAR_TO_ANSI(*AbilitySatisfyTagRequirements));
 
-			if (UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Ability))
+			if (ArcAbility)
 			{
 				const FGameplayTagContainer& OwnedTags = AbilitySystem->GetOwnedGameplayTags();
 				if (ImGui::TreeNode("Owned Tags"))

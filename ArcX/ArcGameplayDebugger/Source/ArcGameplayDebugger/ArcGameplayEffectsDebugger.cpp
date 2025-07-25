@@ -75,7 +75,7 @@ void FArcGameplayEffectsDebugger::Draw()
 			const TMap<FGameplayTag, int32> GameplayTagCountMap = DebugHack::GetPrivateGameplayTagCountMap(&Tags);
 			for (const auto& TagCountPair : GameplayTagCountMap)
 			{
-				ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString()));
+				ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString())); ImGui::SameLine();
 				ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT(" Count: %d"), TagCountPair.Value)));
 			}
 			ImGui::TreePop();
@@ -86,7 +86,7 @@ void FArcGameplayEffectsDebugger::Draw()
 			const TMap<FGameplayTag, int32> GameplayTagCountMap = DebugHack::GetPrivateExplicitTagCountMap(&Tags);
 			for (const auto& TagCountPair : GameplayTagCountMap)
 			{
-				ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString()));
+				ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString())); ImGui::SameLine();
 				ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT(" Count: %d"), TagCountPair.Value)));
 			}
 			ImGui::TreePop();
@@ -112,7 +112,7 @@ void FArcGameplayEffectsDebugger::Draw()
 
 		for (const auto& TagCountPair : Tags.TagMap)
 		{
-			ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString()));
+			ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString())); ImGui::SameLine();
 			ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT(" Count: %d"), TagCountPair.Value)));
 		}
 		ImGui::TreePop();
@@ -123,7 +123,7 @@ void FArcGameplayEffectsDebugger::Draw()
 		const FMinimalReplicationTagCountMap& Tags = AbilitySystem->GetReplicatedLooseCountTags();
 		for (const auto& TagCountPair : Tags.TagMap)
 		{
-			ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString()));
+			ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString())); ImGui::SameLine();
 			ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT(" Count: %d"), TagCountPair.Value)));
 		}
 		ImGui::TreePop();
@@ -258,6 +258,8 @@ void FArcGameplayEffectsDebugger::Draw()
 				
 					ImGui::TreePop();
 				}
+				
+				ImGui::TreePop();
 			}
 		}
 	}
