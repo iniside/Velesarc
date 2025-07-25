@@ -132,13 +132,17 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 					ImGui::PopID();
 
 					ImGui::SliderFloat("Size", &DebugDraw[Counter].Size, 1.0f, 500.0f);
-					ImGui::ColorPicker3("DebugDraw Color", DebugDraw[Counter].Color);
+					ImGui::ColorEdit3("DebugDraw Color", DebugDraw[Counter].Color);
 					if (DebugDraw[Counter].bShow)
 					{
-						FColor Color(DebugDraw[Counter].Color[0], DebugDraw[Counter].Color[1], DebugDraw[Counter].Color[2], 255);
+						FColor Color(
+							FColor::QuantizeUNormFloatTo8(DebugDraw[Counter].Color[0])
+							, FColor::QuantizeUNormFloatTo8(DebugDraw[Counter].Color[1])
+							, FColor::QuantizeUNormFloatTo8(DebugDraw[Counter].Color[2])
+							, 255);
+						
 						if (AActor* Actor = Targeting.Value.HitResult.GetActor())
 						{
-							
 							DrawDebugSphere(World, Actor->GetActorLocation(), DebugDraw[Counter].Size, 16, Color, false);	
 						}
 
