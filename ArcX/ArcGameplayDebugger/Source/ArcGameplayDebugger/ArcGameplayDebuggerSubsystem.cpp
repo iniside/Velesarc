@@ -187,6 +187,16 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 
 					if (ImGui::MenuItem("Attributes"))
 					{
+						if (AttributesDebugger.bShow == false)
+						{
+							AttributesDebugger.bShow = true;
+							AttributesDebugger.Initialize();
+						}
+						else
+						{
+							AttributesDebugger.bShow = false;
+							AttributesDebugger.Uninitialize();
+						}
 					}
 
 					if (ImGui::MenuItem("Targeting"))
@@ -245,6 +255,10 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				if (GameplayEffectsDebugger.bShow)
 				{
 					GameplayEffectsDebugger.Draw();
+				}
+				if (AttributesDebugger.bShow)
+				{
+					AttributesDebugger.Draw();
 				}
 				if (GlobalTargetingDebugger.bShow)
 				{

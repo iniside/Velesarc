@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ArcAttributesDebugger.h"
 #include "ArcEquipmentDebugger.h"
 #include "ArcGameplayAbilitiesDebugger.h"
 #include "ArcGameplayEffectsDebugger.h"
@@ -30,7 +31,7 @@ private:
 	FArcItemAttachmentDebugger ItemAttachmentDebugger;
 	FArcGameplayAbilitiesDebugger GameplayAbilitiesDebugger;
 	FArcGameplayEffectsDebugger GameplayEffectsDebugger;
-
+	FArcAttributesDebugger AttributesDebugger; 
 	FArcGlobalAbilityTargetingDebugger GlobalTargetingDebugger;
 	
 	void Toggle();
