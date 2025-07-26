@@ -1,5 +1,6 @@
 ﻿#pragma once
-class FArcAttributesDebugger
+
+class FArcProxyAttributeSetDebugger
 {
 public:
 	void Initialize();

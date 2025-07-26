@@ -221,10 +221,30 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					if (ImGui::MenuItem("Gameplay Effects"))
 					{
+						if (ProxyGameplayEffectDebugger.bShow == false)
+						{
+							ProxyGameplayEffectDebugger.bShow = true;
+							ProxyGameplayEffectDebugger.Initialize();
+						}
+						else
+						{
+							ProxyGameplayEffectDebugger.bShow = false;
+							ProxyGameplayEffectDebugger.Uninitialize();
+						}
 					}
 
 					if (ImGui::MenuItem("Attributes"))
 					{
+						if (ProxyAttributeSetDebugger.bShow == false)
+						{
+							ProxyAttributeSetDebugger.bShow = true;
+							ProxyAttributeSetDebugger.Initialize();
+						}
+						else
+						{
+							ProxyAttributeSetDebugger.bShow = false;
+							ProxyAttributeSetDebugger.Uninitialize();
+						}
 					}
 	
 					ImGui::EndMenu();
@@ -264,6 +284,15 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					GlobalTargetingDebugger.Draw();
 				}
+				if (ProxyGameplayEffectDebugger.bShow)
+				{
+					ProxyGameplayEffectDebugger.Draw();
+				}
+				if (ProxyAttributeSetDebugger.bShow)
+				{
+					ProxyAttributeSetDebugger.Draw();
+				}
+				
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();

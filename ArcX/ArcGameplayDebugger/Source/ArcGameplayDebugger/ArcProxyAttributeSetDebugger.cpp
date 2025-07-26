@@ -1,22 +1,22 @@
-﻿#include "ArcAttributesDebugger.h"
+﻿#include "ArcProxyAttributeSetDebugger.h"
 
 #include "ArcDebuggerHacks.h"
 #include "imgui.h"
-#include "AbilitySystem/ArcAttributeSet.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "Engine/AssetManager.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/Pawn.h"
 
-void FArcAttributesDebugger::Initialize()
+void FArcProxyAttributeSetDebugger::Initialize()
 {
 }
 
-void FArcAttributesDebugger::Uninitialize()
+void FArcProxyAttributeSetDebugger::Uninitialize()
 {
 }
 
-void FArcAttributesDebugger::Draw()
+void FArcProxyAttributeSetDebugger::Draw()
 {
 	if (!GEngine)
 	{
@@ -45,20 +45,46 @@ void FArcAttributesDebugger::Draw()
 		return;
 	}
 
-	UAssetManager* AssetManager = UAssetManager::GetIfInitialized();
-	if (!AssetManager)
+	APlayerState* PS = PC->PlayerState;
+	ImGui::Begin("Proxy Attribute Sets");
+	ImGui::Text("Target Pawn");
+	APawn* P = PS->GetPawn();
+	if (!P)
 	{
+		ImGui::Text("No Target");
+		ImGui::End();
 		return;
 	}
 
-	APlayerState* PS = PC->PlayerState;
+	
+	FVector EyeLoc;
+	FRotator EyeRot;
+	P->GetActorEyesViewPoint(EyeLoc, EyeRot);
 
-	UArcCoreAbilitySystemComponent* AbilitySystem = PS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+	const FVector TraceStart = EyeLoc;
+	const FVector TraceEnd = EyeLoc + EyeRot.Vector() * 10000.f;
+	FCollisionQueryParams TraceParams(FName(TEXT("Proxy Attribute Set Trace")), true, P);
+	TraceParams.AddIgnoredActor(P);
+	
+	FHitResult HitResult;
+	World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, TraceParams);
+	if (!HitResult.GetActor())
+	{
+		ImGui::Text("No Hit");
+		ImGui::End();
+		return;
+	}
+
+	UArcCoreAbilitySystemComponent* AbilitySystem = HitResult.GetActor()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	if (!AbilitySystem)
 	{
+		ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("Target %s Does not have Ability System"), *GetNameSafe(HitResult.GetActor()))));
+		ImGui::End();
 		return;
 	}
 
+	ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("Target %s"), *GetNameSafe(HitResult.GetActor()))));
+	
 	const double WorldTime = AbilitySystem->GetWorld()->GetTimeSeconds();
 	auto BoolToText = [](bool InBool)
 	{
@@ -66,7 +92,7 @@ void FArcAttributesDebugger::Draw()
 	};
 
 	const TArray<UAttributeSet*>& AttributeSets = AbilitySystem->GetSpawnedAttributes();
-	ImGui::Begin("Attribute Sets");
+	
 
 	const FActiveGameplayEffectsContainer& ActiveEffects = AbilitySystem->GetActiveGameplayEffects();
 	const TMap<FGameplayAttribute, FAggregatorRef>& AggregatorMap = DebugHack::GetPrivateAggregaotMap(&ActiveEffects);

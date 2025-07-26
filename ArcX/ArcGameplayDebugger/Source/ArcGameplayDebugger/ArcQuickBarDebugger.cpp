@@ -12,6 +12,7 @@
 #include "Items/ArcItemsHelpers.h"
 #include "Items/ArcItemsStoreComponent.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "Kismet/GameplayStatics.h"
 #include "Pawn/ArcPawnData.h"
 #include "Pawn/ArcPawnExtensionComponent.h"
@@ -184,10 +185,31 @@ void FArcQuickBarDebugger::Draw()
 						ImGui::Text("No Item Assigned");
 					}
 
-					ImGui::BeginTable("EquipmentTable", 1);
-					TArray<const FArcItemData*> Items = QuickBarStore->GetItems();
 					
-					for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
+					TArray<const FArcItemData*> Items = QuickBarStore->GetItems();
+					TArray<const FArcItemData*> FilteredItems;
+					if (QuickBars[BarIdx].ItemRequiredTags.Num() > 0)
+					{
+						for (const FArcItemData* Item : Items)
+						{
+							if (const FArcItemFragment_Tags* Tags = ArcItems::FindFragment<FArcItemFragment_Tags>(Item))
+							{
+								if (Tags->ItemTags.HasAll(QuickBars[BarIdx].ItemRequiredTags))
+								{
+									FilteredItems.Add(Item);
+								}
+							}
+						}
+					}
+					else
+					{
+						FilteredItems.Append(Items);
+					}
+					
+					Items = FilteredItems;
+					if (ImGui::TreeNode("Available Items"))
+					{}
+					for (int32 ItemIdx = 0; ItemIdx < FilteredItems.Num(); ++ItemIdx)
 					{
 						const FArcItemData* Item = Items[ItemIdx];
 						if (!Item || !Item->GetItemDefinition())
@@ -195,23 +217,27 @@ void FArcQuickBarDebugger::Draw()
 							continue;
 						}
 
-						FString ItemName = GetNameSafe(Item->GetItemDefinition());
-						ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-
-						ImGui::SameLine();
-						ImGui::PushID(TCHAR_TO_ANSI(*Item->GetItemId().ToString()));
-						FString ItemDisplayName = FString::Printf(TEXT("Add (%s)"), *ItemName);
-
-						ImGui::SameLine();
-						if (ImGui::Button(TCHAR_TO_ANSI(*ItemDisplayName)))
+						FString PreviewValue = "Select Item";
+						if (ItemId == Item->GetItemId())
 						{
-							Arcx::SendServerCommand<FArcAddItemToQuickBarCommand>(PC, QuickBarComponent, QuickBarStore
-								, Item->GetItemId(), QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId);
+							PreviewValue = FString::Printf(TEXT("%s"), *GetNameSafe(Item->GetItemDefinition()));
 						}
-						ImGui::PopID();
+						
+						if (ImGui::BeginCombo("Selected Item", TCHAR_TO_ANSI(*PreviewValue)))
+						{
+							FString ItemName = GetNameSafe(Item->GetItemDefinition());
+							FString ItemDisplayName = FString::Printf(TEXT("Add (%s)"), *ItemName);
+							ImGui::PushID(TCHAR_TO_ANSI(*Item->GetItemId().ToString()));
+							if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemDisplayName)))
+							{
+								Arcx::SendServerCommand<FArcAddItemToQuickBarCommand>(PC, QuickBarComponent, QuickBarStore
+									, Item->GetItemId(), QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId);
+							}
+							
+							ImGui::PopID();
+							ImGui::EndCombo();
+						}
 					}
-					ImGui::EndTable();
 					
 					ImGui::TreePop();
 				}

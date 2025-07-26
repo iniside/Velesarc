@@ -1,24 +1,22 @@
-﻿#include "ArcGameplayEffectsDebugger.h"
+﻿#include "ArcProxyGameplayEffectDebugger.h"
 
 #include "ArcDebuggerHacks.h"
 #include "ArcGameplayEffectContext.h"
 #include "imgui.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
-#include "Engine/AssetManager.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
-
 #include "Items/ArcItemDefinition.h"
 
-void FArcGameplayEffectsDebugger::Initialize()
+void FArcProxyGameplayEffectDebugger::Initialize()
 {
 }
 
-void FArcGameplayEffectsDebugger::Uninitialize()
+void FArcProxyGameplayEffectDebugger::Uninitialize()
 {
 }
 
-void FArcGameplayEffectsDebugger::Draw()
+void FArcProxyGameplayEffectDebugger::Draw()
 {
 	if (!GEngine)
 	{
@@ -47,28 +45,52 @@ void FArcGameplayEffectsDebugger::Draw()
 		return;
 	}
 
-	UAssetManager* AssetManager = UAssetManager::GetIfInitialized();
-	if (!AssetManager)
+	APlayerState* PS = PC->PlayerState;
+	ImGui::Begin("Proxy Gameplay Effects");
+	ImGui::Text("Target Pawn");
+	APawn* P = PS->GetPawn();
+	if (!P)
 	{
+		ImGui::Text("No Target");
+		ImGui::End();
 		return;
 	}
 
-	APlayerState* PS = PC->PlayerState;
+	
+	FVector EyeLoc;
+	FRotator EyeRot;
+	P->GetActorEyesViewPoint(EyeLoc, EyeRot);
 
-	UArcCoreAbilitySystemComponent* AbilitySystem = PS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+	const FVector TraceStart = EyeLoc;
+	const FVector TraceEnd = EyeLoc + EyeRot.Vector() * 10000.f;
+	FCollisionQueryParams TraceParams(FName(TEXT("Proxy GameplayEffect Set Trace")), true, P);
+	TraceParams.AddIgnoredActor(P);
+	
+	FHitResult OutHitResult;
+	World->LineTraceSingleByChannel(OutHitResult, TraceStart, TraceEnd, ECC_Visibility, TraceParams);
+	if (!OutHitResult.GetActor())
+	{
+		ImGui::Text("No Hit");
+		ImGui::End();
+		return;
+	}
+
+	UArcCoreAbilitySystemComponent* AbilitySystem = OutHitResult.GetActor()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	if (!AbilitySystem)
 	{
+		ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("Target %s Does not have Ability System"), *GetNameSafe(OutHitResult.GetActor()))));
+		ImGui::End();
 		return;
 	}
 
+	ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("Target %s"), *GetNameSafe(OutHitResult.GetActor()))));
+	
 	const double WorldTime = AbilitySystem->GetWorld()->GetTimeSeconds();
 	auto BoolToText = [](bool InBool)
-	{
-		return InBool ? TEXT("True") : TEXT("False");
-	};
+		{
+			return InBool ? TEXT("True") : TEXT("False");
+		};
 
-	ImGui::Begin("Gameplay Effects");
-	
 	if (ImGui::TreeNode("Gameplay Tag Count"))
 	{
 		const FGameplayTagCountContainer& Tags = AbilitySystem->GetGameplayTagCountContainer();

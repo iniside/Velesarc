@@ -10,6 +10,8 @@
 #include "ArcGlobalAbilityTargetingDebugger.h"
 #include "ArcItemAttachmentDebugger.h"
 #include "ArcItemDebuggerItems.h"
+#include "ArcProxyAttributeSetDebugger.h"
+#include "ArcProxyGameplayEffectDebugger.h"
 #include "ArcQuickBarDebugger.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -33,7 +35,9 @@ private:
 	FArcGameplayEffectsDebugger GameplayEffectsDebugger;
 	FArcAttributesDebugger AttributesDebugger; 
 	FArcGlobalAbilityTargetingDebugger GlobalTargetingDebugger;
-	
+
+	FArcProxyGameplayEffectDebugger ProxyGameplayEffectDebugger; 
+	FArcProxyAttributeSetDebugger ProxyAttributeSetDebugger;
 	void Toggle();
 	
 public:

@@ -1,5 +1,6 @@
 ﻿#pragma once
-class FArcAttributesDebugger
+
+class FArcProxyGameplayEffectDebugger
 {
 public:
 	void Initialize();
