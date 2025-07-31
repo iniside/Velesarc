@@ -97,6 +97,10 @@ protected:
 	FArcScalableFloat ReloadTime;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, ReloadTime);
 
+	UPROPERTY(EditAnywhere, Config, Category = "Base", meta = (EnableCategories))
+	FArcScalableFloat RotationSpeed = 2.0f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, RotationSpeed);
+	
 	/*
 	 * If weapon is in relaxed/idle state how long before it can shot for first time ?
 	 * Time it takes to go from relaxed to aim.
@@ -316,61 +320,61 @@ public:
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, RecoilRecoverySpeed);
 
 	///// Local Space Recoil /////
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilBase = 1.0f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilBase);
 	
 	// Range: -1.0 (left) to 1.0 (right)
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilHorizontalBias = 0.0f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalBias);
 	
 	// Range: -1.0 (down) to 1.0 (up)
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilVerticalBias = 0.7f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilVerticalBias);
 	
 	// How strongly to follow the main bias (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilHeatScale = 0.05f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHeatScale);
 	
 	// Chance to temporarily move in opposite direction (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilOscillationPeriod = 0.5f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilOscillationPeriod);
 	
 	// How strong the oscillation movement is (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilOscillationStrength = 0.3f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilOscillationStrength);
 	
 	// Controls horizontal spread tightness (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilHorizontalTightness = 0.7f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalTightness);
 	
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilVerticalMinValue = -3.f;  
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilVerticalMinValue);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilVerticalMaxValue = 3.0f;  
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilVerticalMaxValue);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilHorizontalMinValue = -2.0f;  
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalMinValue);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat LocalSpaceRecoilHorizontalMaxValue = 2.0f;  
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalMaxValue);
 	
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat ScreenRecoilGainInterpolationSpeed = 5.f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, ScreenRecoilGainInterpolationSpeed);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
 	FArcScalableFloat ScreenRecoilRecoveryInterpolationSpeed = 5.f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, ScreenRecoilRecoveryInterpolationSpeed);
 

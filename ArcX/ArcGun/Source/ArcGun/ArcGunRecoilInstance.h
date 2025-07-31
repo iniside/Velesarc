@@ -111,7 +111,6 @@ protected:
 public:
 	FVector GetScreenORecoilffset(const FVector& Direction) const override;
 	
-protected:
 	bool bBreakRecovery = false;
 	
 	float SpreadHeat = 0;
@@ -120,7 +119,6 @@ protected:
 	float RecoveredPitch = 0;
 	double LastFireTime = 0;
 	
-public:
 	double GetLastFireTime() const
 	{
 		return LastFireTime;
@@ -137,7 +135,6 @@ public:
 		return ShotsFired;
 	}
 	
-protected:
 	TArray<FEnhancedInputActionValueBinding*> AxisValueBindings;
 	
 	int32 ShotsFired          = 0;

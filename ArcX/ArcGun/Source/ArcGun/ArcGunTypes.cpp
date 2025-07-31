@@ -96,42 +96,20 @@ void UArcTargetingTask_GunTrace::Execute(const FTargetingRequestHandle& Targetin
 
 	AArcGunActor* GunActor = GunStateComponent->GetSelectedGun().GunActor.Get();
 	
-	USkeletalMeshComponent* SMC = GunActor ? GunActor->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
-
-	USkeletalMeshComponent* SMCCharacter = Ctx->SourceActor->FindComponentByClass<USkeletalMeshComponent>();
-	
 	FHitResult& CameraHit = HitSet->TargetResults[0].HitResult;
 
-	FVector HitLoc = CameraHit.bBlockingHit ? CameraHit.ImpactPoint : CameraHit.TraceEnd;
-	
 	FVector StartLocation;
 
-	ACharacter* C = Cast<ACharacter>(Ctx->SourceActor);
+	StartLocation = GunStateComponent->GetGunAimPoint();
 	
-	if (SMC)
-	{
-		StartLocation = SMCCharacter->GetSocketLocation(SocketName);
-	}
-	else
-	{
-		FRotator Rot;
-		Ctx->SourceActor->GetActorEyesViewPoint(StartLocation, Rot);	
-	}
-	FTransform SocketTransform = SMCCharacter->GetSocketTransform(SocketName);
-
-	
-
 	FVector Loc;
 	FRotator Rot;
 	Ctx->SourceActor->GetActorEyesViewPoint(Loc, Rot);
+
+	FRotator ActorRotation = Ctx->SourceActor->GetActorRotation();
+	Rot.Yaw = ActorRotation.Yaw;
 	
-	//LocaLoc = SocketTransform.GetRotation().Rotator().Vector();
-	//const FVector Direction = Rot.Vector();
-	FVector Direction = (HitLoc - StartLocation).GetSafeNormal();
-	
-	//Direction = (Direction + LocaLoc.GetSafeNormal()).GetSafeNormal();
-	
-	//const FVector Direction = SocketTransform.GetRotation().Rotator().Vector();
+	FVector Direction = GunStateComponent->GetAimDirection();
 	
 	const FArcGunRecoilInstance* Recoil = GunStateComponent->GetGunRecoil<FArcGunRecoilInstance>();
 	if (Recoil == nullptr)

@@ -168,8 +168,8 @@ UArcGunStateComponent::UArcGunStateComponent()
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
-	PrimaryComponentTick.TickInterval = 0.033f;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
+	//PrimaryComponentTick.TickInterval = 0.033f;
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 
 	
@@ -240,6 +240,11 @@ void UArcGunStateComponent::InitializeComponent()
 
 void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	if (!CharacterOwner)
+	{
+		return;
+	}
+	
 	if (ArcPC && !CameraManager)
 	{
 		CameraManager = Cast<APlayerCameraManager>(ArcPC->PlayerCameraManager);
@@ -251,26 +256,24 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	FArcGunRecoilInstance* RecoilInstance = SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>();
-	if (RecoilInstance != nullptr)
-	{
-		RecoilInstance->UpdateRecoil(DeltaTime, this);
-	}
-
+	
 	UTargetingSubsystem* Targeting = UTargetingSubsystem::Get(GetWorld());
-	if (Targeting == nullptr)
+
+	FArcTargetingSourceContext Context;
+	Context.InstigatorActor = GetOwner();
+	Context.SourceActor = CharacterOwner;
+	Context.SourceObject = GetOwner();
+	
+	if (Targeting && CameraAimTargetingPreset)
 	{
-		return;
+		FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcGunStateComponent::HandleCameraAimTargetingCompleted);
+		CameraAimTargetingHandle = Arcx::MakeTargetRequestHandle(CameraAimTargetingPreset, Context);
+		Targeting->ExecuteTargetingRequestWithHandle(CameraAimTargetingHandle, CompletionDelegate);		
 	}
 	
 	if (GunState.TargetingObject.Get() && SelectedGun.WeaponItemDef)
 	{
 		const ArcGunStats* WeaponStats = SelectedGun.WeaponItemDef->GetScalableFloatFragment<ArcGunStats>();
-		
-		FArcTargetingSourceContext Context;
-		Context.InstigatorActor = GetOwner();
-		Context.SourceActor = CharacterOwner;
-		Context.SourceObject = GetOwner();
 		
 		const float FixedUpdateRate = WeaponStats->RecoilUpdateRate;
 
@@ -278,14 +281,37 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		TimeAccumulator += DeltaTime;
 
 		// Process as many fixed time steps as we've accumulated
-		while (TimeAccumulator >= FixedUpdateRate)
+		//while (TimeAccumulator >= FixedUpdateRate)
 		{
-			FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcGunStateComponent::HandleTargetingCompleted);
-			TargetingHandle = Arcx::MakeTargetRequestHandle(GunState.TargetingObject->TargetingPreset, Context);
-			Targeting->ExecuteTargetingRequestWithHandle(TargetingHandle, CompletionDelegate);
+			FArcGunRecoilInstance* RecoilInstance = SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>();
+			if (RecoilInstance != nullptr)
+			{
+				RecoilInstance->UpdateRecoil(FixedUpdateRate, this);
+			}
+		
 			TimeAccumulator -= FixedUpdateRate;
 			TimeAccumulator += 0.001;
 		}
+
+		if (Targeting)
+		{
+			FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcGunStateComponent::HandleTargetingCompleted);
+			TargetingHandle = Arcx::MakeTargetRequestHandle(GunState.TargetingObject->TargetingPreset, Context);
+			Targeting->ExecuteTargetingRequestWithHandle(TargetingHandle, CompletionDelegate);		
+		}
+	}
+
+	FVector StartLocation = GetGunAimPoint();
+	FVector EndLocation = CameraAimHitResult.bBlockingHit ? CameraAimHitResult.ImpactPoint : CameraAimHitResult.TraceEnd;
+	FVector NewDirection = (EndLocation - StartLocation).GetSafeNormal();
+
+	if (AimInterpolationSpeed > 0)
+	{
+		AimDirection = FMath::VInterpConstantTo(AimDirection, NewDirection, DeltaTime, AimInterpolationSpeed);
+	}
+	else
+	{
+		AimDirection = NewDirection;
 	}
 	
 	FArcGunFireMode* FireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>();
@@ -296,6 +322,39 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		{
 			PreFire();
 		}
+	}
+}
+
+void UArcGunStateComponent::DrawDebug()
+{
+	UWorld* World = GetWorld();
+	const FVector AimStart = GetGunAimPoint();
+	
+	DrawDebugPoint(World, AimStart, 25.f, FColor::Red);
+
+	FVector EndLocation = CameraAimHitResult.bBlockingHit ? CameraAimHitResult.ImpactPoint : CameraAimHitResult.TraceEnd;
+	FVector NewDirection = (EndLocation - AimStart).GetSafeNormal();
+	FVector DirectAimEnd = AimStart + NewDirection * 600.f;
+	
+	DrawDebugDirectionalArrow(World, AimStart, DirectAimEnd, 10.f, FColor::Red);
+
+	FVector InterpolatedEnd = AimStart + (AimDirection * 600.f);
+	DrawDebugDirectionalArrow(World, AimStart, InterpolatedEnd, 10.f, FColor::Green);
+}
+
+void UArcGunStateComponent::HandleCameraAimTargetingCompleted(FTargetingRequestHandle TargetingRequestHandle)
+{
+	UTargetingSubsystem* Targeting = UTargetingSubsystem::Get(GetWorld());
+	if (Targeting == nullptr)
+	{
+		return;
+	}
+
+	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingRequestHandle);
+
+	if (TargetingResults.TargetResults.Num() == 1)
+	{
+		CameraAimHitResult = TargetingResults.TargetResults[0].HitResult;
 	}
 }
 
@@ -881,6 +940,26 @@ AArcGunActor* UArcGunStateComponent::GetGunActor() const
 	return SelectedGun.GunActor.Get();
 }
 
+FVector UArcGunStateComponent::GetGunAimPoint() const
+{
+	FVector AimPoint = FVector::ZeroVector;
+
+	FVector EyeLoc;
+	FRotator EyeRot;
+	CharacterOwner->GetActorEyesViewPoint(EyeLoc, EyeRot);
+	const FVector SocketLocation = CharacterOwner->GetMesh()->GetSocketLocation(BaseSkeletonSocketName);
+	AimPoint = SocketLocation + (EyeRot.Vector() * ForwardOffset);
+	
+	AArcGunActor* GunActor = GetGunActor();
+	if (GunActor)
+	{
+		FVector MuzzleSocketLocation = GunActor->GetMuzzleSocketLocation();
+		AimPoint = MuzzleSocketLocation;
+	}
+	
+	return AimPoint;
+}
+
 AArcCorePlayerController* UArcGunStateComponent::GetPlayerController() const
 {
 	if (ArcPC == nullptr)
@@ -905,6 +984,11 @@ AArcCorePlayerController* UArcGunStateComponent::GetPlayerController() const
 	}
 	
 	return ArcPC;
+}
+
+UArcTargetingObject* UArcGunStateComponent::GetTargetingObject() const
+{
+	return GunState.TargetingObject;
 }
 
 UArcCoreAbilitySystemComponent* UArcGunStateComponent::GetArcASC() const

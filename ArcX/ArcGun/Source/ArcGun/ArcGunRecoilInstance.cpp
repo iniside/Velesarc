@@ -245,7 +245,31 @@ void FArcGunRecoilInstance_Base::Deinitialize()
 
 void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 {
-	CharacterOwner = InGunState->GetPlayerController()->GetPawn<ACharacter>();
+	if (InGunState->GetPlayerController())
+	{
+		CharacterOwner = InGunState->GetPlayerController()->GetPawn<ACharacter>();	
+	}
+	
+	if (CharacterOwner == nullptr)
+	{
+		CharacterOwner = InGunState->GetOwner<ACharacter>();
+		if (CharacterOwner == nullptr)
+		{
+			APlayerState* PS = InGunState->GetOwner<APlayerState>();
+			CharacterOwner = PS->GetPawn<ACharacter>();
+		}
+	}
+	
+	if (ArcPC == nullptr)
+	{
+		ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();	
+	}
+	
+	if (!ArcPC)
+	{
+		return;
+	}
+	
 
 	if (AxisValueBindings.IsEmpty())
 	{
@@ -258,6 +282,7 @@ void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 			}
 		}
 	}
+	
 	StartCameraLocation = FVector::ZeroVector;
 	EndCameraLocation = FVector::ZeroVector;
 	ENetMode NM = InGunState->GetOwner()->GetNetMode();
@@ -267,20 +292,9 @@ void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 		return;
 	}
 
-	if (CharacterOwner == nullptr)
-	{
-		CharacterOwner = InGunState->GetOwner<ACharacter>();
-		if (CharacterOwner == nullptr)
-		{
-			APlayerState* PS = InGunState->GetOwner<APlayerState>();
-			CharacterOwner = PS->GetPawn<ACharacter>();
-		}
-	}
 
-	if (ArcPC == nullptr)
-	{
-		ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();	
-	}
+
+	
 
 	ArcASC = InGunState->GetArcASC();
 
@@ -382,12 +396,12 @@ void FArcGunRecoilInstance_Base::StopRecoil(UArcGunStateComponent* InGunState)
 	{
 		if (EndYInputValue > StartYInputValue)
 		{
-			RecoveryDirection = 1;
+			RecoveryDirection = -1;
 			RecoveredInputValue = FMath::Abs((EndYInputValue *EndSign + StartYInputValue*StartSign));
 		}
 		else
 		{
-			RecoveryDirection = 1;
+			RecoveryDirection = -1;
 			RecoveredInputValue = FMath::Abs(StartYInputValue + EndYInputValue);
 		}	
 	}
@@ -395,12 +409,12 @@ void FArcGunRecoilInstance_Base::StopRecoil(UArcGunStateComponent* InGunState)
 	{
 		if (EndYInputValue > StartYInputValue)
 		{
-			RecoveryDirection = 1;
+			RecoveryDirection = -1;
 			RecoveredInputValue = (EndYInputValue - StartYInputValue);
 		}
 		else
 		{
-			RecoveryDirection = 1;
+			RecoveryDirection = -1;
 			RecoveredInputValue = (StartYInputValue - EndYInputValue);
 		}
 	}
@@ -1024,7 +1038,7 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 		TimeAccumulator += DeltaTime;
 
 		// Process as many fixed time steps as we've accumulated
-		while (TimeAccumulator >= FixedUpdateRate)
+		//while (TimeAccumulator >= FixedUpdateRate)
 		{
 			/* ---- 1. Flip test -------------------------------------------------- */
 			if (FMath::FRand() < WeaponStats->GetFlipChancePerShotDirect(Level))
@@ -1081,7 +1095,7 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 			
 			// Apply a fixed portion of the recoil per update
 			// This gives us a consistent recoil rate regardless of frame rate
-			ArcPC->ControlRotationOffset.Pitch += -VertKick;
+			ArcPC->ControlRotationOffset.Pitch += VertKick;
 			ArcPC->ControlRotationOffset.Yaw += HorzKick;
 
 			const FVector2D LocalSpaceRecoilNew = GenerateSemiRandomSpreadPattern(

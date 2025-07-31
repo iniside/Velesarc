@@ -32,6 +32,10 @@ class ARCGUN_API AArcGunActor : public AActor
 {
 	GENERATED_BODY()
 
+public:
+	UPROPERTY(EditAnywhere)
+	FName MuzzleSocket = "Muzzle";
+	
 	UPROPERTY()
 	FArcItemId OwningItemId;
 
@@ -42,6 +46,7 @@ public:
 	AArcGunActor();
 
 	void Initialize(const FArcItemId& InOwningItemId);
+	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -49,8 +54,10 @@ protected:
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
-	virtual class USkeletalMeshComponent* GetWeaponMeshComponent() const { return nullptr; }
+	virtual class USkeletalMeshComponent* GetWeaponMeshComponent() const;
 
+	virtual FVector GetMuzzleSocketLocation() const;
+	
 protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="Arc Core|Weapon")
 	void OnSpawnCosmeticEffectsOnFireStart(class UArcGunStateComponent* InWeaponComponent);

@@ -63,8 +63,10 @@ public:
 	UPROPERTY()
 	uint8 StateRep;
 
+	// Targeting presets we use for actual target aquisition and shooting mechanic.
 	UPROPERTY()
 	TObjectPtr<UArcTargetingObject> TargetingObject = nullptr;
+
 	
 	UPROPERTY()
 	TObjectPtr<UArcCoreGameplayAbility> SourceAbility;
@@ -117,13 +119,42 @@ public:
 	int32 ShootCount = 0;
 	double LastShootTime = 0;
 	double TimeAccumulator = 0;
-	FHitResult CurrentHitResult;
 	
+	FHitResult CurrentHitResult;
+	FHitResult CameraAimHitResult;
+
+	FTargetingRequestHandle CameraAimTargetingHandle;
 	FTargetingRequestHandle TargetingHandle;
+
+	FVector AimDirection;
+	
 	UPROPERTY(BlueprintAssignable)
 	FArcGunTargetingResultDynamicDelegate OnTargetingResultDelegate;
+
+	void DrawDebug();
+	
+	void HandleCameraAimTargetingCompleted(FTargetingRequestHandle TargetingRequestHandle);
 	void HandleTargetingCompleted(FTargetingRequestHandle TargetingRequestHandle);
+	
 	void PreFire();
+
+	UFUNCTION(BlueprintCallable)
+	const FHitResult& GetCameraAimHitResult() const
+	{
+		return CameraAimHitResult;
+	}
+	
+	UFUNCTION(BlueprintCallable)
+	const FHitResult& GetCurrentHitResult() const
+	{
+		return CurrentHitResult;
+	}
+
+	UFUNCTION(BlueprintCallable)
+	const FVector& GetAimDirection() const
+	{
+		return AimDirection;
+	}
 	
 public:
 	const double GetLastShootTime() const
@@ -160,11 +191,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Weapon")
 	TObjectPtr<UInputAction> AxisInputAction;
 
+	
 public:
 	UInputAction* GetAxisInputAction() const
 	{
 		return AxisInputAction;
 	}
+	
 protected:
 	UPROPERTY()
 	mutable TObjectPtr<UArcItemsStoreComponent> ItemsComponent;
@@ -363,6 +396,14 @@ protected:
 	virtual TArray<const FArcEffectSpecItem*> GetAmmoGameplayEffectSpecs(const FGameplayTag& InTag) const;
 
 public:
+	
+	// We will use this to trace where the gun should be aiming
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UTargetingPreset> CameraAimTargetingPreset = nullptr;
+
+	UPROPERTY(EditAnywhere)
+	float AimInterpolationSpeed = 10.f;
+	
 	/**
 	 * If there is no weapon socket available we will use this offset to
 	 * move simulate where muzzle would be.
@@ -384,6 +425,9 @@ public:
 	
 	UFUNCTION(BlueprintPure, Category = "Arc Game Core|Weapon")
 	AArcGunActor* GetGunActor() const;
+
+	UFUNCTION(BlueprintPure, Category = "Arc Game Core|Weapon")
+	FVector GetGunAimPoint() const;
 	
 	const FArcSelectedGun& GetSelectedGun() const
 	{
@@ -392,6 +436,8 @@ public:
 	
 	AArcCorePlayerController* GetPlayerController() const;
 
+	UArcTargetingObject* GetTargetingObject() const;
+	
 protected:
 	UPROPERTY()
 	mutable TObjectPtr<AArcCorePlayerController> ArcPC;

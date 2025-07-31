@@ -60,6 +60,16 @@ void AArcGunActor::Tick(float DeltaTime)
 
 }
 
+USkeletalMeshComponent* AArcGunActor::GetWeaponMeshComponent() const
+{
+	return FindComponentByClass<USkeletalMeshComponent>();
+}
+
+FVector AArcGunActor::GetMuzzleSocketLocation() const
+{
+	return GetWeaponMeshComponent()->GetSocketLocation(MuzzleSocket);
+}
+
 void AArcGunActor::SpawnCosmeticEffectsOnFireStart(
 	class UArcGunStateComponent* InWeaponComponent
 	, const FArcSelectedGun& EquippedWeapon)
