@@ -37,10 +37,19 @@ void UArcTargetingTask_LineTrace::Execute(const FTargetingRequestHandle& Targeti
 	Super::Execute(TargetingHandle);
 	
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
-
+	
 	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
 
+	if (!Ctx->SourceActor)
+	{
+		FHitResult HitResult;
+		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
+		ResultData->HitResult = HitResult;
+		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
+		return;
+	}
+	
 	FVector EyeLocation;
 	FRotator EyeRotation;
 	Ctx->SourceActor->GetActorEyesViewPoint(EyeLocation, EyeRotation);
