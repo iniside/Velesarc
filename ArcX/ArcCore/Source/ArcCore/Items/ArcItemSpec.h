@@ -230,7 +230,7 @@ public:
 	FArcItemId ItemId;
 
 	UPROPERTY(EditAnywhere, Category = "Data")
-	int32 Amount = 1;
+	uint16 Amount = 1;
 
 	UPROPERTY(EditAnywhere, Category = "Data")
 	uint8 Level = 1;

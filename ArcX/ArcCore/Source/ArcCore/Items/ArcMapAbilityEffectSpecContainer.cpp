@@ -34,10 +34,16 @@ void FArcMapAbilityEffectSpecContainer::AddAbilityEffectSpecs(const FArcItemFrag
 															  , UArcItemsStoreComponent* ItemsComponent
 															  , FArcMapAbilityEffectSpecContainer& InOutContainer)
 {
-	FGameplayEffectContextHandle Context = FGameplayEffectContextHandle(
-		UAbilitySystemGlobals::Get().AllocGameplayEffectContext());
-
 	IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(ItemsComponent->GetOwner());
+	if (!ASI)
+	{
+		return;
+	}
+	
+	// Create a context for this ability
+	FGameplayEffectContextHandle Context = FGameplayEffectContextHandle(UAbilitySystemGlobals::Get().AllocGameplayEffectContext());
+
+	
 	
 	UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent());
 	// By default use the owner and avatar as the instigator and causer

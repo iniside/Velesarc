@@ -94,7 +94,7 @@ public:
 
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
-		return FArcItemInstance_GrantedPassiveAbilities::StaticStruct();
+		return FArcItemFragment_GrantedPassiveAbilities::StaticStruct();
 	}
 	
 	virtual void OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const override;

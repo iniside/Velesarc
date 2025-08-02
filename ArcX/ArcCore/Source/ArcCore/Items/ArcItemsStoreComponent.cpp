@@ -30,6 +30,7 @@
 #include "Net/UnrealNetwork.h"
 
 #include "ArcItemsSubsystem.h"
+#include "ArcItemStackMethod.h"
 #include "ArcWorldDelegates.h"
 
 #include "ArcCore/Items/ArcItemDefinition.h"
@@ -231,8 +232,7 @@ int32 UArcItemsStoreComponent::SetupItem(int32 ItemIdx
 	return ItemIdx;
 }
 
-FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem
-											, const FArcItemId& OwnerItemId)
+FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem, const FArcItemId& OwnerItemId)
 {
 	UGameInstance* GameInstance = GetGameInstance<UGameInstance>();
 	UArcItemsSubsystem* ItemsSubsystem = GameInstance->GetSubsystem<UArcItemsSubsystem>();//::Get(this);
@@ -256,6 +256,39 @@ FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem
 	}
 	
 	bool bAlreadyExists = false;
+
+	uint16 StacksToSet = InItem.Amount;
+	const FArcItemStackMethod* StackMethod = InItem.GetItemDefinition()->GetStackMethod<FArcItemStackMethod>();
+	if (StackMethod)
+	{
+		if (!StackMethod->CanAdd(this, InItem))
+		{
+			return FArcItemId::InvalidId;
+		}
+
+		if (StackMethod->CanStack())
+		{
+			uint16 NewStacks = 0;
+			uint16 RemainingStacks = 0;
+			FArcItemId ExistingItemId = StackMethod->StackCheck(this, InItem, NewStacks, RemainingStacks);
+			FArcItemData* ExistingItem = GetItemPtr(ExistingItemId);
+			if (ExistingItem != nullptr)
+			{
+				ExistingItem->SetStacks(NewStacks);
+				MarkItemDirtyById(ExistingItem->GetItemId());
+			}
+
+			if (RemainingStacks == 0)
+			{
+				return ExistingItemId;
+			}
+			
+			if (RemainingStacks > 0)
+			{
+				StacksToSet = RemainingStacks;
+			}
+		}
+	}
 	
 	int32 Idx = ItemsArray.AddItem(InItem, bAlreadyExists);
 
@@ -268,6 +301,8 @@ FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem
 	
 	FArcItemData* Entry = ItemsArray[Idx];
 
+	Entry->SetStacks(StacksToSet);
+	
 	const FArcItemFragment_SocketSlots* ES = ArcItems::GetFragment<FArcItemFragment_SocketSlots>(Entry);
 	if (ES != nullptr)
 	{
@@ -367,10 +402,10 @@ void UArcItemsStoreComponent::RemoveItem(const FArcItemId& Item, int32 Stacks, b
 	
 	FArcItemData* ItemData = GetItemPtr(Item);
 
-	FArcItemInstance_Stacks* StacksInstance = ArcItems::FindMutableInstance<FArcItemInstance_Stacks>(ItemData);
-	if (StacksInstance != nullptr)
+	//FArcItemInstance_Stacks* StacksInstance = ArcItems::FindMutableInstance<FArcItemInstance_Stacks>(ItemData);
+	//if (StacksInstance != nullptr)
 	{
-		const int32 StackNum = StacksInstance->GetStacks();
+		const int32 StackNum = ItemData->GetStacks();
 
 		bool bRemove = (StackNum <= Stacks);
 		if (Stacks < 0)
@@ -400,15 +435,12 @@ void UArcItemsStoreComponent::RemoveItem(const FArcItemId& Item, int32 Stacks, b
 		}
 		else
 		{
-			const int32 RemainingStacks = StacksInstance->GetStacks() - Stacks;
+			const uint16 RemainingStacks = ItemData->GetStacks() - Stacks;
 
-			StacksInstance->SetStacks(RemainingStacks);
+			ItemData->SetStacks(RemainingStacks);
 			ItemsArray.MarkItemDirtyIdx(Idx);
 			GetOwner()->ForceNetUpdate();
 		}
-	}
-	else
-	{
 	}
 }
 

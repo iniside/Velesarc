@@ -30,43 +30,90 @@
 
 #include "Items/ArcItemsStoreComponent.h"
 
-FArcItemId FArcItemStackMethod_StackEnum::StackCheck(UArcItemsStoreComponent* Owner
-													 , const FArcItemSpec& InSpec) const
+FArcItemId FArcItemStackMethod_CanNotStack::StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const
 {
-	const UArcItemDefinition* NewItem = InSpec.GetItemDefinition();
-	if (StackingType == EArcItemStackType::StackByDefinition)
-	{
-		const FArcItemData* Exists = Owner->GetItemByDefinition(NewItem);
+	return FArcItemId::InvalidId;
+}
 
-		if (Exists != nullptr)
-		{
-			return Exists->GetItemId();
-		}
+bool FArcItemStackMethod_CanNotStack::CanStack() const
+{
+	return false;
+}
+
+bool FArcItemStackMethod_CanNotStack::CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
+{
+	return true;
+}
+
+///////////////////////////////
+FArcItemId FArcItemStackMethod_CanNotStackUnique::StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const
+{
+	return FArcItemId::InvalidId;
+}
+
+bool FArcItemStackMethod_CanNotStackUnique::CanStack() const
+{
+	return false;
+}
+
+bool FArcItemStackMethod_CanNotStackUnique::CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
+{
+	if (!Owner)
+	{
+		return false;
+	}
+	const FArcItemData* ItemData = Owner->GetItemByDefinition(InSpec.GetItemDefinition());
+	if (ItemData)
+	{
+		return false;
 	}
 
-	if (StackingType == EArcItemStackType::Unique)
+	return true;
+}
+
+///////////////////////////////
+FArcItemId FArcItemStackMethod_StackByType::StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const
+{
+	const FArcItemData* ItemData = Owner->GetItemByDefinition(InSpec.GetItemDefinition());
+	if (ItemData)
 	{
-		const FArcItemData* Exists = Owner->GetItemByDefinition(NewItem);
-		if (Exists != nullptr)
+		const uint16 Stacks = ItemData->GetStacks();
+		const uint16 Max = FMath::FloorToInt(MaxStacks.GetValue());
+		const uint16 NewStacks = Stacks + InSpec.Amount;
+		if (NewStacks >= Max)
 		{
-			return Exists->GetItemId();
+			uint16 Remaining = NewStacks - Max;
+			OutRemainingStacks = Remaining;
+			OutNewStacks = Max;
 		}
+		else
+		{
+			OutNewStacks = InSpec.Amount;
+			OutRemainingStacks = 0;
+		}
+		return ItemData->GetItemId();
 	}
 
 	return FArcItemId::InvalidId;
 }
 
-bool FArcItemStackMethod_StackEnum::CanStack() const
+bool FArcItemStackMethod_StackByType::CanStack() const
 {
-	if (StackingType == EArcItemStackType::StackByDefinition)
-	{
-		return true;
-	}
-
 	return false;
 }
 
-bool FArcItemStackMethod_StackEnum::IsUnique() const
+bool FArcItemStackMethod_StackByType::CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
 {
-	return StackingType == EArcItemStackType::Unique;
+	if (!Owner)
+	{
+		return false;
+	}
+
+	const FArcItemData* ItemData = Owner->GetItemByDefinition(InSpec.GetItemDefinition());
+	if (ItemData)
+	{
+		return false;
+	}
+
+	return true;
 }

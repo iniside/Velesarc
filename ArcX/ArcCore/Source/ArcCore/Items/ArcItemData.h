@@ -125,6 +125,9 @@ public:
 	/** Current Level of item. Currently used for reading from Scalable Floats. Can for example mean item rarity. */
 	UPROPERTY(SaveGame)
 	uint8 Level = 1;
+
+	UPROPERTY(SaveGame)
+	uint16 Stacks = 1;
 	
 	/** properties which all items have and we want to replicate them anyway. */
 	UPROPERTY()
@@ -383,6 +386,16 @@ public:
 		return Level;
 	}
 
+	uint16 GetStacks() const
+	{
+		return Stacks;
+	}
+
+	void SetStacks(uint16 InStacks)
+	{
+		Stacks = InStacks;
+	}
+	
 	const FPrimaryAssetId& GetItemDefinitionId() const;
 
 	const UArcItemDefinition* GetItemDefinition() const;
