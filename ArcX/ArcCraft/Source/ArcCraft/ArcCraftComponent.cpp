@@ -21,8 +21,72 @@
 
 #include "ArcCraftComponent.h"
 
+#include "Core/ArcCoreAssetManager.h"
 #include "Items/ArcItemsStoreComponent.h"
 #include "Net/UnrealNetwork.h"
+
+bool FArcCraftRequirement_ItemDefinitionCount::MeetsRequirement(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner) const
+{
+	const AActor* OwnerActor = Cast<AActor>(InOwner);
+	if (!OwnerActor)
+	{
+		return false;
+	}
+
+	UArcItemsStoreComponent* ItemsStore = OwnerActor->FindComponentByClass<UArcItemsStoreComponent>();
+	if (!ItemsStore)
+	{
+		return false;
+	}
+
+	for (const FArcCraftItemDefinitionCount& ItemDefCount : ItemDefinitions)
+	{
+		const FArcItemData* ItemData = ItemsStore->GetItemByDefinition(ItemDefCount.ItemDefinition);
+		if (!ItemData)
+		{
+			return false; // Item definition not found in store
+		}
+
+		const uint16 Stacks = ItemData->GetStacks();
+		if (ItemDefCount.Count > Stacks)
+		{
+			return false; // Not enough items of this type
+		}
+	}
+}
+
+void FArcCraftExecution_MakeItemSpec::OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner
+	, FArcItemSpec& ItemSpec) const
+{
+	int32 SpecIdx = InCraftComponent->GetCraftedItemSpecList().Items.IndexOfByKey(InCraftData->ItemDefinition.AssetId);
+	if (SpecIdx != INDEX_NONE)
+	{
+		ItemSpec = InCraftComponent->GetCraftedItemSpecList().Items[SpecIdx];
+		ItemSpec.Amount++;
+		return;
+	}
+	
+	ItemSpec = FArcItemSpec::NewItem(InCraftData->ItemDefinition, 1, 1);
+}
+
+void FArcCraftExecution_AddToCraftingStore::OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData
+															, const UObject* InOwner, FArcItemSpec& ItemSpec) const
+{
+	if (!ItemSpec.GetItemDefinitionId().IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Crafting execution failed: ItemSpec is invalid."));
+		return;
+	}
+
+	int32 SpecIdx = InCraftComponent->GetCraftedItemSpecList().Items.IndexOfByKey(InCraftData->ItemDefinition.AssetId);
+	if (SpecIdx != INDEX_NONE)
+	{
+		InCraftComponent->GetCraftedItemSpecList().Items[SpecIdx].Amount = ItemSpec.Amount;
+		return;
+	}
+
+	InCraftComponent->GetCraftedItemSpecList().Edit().Add(ItemSpec);
+}
 
 // Sets default values for this component's properties
 UArcCraftComponent::UArcCraftComponent()
@@ -51,6 +115,7 @@ void UArcCraftComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProper
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION(UArcCraftComponent, CraftedItemList, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UArcCraftComponent, CraftedItemSpecList, COND_OwnerOnly);
 }
 
 void UArcCraftComponent::UpdateStatus()
@@ -68,8 +133,17 @@ void UArcCraftComponent::UpdateStatus()
 	}
 }
 
-void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, int32 Amount, int32 Priority)
+void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, UObject* Instigator, int32 Amount, int32 Priority)
 {
+	for (const TInstancedStruct<FArcCraftRequirement>& Requirement : InCraftData->Requirements)
+	{
+		if (!Requirement.GetPtr<FArcCraftRequirement>()->MeetsRequirement(this, InCraftData, Instigator))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Crafting requirements not met for %s"), *InCraftData->GetName());
+			return;
+		}
+	}
+	
 	const bool bIsDisabled = CraftedItemList.Items.IsEmpty();
 	
 	const FDateTime Time = FDateTime::UtcNow();
@@ -80,7 +154,8 @@ void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, int32 Amoun
 
 	CraftedItem.Id = FGuid::NewGuid();
 	CraftedItem.Recipe = InCraftData;
-
+	CraftedItem.Instigator = Instigator;
+	
 	CraftedItem.StartTime = CurrentTime;
 	CraftedItem.UnpausedEndTime = EndTime;
 	CraftedItem.CurrentTime = 0;
@@ -120,14 +195,11 @@ void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, int32 Amoun
 
 void UArcCraftComponent::OnCraftFinished(const FArcCraftItem& CraftedItem)
 {
-	UArcItemsStoreComponent* ItemsStore = GetItemsStore();
-	if (!ItemsStore)
+	FArcItemSpec NewItemSpec;
+	for (const TInstancedStruct<FArcCraftExecution>& Requirement : CraftedItem.Recipe->OnFinishedExecutions)
 	{
-		return;
+		Requirement.GetPtr<FArcCraftExecution>()->OnCraftFinished(this, CraftedItem.Recipe, CraftedItem.Instigator, NewItemSpec);
 	}
-
-	FArcItemSpec ItemSpec = FArcItemSpec::NewItem(CraftedItem.Recipe->ItemDefinition, 1, 1);
-	ItemsStore->AddItem(ItemSpec, FArcItemId());
 }
 
 // Called every frame
@@ -187,17 +259,3 @@ void UArcCraftComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	}
 	// ...
 }
-
-UArcItemsStoreComponent* UArcCraftComponent::GetItemsStore() const
-{
-	if (ItemsStoreComponent.IsValid())
-	{
-		return ItemsStoreComponent.Get();
-	}
-
-	ItemsStoreComponent = GetOwner()->FindComponentByClass<UArcItemsStoreComponent>();
-	return ItemsStoreComponent.Get();
-}
-
-
-
