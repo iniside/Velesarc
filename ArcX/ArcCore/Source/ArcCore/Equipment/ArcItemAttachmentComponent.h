@@ -38,6 +38,7 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "ArcItemAttachmentComponent.generated.h"
 
+class UAimOffsetBlendSpace;
 class USkeletalMesh;
 class UArcItemDefinition;
 class ACharacter;
@@ -296,6 +297,7 @@ public:
 };
 
 class UAnimSequence;
+class UBlendProfileStandalone;
 
 USTRUCT(BlueprintType)
 struct FArcItemFragment_ItemLayerCore : public FArcItemFragment
@@ -306,7 +308,19 @@ struct FArcItemFragment_ItemLayerCore : public FArcItemFragment
 	TSoftObjectPtr<UAnimSequence> ItemPose;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float ItemPoseBlendStrength = 1.0f;
+	float ItemPoseBlendStrength = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float ItemPoseAdditiveAlpha = 1.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float IKStrength = 1.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
+	TSoftObjectPtr<UAimOffsetBlendSpace> AimOffsetBlendSpace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
+	TSoftObjectPtr<UBlendProfileStandalone> BlendProfile;
 };
 
 class UArcItemAttachmentComponent;
