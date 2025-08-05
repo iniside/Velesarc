@@ -55,7 +55,7 @@ bool FArcAttachmentHandler_Actor::HandleItemAddedToSlot(UArcItemAttachmentCompon
 	// Items can be attached and/or grant attachment sockets.
 	const FArcItemFragment_ActorAttachment* ActorAttachment = ArcEquipmentUtils::GetAttachmentFragment<FArcItemFragment_ActorAttachment>(InItem, VisualItemDefinition);
 
-	if (ActorAttachment && VisualItemDefinition)
+	if (!ActorAttachment)
 	{
 		return false;
 	}
