@@ -10,6 +10,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "imgui.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
+#include "Items/Fragments/ArcItemFragment_GrantedPassiveAbilities.h"
+#include "Items/Fragments/ArcItemFragment_ItemStats.h"
 
 void FArcItemInstanceDebugger::DrawAbilityEffectsToApply(const FArcItemData* InItemData, const FArcItemInstance* InInstance)
 {
@@ -71,6 +74,115 @@ void FArcItemInstanceDebugger::DrawAbilityEffectsToApply(const FArcItemData* InI
 				}
 			}
 
+			ImGui::TreePop();
+		}
+	}
+}
+
+void FArcItemInstanceDebugger::DrawGrantedPassiveAbilities(const FArcItemData* InItemData, const FArcItemInstance* InInstance)
+{
+	UWorld* World = GEngine->GameViewport->GetWorld();
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	APlayerState* PS = PC->PlayerState;
+	UArcCoreAbilitySystemComponent* AbilitySystem = PS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+	
+	if (InInstance->GetScriptStruct()->IsChildOf(FArcItemInstance_GrantedPassiveAbilities::StaticStruct()))
+	{
+		const FArcItemFragment_GrantedPassiveAbilities* Fragment = ArcItems::FindFragment<FArcItemFragment_GrantedPassiveAbilities>(InItemData);
+	
+		if (ImGui::TreeNode("Granted Passive Abilities"))
+		{
+			const TArray<TSubclassOf<UGameplayAbility>>& GrantedAbilities = Fragment->Abilities;
+			for (const TSubclassOf<UGameplayAbility>& AbilityHandle : GrantedAbilities)
+			{
+				//if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityHandle.Key.ToString())))
+				{
+					ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("Ability: %s"), *AbilityHandle->GetName())));
+					
+					//ImGui::TreePop();
+				}
+			}
+			
+			ImGui::TreePop();
+		}
+	}
+}
+
+void FArcItemInstanceDebugger::DrawGrantedEffects(const FArcItemData* InItemData, const FArcItemInstance* InInstance)
+{
+	UWorld* World = GEngine->GameViewport->GetWorld();
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	APlayerState* PS = PC->PlayerState;
+	UArcCoreAbilitySystemComponent* AbilitySystem = PS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+	
+	if (InInstance->GetScriptStruct()->IsChildOf(FArcItemInstance_GrantedGameplayEffects::StaticStruct()))
+	{
+		const FArcItemFragment_GrantedGameplayEffects* Fragment = ArcItems::FindFragment<FArcItemFragment_GrantedGameplayEffects>(InItemData);
+	
+		if (ImGui::TreeNode("Granted Effects"))
+		{
+			const TArray<TSubclassOf<UGameplayEffect>>& GrantedAbilities = Fragment->Effects;
+			for (const TSubclassOf<UGameplayEffect>& AbilityHandle : GrantedAbilities)
+			{
+				//if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityHandle.Key.ToString())))
+				{
+					ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("Effect: %s"), *AbilityHandle->GetName())));
+					
+					//ImGui::TreePop();
+				}
+			}
+			
+			ImGui::TreePop();
+		}
+	}
+}
+
+void FArcItemInstanceDebugger::DrawItemStats(const FArcItemData* InItemData, const FArcItemInstance* Instance)
+{
+	UWorld* World = GEngine->GameViewport->GetWorld();
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	APlayerState* PS = PC->PlayerState;
+	UArcCoreAbilitySystemComponent* AbilitySystem = PS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+
+	if (Instance->GetScriptStruct()->IsChildOf(FArcItemInstance_ItemStats::StaticStruct()))
+	{
+		const FArcItemFragment_ItemStats* Fragment = ArcItems::FindFragment<FArcItemFragment_ItemStats>(InItemData);
+	
+		if (ImGui::TreeNode("Fragment"))
+		{
+			const TArray<FArcItemAttributeStat>& DefaultStats = Fragment->DefaultStats;
+			ImGui::BeginTable("Item Stats", 2);
+			for (const FArcItemAttributeStat& AbilityHandle : DefaultStats)
+			{
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text(TCHAR_TO_ANSI(*AbilityHandle.Attribute.GetName()));
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("%f"), AbilityHandle.Value.Value)));
+				
+			}
+			ImGui::EndTable();
+			
+			ImGui::TreePop();
+		}
+		
+		if (ImGui::TreeNode("Instance"))
+		{
+			const FArcItemInstance_ItemStats* InstanceStats = static_cast<const FArcItemInstance_ItemStats*>(Instance);
+			
+			const TMap<FName, float>& Stats = InstanceStats->GetStats();
+
+			ImGui::BeginTable("Item Stats", 2);
+			for (const auto& Stat : Stats)
+			{
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text(TCHAR_TO_ANSI(*Stat.Key.ToString()));
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT("%f"), Stat.Value)));
+			}
+			ImGui::EndTable();
+			
 			ImGui::TreePop();
 		}
 	}

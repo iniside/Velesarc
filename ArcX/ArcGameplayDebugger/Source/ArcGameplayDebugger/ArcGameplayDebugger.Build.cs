@@ -29,12 +29,14 @@ public class ArcGameplayDebugger : ModuleRules
 				"SlateIM",
 				"ArcCore",
 				"ArcGun",
+				"ArcCraft",
 				"GameplayTags",
 				"GameplayAbilities",
 				"ImGui",
 				"InputCore",
 				"EnhancedInput",
-				"TargetingSystem"
+				"TargetingSystem",
+				"UMG"
 				
 				// ... add other public dependencies that you statically link with here ...
 			}

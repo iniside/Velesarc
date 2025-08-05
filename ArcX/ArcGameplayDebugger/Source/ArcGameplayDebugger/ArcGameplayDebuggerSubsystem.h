@@ -4,10 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "ArcAttributesDebugger.h"
+#include "ArcCraftGameplayDebugger.h"
 #include "ArcEquipmentDebugger.h"
 #include "ArcGameplayAbilitiesDebugger.h"
 #include "ArcGameplayEffectsDebugger.h"
 #include "ArcGlobalAbilityTargetingDebugger.h"
+#include "ArcGunDebugger.h"
 #include "ArcItemAttachmentDebugger.h"
 #include "ArcItemDebuggerItems.h"
 #include "ArcProxyAttributeSetDebugger.h"
@@ -38,6 +40,11 @@ private:
 
 	FArcProxyGameplayEffectDebugger ProxyGameplayEffectDebugger; 
 	FArcProxyAttributeSetDebugger ProxyAttributeSetDebugger;
+
+	FArcGunDebugger ArcGunDebugger;
+
+	FArcCraftGameplayDebugger CraftingDebugger;
+	
 	void Toggle();
 	
 public:
@@ -46,7 +53,9 @@ public:
 	UArcGameplayDebuggerSubsystem();
 	/** Implement this for initialization of instances of the system */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-
+	void OnCVarChanged(IConsoleVariable* CVar);
+	void OnToggleGameInputChanged(IConsoleVariable* CVar);
+	
 	/** Implement this for deinitialization of instances of the system */
 	virtual void Deinitialize() override;
 

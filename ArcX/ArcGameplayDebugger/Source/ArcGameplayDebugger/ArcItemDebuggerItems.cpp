@@ -163,6 +163,11 @@ void FArcDebuggerItems::Draw()
 						{
 							ImGui::CloseCurrentPopup();
 						}
+						
+						if (ImGui::Button("Add Item"))
+						{
+							Arcx::SendServerCommand<FArcAddItemSpecCommand>(PC, ItemsStores[SelectedItemStoreIndex], ItemSpecCreator.TempNewSpec);
+						}
 						ImGui::EndPopup();
 					}
 					ImGui::EndPopup();
@@ -263,6 +268,9 @@ void FArcDebuggerItems::Draw()
 									{
 										FArcItemInstanceDebugger::DrawGrantedAbilities(InItemData, Instance);
 										FArcItemInstanceDebugger::DrawAbilityEffectsToApply(InItemData, Instance);
+										FArcItemInstanceDebugger::DrawGrantedPassiveAbilities(InItemData, Instance);
+										FArcItemInstanceDebugger::DrawGrantedEffects(InItemData, Instance);
+										FArcItemInstanceDebugger::DrawItemStats(InItemData, Instance);
 										ImGui::TreePop();
 									}
 								});

@@ -9,6 +9,7 @@
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
 #include "imgui.h"
 #include "Items/Fragments/ArcItemFragment_AbilityEffectsToApply.h"
+#include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
 #include "Items/Fragments/ArcItemFragment_GrantedPassiveAbilities.h"
 
 void DrawEditableItemStats(const TArray<FGameplayAttribute>& inAttributes, FArcItemFragment_ItemInstanceBase* InFragment)
@@ -19,51 +20,54 @@ void DrawEditableItemStats(const TArray<FGameplayAttribute>& inAttributes, FArcI
 	}
 	
 	FArcItemFragment_ItemStats* StatsFragment = static_cast<FArcItemFragment_ItemStats*>(InFragment);
-
-	if (ImGui::BeginCombo("Add Attribute", "Add Attribute"))
+	if (ImGui::TreeNode("Item Stats"))
 	{
-		for (int32 FragmentIdx = 0; FragmentIdx < inAttributes.Num(); FragmentIdx++)
+		if (ImGui::BeginCombo("Add Attribute", "Add Attribute"))
 		{
-			FString AttributeName = FString::Printf(TEXT("%s.%s"), *GetNameSafe(inAttributes[FragmentIdx].GetAttributeSetClass()), *inAttributes[FragmentIdx].AttributeName);
-			if (ImGui::Selectable(TCHAR_TO_ANSI(*AttributeName)))
+			for (int32 FragmentIdx = 0; FragmentIdx < inAttributes.Num(); FragmentIdx++)
 			{
-				StatsFragment->DefaultStats.Add(FArcItemAttributeStat(inAttributes[FragmentIdx], 0.0f));
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	for (int32 StatIdx = 0; StatIdx < StatsFragment->DefaultStats.Num(); StatIdx++)
-	{
-		FArcItemAttributeStat& Stat = StatsFragment->DefaultStats[StatIdx];
-		if (ImGui::TreeNode(TCHAR_TO_ANSI(*Stat.Attribute.AttributeName)))
-		{
-			int32 SelectedAttributeIdx = inAttributes.IndexOfByPredicate([Stat](const FGameplayAttribute& Attr) {
-					return Attr == Stat.Attribute;
-				});
-
-			FString PreviewValue = "Select Attribute";
-			if (SelectedAttributeIdx != INDEX_NONE)
-			{
-				PreviewValue = FString::Printf(TEXT("%s.%s"), *GetNameSafe(inAttributes[SelectedAttributeIdx].GetAttributeSetClass()), *inAttributes[SelectedAttributeIdx].AttributeName);
-			}
-			
-			if (ImGui::BeginCombo("Select Attribute", TCHAR_TO_ANSI(*PreviewValue)))
-			{
-				for (int32 AttrIdx = 0; AttrIdx < inAttributes.Num(); AttrIdx++)
+				FString AttributeName = FString::Printf(TEXT("%s.%s"), *GetNameSafe(inAttributes[FragmentIdx].GetAttributeSetClass()), *inAttributes[FragmentIdx].AttributeName);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*AttributeName)))
 				{
-					FString AttributeName = FString::Printf(TEXT("%s.%s"), *GetNameSafe(inAttributes[AttrIdx].GetAttributeSetClass()), *inAttributes[AttrIdx].AttributeName);
-					if (ImGui::Selectable(TCHAR_TO_ANSI(*AttributeName), SelectedAttributeIdx == AttrIdx))
-					{
-						Stat.Attribute = inAttributes[AttrIdx];
-					}
+					StatsFragment->DefaultStats.Add(FArcItemAttributeStat(inAttributes[FragmentIdx], 0.0f));
 				}
-				ImGui::EndCombo();
 			}
-
-			ImGui::InputFloat("##StatValue", &Stat.Value.Value, 0.1f, 1.0f, "%.1f");	
-			ImGui::TreePop();
+			ImGui::EndCombo();
 		}
+		
+		for (int32 StatIdx = 0; StatIdx < StatsFragment->DefaultStats.Num(); StatIdx++)
+		{
+			FArcItemAttributeStat& Stat = StatsFragment->DefaultStats[StatIdx];
+			if (ImGui::TreeNode(TCHAR_TO_ANSI(*Stat.Attribute.AttributeName)))
+			{
+				int32 SelectedAttributeIdx = inAttributes.IndexOfByPredicate([Stat](const FGameplayAttribute& Attr) {
+						return Attr == Stat.Attribute;
+					});
+		
+				FString PreviewValue = "Select Attribute";
+				if (SelectedAttributeIdx != INDEX_NONE)
+				{
+					PreviewValue = FString::Printf(TEXT("%s.%s"), *GetNameSafe(inAttributes[SelectedAttributeIdx].GetAttributeSetClass()), *inAttributes[SelectedAttributeIdx].AttributeName);
+				}
+				
+				if (ImGui::BeginCombo("Select Attribute", TCHAR_TO_ANSI(*PreviewValue)))
+				{
+					for (int32 AttrIdx = 0; AttrIdx < inAttributes.Num(); AttrIdx++)
+					{
+						FString AttributeName = FString::Printf(TEXT("%s.%s"), *GetNameSafe(inAttributes[AttrIdx].GetAttributeSetClass()), *inAttributes[AttrIdx].AttributeName);
+						if (ImGui::Selectable(TCHAR_TO_ANSI(*AttributeName), SelectedAttributeIdx == AttrIdx))
+						{
+							Stat.Attribute = inAttributes[AttrIdx];
+						}
+					}
+					ImGui::EndCombo();
+				}
+		
+				ImGui::InputFloat("##StatValue", &Stat.Value.Value, 0.1f, 1.0f, "%.1f");	
+				ImGui::TreePop();
+			}
+		}
+		ImGui::TreePop();
 	}
 }
 
@@ -76,59 +80,63 @@ void DrawEditableAbilities(const TArray<FAssetData>& AbilitiesAssets, FArcItemFr
 	
 	FArcItemFragment_GrantedAbilities* GrantedAbilities = static_cast<FArcItemFragment_GrantedAbilities*>(InFragment);
 
-	if (ImGui::BeginCombo("Add Ability", "Add Ability"))
+	if (ImGui::TreeNode("Activatable Abilities"))
 	{
-		for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+		if (ImGui::BeginCombo("Add Ability", "Add Ability"))
 		{
-			FString AbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-			if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
+			for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
 			{
-				UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-				UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-				GrantedAbilities->Abilities.Add(FArcAbilityEntry(false, FGameplayTag::EmptyTag,AbilityClass));
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	for (int32 StatIdx = 0; StatIdx < GrantedAbilities->Abilities.Num(); StatIdx++)
-	{
-		FArcAbilityEntry& AbilityEntry = GrantedAbilities->Abilities[StatIdx];
-		if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityEntry.GrantedAbility->GetName())))
-		{
-			
-			FString AbilityName = AbilityEntry.GrantedAbility->GetName();
-			//AbilityName.LeftChopInline(2);
-			AbilityName.RemoveFromEnd(TEXT("_C"));
-			
-			int32 SelectedAssetIdx = AbilitiesAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
-					return AbilityName == AssetData.AssetName.ToString();
-				});
-
-			FString PreviewValue = "Select Ability";
-			if (SelectedAssetIdx != INDEX_NONE)
-			{
-				PreviewValue = FString::Printf(TEXT("%s"), *AbilitiesAssets[SelectedAssetIdx].AssetName.ToString());
-			}
-			
-			if (ImGui::BeginCombo("Select Ability", TCHAR_TO_ANSI(*PreviewValue)))
-			{
-				for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+				FString AbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
 				{
-					FString ListAbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-					if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
-					{
-						UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-						UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-						AbilityEntry.GrantedAbility = AbilityClass;
-					}
+					UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
+					UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
+					GrantedAbilities->Abilities.Add(FArcAbilityEntry(false, FGameplayTag::EmptyTag,AbilityClass));
 				}
-				ImGui::EndCombo();
 			}
-
-			ImGui::Checkbox("##AddInputTag", &AbilityEntry.bAddInputTag);
-			ImGui::TreePop();
+			ImGui::EndCombo();
 		}
+
+		for (int32 StatIdx = 0; StatIdx < GrantedAbilities->Abilities.Num(); StatIdx++)
+		{
+			FArcAbilityEntry& AbilityEntry = GrantedAbilities->Abilities[StatIdx];
+			if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityEntry.GrantedAbility->GetName())))
+			{
+			
+				FString AbilityName = AbilityEntry.GrantedAbility->GetName();
+				//AbilityName.LeftChopInline(2);
+				AbilityName.RemoveFromEnd(TEXT("_C"));
+			
+				int32 SelectedAssetIdx = AbilitiesAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
+						return AbilityName == AssetData.AssetName.ToString();
+					});
+
+				FString PreviewValue = "Select Ability";
+				if (SelectedAssetIdx != INDEX_NONE)
+				{
+					PreviewValue = FString::Printf(TEXT("%s"), *AbilitiesAssets[SelectedAssetIdx].AssetName.ToString());
+				}
+			
+				if (ImGui::BeginCombo("Select Ability", TCHAR_TO_ANSI(*PreviewValue)))
+				{
+					for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+					{
+						FString ListAbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
+						if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
+						{
+							UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
+							UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
+							AbilityEntry.GrantedAbility = AbilityClass;
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				ImGui::Checkbox("##AddInputTag", &AbilityEntry.bAddInputTag);
+				ImGui::TreePop();
+			}
+		}
+		ImGui::TreePop();
 	}
 }
 
@@ -141,189 +149,134 @@ void DrawGrantedPassiveAbilities(const TArray<FAssetData>& AbilitiesAssets, FArc
 	
 	FArcItemFragment_GrantedPassiveAbilities* GrantedAbilities = static_cast<FArcItemFragment_GrantedPassiveAbilities*>(InFragment);
 
-	if (ImGui::BeginCombo("Add Ability", "Add Ability"))
+	if (ImGui::TreeNode("Passive Abilities"))
 	{
-		for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+		if (ImGui::BeginCombo("Add Ability", "Add Ability"))
 		{
-			FString AbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-			if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
+			for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
 			{
-				UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-				UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-				GrantedAbilities->Abilities.Add(AbilityClass);
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	for (int32 StatIdx = 0; StatIdx < GrantedAbilities->Abilities.Num(); StatIdx++)
-	{
-		TSubclassOf<UGameplayAbility>& AbilityEntry = GrantedAbilities->Abilities[StatIdx];
-		if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityEntry->GetName())))
-		{
-			
-			FString AbilityName = AbilityEntry->GetName();
-			//AbilityName.LeftChopInline(2);
-			AbilityName.RemoveFromEnd(TEXT("_C"));
-			
-			int32 SelectedAssetIdx = AbilitiesAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
-					return AbilityName == AssetData.AssetName.ToString();
-				});
-
-			FString PreviewValue = "Select Ability";
-			if (SelectedAssetIdx != INDEX_NONE)
-			{
-				PreviewValue = FString::Printf(TEXT("%s"), *AbilitiesAssets[SelectedAssetIdx].AssetName.ToString());
-			}
-			
-			if (ImGui::BeginCombo("Select Ability", TCHAR_TO_ANSI(*PreviewValue)))
-			{
-				for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+				FString AbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
 				{
-					FString ListAbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-					if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
-					{
-						UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-						UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-						AbilityEntry = AbilityClass;
-					}
+					UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
+					UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
+					GrantedAbilities->Abilities.Add(AbilityClass);
 				}
-				ImGui::EndCombo();
 			}
-
-			ImGui::TreePop();
+			ImGui::EndCombo();
 		}
+
+		for (int32 StatIdx = 0; StatIdx < GrantedAbilities->Abilities.Num(); StatIdx++)
+		{
+			TSubclassOf<UGameplayAbility>& AbilityEntry = GrantedAbilities->Abilities[StatIdx];
+			if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityEntry->GetName())))
+			{
+			
+				FString AbilityName = AbilityEntry->GetName();
+				//AbilityName.LeftChopInline(2);
+				AbilityName.RemoveFromEnd(TEXT("_C"));
+			
+				int32 SelectedAssetIdx = AbilitiesAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
+						return AbilityName == AssetData.AssetName.ToString();
+					});
+
+				FString PreviewValue = "Select Ability";
+				if (SelectedAssetIdx != INDEX_NONE)
+				{
+					PreviewValue = FString::Printf(TEXT("%s"), *AbilitiesAssets[SelectedAssetIdx].AssetName.ToString());
+				}
+			
+				if (ImGui::BeginCombo("Select Ability", TCHAR_TO_ANSI(*PreviewValue)))
+				{
+					for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+					{
+						FString ListAbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
+						if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
+						{
+							UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
+							UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
+							AbilityEntry = AbilityClass;
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				ImGui::TreePop();
+			}
+		}
+
+		ImGui::TreePop();
 	}
 }
-#if 0
-void DrawAbilityEffectsToApply(const TArray<FAssetData>& AbilitiesAssets, FArcItemFragment_ItemInstanceBase* InFragment)
+
+void DrawGrantedGameplayEffects(const TArray<FAssetData>& EffectAssets, FArcItemFragment_ItemInstanceBase* InFragment)
 {
-	if (!InFragment->GetScriptStruct()->IsChildOf(FArcItemFragment_AbilityEffectsToApply::StaticStruct()))
+	if (!InFragment->GetScriptStruct()->IsChildOf(FArcItemFragment_GrantedGameplayEffects::StaticStruct()))
 	{
 		return;
 	}
 	
-	FArcItemFragment_AbilityEffectsToApply* GrantedAbilities = static_cast<FArcItemFragment_AbilityEffectsToApply*>(InFragment);
+	FArcItemFragment_GrantedGameplayEffects* GrantedGameplayEffects = static_cast<FArcItemFragment_GrantedGameplayEffects*>(InFragment);
 
-	if (ImGui::BeginCombo("Add Ability", "Add Ability"))
+	if (ImGui::TreeNode("GrantedEffects"))
 	{
-		for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+		if (ImGui::BeginCombo("Add Ability", "Add Ability"))
 		{
-			FString AbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-			if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
+			for (int32 AbilityIdx = 0; AbilityIdx < EffectAssets.Num(); AbilityIdx++)
 			{
-				UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-				UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-				GrantedAbilities->Abilities.Add(AbilityClass);
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	for (int32 StatIdx = 0; StatIdx < GrantedAbilities->Abilities.Num(); StatIdx++)
-	{
-		TSubclassOf<UGameplayAbility>& AbilityEntry = GrantedAbilities->Abilities[StatIdx];
-		if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityEntry->GetName())))
-		{
-			
-			FString AbilityName = AbilityEntry->GetName();
-			//AbilityName.LeftChopInline(2);
-			AbilityName.RemoveFromEnd(TEXT("_C"));
-			
-			int32 SelectedAssetIdx = AbilitiesAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
-					return AbilityName == AssetData.AssetName.ToString();
-				});
-
-			FString PreviewValue = "Select Ability";
-			if (SelectedAssetIdx != INDEX_NONE)
-			{
-				PreviewValue = FString::Printf(TEXT("%s"), *AbilitiesAssets[SelectedAssetIdx].AssetName.ToString());
-			}
-			
-			if (ImGui::BeginCombo("Select Ability", TCHAR_TO_ANSI(*PreviewValue)))
-			{
-				for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
+				FString AbilityName = FString::Printf(TEXT("%s"), *EffectAssets[AbilityIdx].AssetName.ToString());
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
 				{
-					FString ListAbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-					if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
-					{
-						UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-						UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-						AbilityEntry = AbilityClass;
-					}
+					UBlueprint* AssetBP = Cast<UBlueprint>(EffectAssets[AbilityIdx].GetAsset());
+					UClass* EffectClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
+					GrantedGameplayEffects->Effects.Add(EffectClass);
 				}
-				ImGui::EndCombo();
 			}
-
-			ImGui::TreePop();
+			ImGui::EndCombo();
 		}
+
+		for (int32 StatIdx = 0; StatIdx < GrantedGameplayEffects->Effects.Num(); StatIdx++)
+		{
+			TSubclassOf<UGameplayEffect>& EffectEntry = GrantedGameplayEffects->Effects[StatIdx];
+			if (ImGui::TreeNode(TCHAR_TO_ANSI(*EffectEntry->GetName())))
+			{
+				FString AbilityName = EffectEntry->GetName();
+				//AbilityName.LeftChopInline(2);
+				AbilityName.RemoveFromEnd(TEXT("_C"));
+			
+				int32 SelectedAssetIdx = EffectAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
+						return AbilityName == AssetData.AssetName.ToString();
+					});
+
+				FString PreviewValue = "Select Effect";
+				if (SelectedAssetIdx != INDEX_NONE)
+				{
+					PreviewValue = FString::Printf(TEXT("%s"), *EffectAssets[SelectedAssetIdx].AssetName.ToString());
+				}
+			
+				if (ImGui::BeginCombo("Select Effect", TCHAR_TO_ANSI(*PreviewValue)))
+				{
+					for (int32 AbilityIdx = 0; AbilityIdx < EffectAssets.Num(); AbilityIdx++)
+					{
+						FString ListAbilityName = FString::Printf(TEXT("%s"), *EffectAssets[AbilityIdx].AssetName.ToString());
+						if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
+						{
+							UBlueprint* AssetBP = Cast<UBlueprint>(EffectAssets[AbilityIdx].GetAsset());
+							UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
+							EffectEntry = AbilityClass;
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				ImGui::TreePop();
+			}
+		}
+
+		ImGui::TreePop();
 	}
 }
 
-void DrawGrantedGameplayEffects(const TArray<FAssetData>& AbilitiesAssets, FArcItemFragment_ItemInstanceBase* InFragment)
-{
-	if (!InFragment->GetScriptStruct()->IsChildOf(FArcItemFragment_GrantedAbilities::StaticStruct()))
-	{
-		return;
-	}
-	
-	FArcItemFragment_GrantedPassiveAbilities* GrantedAbilities = static_cast<FArcItemFragment_GrantedPassiveAbilities*>(InFragment);
-
-	if (ImGui::BeginCombo("Add Ability", "Add Ability"))
-	{
-		for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
-		{
-			FString AbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-			if (ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName)))
-			{
-				UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-				UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-				GrantedAbilities->Abilities.Add(AbilityClass);
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	for (int32 StatIdx = 0; StatIdx < GrantedAbilities->Abilities.Num(); StatIdx++)
-	{
-		TSubclassOf<UGameplayAbility>& AbilityEntry = GrantedAbilities->Abilities[StatIdx];
-		if (ImGui::TreeNode(TCHAR_TO_ANSI(*AbilityEntry->GetName())))
-		{
-			
-			FString AbilityName = AbilityEntry->GetName();
-			//AbilityName.LeftChopInline(2);
-			AbilityName.RemoveFromEnd(TEXT("_C"));
-			
-			int32 SelectedAssetIdx = AbilitiesAssets.IndexOfByPredicate([AbilityName](const FAssetData& AssetData) {
-					return AbilityName == AssetData.AssetName.ToString();
-				});
-
-			FString PreviewValue = "Select Ability";
-			if (SelectedAssetIdx != INDEX_NONE)
-			{
-				PreviewValue = FString::Printf(TEXT("%s"), *AbilitiesAssets[SelectedAssetIdx].AssetName.ToString());
-			}
-			
-			if (ImGui::BeginCombo("Select Ability", TCHAR_TO_ANSI(*PreviewValue)))
-			{
-				for (int32 AbilityIdx = 0; AbilityIdx < AbilitiesAssets.Num(); AbilityIdx++)
-				{
-					FString ListAbilityName = FString::Printf(TEXT("%s"), *AbilitiesAssets[AbilityIdx].AssetName.ToString());
-					if (ImGui::Selectable(TCHAR_TO_ANSI(*ListAbilityName)))
-					{
-						UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
-						UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-						AbilityEntry = AbilityClass;
-					}
-				}
-				ImGui::EndCombo();
-			}
-
-			ImGui::TreePop();
-		}
-	}
-}
-#endif
 
 void FArcItemDebuggerItemSpecCreator::CreateItemSpec(UArcItemsStoreComponent* ItemStore, UArcItemDefinition* ItemDef)
 {
@@ -390,6 +343,10 @@ void FArcItemDebuggerItemSpecCreator::CreateItemSpec(UArcItemsStoreComponent* It
 			if (FArcItemFragment_GrantedPassiveAbilities* GrantedAbilities = TempNewSpec.FindFragmentMutable<FArcItemFragment_GrantedPassiveAbilities>())
 			{
 				DrawGrantedPassiveAbilities(GameplayAbilitiesAssets, GrantedAbilities);
+			}
+			if (FArcItemFragment_GrantedGameplayEffects* GrantedGameplayEffects = TempNewSpec.FindFragmentMutable<FArcItemFragment_GrantedGameplayEffects>())
+			{
+				DrawGrantedGameplayEffects(GameplayEffectsAssets, GrantedGameplayEffects);
 			}
 		}
 		

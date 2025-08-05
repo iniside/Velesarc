@@ -5,6 +5,7 @@
 #include "ArcItemInstanceDataDebugger.h"
 #include "imgui.h"
 #include "ImGuiConfig.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Items/Fragments/ArcItemFragment_AbilityEffectsToApply.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Kismet/GameplayStatics.h"
@@ -15,7 +16,11 @@ static TAutoConsoleVariable<bool> CVarArcDebugDraw(
 	TEXT("Enable/Disable Arc Gameplay Debugger")
 );
 
-
+static TAutoConsoleVariable<bool> CVarArcToggleGameInput(
+	TEXT("Arc.ToggleGameInput"),
+	false,
+	TEXT("Enable/Disable Arc Gameplay Debugger")
+);
 
 void UArcGameplayDebuggerSubsystem::Toggle()
 {
@@ -36,6 +41,57 @@ UArcGameplayDebuggerSubsystem::UArcGameplayDebuggerSubsystem()
 
 void UArcGameplayDebuggerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	CVarArcDebugDraw->OnChangedDelegate().AddUObject(this, &UArcGameplayDebuggerSubsystem::OnCVarChanged);
+	CVarArcToggleGameInput->OnChangedDelegate().AddUObject(this, &UArcGameplayDebuggerSubsystem::OnToggleGameInputChanged);
+}
+
+void UArcGameplayDebuggerSubsystem::OnCVarChanged(IConsoleVariable* CVar)
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+
+	if (CVarArcDebugDraw.GetValueOnGameThread())
+	{
+		if (PC)
+		{
+			PC->bShowMouseCursor = true;
+			UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(PC);;
+			//PC->bEnableMouseOverEvents = false;
+		}	
+	}
+	else
+	{
+		if (PC)
+		{
+			PC->bShowMouseCursor = false;
+			UWidgetBlueprintLibrary::SetInputMode_GameOnly(PC);
+			//PC->bEnableMouseOverEvents = true;
+		}
+	}
+}
+
+void UArcGameplayDebuggerSubsystem::OnToggleGameInputChanged(IConsoleVariable* CVar)
+{
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+
+	if (CVarArcToggleGameInput.GetValueOnGameThread())
+	{
+		if (PC)
+		{
+			PC->bShowMouseCursor = true;
+			UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(PC);;
+			//PC->bEnableMouseOverEvents = false;
+		}
+	}
+	else
+	{
+		if (PC)
+		{
+			PC->bShowMouseCursor = false;
+			UWidgetBlueprintLibrary::SetInputMode_GameOnly(PC);
+			//UWidgetBlueprintLibrary::SetInputMode_GameAndUIEx(PC);
+			//PC->bEnableMouseOverEvents = true;
+		}
+	}
 }
 
 void UArcGameplayDebuggerSubsystem::Deinitialize()
@@ -67,15 +123,8 @@ bool UArcGameplayDebuggerSubsystem::IsTickable() const
 
 void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 {
-	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 	if (CVarArcDebugDraw.GetValueOnGameThread())
-	{
-		if (PC)
-		{
-			PC->bShowMouseCursor = true;
-			//PC->bEnableMouseOverEvents = false;
-		}
-		
+	{		
 		const ImGui::FScopedContext ScopedContext;
 		if (ScopedContext)
 		{
@@ -249,7 +298,43 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 	
 					ImGui::EndMenu();
 				}
-				
+
+				if (ImGui::BeginMenu("Arc Gun"))
+				{
+					if (ImGui::MenuItem("Debugger"))
+					{
+						if (ArcGunDebugger.bShow == false)
+						{
+							ArcGunDebugger.bShow = true;
+							ArcGunDebugger.Initialize();
+						}
+						else
+						{
+							ArcGunDebugger.bShow = false;
+							ArcGunDebugger.Uninitialize();
+						}
+					}
+	
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Crafting"))
+				{
+					if (ImGui::MenuItem("Craft"))
+					{
+						if (CraftingDebugger.bShow == false)
+						{
+							CraftingDebugger.bShow = true;
+							CraftingDebugger.Initialize();
+						}
+						else
+						{
+							CraftingDebugger.bShow = false;
+							CraftingDebugger.Uninitialize();
+						}
+					}
+					ImGui::EndMenu();
+				}
 				ImGui::EndMainMenuBar();
 
 				if (DebuggerItems.bShow)
@@ -292,22 +377,23 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					ProxyAttributeSetDebugger.Draw();
 				}
+				if (ArcGunDebugger.bShow)
+				{
+					ArcGunDebugger.Draw();
+				}
+				if (CraftingDebugger.bShow)
+                {
+                	CraftingDebugger.Draw();
+                }
 				
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();
 				}
+				
 			}
 			// Your ImGui code goes here!
 			//ImGui::ShowDemoWindow();
-		}
-	}
-	else
-	{
-		if (PC)
-		{
-			PC->bShowMouseCursor = false;
-			//PC->bEnableMouseOverEvents = true;
 		}
 	}
 }

@@ -207,24 +207,23 @@ void FArcQuickBarDebugger::Draw()
 					}
 					
 					Items = FilteredItems;
-					if (ImGui::TreeNode("Available Items"))
-					{}
-					for (int32 ItemIdx = 0; ItemIdx < FilteredItems.Num(); ++ItemIdx)
+					FString PreviewValue = "Select Item";
+					if (ImGui::BeginCombo("Selected Item", TCHAR_TO_ANSI(*PreviewValue)))
 					{
-						const FArcItemData* Item = Items[ItemIdx];
-						if (!Item || !Item->GetItemDefinition())
+						for (int32 ItemIdx = 0; ItemIdx < FilteredItems.Num(); ++ItemIdx)
 						{
-							continue;
-						}
-
-						FString PreviewValue = "Select Item";
-						if (ItemId == Item->GetItemId())
-						{
-							PreviewValue = FString::Printf(TEXT("%s"), *GetNameSafe(Item->GetItemDefinition()));
-						}
+							const FArcItemData* Item = Items[ItemIdx];
+							if (!Item || !Item->GetItemDefinition())
+							{
+								continue;
+							}
+							
 						
-						if (ImGui::BeginCombo("Selected Item", TCHAR_TO_ANSI(*PreviewValue)))
-						{
+							if (ItemId == Item->GetItemId())
+							{
+								PreviewValue = FString::Printf(TEXT("%s"), *GetNameSafe(Item->GetItemDefinition()));
+							}
+							
 							FString ItemName = GetNameSafe(Item->GetItemDefinition());
 							FString ItemDisplayName = FString::Printf(TEXT("Add (%s)"), *ItemName);
 							ImGui::PushID(TCHAR_TO_ANSI(*Item->GetItemId().ToString()));
@@ -235,8 +234,9 @@ void FArcQuickBarDebugger::Draw()
 							}
 							
 							ImGui::PopID();
-							ImGui::EndCombo();
+								
 						}
+						ImGui::EndCombo();
 					}
 					
 					ImGui::TreePop();
