@@ -112,15 +112,15 @@ protected:
 	/*
 	 * How fast is camera zooming in when aiming.
 	 **/
-	UPROPERTY(EditAnywhere, Category = "Equipment", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Mobility", meta = (EnableCategories))
 	FArcScalableFloat AimCameraSpeed = 1;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, AimCameraSpeed);
 
-	UPROPERTY(EditAnywhere, Category = "Equipment", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Handling", meta = (EnableCategories))
 	FArcScalableFloat HolsterDuration;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, HolsterDuration);
 
-	UPROPERTY(EditAnywhere, Category = "Equipment", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Handling", meta = (EnableCategories))
 	FArcScalableFloat UnholsterDuration;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, UnholsterDuration);
 
@@ -138,7 +138,7 @@ public:
 	// The Y range of this curve is used to define the min and maximum spread angle
 	
 public:
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (DisplayThumbnail = false, EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (DisplayThumbnail = false, EnableCategories))
 	TObjectPtr<UCurveFloat> HeatToSpreadCurve;
 	ARC_CURVE_GETTER(FArcItemFragment_GunStats, HeatToSpreadCurve);
 	// A curve that maps the current heat to the heat cooldown rate per second
@@ -146,40 +146,40 @@ public:
 	// wears off, but can be other shapes to do things like punish overheating by slowing down
 	// recovery at high heat.
 public:
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (DisplayThumbnail = false, EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (DisplayThumbnail = false, EnableCategories))
 	TObjectPtr<UCurveFloat> HeatToSpreadRecoveryPerSecondCurve;
 	ARC_CURVE_GETTER(FArcItemFragment_GunStats, HeatToSpreadRecoveryPerSecondCurve);
 	
 protected:
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadHeatRecoveryDelay;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadHeatRecoveryDelay);
 	
 public:
 	//Maybe add separate Aim Curve ?
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (DisplayThumbnail = false, EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (DisplayThumbnail = false, EnableCategories))
 	TObjectPtr<UCurveFloat> SpreadMovementAdditiveCurve;
 	ARC_CURVE_GETTER(FArcItemFragment_GunStats, SpreadMovementAdditiveCurve);
 
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (DisplayThumbnail = false, EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (DisplayThumbnail = false, EnableCategories))
 	TObjectPtr<UCurveFloat> AimSpreadMovementAdditiveCurve;
 	ARC_CURVE_GETTER(FArcItemFragment_GunStats, AimSpreadMovementAdditiveCurve);
 	
 	/*
 	 * How fast velocity level is interpolated from old value to new.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadVelocityGainInterpolation = 40.f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadVelocityGainInterpolation);
 
 	/*
 	 * How fast velocity level is interpolated from old value to new, while SpreadHeatRecoveryDelay passed.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadVelocityRecoveryInterpolation = 120.f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadVelocityRecoveryInterpolation);
 	
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (DisplayThumbnail = false, EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (DisplayThumbnail = false, EnableCategories))
 	TObjectPtr<UCurveFloat> SpreadRotationAdditiveCurve;
 	ARC_CURVE_GETTER(FArcItemFragment_GunStats, SpreadRotationAdditiveCurve);
 
@@ -187,34 +187,35 @@ public:
 	 * How fast rotation level is interpolated from old level to new level.
 	 * Rotation level is created from how much player rotated camera since last update.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadRotationGainInterpolation = 40.f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadRotationGainInterpolation);
 
 	/*
 	 * Interpolation speed to use when weapon is recovering. In most cases level will be reaching zero, while recovering.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadRotationRecoveryInterpolation = 120.f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadRotationRecoveryInterpolation);
 	
 protected:
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadAimMultiplier;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadAimMultiplier);
 
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat SpreadRecoveryAimMultiplier = 0.8;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, SpreadRecoveryAimMultiplier);
 	
-	UPROPERTY(EditAnywhere, Category = "Spread", meta = (EnableCategories))
+	UPROPERTY(EditAnywhere, Category = "Accuracy", meta = (EnableCategories))
 	FArcScalableFloat DelayBeforeRotationSpread = 1.0f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, DelayBeforeRotationSpread);
-
+#if 0
 public:
 	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
 	float RecoilUpdateRate = 0.01667f; // 60 FPS
-	
+#endif
+public:
 	/*
 	 * How much recoil is gained per shot. Does not specify direction of recoil
 	 * It can usually be left as linear growth curve. Ie. for each shot gain 1 heat.
@@ -228,7 +229,7 @@ public:
 	// recovery at high heat.
 	UPROPERTY(EditAnywhere, Category = "Recoil", meta = (DisplayThumbnail = false, EnableCategories))
 	TObjectPtr<UCurveFloat> HeatToRecoilRecoveryPerSecond;
-
+#if 0
 protected:
 	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
 	FArcScalableFloat RecoilVerticalMin = 0.5f;
@@ -270,7 +271,7 @@ public:
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, FlipDampenFactor);
 	
 public:
-	// Optional spice
+
 	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(ClampMin="0", ClampMax="0.5", EnableCategories))
 	FArcScalableFloat RandomStrengthJitter = 0.05f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, RandomStrengthJitter);
@@ -318,66 +319,113 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = "Recoil", meta = (EnableCategories))
 	FArcScalableFloat RecoilRecoverySpeed = 0.5f;
 	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, RecoilRecoverySpeed);
+#endif
+
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	float FramerateUpdateRate = 60.0f; // How often we update recoil in frames per second
+	
+	/*
+	 * What it does: Base upward kick amount per shot (in degrees)
+	 * Effect: Primary vertical recoil - how much the crosshair jumps up
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat VerticalRecoilBase = 0.3f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, VerticalRecoilBase);
+
+	/**
+	 * What it does: Base left/right kick amount per shot (in degrees)
+	 * Effect: How much the weapon kicks horizontally before bias is applied
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat HorizontalRecoilBase = 0.15f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, HorizontalRecoilBase);
+
+	/**
+	 * What it does: Random variation applied to both vertical and horizontal recoil
+	 * Effect: Makes each shot feel slightly different, prevents robotic patterns
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat RecoilVariation = 0.5f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, RecoilVariation);
+
+	/**
+	 * What it does: Multiplier applied only to the very first shot
+	 * Effect: Can make first shot more or less accurate than subsequent shots
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat FirstShotMultiplier = 1.f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, FirstShotMultiplier);
+
+	/**
+	* What it does: Controls how strongly the weapon "favors" one horizontal direction over time, Negative values towards left and positive towards right.
+	* Effect: Higher values make the weapon develop a stronger tendency to kick left or right, creating more predictable horizontal patterns
+	*/
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat BiasStrength = -0.3f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, BiasStrength);
+
+	/**
+	 * What it does: Maximum "heat" value the weapon can accumulate during sustained fire
+	 * Effect: Determines how long you can fire before reaching maximum recoil intensity
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat MaxHeat = 50.f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, MaxHeat);
+
+	/**
+	 * What it does: Multiplier for recoil intensity when weapon is at maximum heat
+	 * Effect: Higher values make sustained fire much more violent
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat MaxStrength = 1.5f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, MaxStrength);
+
+	/**
+	 * What it does: Enables/disables simple sine wave oscillation in recoil strength
+	 * Effect: Adds rhythmic variation to make recoil feel less linear
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat OscillationFrequency = 0.25f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, OscillationFrequency);
+
+	/**
+	 * What it does: Random variation applied to the final strength multiplier
+     * Effect: Adds unpredictability to overall recoil intensity
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="Recoil", meta=(EnableCategories))
+	FArcScalableFloat JitterAmount = 0.3f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, JitterAmount);
 
 	///// Local Space Recoil /////
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilBase = 1.0f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilBase);
-	
-	// Range: -1.0 (left) to 1.0 (right)
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilHorizontalBias = 0.0f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalBias);
-	
-	// Range: -1.0 (down) to 1.0 (up)
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilVerticalBias = 0.7f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilVerticalBias);
-	
-	// How strongly to follow the main bias (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilHeatScale = 0.05f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHeatScale);
-	
-	// Chance to temporarily move in opposite direction (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilOscillationPeriod = 0.5f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilOscillationPeriod);
-	
-	// How strong the oscillation movement is (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilOscillationStrength = 0.3f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilOscillationStrength);
-	
-	// Controls horizontal spread tightness (0-1)
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilHorizontalTightness = 0.7f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalTightness);
-	
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilVerticalMinValue = -3.f;  
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilVerticalMinValue);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilVerticalMaxValue = 3.0f;  
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilVerticalMaxValue);
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat MaxStabilitySpread = 4.0f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, MaxStabilitySpread);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilHorizontalMinValue = -2.0f;  
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalMinValue);
-
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat LocalSpaceRecoilHorizontalMaxValue = 2.0f;  
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, LocalSpaceRecoilHorizontalMaxValue);
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat StabilityBaseKick = 0.4f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, StabilityBaseKick);
 	
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat ScreenRecoilGainInterpolationSpeed = 5.f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, ScreenRecoilGainInterpolationSpeed);
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat StabilityHorizontalBias = -0.5f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, StabilityHorizontalBias);
 
-	UPROPERTY(EditAnywhere, Config, Category = "Local Recoil", meta = (EnableCategories))
-	FArcScalableFloat ScreenRecoilRecoveryInterpolationSpeed = 5.f;
-	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, ScreenRecoilRecoveryInterpolationSpeed);
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat StabilityVerticalBias = 1.f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, StabilityVerticalBias);
 
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat StabilityPatternTightness = 0.5f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, StabilityPatternTightness);
+
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat StabilityOscillationRate = 1.f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, StabilityOscillationRate);
+
+	UPROPERTY(EditAnywhere, Config, Category = "Stability", meta = (EnableCategories))
+	FArcScalableFloat StabilityGainSpeed = 5.f;
+	ARC_ITEMSCALABLEFLOAT_STRUCT_GETTER(FArcItemFragment_GunStats, StabilityGainSpeed);
+	
 protected:
 	UPROPERTY(EditAnywhere, Config, Category = "Sway", meta = (EnableCategories))
 	FArcScalableFloat BaseSwayAimMultiplier = 0.65f;

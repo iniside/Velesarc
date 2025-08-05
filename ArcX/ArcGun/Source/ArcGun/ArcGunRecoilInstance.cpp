@@ -221,16 +221,16 @@ void FArcGunRecoilInstance_Base::CalculateRecoilModifires(const FArcItemData* In
 
 		const float RecoilAttributeFinalValue = ArcAbility::CalculateAttributeLog(Params, StabilityStat, StabilityBaseAttributes, HandlingMultipliers);
 	
-		const float RecoilAimMultiplier = bIsAiming ? InItem->GetValue(ArcGunStats::GetRecoilAimMultiplierData()) : 1;
+		const float RecoilAimMultiplier = 1.f;// bIsAiming ? InItem->GetValue(ArcGunStats::GetRecoilAimMultiplierData()) : 1;
 
-		RecoilHeatRecoveryDelay = InItem->GetValue(ArcGunStats::GetRecoilHeatRecoveryDelayData());
+		RecoilHeatRecoveryDelay = 0.2;//InItem->GetValue(ArcGunStats::GetRecoilHeatRecoveryDelayData());
 		RecoilYawMultiplier = RecoilAimMultiplier / RecoilAttributeFinalValue;
 		RecoilPitchMultiplier = RecoilAimMultiplier / RecoilAttributeFinalValue;
 	
 		RecoilHeatGainMultiplier = 1 / RecoilAttributeFinalValue;
 	
-		ScreenRecoilInterpolationSpeed = ArcGunStats::GetScreenRecoilGainInterpolationSpeedValue(InItem);
-		ScreenRecoilRecoveryInterpolationSpeed = ArcGunStats::GetScreenRecoilRecoveryInterpolationSpeedValue(InItem);
+		ScreenRecoilInterpolationSpeed = 1; //ArcGunStats::GetScreenRecoilGainInterpolationSpeedValue(InItem);
+		ScreenRecoilRecoveryInterpolationSpeed = 1;//ArcGunStats::GetScreenRecoilRecoveryInterpolationSpeedValue(InItem);
 	}
 
 	// SWAY
@@ -292,18 +292,11 @@ void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 		return;
 	}
 
-
-
-	
-
 	ArcASC = InGunState->GetArcASC();
 
 	CalculateRecoilModifires(InGunState->GetSelectedGun().GunItemPtr, InGunState);
 
 	StartYInputValue = ArcPC->InputValue.Y;
-		
-	ScreenRecoil = FVector2D::ZeroVector;
-	TargetScreenRecoil = FVector2D::ZeroVector;
 	
 	FRotator Unused;
 	CharacterOwner->GetActorEyesViewPoint(StartCameraLocation, Unused);
@@ -317,22 +310,15 @@ void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 	
 	ShotsFired        = 0;
 	BiasValue         = 0.f;
-	BiasAccelPerShot  = 1.f / FMath::Max(1, StatsFragment->GetHeatToFullBiasDirect(1));
+	
 	AccumulatedPhase = 0;
 	LocalSpaceRecoilAccumulatedPhase = 0;
-	
-	// Decide initial drift
-	if (StatsFragment->GetInitialBiasDirectionDirect(1)  < 0)
+
+	float BiasStrength = StatsFragment->GetBiasStrengthDirect(1); 
+	TargetBiasDir = FMath::Sign(BiasStrength);
+	if (FMath::IsNearlyZero(BiasStrength))
 	{
-		TargetBiasDir = -1;
-	}
-	else if (StatsFragment->GetInitialBiasDirectionDirect(1)  > 0)
-	{
-		TargetBiasDir = +1;
-	}
-	else
-	{
-		TargetBiasDir = FMath::RandBool() ? +1 : -1;
+		TargetBiasDir = (FMath::FRand() < 0.5f) ? -1.f : 1.f; // Random if neutral
 	}
 	
 	const float DeltaTime = InGunState->PrimaryComponentTick.TickInterval;
@@ -381,6 +367,7 @@ void FArcGunRecoilInstance_Base::StopRecoil(UArcGunStateComponent* InGunState)
 	BiasValue    = 0.f;
 	TargetBiasDir = 0;
 	AccumulatedPhase = 0;
+	NewStability = FVector2D::ZeroVector;
 	
 	ArcPC->ControlRotationOffset.Pitch = 0;
 	ArcPC->ControlRotationOffset.Yaw = 0;
@@ -422,272 +409,62 @@ void FArcGunRecoilInstance_Base::StopRecoil(UArcGunStateComponent* InGunState)
 
 }
 
-float GetPatternBasedRecoil(float baseMin, float baseMax, int shotCount, float biasStrength, float timeSinceFiring)
+FVector2D FArcGunRecoilInstance_Base::GenerateStabilitySpreadPattern(
+	float BaseKick,
+    float MaxSpread,           // Base spread amount (0.5-2.0 typical)
+    float HorizontalBias,       // -1.0 (left) to 1.0 (right)
+    float VerticalBias,         // -1.0 (down) to 1.0 (up)
+    float PatternTightness,     // 0.0 (chaotic) to 1.0 (tight pattern)
+    float OscillationRate,      // 0.0 to 2.0 - how often pattern changes
+    FVector2D& CurrentOffset
+)
 {
-	// Pattern cycle length - how many shots before pattern repeats or changes direction
-	const int patternCycleLength = 3;
+	/* ---- 1. Generate This Shot's Kick Direction ---- */
+	float RandomH = FMath::FRandRange(-1.0f, 1.0f);
+	float RandomV = FMath::FRandRange(0.0f, 1.0f);
     
-	// Define pattern direction based on shot count
-	float direction = 1.0f;
-    
-	// Create patterns like: first 3 shots go right, next 3 go left
-	if ((shotCount / patternCycleLength) % 2 == 0)
+	/* ---- 2. Apply Oscillation as VARIATION, not replacement ---- */
+	float OscillationH = 0.0f;
+	float OscillationV = 0.0f;
+
+	if (OscillationRate > 0.0f)
 	{
-		direction = 1.0f; // Right/Up
+		float OscPhase = ShotsFired * OscillationRate * 0.4f;
+        
+		// Oscillation adds EXTRA movement, doesn't replace the base pattern
+		OscillationH = FMath::Sin(OscPhase) * 0.3f;         // ±30% extra horizontal movement
+		OscillationV = FMath::Sin(OscPhase * 0.7f) * 0.2f;  // ±20% extra vertical movement
 	}
-	else
-	{
-		direction = -1.0f; // Left/Down
-	}
     
-	// Increase magnitude based on consecutive shots in the same direction
-	float consecutiveBonus = FMath::Max((shotCount % patternCycleLength) * (biasStrength * timeSinceFiring), 0.5f);
+	/* ---- 3. Build Pattern Direction Based on Tightness ---- */
+	float BiasInfluence = PatternTightness * 0.8f;
+	float RandomInfluence = 1.0f - BiasInfluence;
     
-	// Base random value (this still has randomness, but will follow the pattern)
-	float randomComponent = FMath::FRandRange(baseMin, baseMax);
+	// Blend random movement with bias direction
+	float BaseH = (RandomH * RandomInfluence) + (HorizontalBias * BiasInfluence);
+	float BaseV = (RandomV * RandomInfluence) + (VerticalBias * BiasInfluence);
     
-	// More shots = more predictable (less random component)
-	float patternInfluence = FMath::Min(shotCount * 0.1f, 0.8f);
-	float randomInfluence = 1.0f - patternInfluence;
+	// Add oscillation as variation ON TOP of the base pattern
+	float ThisShotH = BaseH + OscillationH;
+	float ThisShotV = BaseV + OscillationV;
     
-	// Blend between random and pattern-based recoil
-	float baseValue = baseMin + (baseMax - baseMin) * 0.5f; // Middle of range
-	float patternValue = baseValue * direction * (1.0f + consecutiveBonus);
+	/* ---- 4. Scale by Base Kick Strength ---- */
+	FVector2D ThisShotKick = FVector2D(ThisShotH, ThisShotV) * BaseKick;
+
+	float HeatMultiplier = 1.0f + (ShotsFired * 0.1f); // 10% increase per shot
+	HeatMultiplier = FMath::Clamp(HeatMultiplier, 1.0f, 3.0f); 
+	ThisShotKick *= HeatMultiplier;
+
+	/* ---- 5. Add to Cumulative Offset ---- */
+	FVector2D NewOffset = CurrentOffset + ThisShotKick;
+
     
-	return (randomComponent * randomInfluence) + (patternValue * patternInfluence);
+	NewOffset.X = FMath::Clamp(NewOffset.X, -MaxSpread, MaxSpread);
+	NewOffset.Y = FMath::Clamp(NewOffset.Y, -MaxSpread, MaxSpread);
+	return NewOffset; // Return the total accumulated offset
 
 }
 
-FVector2D FArcGunRecoilInstance_Base::GenerateSemiRandomSpreadPattern(
-    float BaseSpread,
-    float HorizontalBias,       // Range: -1.0 (left) to 1.0 (right)
-    float VerticalBias,         // Range: -1.0 (down) to 1.0 (up)
-    float HeatScale,
-    float OscillationPeriod,     // Chance to temporarily move in opposite direction (0-1)
-    float OscillationStrength,   // How strong the oscillation movement is (0-1)
-    float OscillationDownwardChance,
-    float HorizontalTightness,   // Controls horizontal spread tightness (0-1)
-    float MaxAccumulatedValue,  // Maximum spread to allow when accumulated
-    int32 ShotCount)
-{
-    // Clamp parameters to valid ranges
-    HorizontalBias = FMath::Clamp(HorizontalBias, -1.0f, 1.0f);
-    VerticalBias = FMath::Clamp(VerticalBias, -1.0f, 1.0f);
-    OscillationStrength = FMath::Clamp(OscillationStrength, 0.0f, 1.0f);
-    HorizontalTightness = FMath::Clamp(HorizontalTightness, 0.0f, 1.0f);
-    
-    // Calculate small base value suitable for accumulation
-    float ScaledBaseSpread = BaseSpread;
-
-	UE_LOG(LogTemp, Log, TEXT("1 ScaledBaseSpread %f"), ScaledBaseSpread);
-	
-    // Apply heat scaling if needed (avoid excessive growth)
-    float HeatFactor = 1.0f + (RecoilHeat * HeatScale);
-    ScaledBaseSpread *= HeatFactor;
-
-	UE_LOG(LogTemp, Log, TEXT("2 ScaledBaseSpread %f"), ScaledBaseSpread);
-	
-    // Calculate directional vector for main bias
-    FVector2D DirectionalBias(HorizontalBias, VerticalBias);
-    if (!DirectionalBias.IsNearlyZero())
-    {
-        DirectionalBias.Normalize();
-    }
-	else
-	{
-        // Default to slight upward bias if no direction specified
-        DirectionalBias = FVector2D(0.0f, 0.5f);
-    }
-	
-	float oscValue = 1;;
-	if (OscillationStrength > KINDA_SMALL_NUMBER && OscillationPeriod > 0)
-	{
-		// Increment phase each time this function is called
-		// This ensures oscillation continues even when RecoilHeat is clamped
-		LocalSpaceRecoilAccumulatedPhase += TWO_PI / OscillationPeriod;
-        
-		// Ensure phase wraps around so it doesn't grow infinitely
-		if (LocalSpaceRecoilAccumulatedPhase > TWO_PI)
-		{
-			LocalSpaceRecoilAccumulatedPhase -= TWO_PI;
-		}
-		// Get the base sine wave value (-1 to 1)
-		float sineValue = FMath::Sin(LocalSpaceRecoilAccumulatedPhase);
-        
-		// Process the sine wave based on the DownwardRecoilFactor
-		
-		if (OscillationDownwardChance <= 0.0f)
-		{
-			// No downward recoil at all - only positive values
-			oscValue = FMath::Max(0.0f, sineValue) * 2.0f; // Normalize range
-		}
-		else
-		{
-			// Generate a random value between 0 and 1
-			float randomChance = FMath::FRandRange(0.f, 1.f);
-            
-			// If the random value is less than our factor, allow downward recoil
-			const bool allowDownwardRecoil = (randomChance < OscillationDownwardChance);
-			if (sineValue < 0.0f && !allowDownwardRecoil)
-			{
-				// If sine is negative but downward recoil isn't allowed for this cycle,
-				// force it to zero (no recoil) instead of allowing downward motion
-				oscValue = 0.0f;
-			}
-			else
-			{
-				// Otherwise use the actual sine value
-				oscValue = sineValue;
-			}
-		}
-        
-		ScaledBaseSpread *= 1.f + OscillationStrength * oscValue;
-
-	}
-	
-    // --- Generate controlled random component with appropriate tightness ---
-    // Horizontal spread with tightness control
-    float HTightnessPower = 1.0f + (HorizontalTightness * 3.0f); // Range 1-4
-    float RawHRand = FMath::FRandRange(-1.0f, 1.0f) + 0.5;;
-    float TightHRand = FMath::Sign(RawHRand) * FMath::Pow(FMath::Abs(RawHRand), HTightnessPower);
-    
-    // Vertical spread (can be looser than horizontal)
-    float VTightnessPower = 1.0f + ((1.0f - HorizontalTightness) * 2.0f); // Inverse of horizontal tightness
-    float RawVRand = FMath::FRandRange(-1.0f, 1.0f);
-    float TightVRand = FMath::Sign(RawVRand) * FMath::Pow(FMath::Abs(RawVRand), VTightnessPower);
-    
-    // --- Apply sequence-based pattern variation ---
-    // This creates slight predictable patterns over sequences of shots
-    float SequenceFactor = FMath::Sin(ShotCount * 0.2f) * 0.4f;
-    float SequenceX = FMath::Cos(ShotCount * 0.17f) * SequenceFactor;
-    float SequenceY = FMath::Sin(ShotCount * 0.23f) * SequenceFactor;
-    
-    // --- Combine components ---
-    // Directional bias (main direction or oscillated)
-    //float DirectionalX = DirectionalBias.X * DirectionalStrength;
-    //float DirectionalY = DirectionalBias.Y * DirectionalStrength;
-    
-    // Random component (controlled by tightness)
-    float RandomWeight = (1.0f - HeatScale) * 0.8f;
-    float RandomX = TightHRand * RandomWeight;
-    float RandomY = TightVRand * RandomWeight;// * oscValue;
-	RandomY *= 1.f + OscillationStrength * oscValue;
-	
-    // Sequence pattern component
-    //float SequenceWeight = (1.0f - DirectionalStrength) * 0.2f;
-    
-    // Combine all
-    float FinalX = RandomX + (SequenceX);// * SequenceWeight);
-    float FinalY = RandomY + (SequenceY);// * SequenceWeight);
-
-	UE_LOG(LogTemp, Log, TEXT("3 RandomY %f SequenceY %f oscValue %f SequenceFactor %f RandomWeight %f"), RandomY, SequenceY, oscValue, SequenceFactor, RandomWeight);
-    // Create result vector
-    FVector2D Result(FinalX, FinalY);
-    
-    // Normalize and apply appropriate scaling for accumulation
-    if (!Result.IsNearlyZero())
-    {
-        Result.Normalize();
-        
-        // Apply strength curve based on shot count to simulate progressive recoil
-        float ShotProgression = FMath::Min(1.0f, ShotCount / 10.0f); // Saturates after 10 shots
-        float ProgressionFactor = 1.0f + (ShotProgression * 0.5f);   // Up to 50% stronger
-        
-        // Apply scaling
-        Result *= ScaledBaseSpread * ProgressionFactor;
-    }
-    
-    return Result;
-}
-
-
-
-float FArcGunRecoilInstance_Base::ComputeRecoilStrength(float InRecoilHeat,
-							float PeakStrength,     // Increased from 1.6f to allow higher maximum
-							float RampUpShots,    // Increased to make ramp-up more gradual
-							float GrowthRate,    // New parameter: controls how quickly recoil grows
-							float OscAmplitude,    // Reduced from 0.15f for less randomness
-							float OscPeriod,        // Increased for more predictable oscillation
-							float NoiseJitter,
-							float DownwardRecoilFactor)    // Reduced from 0.05f for less randomness
-{
-	// 1. Normalize heat for consistent calculation
-	const float NormalizedHeat = (RecoilHeat - 0) / (10 - 0);
-    
-	// 2. Basic ramp-up with more aggressive growth curve
-	// Using pow to create exponential growth instead of linear
-	const float tRamp = FMath::Clamp(NormalizedHeat, 0.f, 1.f);
-	float strength = FMath::Lerp(1.f, PeakStrength, FMath::Pow(tRamp, 0.7f));
-
-	UE_LOG(LogTemp, Log, TEXT("1 Recoil Heat %f NormalizedHeat %f tRamp %f StrengthMul %f"), RecoilHeat, NormalizedHeat, tRamp, strength);
-	
-	// 3. Additional growth factor for sustained fire
-	// This replaces the old decay logic - now it gets stronger over time
-	if (RecoilHeat > RampUpShots && GrowthRate > KINDA_SMALL_NUMBER)
-	{
-		const float shotsPastRamp = RecoilHeat - RampUpShots;
-		// Apply diminishing returns on growth to prevent getting too extreme
-		strength *= (1.f + GrowthRate * FMath::Sqrt(shotsPastRamp));
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("2 Recoil Heat %f NormalizedHeat %f tRamp %f StrengthMul %f"), RecoilHeat, NormalizedHeat, tRamp, strength);
-	// 4. Reduced oscillation (more predictable pattern)
-	
-	if (OscAmplitude > KINDA_SMALL_NUMBER && OscPeriod > 0)
-	{
-		// Increment phase each time this function is called
-		// This ensures oscillation continues even when RecoilHeat is clamped
-		AccumulatedPhase += TWO_PI / OscPeriod;
-        
-		// Ensure phase wraps around so it doesn't grow infinitely
-		if (AccumulatedPhase > TWO_PI)
-		{
-			AccumulatedPhase -= TWO_PI;
-		}
-		// Get the base sine wave value (-1 to 1)
-		float sineValue = FMath::Sin(AccumulatedPhase);
-        
-		// Process the sine wave based on the DownwardRecoilFactor
-		float oscValue;
-		if (DownwardRecoilFactor <= 0.0f)
-		{
-			// No downward recoil at all - only positive values
-			oscValue = FMath::Max(0.0f, sineValue) * 2.0f; // Normalize range
-		}
-		else
-		{
-			// Generate a random value between 0 and 1
-			float randomChance = FMath::FRandRange(0.f, 1.f);
-            
-			// If the random value is less than our factor, allow downward recoil
-			const bool allowDownwardRecoil = (randomChance < DownwardRecoilFactor);
-			if (sineValue < 0.0f && !allowDownwardRecoil)
-			{
-				// If sine is negative but downward recoil isn't allowed for this cycle,
-				// force it to zero (no recoil) instead of allowing downward motion
-				oscValue = 0.0f;
-			}
-			else
-			{
-				// Otherwise use the actual sine value
-				oscValue = sineValue;
-			}
-		}
-        
-		strength *= 1.f + OscAmplitude * oscValue;
-
-	}
-
-	
-	// 5. Minimal random noise - just enough to not feel robotic
-	if (NoiseJitter > KINDA_SMALL_NUMBER)
-	{
-		strength *= FMath::FRandRange(1.f - NoiseJitter, 1.f + NoiseJitter);
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("4 Recoil Heat %f NormalizedHeat %f tRamp %f StrengthMul %f"), RecoilHeat, NormalizedHeat, tRamp, strength);
-	return strength;
-}
 void FArcGunRecoilInstance_Base::OnShootFired(UArcGunStateComponent* InGunState)
 {
 	for (FEnhancedInputActionValueBinding* AxisValueBinding : AxisValueBindings)
@@ -717,27 +494,9 @@ void FArcGunRecoilInstance_Base::OnShootFired(UArcGunStateComponent* InGunState)
 	
 	SpreadHeat = ClampSpreadHeat(StatsFragment, SpreadHeat + (SpreadHeatPerShot * SpreadHeatGainMultiplier));
 	RecoilHeat = ClampRecoilHeat(StatsFragment, RecoilHeat + (RecoilHeatPerShot * RecoilHeatGainMultiplier));
-
-#if 0
-	const FVector2D LocalSpaceRecoilNew = GenerateSemiRandomSpreadPattern(
-		StatsFragment->GetLocalSpaceRecoilBaseDirect(Level)
-		, StatsFragment->GetLocalSpaceRecoilHorizontalBiasDirect(Level) // Range: -1.0 (left) to 1.0 (right)
-		, StatsFragment->GetLocalSpaceRecoilVerticalBiasDirect(Level) // Range: -1.0 (down) to 1.0 (up)
-		, StatsFragment->GetLocalSpaceRecoilHeatScaleDirect(Level) // How strongly to follow the main bias (0-1)
-		, StatsFragment->GetLocalSpaceRecoilOscillationPeriodDirect(Level) // Chance to temporarily move in opposite direction (0-1)
-		, StatsFragment->GetLocalSpaceRecoilOscillationStrengthDirect(Level) // How strong the oscillation movement is (0-1)
-		, 0//StatsFragment->GetLocalSpaceRecoilOscillationDownwardChanceDirect(Level) // How likely to oscillate downward (0-1)
-		, StatsFragment->GetLocalSpaceRecoilHorizontalTightnessDirect(Level) // Controls horizontal spread tightness (0-1)
-		, ShotsFired
-		);
+	ShotsFired++;
 	
-	UE_LOG(LogTemp, Log, TEXT("LocalSpaceRecoilNew %s"), *LocalSpaceRecoilNew.ToString());
-	TargetScreenRecoil += LocalSpaceRecoilNew;
-	TargetScreenRecoil.X = FMath::Clamp(TargetScreenRecoil.X, StatsFragment->GetLocalSpaceRecoilHorizontalMinValueDirect(Level), StatsFragment->GetLocalSpaceRecoilHorizontalMaxValueDirect(Level));
-	TargetScreenRecoil.Y = FMath::Clamp(TargetScreenRecoil.Y, StatsFragment->GetLocalSpaceRecoilVerticalMinValueDirect(Level), StatsFragment->GetLocalSpaceRecoilVerticalMaxValueDirect(Level));
-#endif	
 	bBreakRecovery = true;
-
 }
 
 void FArcGunRecoilInstance_Base::ComputeSpreadHeatRange(
@@ -809,79 +568,6 @@ void FArcGunRecoilInstance_Base::HandlePreProcessRotation(float Value)
 	{
 		bBreakRecovery = true;
 	}
-}
-
-namespace Arcx
-{
-	void DrawText(AHUD* HUD
-				, class UCanvas* Canvas
-				, const FString& Text
-				, float Offset)
-	{
-		Canvas->DrawText(
-			GEngine->GetMediumFont(),
-			Text,
-			100,
-			Offset,
-			1.2f,
-			1.2f
-	);
-	}
-}
-void FArcGunRecoilInstance_Base::DrawDebugHUD(AHUD* HUD
-	, class UCanvas* Canvas
-	, const class FDebugDisplayInfo& DebugDisplay
-	, float& YL
-	, float& YPos) const
-{
-	Canvas->SetDrawColor(FColor::Red);
-	
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("ScreenRecoilVertical: {0}"), { ScreenRecoil.Y }), YPos + 100);
-	
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("ScreenRecoilHorizontal: {0}"), { ScreenRecoil.X }), YPos + 120);
-	
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SpreadHeat: {0}"), { SpreadHeat }), YPos + 160);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoilHeat: {0}"), { RecoilHeat }), YPos + 180);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("CurrentSpreadAngle: {0}"), { CurrentSpreadAngle }), YPos + 200);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoveredPitch: {0}"), { RecoveredPitch }), YPos + 220);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("LastFireTime: {0}"), { LastFireTime }), YPos + 240);
-	
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RotationSpreadGainSpeed: {0}"), { RotationSpreadGainSpeed }), YPos + 260);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SpreadVelocityGainInterpolation: {0}"), { SpreadVelocityGainInterpolation }), YPos + 280);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("HeatPerShotMultiplier: {0}"), { HeatPerShotMultiplier }), YPos + 300);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SpreadHeatGainMultiplier: {0}"), { SpreadHeatGainMultiplier }), YPos + 320);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SpreadHeatRecoveryDelay: {0}"), { SpreadHeatRecoveryDelay }), YPos + 340);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("VelocitySpreadAdditive: {0}"), { VelocitySpreadAdditive }), YPos + 360);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RotationSpreadAdditive: {0}"), { RotationSpreadAdditive }), YPos + 380);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SpreadAngleMultiplier: {0}"), { SpreadAngleMultiplier }), YPos + 400);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SpreadRecoveryMultiplier: {0}"), { SpreadRecoveryMultiplier }), YPos + 420);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoilHeatRecoveryDelay: {0}"), { RecoilHeatRecoveryDelay }), YPos + 460);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoilRecoveryMultiplier: {0}"), { RecoilRecoveryMultiplier }), YPos + 480);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoilHeatGainMultiplier: {0}"), { RecoilHeatGainMultiplier }), YPos + 500);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoilPitchMultiplier: {0}"), { RecoilPitchMultiplier }), YPos + 520);
-		
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("RecoilYawMultiplier: {0}"), { RecoilYawMultiplier }), YPos + 560);
-	
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("TargetScreenRecoilVertical: {0}"), { TargetScreenRecoil.Y }), YPos + 620);
-
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("TargetScreenRecoilHorizontal: {0}"), { TargetScreenRecoil.X }), YPos + 640);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SwayY: {0}"), { TargetSway.Y }), YPos + 660);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("SwayX: {0}"), { TargetSway.X }), YPos + 680);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("CurrentHorizontalSway: {0}"), { CurrentSway.X }), YPos + 700);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("CurrentVerticalSway: {0}"), { CurrentSway.Y }), YPos + 720);
-	Arcx::DrawText(HUD, Canvas, FString::Format(TEXT("CurrentRotationLevel: {0}"), { CurrentRotationLevel }), YPos + 740);
 }
 
 FVector2D GenerateSway(
@@ -1026,102 +712,113 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 	
 	InGunState->BroadcastOnSwayChanged(CurrentSway.X, TargetSway.X, CurrentSway.Y, TargetSway.Y);
 
+	const float TickRate = 1 / WeaponStats->FramerateUpdateRate;
 	if (bIsFiring)
 	{
 		const float Level = 1;
-
-
-		/* ---- 6. Apply to player controller -------------------------------- */
-		const float FixedUpdateRate = WeaponStats->RecoilUpdateRate;
 
 		// Add the current frame's delta time to our accumulator
 		TimeAccumulator += DeltaTime;
 
 		// Process as many fixed time steps as we've accumulated
-		//while (TimeAccumulator >= FixedUpdateRate)
+		while (TimeAccumulator > TickRate)
 		{
-			/* ---- 1. Flip test -------------------------------------------------- */
-			if (FMath::FRand() < WeaponStats->GetFlipChancePerShotDirect(Level))
+
+    		/* ---- 1. Simplified Bias System ---- */
+    		// Combine flip chance and bias acceleration into one parameter
+    		float BiasStrength = WeaponStats->GetBiasStrengthDirect(Level); // New combined parameter (0.0-1.0)
+			float AbsBiasStrength = FMath::Abs(BiasStrength);
+
+			if (ShotsFired == 0) // Initialize on first shot
+			{
+
+			}
+    
+			// Flip chance based on bias strength magnitude
+			if (FMath::FRand() < AbsBiasStrength * 0.2f) // 20% of bias strength becomes flip chance
 			{
 				TargetBiasDir *= -1;
-				BiasValue     *= WeaponStats->GetFlipDampenFactorDirect(Level);   // keep part of current bias
+				BiasValue *= 0.7f; // Fixed damping factor
 			}
-			
-			/* ---- 2. March bias toward the target side ------------------------- */
+    
+			// March bias toward target direction
+			float BiasAcceleration = AbsBiasStrength * 0.1f;
 			BiasValue = FMath::Clamp(
-				BiasValue + BiasAccelPerShot * TargetBiasDir,
+				BiasValue + BiasAcceleration * TargetBiasDir,
 				-1.f, 1.f);
-			
-			/* ---- 3. Strength multiplier from curve ---------------------------- */
-			float StrengthMul = ComputeRecoilStrength(
-			RecoilHeat,
-				WeaponStats->GetPeakStrengthDirect(Level),
-				WeaponStats->GetRampUpShotsDirect(Level),
-				WeaponStats->GetGrowthRateDirect(Level),
-				WeaponStats->GetOscAmplitudeDirect(Level),
-				WeaponStats->GetOscPeriodDirect(Level),
-				WeaponStats->GetNoiseJitterDirect(Level),
-				WeaponStats->GetOscillationDownwardChanceDirect(Level)
-			);
-			
-			// jitter so patterns never look scripted
-			StrengthMul *= FMath::FRandRange(1.f - WeaponStats->GetRandomStrengthJitterDirect(Level),
-											 1.f + WeaponStats->GetRandomStrengthJitterDirect(Level));
-			
-			// global scalar + stance/movement modifiers
-			StrengthMul *= WeaponStats->GetBaseMultiplierDirect(1);
-			
-			/* ---- 4. Per-axis random kick magnitude ---------------------------- */
-			float VertKick = FMath::FRandRange(WeaponStats->GetRecoilVerticalMinDirect(Level), WeaponStats->GetRecoilVerticalMaxDirect(Level));
-			float HorzKick = FMath::FRandRange(WeaponStats->GetRecoilHorizontalMinDirect(Level), WeaponStats->GetRecoilHorizontalMaxDirect(Level));
-			
-			// first-shot special rule
-			if (ShotsFired == 0 && !FMath::IsNearlyZero(WeaponStats->GetFirstShotBonusDirect(Level)))
+    
+			// Apply the weapon's inherent directional bias
+			float WeaponBias = FMath::Clamp(BiasStrength * 0.3f, -0.3f, 0.3f); // Cap weapon bias influence
+			float FinalBiasValue = FMath::Clamp(BiasValue + WeaponBias, -1.f, 1.f);
+   
+    		
+			/* ---- 2. Simplified Strength Calculation ---- */
+			float HeatRatio = FMath::Clamp(RecoilHeat / WeaponStats->GetMaxHeatDirect(Level), 0.f, 1.f);
+			float StrengthMul = FMath::Lerp(1.0f, WeaponStats->GetMaxStrengthDirect(Level), HeatRatio);
+    
+			// Simple oscillation (optional)
+			float OscillationFrequency = WeaponStats->GetOscillationFrequencyDirect(Level);
+			if (OscillationFrequency > 0.0f)
 			{
-				VertKick += WeaponStats->GetFirstShotBonusDirect(Level);
+				// Use shot count as time base for consistent oscillation regardless of fire rate
+				float OscillationPhase = ShotsFired * OscillationFrequency;
+				float OscillationValue = FMath::Sin(OscillationPhase) * 0.2f + 1.0f; // ±20% variation around 1.0
+				StrengthMul *= OscillationValue;
 			}
-			
-			// scale both axes
+
+    
+			// Simplified jitter
+			float JitterAmount = WeaponStats->GetJitterAmountDirect(Level);
+			StrengthMul *= FMath::FRandRange(1.f - JitterAmount, 1.f + JitterAmount);
+    
+			/* ---- 3. Simplified Kick Magnitude ---- */
+			float BaseVertical = WeaponStats->GetVerticalRecoilBaseDirect(Level);
+			float BaseHorizontal = WeaponStats->GetHorizontalRecoilBaseDirect(Level);
+			float RecoilVariation = WeaponStats->GetRecoilVariationDirect(Level);
+    
+			float VertKick = BaseVertical * FMath::FRandRange(1.f - RecoilVariation, 1.f + RecoilVariation);
+			float HorzKick = BaseHorizontal * FMath::FRandRange(1.f - RecoilVariation, 1.f + RecoilVariation);
+    
+			// First shot bonus
+			if (ShotsFired == 0)
+			{
+				VertKick *= WeaponStats->GetFirstShotMultiplierDirect(Level);
+			}
+    
+			// Apply strength multiplier
 			VertKick *= StrengthMul;
 			HorzKick *= StrengthMul;
-			
-			///VertKick *= RecoilPitchMultiplier;
-			///HorzKick *= RecoilYawMultiplier;
-			
-			/* ---- 5. Decide left/right sign using bias ------------------------- */
-			float PRight = 0.5f + BiasValue * 0.5f;         // map -1..+1 → 0..1
-			float Sign   = (FMath::FRand() < PRight) ? +1.f : -1.f;
-			HorzKick    *= Sign;
-			
+    
+			/* ---- 4. Apply Final Bias for Left/Right Direction ---- */
+			// Convert bias value (-1 to 1) to probability (0 to 1)
+			float PRight = 0.5f + FinalBiasValue * 0.5f; // -1 becomes 0 (always left), +1 becomes 1 (always right)
+			float Sign = (FMath::FRand() < PRight) ? +1.f : -1.f;
+			HorzKick *= Sign;
+
+
 			// Apply a fixed portion of the recoil per update
 			// This gives us a consistent recoil rate regardless of frame rate
 			ArcPC->ControlRotationOffset.Pitch += VertKick;
 			ArcPC->ControlRotationOffset.Yaw += HorzKick;
 
-			const FVector2D LocalSpaceRecoilNew = GenerateSemiRandomSpreadPattern(
-				WeaponStats->GetLocalSpaceRecoilBaseDirect(Level)
-				, WeaponStats->GetLocalSpaceRecoilHorizontalBiasDirect(Level) // Range: -1.0 (left) to 1.0 (right)
-				, WeaponStats->GetLocalSpaceRecoilVerticalBiasDirect(Level) // Range: -1.0 (down) to 1.0 (up)
-				, WeaponStats->GetLocalSpaceRecoilHeatScaleDirect(Level) // How strongly to follow the main bias (0-1)
-				, WeaponStats->GetLocalSpaceRecoilOscillationPeriodDirect(Level) // Chance to temporarily move in opposite direction (0-1)
-				, WeaponStats->GetLocalSpaceRecoilOscillationStrengthDirect(Level) // How strong the oscillation movement is (0-1)
-				, 0//StatsFragment->GetLocalSpaceRecoilOscillationDownwardChanceDirect(Level) // How likely to oscillate downward (0-1)
-				, WeaponStats->GetLocalSpaceRecoilHorizontalTightnessDirect(Level) // Controls horizontal spread tightness (0-1)
-				, ShotsFired
+			NewStability = GenerateStabilitySpreadPattern(
+				WeaponStats->GetStabilityBaseKickDirect(Level)
+				, WeaponStats->GetMaxStabilitySpreadDirect(Level)
+				, WeaponStats->GetStabilityHorizontalBiasDirect(Level)
+				, WeaponStats->GetStabilityVerticalBiasDirect(Level)
+				, WeaponStats->GetStabilityPatternTightnessDirect(Level)
+				, WeaponStats->GetStabilityOscillationRateDirect(Level)
+				, TargetScreenRecoil
 				);
-	
-			UE_LOG(LogTemp, Log, TEXT("LocalSpaceRecoilNew %s"), *LocalSpaceRecoilNew.ToString());
-			TargetScreenRecoil += LocalSpaceRecoilNew;
-			
-			
-			// Subtract the fixed time step from our accumulator
-			TimeAccumulator -= FixedUpdateRate;
+
+			TimeAccumulator -= TickRate;
 			TimeAccumulator += 0.001;
 		}
-
-		TargetScreenRecoil.X = FMath::Clamp(TargetScreenRecoil.X, WeaponStats->GetLocalSpaceRecoilHorizontalMinValueDirect(Level), WeaponStats->GetLocalSpaceRecoilHorizontalMaxValueDirect(Level));
-		TargetScreenRecoil.Y = FMath::Clamp(TargetScreenRecoil.Y, WeaponStats->GetLocalSpaceRecoilVerticalMinValueDirect(Level), WeaponStats->GetLocalSpaceRecoilVerticalMaxValueDirect(Level));
+		//TargetScreenRecoil = NewStability;
+		//
 	}
+
+	TargetScreenRecoil = FMath::Vector2DInterpConstantTo(TargetScreenRecoil, NewStability, DeltaTime, WeaponStats->GetStabilityGainSpeedDirect(1));
 	
 	const float TimeSinceFired = InGunState->GetWorld()->TimeSince(LastFireTime);
 	if (TimeSinceFired > SpreadHeatRecoveryDelay)
@@ -1158,7 +855,7 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 		if (!bIsFiring && !bBreakRecovery)
 		{
 			const ArcGunStats* StatsFragment = InGunState->GetSelectedGun().GunItemPtr->GetItemDefinition()->GetScalableFloatFragment<ArcGunStats>();
-			ArcPC->ControlRotationOffset.Pitch = RecoveryDirection * StatsFragment->GetRecoilRecoverySpeedDirect(1);
+			ArcPC->ControlRotationOffset.Pitch = RecoveryDirection * 1.f;//StatsFragment->GetRecoilRecoverySpeedDirect(1);
 			RecoveredInputValue = SmoothRecoveredInputValue(RecoveredInputValue, 6.1f, 0.35f);
 			
 			if (StartYInputValue < 0 && ArcPC->InputValue.Y <= StartYInputValue)
@@ -1178,6 +875,6 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 	}
 	else
 	{
-		ScreenRecoil = FMath::Vector2DInterpTo(ScreenRecoil, FinaLocalSpaceRecoil, DeltaTime, ScreenRecoilInterpolationSpeed);
+		TargetScreenRecoil = FMath::Vector2DInterpConstantTo(TargetScreenRecoil, FVector2D::ZeroVector, DeltaTime, WeaponStats->GetStabilityGainSpeedDirect(1));
 	}
 }

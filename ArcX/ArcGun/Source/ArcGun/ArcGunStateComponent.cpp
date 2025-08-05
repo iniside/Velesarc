@@ -275,7 +275,7 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	{
 		const ArcGunStats* WeaponStats = SelectedGun.WeaponItemDef->GetScalableFloatFragment<ArcGunStats>();
 		
-		const float FixedUpdateRate = WeaponStats->RecoilUpdateRate;
+		//const float FixedUpdateRate = WeaponStats->RecoilUpdateRate;
 
 		// Add the current frame's delta time to our accumulator
 		TimeAccumulator += DeltaTime;
@@ -286,11 +286,11 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 			FArcGunRecoilInstance* RecoilInstance = SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>();
 			if (RecoilInstance != nullptr)
 			{
-				RecoilInstance->UpdateRecoil(FixedUpdateRate, this);
+				RecoilInstance->UpdateRecoil(DeltaTime, this);
 			}
 		
-			TimeAccumulator -= FixedUpdateRate;
-			TimeAccumulator += 0.001;
+			//TimeAccumulator -= FixedUpdateRate;
+			//TimeAccumulator += 0.001;
 		}
 
 		if (Targeting)
@@ -1054,11 +1054,6 @@ void UArcGunStateComponent::DisplayDebug(AHUD* HUD, class UCanvas* Canvas, const
 	if(GunComponent == nullptr)
 	{
 		return;
-	}
-
-	if (const FArcGunRecoilInstance* GunRecoil = GunComponent->GetGunRecoil<FArcGunRecoilInstance>())
-	{
-		GunRecoil->DrawDebugHUD(HUD, Canvas, DebugDisplay, YL, YPos);
 	}
 }
 

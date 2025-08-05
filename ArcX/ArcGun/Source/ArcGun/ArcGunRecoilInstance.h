@@ -67,7 +67,6 @@ public:
 
 	virtual FVector GetScreenORecoilffset(const FVector& Direction) const { return Direction; };
 	
-	virtual void DrawDebugHUD(AHUD* HUD, class UCanvas* Canvas, const class FDebugDisplayInfo& DebugDisplay, float& YL, float& YPos) const {};
 	virtual ~FArcGunRecoilInstance() = default;
 };
 
@@ -140,35 +139,25 @@ public:
 	int32 ShotsFired          = 0;
 	float  BiasValue          = 0.f;   // -1 … +1
 	int32  TargetBiasDir      = 0;     // -1 / +1
-	float  BiasAccelPerShot   = 0.f;
+	//float  BiasAccelPerShot   = 0.f;
 	
 	float CurrentVelocityLevel = 0;
 	float CurrentRotationLevel = 0;
 	float AccumulatedPhase = 0.0f;
 	
 	float HighestAxisRotation = 0.0f;
-	
-	float ComputeRecoilStrength(float RecoilHeat,
-							float PeakStrength   = 2.5f,     // Increased from 1.6f to allow higher maximum
-							float RampUpShots    = 12.0f,    // Increased to make ramp-up more gradual
-							float GrowthRate     = 0.08f,    // New parameter: controls how quickly recoil grows
-							float OscAmplitude   = 0.08f,    // Reduced from 0.15f for less randomness
-							float OscPeriod      = 6,        // Increased for more predictable oscillation
-							float NoiseJitter    = 0.02f,
-							float DownwardRecoilFactor = 0.0f);
+	FVector2D NewStability;
 
-	FVector2D GenerateSemiRandomSpreadPattern(
-						float BaseSpread,
-						float HorizontalBias = 0.0f,       // Range: -1.0 (left) to 1.0 (right)
-						float VerticalBias = 0.7f,         // Range: -1.0 (down) to 1.0 (up)
-						float HeatScale = 0.05, // Heat scaling factor to control spread growth (0-1)
-						float OscillationPeriod = 0.2f,     // Chance to temporarily move in opposite direction (0-1)
-						float OscillationStrength = 0.3f,   // How strong the oscillation movement is (0-1)
-						float OscillationDownwardChance = 0.4f, // Chance to allow downward recoil (0-1)
-						float HorizontalTightness = 0.7f,   // Controls horizontal spread tightness (0-1)
-						float MaxAccumulatedValue = 0.15f,  // Maximum spread to allow when accumulated
-						int32 ShotCount = 0);
-	
+	FVector2D GenerateStabilitySpreadPattern(
+							float BaseKick,
+							float MaxSpread,           // Base spread amount (0.5-2.0 typical)
+							float HorizontalBias,       // -1.0 (left) to 1.0 (right)
+							float VerticalBias,         // -1.0 (down) to 1.0 (up)
+							float PatternTightness,     // 0.0 (chaotic) to 1.0 (tight pattern)
+							float OscillationRate,      // 0.0 to 2.0 - how often pattern changes)
+							FVector2D& CurrentOffset
+
+	);
     // Reduced from 0.05f for less randomness
 	/**
 	 * @brief The speed at which the rotation spread is gained or recovered.
@@ -277,8 +266,6 @@ public:
 		, float NewHeat) const;
 
 	virtual void HandlePreProcessRotation(float Value) override;
-
-	virtual void DrawDebugHUD(AHUD* HUD, class UCanvas* Canvas, const class FDebugDisplayInfo& DebugDisplay, float& YL, float& YPos) const override;
 	
 protected:
 	//These functions are for accessing recoil parameters.
