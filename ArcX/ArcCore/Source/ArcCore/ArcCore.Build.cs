@@ -93,6 +93,7 @@ public class ArcCore : ModuleRules
 				, "GameplayStateTreeModule"
 				, "OnlineServicesInterface"
 				, "Chooser"
+				, "HierarchyTableAnimationRuntime"
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -128,7 +129,7 @@ public class ArcCore : ModuleRules
 			new string[]
 			{
 				"MassEntity", "AIModule", "MassCommon", "StateTreeModule", "SmartObjectsModule",
-				"GameplayInteractionsModule", "MassActors", "MassSpawner", "MassLOD", "MassRepresentation"
+				"GameplayInteractionsModule", "MassActors", "MassSpawner", "MassLOD", "MassRepresentation", "InstancedActors"
 			});
 
 		PublicDependencyModuleNames.AddRange(
