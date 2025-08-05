@@ -70,7 +70,11 @@ void UArcAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMod
 		(*Handler)(Data);
 	}
 
-	ArcASC->ForceReplication();
+	if (ArcASC.IsValid() && ArcASC->GetOwner())
+	{
+		ArcASC->ForceReplication();	
+	}
+	
 }
 
 void UArcAttributeSet::OnAttributeAggregatorCreated(const FGameplayAttribute& Attribute
