@@ -178,6 +178,11 @@ const FArcItemData* UArcItemsStoreComponent::GetItemByDefinition(const UArcItemD
 	return ItemsArray(InItemType);
 }
 
+const FArcItemData* UArcItemsStoreComponent::GetItemByDefinition(const FPrimaryAssetId& InItemDefinitionId)
+{
+	return ItemsArray(InItemDefinitionId);
+}
+
 // Sets default values for this component's properties
 UArcItemsStoreComponent::UArcItemsStoreComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -465,7 +470,7 @@ void UArcItemsStoreComponent::DestroyItem(const FArcItemId& ItemId)
 	
 	ItemsArray.RemoveItem(ItemId);
 
-	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ItemsArray, this);
+	//MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ItemsArray, this);
 }
 
 const FArcItemData* UArcItemsStoreComponent::GetItemPtr(const FArcItemId& Handle) const
@@ -563,9 +568,9 @@ void UArcItemsStoreComponent::MarkItemDirtyById(const FArcItemId& InItemId)
 
 	ItemsArray.MarkItemDirtyHandle(InItemId);
 
-	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass
-    			, ItemsArray
-    			, this);
+	//MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass
+    //			, ItemsArray
+    //			, this);
 	
 	GetOwner()->ForceNetUpdate();
 }
@@ -656,9 +661,9 @@ FArcItemId UArcItemsStoreComponent::InternalAttachToItemNew(const FArcItemId& Ow
 	
 	MarkItemDirtyById(AttachmentId);
 
-	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass
-			, ItemsArray
-			, this);
+	//MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass
+	//		, ItemsArray
+	//		, this);
 
 	return AttachmentId;
 }

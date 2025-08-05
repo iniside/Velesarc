@@ -119,7 +119,7 @@ public:
 	}
 	
 	const FArcItemData* GetItemByDefinition(const UArcItemDefinition* InItemType);
-
+	const FArcItemData* GetItemByDefinition(const FPrimaryAssetId& InItemDefinitionId);
 public:
 	// Sets default values for this component's properties
 	UArcItemsStoreComponent(const FObjectInitializer& ObjectInitializer);
