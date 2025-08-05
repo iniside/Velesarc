@@ -32,18 +32,38 @@ void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* In
 	Instance->ArcASC = Instance->ItemsStore->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	Instance->Item = InItem;
 	Instance->SlotId = InSlotId;
-	
-	UpdatePendingAbility(InItem);
 
-	if (Instance->ArcASC != nullptr && Instance->PendingAbilities.Num() > 0 && Instance->PendingAbilitiesHandle.IsValid() == false)
-	{
-		Instance->PendingAbilitiesHandle = Instance->ArcASC->AddOnAbilityGiven(FArcGenericAbilitySpecDelegate::FDelegate::CreateRaw(
-			this, &FArcItemFragment_GrantedAbilities::HandleOnAbilityGiven, InItem
-		));
-	}
-	
 	if (Instance->ArcASC->GetOwnerRole() < ENetRole::ROLE_Authority)
 	{
+		for (const FGameplayAbilitySpecHandle& Handle : Instance->GrantedAbilities)
+		{
+			FGameplayAbilitySpec* Spec = Instance->ArcASC->FindAbilitySpecFromHandle(Handle);
+			if (Spec == nullptr)
+			{
+				Instance->PendingAbilities.AddUnique(Handle);
+				continue;
+			}
+			
+			UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+
+			if (ArcAbility == nullptr)
+			{
+				Instance->PendingAbilities.AddUnique(Handle);
+				continue;
+			}
+
+			ArcAbility->OnAddedToItemSlot(Instance->ArcASC->AbilityActorInfo.Get(), Spec, Instance->SlotId, Instance->Item);
+		}
+		
+		UpdatePendingAbility(InItem);
+		
+		if (Instance->ArcASC != nullptr && (Instance->PendingAbilities.Num() > 0 || Instance->GrantedAbilities.Num() > 0) && Instance->PendingAbilitiesHandle.IsValid() == false)
+		{
+			Instance->PendingAbilitiesHandle = Instance->ArcASC->AddOnAbilityGiven(FArcGenericAbilitySpecDelegate::FDelegate::CreateRaw(
+				this, &FArcItemFragment_GrantedAbilities::HandleOnAbilityGiven, InItem
+			));
+		}
+
 		return;
 	}
 	
@@ -66,10 +86,6 @@ void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* In
 			{
 				AbilitySpec.GetDynamicSpecSourceTags().AddTag(Ability.InputTag);
 			}
-			//else if (SlotInstance && SlotInstance->InputTag.IsValid())
-			//{
-			//	AbilitySpec.DynamicAbilityTags.AddTag(SlotInstance->InputTag);
-			//}
 		}
 
 		FGameplayAbilitySpecHandle NewHandle = Instance->ArcASC->GiveAbility(AbilitySpec);
@@ -92,7 +108,13 @@ void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* In
 
 		ArcAbility->OnAddedToItemSlot(Instance->ArcASC->AbilityActorInfo.Get(), Spec, Instance->SlotId, Instance->Item);
 	}
-	
+
+	if (Instance->ArcASC != nullptr && (Instance->PendingAbilities.Num() > 0 || Instance->GrantedAbilities.Num() > 0) && Instance->PendingAbilitiesHandle.IsValid() == false)
+	{
+		Instance->PendingAbilitiesHandle = Instance->ArcASC->AddOnAbilityGiven(FArcGenericAbilitySpecDelegate::FDelegate::CreateRaw(
+			this, &FArcItemFragment_GrantedAbilities::HandleOnAbilityGiven, InItem
+		));
+	}
 }
 
 void FArcItemFragment_GrantedAbilities::OnItemRemovedFromSlot(const FArcItemData* InItem
@@ -128,6 +150,8 @@ void FArcItemFragment_GrantedAbilities::UpdatePendingAbility(const FArcItemData*
 	FArcItemInstance_GrantedAbilities* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
 
 	TArray<FGameplayAbilitySpecHandle> Copy = Instance->PendingAbilities;
+	Copy.Append(Instance->GrantedAbilities);
+	
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : Copy)
 	{
 		FGameplayAbilitySpec* Spec = Instance->ArcASC->FindAbilitySpecFromHandle(AbilityHandle);
