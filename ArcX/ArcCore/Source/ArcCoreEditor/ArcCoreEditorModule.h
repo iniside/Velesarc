@@ -40,7 +40,7 @@ DECLARE_DELEGATE_RetVal_OneParam(TSharedPtr<FExtender>
 
 class FArcCoreEditorModule : public IModuleInterface
 {
-	friend class FArcAssetEditor_ItemData;
+	friend class FArcAssetEditor_ItemDefinition;
 
 private:
 	TSharedPtr<FExtender> MenuExtender;

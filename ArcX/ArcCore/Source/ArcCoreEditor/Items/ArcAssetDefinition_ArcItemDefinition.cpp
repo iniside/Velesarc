@@ -20,7 +20,7 @@
  */
 
 #include "ArcAssetDefinition_ArcItemDefinition.h"
-#include "ArcAssetEditor_ItemData.h"
+#include "ArcAssetEditor_ItemDefinition.h"
 #include "ArcItemDefinitionFactory.h"
 #include "ArcStaticItemHelpers.h"
 #include "ClassViewerFilter.h"
@@ -270,6 +270,11 @@ FText UArcAssetDefinition_ArcItemDefinition::GetAssetDisplayName(const FAssetDat
 	}
 
 	return FText::GetEmpty();
+}
+
+EAssetCommandResult UArcAssetDefinition_ArcItemDefinition::OpenAssets(const FAssetOpenArgs& OpenArgs) const
+{
+	return Super::OpenAssets(OpenArgs);
 }
 
 EAssetCommandResult UArcAssetDefinition_ArcItemDefinition::PerformAssetDiff(const FAssetDiffArgs& DiffArgs) const

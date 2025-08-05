@@ -19,7 +19,7 @@
  * and limitations under the License.
  */
 
-#include "ArcAssetEditor_ItemData.h"
+#include "ArcAssetEditor_ItemDefinition.h"
 #include "ArcCoreEditor/ArcCoreEditorModule.h"
 #include "Editor.h"
 #include "EditorStyleSet.h"
@@ -41,16 +41,16 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Subsystems/ImportSubsystem.h"
 
-const FName FArcAssetEditor_ItemData::ToolkitFName(TEXT("FNxEAssetEditor_ItemData_2"));
+const FName FArcAssetEditor_ItemDefinition::ToolkitFName(TEXT("FNxEAssetEditor_ItemData_2"));
 
-TSharedRef<FArcAssetEditor_ItemData> FArcAssetEditor_ItemData::CreateItemEditor(const EToolkitMode::Type Mode
+TSharedRef<FArcAssetEditor_ItemDefinition> FArcAssetEditor_ItemDefinition::CreateItemEditor(const EToolkitMode::Type Mode
 																				, const TSharedPtr<IToolkitHost>&
 																				InitToolkitHost
 																				, UObject* ObjectToEdit
 																				, FGetDetailsViewObjects
 																				GetDetailsViewObjects)
 {
-	TSharedRef<FArcAssetEditor_ItemData> NewEditor(new FArcAssetEditor_ItemData());
+	TSharedRef<FArcAssetEditor_ItemDefinition> NewEditor(new FArcAssetEditor_ItemDefinition());
 
 	TArray<UObject*> ObjectsToEdit;
 	ObjectsToEdit.Add(ObjectToEdit);
@@ -62,14 +62,14 @@ TSharedRef<FArcAssetEditor_ItemData> FArcAssetEditor_ItemData::CreateItemEditor(
 	return NewEditor;
 }
 
-TSharedRef<FArcAssetEditor_ItemData> FArcAssetEditor_ItemData::CreateItemEditor(const EToolkitMode::Type Mode
+TSharedRef<FArcAssetEditor_ItemDefinition> FArcAssetEditor_ItemDefinition::CreateItemEditor(const EToolkitMode::Type Mode
 																				, const TSharedPtr<IToolkitHost>&
 																				InitToolkitHost
 																				, const TArray<UObject*>& ObjectsToEdit
 																				, FGetDetailsViewObjects
 																				GetDetailsViewObjects)
 {
-	TSharedRef<FArcAssetEditor_ItemData> NewEditor(new FArcAssetEditor_ItemData());
+	TSharedRef<FArcAssetEditor_ItemDefinition> NewEditor(new FArcAssetEditor_ItemDefinition());
 	NewEditor->InitEditor(Mode
 		, InitToolkitHost
 		, ObjectsToEdit

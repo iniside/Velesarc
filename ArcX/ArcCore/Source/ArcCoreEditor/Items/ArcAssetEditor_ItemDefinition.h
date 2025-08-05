@@ -30,7 +30,7 @@
 class IDetailsView;
 class SDockableTab;
 
-class ARCCOREEDITOR_API FArcAssetEditor_ItemData : public FSimpleAssetEditor
+class ARCCOREEDITOR_API FArcAssetEditor_ItemDefinition : public FSimpleAssetEditor
 {
 public:
 	/** Delegate that, given an array of assets, returns an array of objects to use in the
@@ -42,13 +42,13 @@ public:
 	/** The name given to all instances of this type of editor */
 	static const FName ToolkitFName;
 
-	static TSharedRef<FArcAssetEditor_ItemData> CreateItemEditor(const EToolkitMode::Type Mode
+	static TSharedRef<FArcAssetEditor_ItemDefinition> CreateItemEditor(const EToolkitMode::Type Mode
 																 , const TSharedPtr<IToolkitHost>& InitToolkitHost
 																 , UObject* ObjectToEdit
 																 , FGetDetailsViewObjects GetDetailsViewObjects =
 																		 FGetDetailsViewObjects());
 
-	static TSharedRef<FArcAssetEditor_ItemData> CreateItemEditor(const EToolkitMode::Type Mode
+	static TSharedRef<FArcAssetEditor_ItemDefinition> CreateItemEditor(const EToolkitMode::Type Mode
 																 , const TSharedPtr<IToolkitHost>& InitToolkitHost
 																 , const TArray<UObject*>& ObjectsToEdit
 																 , FGetDetailsViewObjects GetDetailsViewObjects =
