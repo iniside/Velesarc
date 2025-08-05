@@ -202,6 +202,14 @@ UArcQuickBarComponent::UArcQuickBarComponent()
 	// ...
 }
 
+void UArcQuickBarComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	
+	DOREPLIFETIME_CONDITION(UArcQuickBarComponent, ReplicatedSelectedSlots, COND_OwnerOnly);
+}
+
 #if WITH_EDITOR
 EDataValidationResult UArcQuickBarComponent::IsDataValid(FDataValidationContext& Context) const
 {

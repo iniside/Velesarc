@@ -42,6 +42,11 @@ void FArcQuickSlotHandler_AttachToSocket::OnSlotSelected(UArcCoreAbilitySystemCo
 		return;
 	}
 
+	if (!PS->GetPawn())
+	{
+		return;
+	}
+	
 	if (PS->GetPawn()->GetLocalRole() < ENetRole::ROLE_AutonomousProxy)
 	{
 		return;
@@ -70,6 +75,11 @@ void FArcQuickSlotHandler_AttachToSocket::OnSlotDeselected(UArcCoreAbilitySystem
 		return;
 	}
 
+	if (!PS->GetPawn())
+	{
+		return;
+	}
+	
 	if (PS->GetPawn()->GetLocalRole() < ENetRole::ROLE_AutonomousProxy)
 	{
 		return;

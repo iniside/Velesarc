@@ -312,7 +312,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core")
 	TArray<FArcQuickBar> QuickBars;
 
-	UPROPERTY()
+	UPROPERTY(Replicated)
 	FArcSelectedQuickBarSlotList ReplicatedSelectedSlots;
 	
 	/**
@@ -395,6 +395,8 @@ public:
 	// Sets default values for this component's properties
 	UArcQuickBarComponent();
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
 #endif
