@@ -24,3 +24,4 @@ List of pull requests which are required to compile plugins. List is ever changi
 
 * https://github.com/EpicGames/UnrealEngine/pull/12987 - Adds FInstanceStruct to FGameplayAbilitySpec
 * https://github.com/EpicGames/UnrealEngine/pull/13603 - Exports some GameplayCamera structs and classes.
+* https://github.com/EpicGames/UnrealEngine/pull/13653 - Allow to change ISM mesh representation, when using Instanced Actors, when LOD in MassRepresentation did not changed.
