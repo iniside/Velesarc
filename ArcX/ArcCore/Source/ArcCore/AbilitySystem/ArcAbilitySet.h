@@ -52,13 +52,15 @@ public:
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UGameplayAbility> Ability = nullptr;
 
+	UPROPERTY(EditDefaultsOnly)
+	bool bAutoActivate = false;
+	
 	// Level of ability to grant.
 	UPROPERTY(EditDefaultsOnly)
 	int32 AbilityLevel = 1;
 
 	// Tag used to process input for the ability.
-	UPROPERTY(EditDefaultsOnly
-		, Meta = (Categories = "InputTag"))
+	UPROPERTY(EditDefaultsOnly, Meta = (Categories = "InputTag"))
 	FGameplayTag InputTag;
 };
 
@@ -97,9 +99,7 @@ public:
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UAttributeSet> AttributeSet;
 
-	UPROPERTY(EditDefaultsOnly
-		, Category = "Arc Core"
-		, meta = (RequiredAssetDataTags = "RowStructure=/Script/GameplayAbilities.AttributeMetaData"))
+	UPROPERTY(EditDefaultsOnly, Category = "Arc Core", meta = (RequiredAssetDataTags = "RowStructure=/Script/GameplayAbilities.AttributeMetaData"))
 	TObjectPtr<UDataTable> AttributeMetaData;
 
 	FArcAbilitySet_AttributeSet()

@@ -107,7 +107,7 @@ void UArcAbilitySet::GiveToAbilitySystem(UArcCoreAbilitySystemComponent* ArcASC
 	{
 		const FArcAbilitySet_AttributeSet& SetToGrant = GrantedAttributes[SetIndex];
 
-		if (!IsValid(SetToGrant.AttributeSet))
+		if (!SetToGrant.AttributeSet)
 		{
 			UE_LOG(LogArcAbilitySet
 				, Error
@@ -134,7 +134,7 @@ void UArcAbilitySet::GiveToAbilitySystem(UArcCoreAbilitySystemComponent* ArcASC
 	{
 		const FArcAbilitySet_GameplayAbility& AbilityToGrant = GrantedGameplayAbilities[AbilityIndex];
 
-		if (!IsValid(AbilityToGrant.Ability))
+		if (!AbilityToGrant.Ability)
 		{
 			UE_LOG(LogArcAbilitySet
 				, Error
@@ -153,6 +153,11 @@ void UArcAbilitySet::GiveToAbilitySystem(UArcCoreAbilitySystemComponent* ArcASC
 
 		const FGameplayAbilitySpecHandle AbilitySpecHandle = ArcASC->GiveAbility(AbilitySpec);
 
+		if (AbilityToGrant.bAutoActivate)
+		{
+			ArcASC->TryActivateAbility(AbilitySpecHandle);
+		}
+		
 		if (OutGrantedHandles)
 		{
 			OutGrantedHandles->AddAbilitySpecHandle(AbilitySpecHandle);
@@ -164,7 +169,7 @@ void UArcAbilitySet::GiveToAbilitySystem(UArcCoreAbilitySystemComponent* ArcASC
 	{
 		const FArcAbilitySet_GameplayEffect& EffectToGrant = GrantedGameplayEffects[EffectIndex];
 
-		if (!IsValid(EffectToGrant.GameplayEffect))
+		if (!EffectToGrant.GameplayEffect)
 		{
 			UE_LOG(LogArcAbilitySet
 				, Error
