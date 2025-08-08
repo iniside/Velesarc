@@ -271,7 +271,7 @@ FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem, const FA
 			return FArcItemId::InvalidId;
 		}
 
-		if (StackMethod->CanStack())
+		if (StackMethod->CanStack(this, InItem))
 		{
 			uint16 NewStacks = 0;
 			uint16 RemainingStacks = 0;
@@ -280,7 +280,7 @@ FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem, const FA
 			if (ExistingItem != nullptr)
 			{
 				ExistingItem->SetStacks(NewStacks);
-				MarkItemDirtyById(ExistingItem->GetItemId());
+				MarkItemDirtyById(ExistingItem->GetItemId());	
 			}
 
 			if (RemainingStacks == 0)

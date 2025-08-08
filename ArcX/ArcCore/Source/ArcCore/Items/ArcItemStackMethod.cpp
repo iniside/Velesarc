@@ -35,7 +35,7 @@ FArcItemId FArcItemStackMethod_CanNotStack::StackCheck(UArcItemsStoreComponent* 
 	return FArcItemId::InvalidId;
 }
 
-bool FArcItemStackMethod_CanNotStack::CanStack() const
+bool FArcItemStackMethod_CanNotStack::CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
 {
 	return false;
 }
@@ -51,7 +51,7 @@ FArcItemId FArcItemStackMethod_CanNotStackUnique::StackCheck(UArcItemsStoreCompo
 	return FArcItemId::InvalidId;
 }
 
-bool FArcItemStackMethod_CanNotStackUnique::CanStack() const
+bool FArcItemStackMethod_CanNotStackUnique::CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
 {
 	return false;
 }
@@ -88,7 +88,7 @@ FArcItemId FArcItemStackMethod_StackByType::StackCheck(UArcItemsStoreComponent* 
 		}
 		else
 		{
-			OutNewStacks = InSpec.Amount;
+			OutNewStacks = NewStacks;
 			OutRemainingStacks = 0;
 		}
 		return ItemData->GetItemId();
@@ -97,20 +97,20 @@ FArcItemId FArcItemStackMethod_StackByType::StackCheck(UArcItemsStoreComponent* 
 	return FArcItemId::InvalidId;
 }
 
-bool FArcItemStackMethod_StackByType::CanStack() const
+bool FArcItemStackMethod_StackByType::CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
 {
+	const FArcItemData* ItemData = Owner->GetItemByDefinition(InSpec.GetItemDefinition());
+	if (ItemData)
+	{
+		return true;
+	}
+
 	return false;
 }
 
 bool FArcItemStackMethod_StackByType::CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
 {
 	if (!Owner)
-	{
-		return false;
-	}
-
-	const FArcItemData* ItemData = Owner->GetItemByDefinition(InSpec.GetItemDefinition());
-	if (ItemData)
 	{
 		return false;
 	}

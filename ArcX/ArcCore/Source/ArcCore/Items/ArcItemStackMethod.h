@@ -49,7 +49,7 @@ public:
 	virtual FArcItemId StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const { return FArcItemId::InvalidId; }
 
 	/** Override to indicate if item can stack at all. */
-	virtual bool CanStack() const { return true; };
+	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const { return true; };
 
 	/** * @brief 
 	 * @param Owner Where item will be added
@@ -76,7 +76,7 @@ public:
 	 */
 	virtual FArcItemId StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const override;
 
-	virtual bool CanStack() const override;
+	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
@@ -99,7 +99,7 @@ public:
 	 */
 	virtual FArcItemId StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const override;
 
-	virtual bool CanStack() const override;
+	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
@@ -125,7 +125,7 @@ public:
 	 */
 	virtual FArcItemId StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const override;
 
-	virtual bool CanStack() const override;
+	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
