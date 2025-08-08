@@ -254,6 +254,9 @@ void FArcDebuggerItems::Draw()
 							ImGui::Text("OwnerId: "); ImGui::SameLine();
 							ImGui::Text(TCHAR_TO_ANSI(*ItemData->GetOwnerId().ToString()));
 
+							ImGui::Text("Stacks: "); ImGui::SameLine();
+							ImGui::Text("%d", ItemData->GetStacks());
+							
 							ImGui::Text("Slot: "); ImGui::SameLine();
 							ImGui::Text(TCHAR_TO_ANSI(*ItemData->GetSlotId().ToString()));
 

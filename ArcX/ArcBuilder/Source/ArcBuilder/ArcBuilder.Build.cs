@@ -1,44 +1,47 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+using System.IO;
 using UnrealBuildTool;
 
-public class ArcGameplayDebugger : ModuleRules
+public class ArcBuilder : ModuleRules
 {
-	public ArcGameplayDebugger(ReadOnlyTargetRules Target) : base(Target)
+	public ArcBuilder(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		SetupIrisSupport(Target);
-		PublicIncludePaths.AddRange(
-			new string[] {
-				// ... add public include paths required here ...
-			}
-			);
-				
 		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				// ... add other private include paths required here ...
+		PublicIncludePaths.AddRange(
+			new string[]
+			{
+				// ... add public include paths required here ...
+				Path.GetFullPath(Path.Combine(PluginDirectory, "Source/ArcBuilder"))
 			}
-			);
-			
+		);
+		PublicSystemIncludePaths.AddRange(
+			new string[]
+			{
+				Path.GetFullPath(Path.Combine(PluginDirectory, "Source/ArcBuilder"))
+			}
+		);
+
+		PrivateIncludePaths.AddRange(
+			new string[]
+			{
+				// ... add other private include paths required here ...
+				Path.GetFullPath(Path.Combine(PluginDirectory, "Source/ArcBuilder"))
+			}
+		);
 		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
 				"Core",
-				"SlateIM",
-				"ArcCore",
-				"ArcGun",
-				"ArcCraft",
+				"CoreUObject",
 				"GameplayTags",
-				"GameplayAbilities",
-				"ImGui",
-				"InputCore",
-				"EnhancedInput",
 				"TargetingSystem",
-				"UMG",
-				"ArcBuilder"
-				
+				"MassActors",
+				"MassSpawner",
+				"MassRepresentation",
+				"ArcCore",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -48,40 +51,13 @@ public class ArcGameplayDebugger : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
-				"InputCore",
-				"Iris",
-				//"IrisCore",
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"SlateIM",
-				"ArcCore",
-				"ArcGun"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
-
-		if (Target.Type == TargetRules.TargetType.Editor)
-		{
-			PublicDependencyModuleNames.AddRange(
-				new string[]
-				{
-					"LevelEditor",
-					"UnrealEd"
-					// ... add other public dependencies that you statically link with here ...
-				}
-			);
-			
 		
-			PrivateDependencyModuleNames.AddRange(
-				new string[]
-				{
-					"LevelEditor",
-					"UnrealEd"
-					// ... add private dependencies that you statically link with here ...	
-				}
-			);
-		}
 		
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]

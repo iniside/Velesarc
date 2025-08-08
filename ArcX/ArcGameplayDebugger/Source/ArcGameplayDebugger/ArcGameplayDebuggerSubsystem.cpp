@@ -335,6 +335,25 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					}
 					ImGui::EndMenu();
 				}
+
+				if (ImGui::BeginMenu("Building"))
+				{
+					if (ImGui::MenuItem("Builder"))
+					{
+						if (BuilderDebugger.bShow == false)
+						{
+							BuilderDebugger.bShow = true;
+							BuilderDebugger.Initialize();
+						}
+						else
+						{
+							BuilderDebugger.bShow = false;
+							BuilderDebugger.Uninitialize();
+						}
+					}
+					ImGui::EndMenu();
+				}
+				
 				ImGui::EndMainMenuBar();
 
 				if (DebuggerItems.bShow)
@@ -385,7 +404,10 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
                 {
                 	CraftingDebugger.Draw();
                 }
-				
+				if (BuilderDebugger.bShow)
+				{
+					BuilderDebugger.Draw();
+				}
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();
