@@ -94,6 +94,9 @@ public class ArcCore : ModuleRules
 				, "OnlineServicesInterface"
 				, "Chooser"
 				, "HierarchyTableAnimationRuntime"
+				, "InteractableInterface"
+				, "AsyncMessageSystem"
+				, "ModelViewViewModel"
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -110,7 +113,7 @@ public class ArcCore : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"NetCore",
+				"NetCore"
 			});
 		
 		PublicDependencyModuleNames.AddRange(
