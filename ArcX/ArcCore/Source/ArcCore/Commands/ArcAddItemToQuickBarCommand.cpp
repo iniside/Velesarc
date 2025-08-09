@@ -91,7 +91,7 @@ bool FArcAddItemToQuickBarCommand::Execute()
 	bool bIsTaken = QuickBarComponent->IsItemOnQuickSlot(QuickBar, QuickSlot);
 
 	FArcItemId ExistingItemId = QuickBarComponent->GetItemId(QuickBar, QuickSlot);
-	if (bIsTaken && ExistingItemId.IsValid())
+	if (bIsTaken && ExistingItemId.IsValid() && ExistingQuickBarSlot.Key.IsValid() && ExistingQuickBarSlot.Value.IsValid())
 	{
 		QuickBarComponent->RemoveQuickSlot(QuickBar, QuickSlot);
 		//  We need to swap items.
