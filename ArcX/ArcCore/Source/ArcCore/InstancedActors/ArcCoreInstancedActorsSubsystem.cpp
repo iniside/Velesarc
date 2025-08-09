@@ -64,6 +64,29 @@ void UArcCoreInstancedActorsData::ApplyInstanceDelta(FMassEntityManager& EntityM
 	}
 }
 
+void UArcCoreInstancedActorsData::SwitchInstanceVisualizationWithContext(FMassExecutionContext& Context
+	, FInstancedActorsInstanceIndex InstanceToSwitch, uint8 NewVisualizationIndex)
+{
+	if (!ensure(InstanceVisualizations.IsValidIndex(NewVisualizationIndex)) || !ensure(Entities.IsValidIndex(InstanceToSwitch.GetIndex())))
+	{
+		return;
+	}
+
+	FMassEntityManager& MassEntityManager = GetMassEntityManagerChecked();
+	const FMassEntityHandle& EntityHandle = Entities[InstanceToSwitch.GetIndex()];
+	if (!ensure(MassEntityManager.IsEntityValid(EntityHandle)))
+	{
+		return;
+	}
+
+	const FInstancedActorsVisualizationInfo& NewVisualization = InstanceVisualizations[NewVisualizationIndex];
+
+	FInstancedActorsMeshSwitchFragment MeshSwitchFragment;
+	MeshSwitchFragment.NewStaticMeshDescHandle = NewVisualization.MassStaticMeshDescHandle;
+
+	Context.Defer().PushCommand<FMassCommandAddFragmentInstances>(EntityHandle, MeshSwitchFragment);
+}
+
 UArcCoreInstancedActorsSubsystem::UArcCoreInstancedActorsSubsystem()
 {
 	InstancedActorsManagerClass = AArcCoreInstancedActorsManager::StaticClass();

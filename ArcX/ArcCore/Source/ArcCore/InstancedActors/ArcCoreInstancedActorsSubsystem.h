@@ -41,6 +41,7 @@ class ARCCORE_API UArcCoreInstancedActorsData : public UInstancedActorsData
 
 public:
 	virtual void ApplyInstanceDelta(FMassEntityManager& EntityManager, const FInstancedActorsDelta& InstanceDelta, TArray<FInstancedActorsInstanceIndex>& OutEntitiesToRemove) override;
+	void SwitchInstanceVisualizationWithContext(FMassExecutionContext& Context, FInstancedActorsInstanceIndex InstanceToSwitch, uint8 NewVisualizationIndex);
 };
 
 UCLASS()
