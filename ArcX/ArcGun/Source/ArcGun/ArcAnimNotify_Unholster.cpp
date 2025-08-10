@@ -39,7 +39,7 @@ void UArcAnimNotify_Unholster::Notify(USkeletalMeshComponent* MeshComp, UAnimSeq
 	UArcGunStateComponent* ArcWC = UArcGunStateComponent::FindGunStateComponent(MeshComp->GetOwner());
 	if (ArcWC == nullptr)
 	{
-		ACharacter* C = Cast<ACharacter>(MeshComp->GetOwner());
+		APawn* C = Cast<APawn>(MeshComp->GetOwner());
 		if (C)
 		{
 			ArcWC = UArcGunStateComponent::FindGunStateComponent(C->GetPlayerState());

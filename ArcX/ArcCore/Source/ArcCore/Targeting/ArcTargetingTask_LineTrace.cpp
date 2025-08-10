@@ -59,6 +59,10 @@ void UArcTargetingTask_LineTrace::Execute(const FTargetingRequestHandle& Targeti
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(Ctx->SourceActor);
 	Params.bTraceComplex = true;
+	if (AActor* Source = Cast<AActor>(Ctx->SourceObject))
+	{
+		Params.AddIgnoredActor(Source);
+	}
 	
 	Ctx->InstigatorActor->GetWorld()->LineTraceSingleByChannel(HitResult, EyeLocation, EndLocation, ECC_Visibility, Params);
 	

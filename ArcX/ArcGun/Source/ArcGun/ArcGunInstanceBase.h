@@ -134,7 +134,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	FGameplayTag AimTag;
 
-	TWeakObjectPtr<ACharacter> Character;
+	TWeakObjectPtr<APawn> Character;
 	
 public:
 	virtual void Initialize(UArcGunStateComponent* InComponent);

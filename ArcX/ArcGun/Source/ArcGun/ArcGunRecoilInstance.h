@@ -74,7 +74,7 @@ struct FArcItemFragment_GunStats;
 
 class AArcCorePlayerController;
 class UArcCoreAbilitySystemComponent;
-class ACharacter;
+class APawn;
 class AArcPlayerCameraManager;
 class UCameraComponent;
 class UCurveFloat;
@@ -102,7 +102,7 @@ protected:
 	TObjectPtr<UArcCoreAbilitySystemComponent> ArcASC = nullptr;
 
 	UPROPERTY()
-	TObjectPtr<ACharacter> CharacterOwner = nullptr;
+	TObjectPtr<APawn> CharacterOwner = nullptr;
 
 	FVector StartCameraLocation = FVector::ZeroVector;
 	FVector EndCameraLocation = FVector::ZeroVector;

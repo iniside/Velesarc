@@ -53,11 +53,11 @@ void FArcGunInstanceBase::Initialize(UArcGunStateComponent* InComponent)
 {
 	if (Character == nullptr)
 	{
-		Character = InComponent->GetOwner<ACharacter>();
+		Character = InComponent->GetOwner<APawn>();
 		if (Character == nullptr)
 		{
 			APlayerState* PS = InComponent->GetOwner<APlayerState>();
-			Character = PS->GetPawn<ACharacter>();
+			Character = PS->GetPawn<APawn>();
 		}
 	}
 }

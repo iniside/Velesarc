@@ -33,7 +33,7 @@ void UArcAnimNotify_ComboEvent::Notify(USkeletalMeshComponent* MeshComp
 									   , UAnimSequenceBase* Animation
 									   , const FAnimNotifyEventReference& EventReference)
 {
-	if (ACharacter* C = Cast<ACharacter>(MeshComp->GetOwner()))
+	if (APawn* C = Cast<APawn>(MeshComp->GetOwner()))
 	{
 		if (APlayerState* PS = C->GetPlayerState())
 		{
@@ -60,7 +60,7 @@ void UArcAnimNotify_ComboWindowStart::Notify(USkeletalMeshComponent* MeshComp
 											 , UAnimSequenceBase* Animation
 											 , const FAnimNotifyEventReference& EventReference)
 {
-	if (ACharacter* C = Cast<ACharacter>(MeshComp->GetOwner()))
+	if (APawn* C = Cast<APawn>(MeshComp->GetOwner()))
 	{
 		if (APlayerState* PS = C->GetPlayerState())
 		{
@@ -78,7 +78,7 @@ void UArcAnimNotify_ComboWindowEnd::Notify(USkeletalMeshComponent* MeshComp
 										   , UAnimSequenceBase* Animation
 										   , const FAnimNotifyEventReference& EventReference)
 {
-	if (ACharacter* C = Cast<ACharacter>(MeshComp->GetOwner()))
+	if (APawn* C = Cast<APawn>(MeshComp->GetOwner()))
 	{
 		if (APlayerState* PS = C->GetPlayerState())
 		{

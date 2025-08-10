@@ -247,16 +247,16 @@ void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 {
 	if (InGunState->GetPlayerController())
 	{
-		CharacterOwner = InGunState->GetPlayerController()->GetPawn<ACharacter>();	
+		CharacterOwner = InGunState->GetPlayerController()->GetPawn<APawn>();	
 	}
 	
 	if (CharacterOwner == nullptr)
 	{
-		CharacterOwner = InGunState->GetOwner<ACharacter>();
+		CharacterOwner = InGunState->GetOwner<APawn>();
 		if (CharacterOwner == nullptr)
 		{
 			APlayerState* PS = InGunState->GetOwner<APlayerState>();
-			CharacterOwner = PS->GetPawn<ACharacter>();
+			CharacterOwner = PS->GetPawn<APawn>();
 		}
 	}
 	
@@ -637,11 +637,11 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 	{
 		if (CharacterOwner == nullptr)
 		{
-			CharacterOwner = InGunState->GetOwner<ACharacter>();
+			CharacterOwner = InGunState->GetOwner<APawn>();
 			if (CharacterOwner == nullptr)
 			{
 				APlayerState* PS = InGunState->GetOwner<APlayerState>();
-				CharacterOwner = PS->GetPawn<ACharacter>();
+				CharacterOwner = PS->GetPawn<APawn>();
 			}
 		}
 

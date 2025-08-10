@@ -61,7 +61,7 @@ namespace UE::Cameras
 
 			FVector OwnerLocation = Pawn->GetActorLocation();
 			
-			if (const ACharacter* TargetCharacter = Cast<ACharacter>(PC->GetPawn()))
+			if (const APawn* TargetCharacter = Cast<APawn>(PC->GetPawn()))
 			{
 				if (ComponentTag.IsNone())
 				{

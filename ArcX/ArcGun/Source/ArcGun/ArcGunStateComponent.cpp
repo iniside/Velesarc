@@ -395,7 +395,7 @@ void UArcGunStateComponent::HandleComponentReady()
 	{
 		if (UArcPlayerStateExtensionComponent* PSExt = UArcPlayerStateExtensionComponent::Get(GetOwner()))
 		{
-			CharacterOwner = PSExt->GetPawn<ACharacter>();
+			CharacterOwner = PSExt->GetPawn<APawn>();
 			if (CharacterOwner != nullptr)
 			{
 				ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();
@@ -409,7 +409,7 @@ void UArcGunStateComponent::HandleComponentReady()
 		}
 		else if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
 		{
-			CharacterOwner = PawnExtComp->GetPawn<ACharacter>();
+			CharacterOwner = PawnExtComp->GetPawn<APawn>();
 			if (CharacterOwner != nullptr)
 			{
 				ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();

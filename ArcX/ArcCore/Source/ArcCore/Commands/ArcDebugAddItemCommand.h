@@ -30,7 +30,7 @@
 
 #include "ArcDebugAddItemCommand.generated.h"
 
-class ACharacter;
+class APawn;
 
 UCLASS()
 class UArcTestAttributeSet : public UArcAttributeSet
@@ -69,7 +69,7 @@ struct ARCCORE_API FArcDebugAddItemCommand : public FArcReplicatedCommand
 
 protected:
 	UPROPERTY()
-	TObjectPtr<ACharacter> Character = nullptr;
+	TObjectPtr<APawn> Character = nullptr;
 
 public:
 	virtual bool CanSendCommand() const override;
@@ -83,7 +83,7 @@ public:
 	{
 	}
 
-	FArcDebugAddItemCommand(ACharacter* InCharacter)
+	FArcDebugAddItemCommand(APawn* InCharacter)
 		: Character(InCharacter)
 	{
 	}
@@ -109,7 +109,7 @@ struct ARCCORE_API FArcDebugModifyItemCommand : public FArcReplicatedCommand
 
 protected:
 	UPROPERTY()
-	TObjectPtr<ACharacter> Character = nullptr;
+	TObjectPtr<APawn> Character = nullptr;
 
 public:
 	virtual bool CanSendCommand() const override;
@@ -123,7 +123,7 @@ public:
 	{
 	}
 
-	FArcDebugModifyItemCommand(ACharacter* InCharacter)
+	FArcDebugModifyItemCommand(APawn* InCharacter)
 		: Character(InCharacter)
 	{
 	}

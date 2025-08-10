@@ -37,7 +37,7 @@ void UArcAnimNotify_Holster::Notify(USkeletalMeshComponent* MeshComp, UAnimSeque
 	UArcGunStateComponent* ArcWC = UArcGunStateComponent::FindGunStateComponent(MeshComp->GetOwner());
 	if (ArcWC == nullptr)
 	{
-		ACharacter* C = Cast<ACharacter>(MeshComp->GetOwner());
+		APawn* C = Cast<APawn>(MeshComp->GetOwner());
 		if (C)
 		{
 			ArcWC = UArcGunStateComponent::FindGunStateComponent(C->GetPlayerState());
@@ -49,7 +49,7 @@ void UArcAnimNotify_Holster::Notify(USkeletalMeshComponent* MeshComp, UAnimSeque
 	}
 
 	APlayerController* PC = nullptr;
-	ACharacter* C = Cast<ACharacter>(MeshComp->GetOwner());
+	APawn* C = Cast<APawn>(MeshComp->GetOwner());
 	if (C)
 	{
 		PC = C->GetController<APlayerController>();
