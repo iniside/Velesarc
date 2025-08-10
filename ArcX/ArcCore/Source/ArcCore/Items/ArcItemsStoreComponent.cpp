@@ -38,6 +38,7 @@
 #include "ArcCore/Items/ArcItemsComponent.h"
 #include "Fragments/ArcItemFragment_SocketSlots.h"
 #include "Fragments/ArcItemFragment_Stacks.h"
+#include "Fragments/ArcItemFragment_Tags.h"
 #include "Logging/StructuredLog.h"
 
 DEFINE_LOG_CATEGORY(LogArcItems);
@@ -181,6 +182,31 @@ const FArcItemData* UArcItemsStoreComponent::GetItemByDefinition(const UArcItemD
 const FArcItemData* UArcItemsStoreComponent::GetItemByDefinition(const FPrimaryAssetId& InItemDefinitionId)
 {
 	return ItemsArray(InItemDefinitionId);
+}
+
+const FArcItemData* UArcItemsStoreComponent::GetItemByTags(const FGameplayTagContainer& InTags)
+{
+	for (const FArcItemDataInternalWrapper& Item : ItemsArray.GetItemArray())
+	{
+		const FArcItemData* ItemData = Item.ToItem();
+		if (!ItemData)
+		{
+			continue;
+		}
+
+		const FArcItemFragment_Tags* Tags = ArcItems::GetFragment<FArcItemFragment_Tags>(ItemData);
+		if (!Tags)
+		{
+			continue;
+		}
+
+		if (Tags->ItemTags.HasAll(InTags))
+		{
+			return ItemData;
+		}
+	}
+
+	return nullptr;
 }
 
 // Sets default values for this component's properties
