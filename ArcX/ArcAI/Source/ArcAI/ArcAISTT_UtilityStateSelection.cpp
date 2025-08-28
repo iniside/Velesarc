@@ -248,7 +248,6 @@ EStateTreeRunStatus FArcAISTT_UtilityStateSelectionTask::Tick(FStateTreeExecutio
 	
 	Context.SendEvent(TAG_StateTree_Event, View);
 	Context.RequestTransition(ConStates[0].Handle, EStateTreeTransitionPriority::Critical);
-	//Context.ForceTransition(ForceTransition);
 	InstanceData.bStateSelected = true;
 	return EStateTreeRunStatus::Running;
 }

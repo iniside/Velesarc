@@ -21,10 +21,20 @@
 
 #include "ArcNeedsFragment.h"
 
+#include "ArcAILogs.h"
 #include "MassEntityConfigAsset.h"
 #include "MassEntitySubsystem.h"
 #include "MassExecutionContext.h"
+#include "StateTreeConditionBase.h"
+#include "StateTreeEvaluatorBase.h"
+#include "StateTreeExecutionContext.h"
+#include "StateTreePropertyFunctionBase.h"
+#include "StateTreeTaskBase.h"
+#include "StateTreeTypes.h"
+#include "Conditions/StateTreeAIConditionBase.h"
+
 #include "MassActors/Public/MassAgentComponent.h"
+#include "Tasks/StateTreeAITask.h"
 
 UArcNeedsProcessor::UArcNeedsProcessor()
 {
@@ -55,7 +65,7 @@ void UArcNeedsProcessor::Execute(
 			for(int32 NeedIdx = 0; NeedIdx < Needs[EntityIndex].Needs.Num(); NeedIdx++)
 			{
 				Needs[EntityIndex].Needs[NeedIdx].CurrentValue =
-					Needs[EntityIndex].Needs[NeedIdx].CurrentValue - (Needs[EntityIndex].Needs[NeedIdx].ChangeRate * DeltaTime);
+					Needs[EntityIndex].Needs[NeedIdx].CurrentValue + (Needs[EntityIndex].Needs[NeedIdx].ChangeRate * DeltaTime);
 
 
 				Needs[EntityIndex].Needs[NeedIdx].CurrentValue = FMath::Clamp(Needs[EntityIndex].Needs[NeedIdx].CurrentValue, 0.f, 100.f);
@@ -116,4 +126,44 @@ bool UArcRestoreNeedComponent::GetCanBeUsed() const
 		return false;
 	}
 	return true;
+}
+
+float FArcNeedstConsideration::GetScore(FStateTreeExecutionContext& Context) const
+{
+	float Score = 0.f;
+
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (!InstanceData.Actor)
+	{
+		return Score;
+	}
+
+	UMassAgentComponent* AgentComponent = InstanceData.Actor->FindComponentByClass<UMassAgentComponent>();
+	if (!AgentComponent)
+	{
+		return Score;
+	}
+
+	UMassEntitySubsystem* MES = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	FMassEntityManager& MEM = MES->GetMutableEntityManager();
+
+	FMassEntityHandle Handle = AgentComponent->GetEntityHandle();
+	if (!Handle.IsValid())
+	{
+		return Score;
+	}
+	
+	FArcNeedsFragment* Data = MEM.GetFragmentDataPtr<FArcNeedsFragment>(Handle);
+
+	int32 Idx = Data->Needs.IndexOfByKey(InstanceData.NeedName);
+	if (Idx == INDEX_NONE)
+	{
+		return Score;
+	}
+
+	
+	const float Normalized = Data->Needs[Idx].CurrentValue / 100.f;
+	Score = ResponseCurve.Evaluate(Normalized);
+	UE_VLOG_UELOG(Context.GetOwner(), LogArcConsiderationScore, VeryVerbose, TEXT("State %s Need %s: %.3f Normalized: %.3f"), *Context.GetActiveStateName(), *Name.ToString(), Score, Normalized);
+	return Score;
 }

@@ -35,8 +35,13 @@ public class ArcAI : ModuleRules
 				, "MassCommon"
 				, "MassEntity"
 				, "MassSpawner"
+				, "MassSignals"
 				, "MassActors"
+				, "MassAIBehavior"
+				, "MassNavigation"
+				, "MassEQS"
 				, "StateTreeModule"
+				, "GameplayStateTreeModule" 
 				, "PropertyPath"
 				, "GameplayAbilities"
 				, "PropertyBindingUtils"
@@ -60,7 +65,7 @@ public class ArcAI : ModuleRules
 				, "GameplayTags"
 				, "MassCommon"
 				, "MassEntity"
-				, "MassSpawner"
+				, "MassSpawner", 
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

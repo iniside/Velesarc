@@ -25,6 +25,11 @@
 #include "MassProcessor.h"
 #include "MassEntityTraitBase.h"
 #include "MassEntityTemplateRegistry.h"
+#include "MassNavigationTypes.h"
+#include "MassStateTreeSchema.h"
+#include "StateTreeConsiderationBase.h"
+#include "StateTreePropertyFunctionBase.h"
+#include "Considerations/StateTreeCommonConsiderations.h"
 #include "ArcNeedsFragment.generated.h"
 
 USTRUCT(BlueprintType)
@@ -149,4 +154,38 @@ public:
 	{
 		return LastUseTime;
 	};
+};
+
+USTRUCT()
+struct FArcNeedsConsiderationInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Parameter")
+	FName NeedName = NAME_None;
+
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<AActor> Actor = nullptr;
+};
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Needs Consideration")
+struct FArcNeedstConsideration : public FStateTreeConsiderationCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcNeedsConsiderationInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	//~ Begin FStateTreeConsiderationBase Interface
+	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
+	//~ End FStateTreeConsiderationBase Interface
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Default")
+	FStateTreeConsiderationResponseCurve ResponseCurve;
 };
