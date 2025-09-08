@@ -17,7 +17,8 @@ Plugins usually take some advantage of new engine features where possible to red
 * Extend Game Framework - Based on lyra preconfigured way of createding custom game modes made of components, ability system and way to extend pawn without overriding base class.
 * Targeting - integrated Targeting System from engine.
 * Recoil & Spread - implemented mechanics for customizable recoil and spread, which can be controlled by player.
-
+* ArcAI - My extensions to Mass and State Tree. For now mainly focused on being able to run Actors trough Mass State Tree. So you don't need to create two versions
+  for the same object. Create one Mass Based State Tree and use it with either simple entity or actor representation.
 # Pull Request
 
 List of pull requests which are required to compile plugins. List is ever changing as I refactor code to require less engine changes, or potentially PR are merged to engine.
