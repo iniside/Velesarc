@@ -71,5 +71,8 @@ public:
 	static bool ItemHasAnyTag(const FArcItemDataHandle& InItem, FGameplayTagContainer InTag, bool bExact);
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Items", Meta = (ExpandBoolAsExecs = "ReturnValue"))
-	static bool ItemHasAallTags(const FArcItemDataHandle& InItem, FGameplayTagContainer InTag, bool bExact);
+	static bool ItemHasAllTags(const FArcItemDataHandle& InItem, FGameplayTagContainer InTag, bool bExact);
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")
+	static int32 GetItemStacks(const FArcItemDataHandle& Item);
 };

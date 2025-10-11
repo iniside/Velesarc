@@ -43,6 +43,9 @@ public:
 	TSubclassOf<AActor> ActorClass;
 
 	UPROPERTY(EditAnywhere, Category = "Config")
+	bool bDrawDebug = false;
+	
+	UPROPERTY(EditAnywhere, Category = "Config")
 	bool bOffsetConeToActorEyes = false;
 
 	UPROPERTY(EditAnywhere, Category = "Config")

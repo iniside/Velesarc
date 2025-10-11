@@ -30,6 +30,7 @@
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 #include "Equipment/ArcItemAttachmentComponent.h"
 #include "GameFramework/PlayerState.h"
 #include "Items/ArcItemData.h"

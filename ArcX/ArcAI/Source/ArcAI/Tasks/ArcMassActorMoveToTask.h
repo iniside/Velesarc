@@ -118,6 +118,18 @@ struct FArcMassActorMoveToFragment : public FMassFragment
 
 	UPROPERTY()
 	float AcceptanceRadius = 32.f;
+
+	UPROPERTY()
+	TWeakObjectPtr<AActor> TargetActor;
+};
+
+template<>
+struct TMassFragmentTraits<FArcMassActorMoveToFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
 };
 
 USTRUCT()

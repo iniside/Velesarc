@@ -52,11 +52,16 @@ public:
 	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Item")
 	FGameplayTagContainer GrantedTags;
 
-	/* All of those tags must be present on owner for this item to be equipped on slot. */
+	/**
+	 * Abstract list of tags, required by this item. Does not assume, where the tags, come fram, or what the item is using them for.
+	 * Examples, can be checked when equipping item, or check if player is in correct state to see item.
+	 */
 	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Item")
 	FGameplayTagContainer RequiredTags;
 
-	/* None of those tags must be present on owner for this item to be equipped on slot.
+	/**
+	* Abstract list of tags, required by this item. to not be present. Does not assume, where the tags, come fram, or what the item is using them for.
+	 * Examples, can be checked when equipping item, or check if player is in correct state to see item.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	FGameplayTagContainer DenyTags;

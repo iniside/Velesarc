@@ -36,6 +36,8 @@
 void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) const
 {
 	Super::Execute(TargetingHandle);
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(UArcTT_ConeTrace::Execute);
 	
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
 	
@@ -58,7 +60,8 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	FVector EndLocation = StartLocation + EyeRotation.Vector() * ConeLength;
 	FHitResult HitResult;
 	FCollisionQueryParams Params;
-	Params.OwnerTag = GetFName();
+	Params.TraceTag = GetFName();
+	Params.OwnerTag = Ctx->SourceActor ? Ctx->SourceActor->GetFName() : GetFName();
 	Params.AddIgnoredActor(Ctx->SourceActor);
 	Params.bTraceComplex = true;
 	
@@ -158,24 +161,28 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = HitFromSource;
+		if (bDrawDebug)
 		DrawDebugSphere(World, HitFromSource.ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (HitResult.GetActor() && HitResult.GetActor()->GetClass()->IsChildOf(ActorClass))
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = HitResult;
+		if (bDrawDebug)
 		DrawDebugSphere(World, HitResult.ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (BestDistanceHit != INDEX_NONE)
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = FilteredHitResults[BestDistanceHit];
+		if (bDrawDebug)
 		DrawDebugSphere(World, FilteredHitResults[BestDistanceHit].ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (BestHit != INDEX_NONE)
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = FilteredHitResults[BestHit];
+		if (bDrawDebug)
 		DrawDebugSphere(World, FilteredHitResults[BestHit].ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else
@@ -186,11 +193,13 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 		ResultData->HitResult = HitResult;
 	}
 	//DrawSphereSweeps(World, StartLocation, EndLocation, 20.f, HitResults, 0.5f);
+	if (bDrawDebug)
 	for (const FHitResult& Hit : HitResults)
 	{
 		DrawDebugSphere(World, Hit.ImpactPoint, 16.f, 8, FColor::Red, false, 0.1, 0, 0.2f);
 	}
 
+	if (bDrawDebug)
 	for (const FHitResult& Hit : FilteredHitResults)
 	{
 		DrawDebugSphere(World, Hit.ImpactPoint + FVector(0,0, 10), 16.f, 8, FColor::Blue, false, 0.1, 0, 0.2f);
@@ -198,7 +207,7 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 
-	
+	if (bDrawDebug)
 	DrawDebugCone(World, StartLocation, EyeRotation.Vector(), ConeLength, ConeRad, ConeRad
 		, 12, FColor::Red, false, 0.1, 0, 0.2f);
 }

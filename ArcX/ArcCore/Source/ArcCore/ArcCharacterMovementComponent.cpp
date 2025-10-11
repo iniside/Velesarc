@@ -150,7 +150,10 @@ void UArcCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds
 	FVector::FReal Accel = GetCurrentAcceleration().Size();
 	if (FMath::IsNearlyZero(Accel, 0.1))
 	{
+		if (ArcASC->HasMatchingGameplayTag(IsMovingTag))
+		{
 			ArcASC->RemoveLooseGameplayTag(IsMovingTag);
+		}
 	}
 	else
 	{

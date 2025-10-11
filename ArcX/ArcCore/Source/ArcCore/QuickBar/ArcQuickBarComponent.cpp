@@ -171,8 +171,19 @@ UArcQuickBarSubsystem* UArcQuickBarSubsystem::Get(UObject* WorldObject)
 	return nullptr;
 }
 
+void UArcQuickBarComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	FDoRepLifetimeParams Params;
+	Params.bIsPushBased = true;
+	Params.Condition = COND_OwnerOnly;
+
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, ReplicatedSelectedSlots, Params);
+	
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+}
+
 const FArcItemData* UArcQuickBarComponent::FindQuickSlotItem(const FGameplayTag& BarId
-														, const FGameplayTag& QuickBarSlotId) const
+															 , const FGameplayTag& QuickBarSlotId) const
 {
 	UArcItemsStoreComponent* SlotComp = GetItemStoreComponent(BarId);
 
@@ -200,14 +211,6 @@ UArcQuickBarComponent::UArcQuickBarComponent()
 	PrimaryComponentTick.bStartWithTickEnabled = false;
 	bWantsInitializeComponent = true;
 	// ...
-}
-
-void UArcQuickBarComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	
-	DOREPLIFETIME_CONDITION(UArcQuickBarComponent, ReplicatedSelectedSlots, COND_OwnerOnly);
 }
 
 #if WITH_EDITOR
@@ -381,6 +384,8 @@ void UArcQuickBarComponent::AddAndActivateQuickSlot(const FGameplayTag& BarId, c
 		, ItemData->GetItemId());
 	
 	QuickBarSubsystem->OnQuickSlotActivated.Broadcast(this, BarId, QuickSlotId, ItemData->GetItemId());
+
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
 }
 
 void UArcQuickBarComponent::RemoveQuickSlot(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId)
@@ -408,6 +413,8 @@ void UArcQuickBarComponent::RemoveQuickSlot(const FGameplayTag& BarId, const FGa
 	QuickBarSubsystem->OnQuickSlotRemoved.Broadcast(this, BarId, QuickSlotId, ItemId);
 	
 	ReplicatedSelectedSlots.RemoveQuickSlot(BarId, QuickSlotId);
+
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
 }
 
 bool UArcQuickBarComponent::HandleSlotActivated(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId, const FArcItemId& ItemId)
@@ -440,7 +447,8 @@ bool UArcQuickBarComponent::HandleSlotActivated(const FGameplayTag& BarId, const
 
 	InternalTryBindInput(QuickBarIdx, QuickSlotIdx, ArcASC);
 	ReplicatedSelectedSlots.ActivateQuickSlot(BarId, QuickSlotId);
-	
+
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
 	return true;
 }
 
@@ -477,6 +485,8 @@ void UArcQuickBarComponent::HandleSlotDeactivated(const FGameplayTag& BarId, con
 		InternalTryUnbindInput(BarIdx, OldSlotIdx, ArcASC);
 
 		ReplicatedSelectedSlots.DeactivateQuickSlot(BarId, QuickSlotId);
+
+		MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
 	}
 }
 

@@ -69,7 +69,8 @@ private:
 	float OldYawModifier = 0;
 	float LastCombinedRotation = 0;
 	float CombinedRotation = 0;
-	
+
+	double TimeAccumulator = 0;
 public:
 	FRotator ControlRotationOffset = FRotator::ZeroRotator;
 

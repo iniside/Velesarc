@@ -2,6 +2,9 @@
 
 #include "ArcInstancedActorsComponent.h"
 
+#include "MassEntityConfigAsset.h"
+#include "MassEntityTraitBase.h"
+
 // Sets default values for this component's properties
 UArcInstancedActorsComponent::UArcInstancedActorsComponent()
 {
@@ -20,6 +23,20 @@ void UArcInstancedActorsComponent::BeginPlay()
 	// ...
 	
 }
+
+
+void UArcInstancedActorsComponent::ModifyMassEntityConfig(FMassEntityManager& InMassEntityManager, UInstancedActorsData* InstancedActorData
+	, FMassEntityConfig& InOutMassEntityConfig) const
+{
+	for (UMassEntityTraitBase* Trait : Traits)
+	{
+		//if (Trait && !InOutMassEntityConfig.FindTrait(Trait->GetClass(), true))
+		{
+			InOutMassEntityConfig.AddTrait(*Trait);
+		}
+	}
+}
+
 
 void UArcInstancedActorsComponent::OnServerPreSpawnInitForInstance(FInstancedActorsInstanceHandle InInstanceHandle)
 {

@@ -103,7 +103,7 @@ bool UArcEquipmentComponent::CanEquipItem(const UArcItemDefinition* InItemDefini
 	}
 
 	const FArcItemFragment_Tags* TagsFragment = InItemDefinition->FindFragment<FArcItemFragment_Tags>();
-	bool bTagsPassed = false;
+	bool bTagsPassed = true;
 	if (TagsFragment != nullptr)
 	{
 		if (TagsFragment->ItemTags.Num() > 0

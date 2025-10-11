@@ -243,6 +243,7 @@ void FArcItemData::OnItemChanged()
 	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(OwnerComponent);
 	if (ItemsSubsystem)
 	{
+		ItemsSubsystem->OnItemChangedDynamic.Broadcast(OwnerComponent, GetItemId());
 		ItemsSubsystem->BroadcastActorOnItemChangedStore(OwnerComponent->GetOwner(), OwnerComponent, this);
 		ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(OwnerComponent->GetOwner(), GetItemId(), OwnerComponent, this);
 	}

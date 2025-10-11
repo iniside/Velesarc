@@ -22,6 +22,7 @@
 #pragma once
 #include "ArcItemData.h"
 #include "ArcItemsStoreComponent.h"
+#include "ArcItemsSubsystem.h"
 
 class UArcItemsSubsystem;
 
@@ -190,11 +191,16 @@ struct ARCCORE_API ArcItems
 	template<typename T>
 	static T* FindMutableInstance(const FArcItemData* InItem)
 	{
+		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(InItem->GetItemsStoreComponent());
+		
+		
 		if (TSharedPtr<FArcItemInstance>* WeakPtr = const_cast<FArcItemData*>(InItem)->InstancedData.Find(T::StaticStruct()->GetFName()))
 		{
 			TSharedPtr<T> Casted =  StaticCastSharedPtr<T>(*WeakPtr);
 			//const_cast<FArcItemData*>(InItem)->OwnerComponent->MarkItemInstanceDirtyById(InItem->GetItemId(), T::StaticStruct());
 			const_cast<FArcItemData*>(InItem)->OwnerComponent->MarkItemDirtyById(InItem->GetItemId());
+
+			ItemsSubsystem->OnItemChangedDynamic.Broadcast(InItem->GetItemsStoreComponent(), InItem->GetItemId());
 			return Casted.Get();
 		}
 
@@ -205,6 +211,8 @@ struct ARCCORE_API ArcItems
 				TSharedPtr<T> Casted =  StaticCastSharedPtr<T>(*Ptr);
 				//const_cast<FArcItemData*>(InItem)->OwnerComponent->MarkItemInstanceDirtyById(OwnerPtr->GetItemId(), T::StaticStruct());
 				const_cast<FArcItemData*>(InItem)->OwnerComponent->MarkItemDirtyById(OwnerPtr->GetItemId());
+
+				ItemsSubsystem->OnItemChangedDynamic.Broadcast(InItem->GetItemsStoreComponent(), InItem->GetItemId());
 				return Casted.Get();
 			}
 			// Last Resort: Try to find instance in attached items
@@ -215,6 +223,8 @@ struct ARCCORE_API ArcItems
 					TSharedPtr<T> Casted =  StaticCastSharedPtr<T>(*WeakPtr);
 					//const_cast<FArcItemData*>(SocketItem)->OwnerComponent->MarkItemInstanceDirtyById(SocketItem->GetItemId(), T::StaticStruct());
 					const_cast<FArcItemData*>(SocketItem)->OwnerComponent->MarkItemDirtyById(SocketItem->GetItemId());
+
+					ItemsSubsystem->OnItemChangedDynamic.Broadcast(InItem->GetItemsStoreComponent(), InItem->GetItemId());
 					return Casted.Get();
 				}
 			}
@@ -228,6 +238,8 @@ struct ARCCORE_API ArcItems
 				TSharedPtr<T> Casted =  StaticCastSharedPtr<T>(*WeakPtr);
 				//const_cast<FArcItemData*>(SocketItem)->OwnerComponent->MarkItemInstanceDirtyById(SocketItem->GetItemId(), T::StaticStruct());
 				const_cast<FArcItemData*>(SocketItem)->OwnerComponent->MarkItemDirtyById(SocketItem->GetItemId());
+
+				ItemsSubsystem->OnItemChangedDynamic.Broadcast(InItem->GetItemsStoreComponent(), InItem->GetItemId());
 				return Casted.Get();
 			}
 		}

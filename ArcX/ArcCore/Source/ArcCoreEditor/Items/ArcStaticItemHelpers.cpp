@@ -22,6 +22,7 @@
 #include "ArcStaticItemHelpers.h"
 
 #include "ArcCoreUtils.h"
+#include "Editor.h"
 #include "IContentBrowserSingleton.h"
 #include "IDetailPropertyExtensionHandler.h"
 #include "IDetailsViewPrivate.h"

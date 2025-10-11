@@ -22,9 +22,14 @@
 #include "ArcNeedsFragment.h"
 
 #include "ArcAILogs.h"
+#include "MassCommonFragments.h"
 #include "MassEntityConfigAsset.h"
 #include "MassEntitySubsystem.h"
+#include "MassEntityView.h"
 #include "MassExecutionContext.h"
+#include "MassStateTreeExecutionContext.h"
+#include "MassStateTreeFragments.h"
+#include "MassStateTreeSubsystem.h"
 #include "StateTreeConditionBase.h"
 #include "StateTreeEvaluatorBase.h"
 #include "StateTreeExecutionContext.h"
@@ -32,9 +37,12 @@
 #include "StateTreeTaskBase.h"
 #include "StateTreeTypes.h"
 #include "Conditions/StateTreeAIConditionBase.h"
+#include "MassSignalSubsystem.h"
 
 #include "MassActors/Public/MassAgentComponent.h"
 #include "Tasks/StateTreeAITask.h"
+
+#include "StateTree.h"
 
 UArcNeedsProcessor::UArcNeedsProcessor()
 {
@@ -166,4 +174,122 @@ float FArcNeedstConsideration::GetScore(FStateTreeExecutionContext& Context) con
 	Score = ResponseCurve.Evaluate(Normalized);
 	UE_VLOG_UELOG(Context.GetOwner(), LogArcConsiderationScore, VeryVerbose, TEXT("State %s Need %s: %.3f Normalized: %.3f"), *Context.GetActiveStateName(), *Name.ToString(), Score, Normalized);
 	return Score;
+}
+
+float FArcMassNeedsConsideration::GetScore(FStateTreeExecutionContext& Context) const
+{
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+
+	UMassEntitySubsystem* MES = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	FMassEntityManager& MEM = MES->GetMutableEntityManager();
+
+	FArcNeedsFragment* Data = MEM.GetFragmentDataPtr<FArcNeedsFragment>(MassCtx.GetEntity());
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	float Score = 0.f;
+	int32 Idx = Data->Needs.IndexOfByKey(InstanceData.NeedName);
+	if (Idx == INDEX_NONE)
+	{
+		return Score;
+	}
+
+	
+	const float Normalized = Data->Needs[Idx].CurrentValue / 100.f;
+	Score = ResponseCurve.Evaluate(Normalized);
+	UE_VLOG_UELOG(Context.GetOwner(), LogArcConsiderationScore, VeryVerbose, TEXT("State %s Need %s: %.3f Normalized: %.3f"), *Context.GetActiveStateName(), *Name.ToString(), Score, Normalized);
+	return Score;
+}
+
+FArcProvideNextStateTreeTask::FArcProvideNextStateTreeTask()
+{
+	bShouldCallTick = false;
+	bShouldCopyBoundPropertiesOnTick = true;
+	bShouldCopyBoundPropertiesOnExitState = true;
+}
+
+EStateTreeRunStatus FArcProvideNextStateTreeTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	
+	if (InstanceData.TargetInput.GetEntityHandle().IsValid())
+	{
+		FMassEntityView TargetView(MassCtx.GetEntityManager(), InstanceData.TargetInput.GetEntityHandle());
+		FArcNeedStateTreeFragment* PossibleActions = TargetView.GetFragmentDataPtr<FArcNeedStateTreeFragment>();
+		if (PossibleActions)
+		{
+			
+		}
+		
+	}	
+	auto [StateTreePtr] = InstanceData.StateTree.GetMutablePtrTuple<UStateTree*>(Context);
+
+	UStateTree* NextStateTree = nullptr;
+	if (StateTreePtr)
+	{
+		NextStateTree = *StateTreePtr;
+	}
+	
+	if (InstanceData.QueuedStateTrees.IsEmpty() && NextStateTree)
+	{
+		Context.BroadcastDelegate(InstanceData.OnQueueFinished);
+		*StateTreePtr = nullptr;
+		return EStateTreeRunStatus::Succeeded;
+	}
+	
+	if (InstanceData.QueuedStateTrees.IsEmpty() == false)
+	{
+		*StateTreePtr = InstanceData.QueuedStateTrees.Pop();
+		return EStateTreeRunStatus::Succeeded;
+	}
+	
+	if (InstanceData.StateTrees.IsEmpty())
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	InstanceData.QueuedStateTrees = InstanceData.StateTrees;
+
+	*StateTreePtr = InstanceData.QueuedStateTrees.Pop();
+	return EStateTreeRunStatus::Succeeded;
+	//Context.BroadcastDelegate(InstanceData.OnQueueFinished);
+	
+}
+
+FArcMassInjectStateTreeTask::FArcMassInjectStateTreeTask()
+{
+	bShouldCallTick = false;
+	bShouldCopyBoundPropertiesOnTick = true;
+	bShouldCopyBoundPropertiesOnExitState = true;
+}
+
+EStateTreeRunStatus FArcMassInjectStateTreeTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (!InstanceData.StateTree)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FMassEntityView View(MassCtx.GetEntityManager(), MassCtx.GetEntity());
+	FMassStateTreeInstanceFragment* Frag = View.GetFragmentDataPtr<FMassStateTreeInstanceFragment>();
+	if (!Frag)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+	
+	UMassStateTreeSubsystem* Subsystem = MassCtx.GetWorld()->GetSubsystem<UMassStateTreeSubsystem>();
+	UMassSignalSubsystem* Signal = MassCtx.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
+	
+	FStateTreeReferenceOverrides* Overrides = Subsystem->GetLinkedStateTreeOverrides(Frag->InstanceHandle);
+	InstanceData.StateTreeRef.SetStateTree(InstanceData.StateTree.Get());
+
+	InstanceData.LinkedStateTreeOverrides.Reset();
+	
+	Overrides->AddOverride(InstanceData.StateTag, InstanceData.StateTreeRef);
+
+	Signal->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
+	return EStateTreeRunStatus::Succeeded;
 }

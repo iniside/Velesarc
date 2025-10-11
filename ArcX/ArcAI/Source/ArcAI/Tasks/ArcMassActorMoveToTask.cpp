@@ -92,6 +92,8 @@ EStateTreeRunStatus FArcMassActorMoveToTask::EnterState(FStateTreeExecutionConte
 	{
 		Frag->Destination = InstanceData.Destination;
 		Frag->AcceptanceRadius = InstanceData.AcceptableRadius;
+		Frag->TargetActor = InstanceData.TargetActor;
+		
 		if (const AActor* Actor = MassActor->Get())
 		{
 			if (InstanceData.bReachTestIncludesAgentRadius)
@@ -117,51 +119,51 @@ EStateTreeRunStatus FArcMassActorMoveToTask::EnterState(FStateTreeExecutionConte
 
 		InstanceData.CalculatedAcceptanceRadius = Frag->AcceptanceRadius;
 	}
-	EntityManager.Defer().PushCommand<FMassDeferredSetCommand>([Entity = MassCtx.GetEntity()](const FMassEntityManager& Manager)
-			{
-				if (Manager.IsEntityValid(Entity) )
-				{
-					FMassVelocityFragment* VelocityFragment = Manager.GetFragmentDataPtr<FMassVelocityFragment>(Entity);
-					if (VelocityFragment)
-					{
-						VelocityFragment->Value = FVector::ZeroVector;
-					}
-
-					FMassDesiredMovementFragment* DesiredMovement = Manager.GetFragmentDataPtr<FMassDesiredMovementFragment>(Entity);
-					if (DesiredMovement)
-					{
-						DesiredMovement->DesiredFacing = FQuat::Identity;
-						DesiredMovement->DesiredVelocity = FVector::ZeroVector;
-						DesiredMovement->DesiredMaxSpeedOverride = 0;
-					}
-					FMassForceFragment* Force = Manager.GetFragmentDataPtr<FMassForceFragment>(Entity);
-					if (Force)
-					{
-						Force->Value = FVector::ZeroVector;
-					}
-					FMassStandingSteeringFragment* Steering = Manager.GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
-					if (Steering)
-					{
-						Steering->TargetLocation = FVector::ZeroVector;
-						Steering->TrackedTargetSpeed = 0;
-						Steering->TargetSelectionCooldown = 0;
-						Steering->bIsUpdatingTarget = false;
-						Steering->bEnteredFromMoveAction = false;
-					}
-					FMassSteeringFragment* Steer = Manager.GetFragmentDataPtr<FMassSteeringFragment>(Entity);
-					if (Steer)
-					{
-						Steer->DesiredVelocity = FVector::ZeroVector;
-					}
-				}
-			});
-
-	EntityManager.Defer().RemoveTag<FMassCodeDrivenMovementTag>(MassCtx.GetEntity());
+	//EntityManager.Defer().PushCommand<FMassDeferredSetCommand>([Entity = MassCtx.GetEntity()](const FMassEntityManager& Manager)
+	//		{
+	//			if (Manager.IsEntityValid(Entity) )
+	//			{
+	//				FMassVelocityFragment* VelocityFragment = Manager.GetFragmentDataPtr<FMassVelocityFragment>(Entity);
+	//				if (VelocityFragment)
+	//				{
+	//					VelocityFragment->Value = FVector::ZeroVector;
+	//				}
+	//
+	//				FMassDesiredMovementFragment* DesiredMovement = Manager.GetFragmentDataPtr<FMassDesiredMovementFragment>(Entity);
+	//				if (DesiredMovement)
+	//				{
+	//					DesiredMovement->DesiredFacing = FQuat::Identity;
+	//					DesiredMovement->DesiredVelocity = FVector::ZeroVector;
+	//					//DesiredMovement->DesiredMaxSpeedOverride = 0;
+	//				}
+	//				FMassForceFragment* Force = Manager.GetFragmentDataPtr<FMassForceFragment>(Entity);
+	//				if (Force)
+	//				{
+	//					Force->Value = FVector::ZeroVector;
+	//				}
+	//				FMassStandingSteeringFragment* Steering = Manager.GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
+	//				if (Steering)
+	//				{
+	//					Steering->TargetLocation = FVector::ZeroVector;
+	//					//Steering->TrackedTargetSpeed = 0;
+	//					//Steering->TargetSelectionCooldown = 0;
+	//					//Steering->bIsUpdatingTarget = false;
+	//					//Steering->bEnteredFromMoveAction = false;
+	//				}
+	//				FMassSteeringFragment* Steer = Manager.GetFragmentDataPtr<FMassSteeringFragment>(Entity);
+	//				if (Steer)
+	//				{
+	//					Steer->DesiredVelocity = FVector::ZeroVector;
+	//				}
+	//			}
+	//		});
+	//
+	//EntityManager.Defer().RemoveTag<FMassCodeDrivenMovementTag>(MassCtx.GetEntity());
 	EntityManager.Defer().AddTag<FArcMassActorMoveToTag>(MassCtx.GetEntity());
-	EntityManager.Defer().AddTag<FMassSceneComponentVelocityCopyToMassTag>(MassCtx.GetEntity());
-	EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToActorTag, FMassCharacterMovementCopyToMassTag>(MassCtx.GetEntity());
-    EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToActorTag, FMassCharacterOrientationCopyToMassTag>(MassCtx.GetEntity());
-    EntityManager.Defer().SwapTags<FMassCapsuleTransformCopyToActorTag, FMassCapsuleTransformCopyToMassTag>(MassCtx.GetEntity());
+	//EntityManager.Defer().AddTag<FMassSceneComponentVelocityCopyToMassTag>(MassCtx.GetEntity());
+	//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToActorTag, FMassCharacterMovementCopyToMassTag>(MassCtx.GetEntity());
+    //EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToActorTag, FMassCharacterOrientationCopyToMassTag>(MassCtx.GetEntity());
+    //EntityManager.Defer().SwapTags<FMassCapsuleTransformCopyToActorTag, FMassCapsuleTransformCopyToMassTag>(MassCtx.GetEntity());
 
 	DrawDebugSphere(Context.GetWorld(), InstanceData.Destination, InstanceData.AcceptableRadius, 12, FColor::Green, false, 10.f);
 	return NewStatus;
@@ -221,50 +223,50 @@ void FArcMassActorMoveToTask::ExitState(FStateTreeExecutionContext& Context, con
 
 	FMassEntityHandle Handle = MassCtx.GetEntity();
 
-	EntityManager.Defer().PushCommand<FMassDeferredSetCommand>([Entity = Handle](const FMassEntityManager& Manager)
-	{
-		if (Manager.IsEntityValid(Entity) )
-		{
-			FMassVelocityFragment* VelocityFragment = Manager.GetFragmentDataPtr<FMassVelocityFragment>(Entity);
-			if (VelocityFragment)
-			{
-				VelocityFragment->Value = FVector::ZeroVector;
-			}
-			FMassDesiredMovementFragment* DesiredMovement = Manager.GetFragmentDataPtr<FMassDesiredMovementFragment>(Entity);
-			if (DesiredMovement)
-			{
-				DesiredMovement->DesiredFacing = FQuat::Identity;
-				DesiredMovement->DesiredVelocity = FVector::ZeroVector;
-				DesiredMovement->DesiredMaxSpeedOverride = 0;
-			}
-			FMassForceFragment* Force = Manager.GetFragmentDataPtr<FMassForceFragment>(Entity);
-					if (Force)
-					{
-						Force->Value = FVector::ZeroVector;
-					}
-			FMassStandingSteeringFragment* Steering = Manager.GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
-					if (Steering)
-					{
-						Steering->TargetLocation = FVector::ZeroVector;
-						Steering->TrackedTargetSpeed = 0;
-						Steering->TargetSelectionCooldown = 0;
-						Steering->bIsUpdatingTarget = false;
-						Steering->bEnteredFromMoveAction = false;
-					}
-			FMassSteeringFragment* Steer = Manager.GetFragmentDataPtr<FMassSteeringFragment>(Entity);
-					if (Steer)
-					{
-						Steer->DesiredVelocity = FVector::ZeroVector;
-					}
-		}
-	});
-
-	EntityManager.Defer().AddTag<FMassCodeDrivenMovementTag>(Handle);
+	//EntityManager.Defer().PushCommand<FMassDeferredSetCommand>([Entity = Handle](const FMassEntityManager& Manager)
+	//{
+	//	if (Manager.IsEntityValid(Entity) )
+	//	{
+	//		FMassVelocityFragment* VelocityFragment = Manager.GetFragmentDataPtr<FMassVelocityFragment>(Entity);
+	//		if (VelocityFragment)
+	//		{
+	//			VelocityFragment->Value = FVector::ZeroVector;
+	//		}
+	//		FMassDesiredMovementFragment* DesiredMovement = Manager.GetFragmentDataPtr<FMassDesiredMovementFragment>(Entity);
+	//		if (DesiredMovement)
+	//		{
+	//			DesiredMovement->DesiredFacing = FQuat::Identity;
+	//			DesiredMovement->DesiredVelocity = FVector::ZeroVector;
+	//			//DesiredMovement->DesiredMaxSpeedOverride = 0;
+	//		}
+	//		FMassForceFragment* Force = Manager.GetFragmentDataPtr<FMassForceFragment>(Entity);
+	//				if (Force)
+	//				{
+	//					Force->Value = FVector::ZeroVector;
+	//				}
+	//		FMassStandingSteeringFragment* Steering = Manager.GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
+	//				if (Steering)
+	//				{
+	//					Steering->TargetLocation = FVector::ZeroVector;
+	//					//Steering->TrackedTargetSpeed = 0;
+	//					//Steering->TargetSelectionCooldown = 0;
+	//					//Steering->bIsUpdatingTarget = false;
+	//					//Steering->bEnteredFromMoveAction = false;
+	//				}
+	//		FMassSteeringFragment* Steer = Manager.GetFragmentDataPtr<FMassSteeringFragment>(Entity);
+	//				if (Steer)
+	//				{
+	//					Steer->DesiredVelocity = FVector::ZeroVector;
+	//				}
+	//	}
+	//});
+	//
+	//EntityManager.Defer().AddTag<FMassCodeDrivenMovementTag>(Handle);
 	EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
-	EntityManager.Defer().RemoveTag<FMassSceneComponentVelocityCopyToMassTag>(Handle);
-	EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToMassTag, FMassCharacterMovementCopyToActorTag>(Handle);
-	EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToMassTag, FMassCharacterOrientationCopyToActorTag>(Handle);
-	EntityManager.Defer().SwapTags<FMassCapsuleTransformCopyToMassTag, FMassCapsuleTransformCopyToActorTag>(Handle);
+	//EntityManager.Defer().RemoveTag<FMassSceneComponentVelocityCopyToMassTag>(Handle);
+	//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToMassTag, FMassCharacterMovementCopyToActorTag>(Handle);
+	//EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToMassTag, FMassCharacterOrientationCopyToActorTag>(Handle);
+	//EntityManager.Defer().SwapTags<FMassCapsuleTransformCopyToMassTag, FMassCapsuleTransformCopyToActorTag>(Handle);
 }
 
 UAITask_MoveTo* FArcMassActorMoveToTask::PrepareMoveToTask(FStateTreeExecutionContext& Context, AAIController& Controller, UAITask_MoveTo* ExistingTask, FAIMoveRequest& MoveRequest) const
@@ -397,13 +399,21 @@ void UArcMassActorMoveToProcessor::Execute(FMassEntityManager& EntityManager, FM
 		const TConstArrayView<FArcMassActorMoveToFragment> ActorMoveToFragments = MyContext.GetFragmentView<FArcMassActorMoveToFragment>();
 			
 		const float WorldDeltaTime = MyContext.GetDeltaTimeSeconds();
-
+		
 		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
 			const FTransformFragment& Transform = TransformList[EntityIt];
 			const FArcMassActorMoveToFragment& ActorMoveto = ActorMoveToFragments[EntityIt];
-
-			FVector::FReal Dist = FVector::Dist(Transform.GetTransform().GetLocation(), ActorMoveto.Destination);
+			FVector CurrentDestination = FVector::ZeroVector;
+			if (ActorMoveto.TargetActor.IsValid())
+			{
+				CurrentDestination = ActorMoveto.TargetActor->GetActorLocation();
+			}
+			else
+			{
+				CurrentDestination = ActorMoveto.Destination;
+			}
+			FVector::FReal Dist = FVector::Dist(Transform.GetTransform().GetLocation(), CurrentDestination);
 			if (Dist <= (ActorMoveto.AcceptanceRadius))
 			{
 				FMassEntityHandle Handle = MyContext.GetEntity(EntityIt);

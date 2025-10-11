@@ -244,6 +244,8 @@ void UArcItemAttachmentComponent::SetVisualItemAttachment(UArcItemDefinition* In
 	ReplicatedAttachments.Items[Idx].VisualItemDefinition = InItemDefinition;
 		
 	ReplicatedAttachments.ItemChanged(ForItem);
+
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedAttachments, this);
 }
 
 void UArcItemAttachmentComponent::ResetVisualItemAttachment(const FArcItemId& ForItem)

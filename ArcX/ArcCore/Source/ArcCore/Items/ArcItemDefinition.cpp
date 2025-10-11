@@ -27,6 +27,7 @@
 #include "GameplayTagsManager.h"
 #include "Engine/AssetManager.h"
 #include "UObject/Object.h"
+#include "UObject/UObjectBase.h"
 
 #include "Items/ArcItemInstance.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
@@ -309,6 +310,45 @@ FAssetData UArcItemDefinition::FindByItemTags(const FGameplayTagContainer& InTag
 			break;
 		}
 	}
+	return Asset;
+}
+
+TArray<FAssetData> UArcItemDefinition::FilterByItemTags(const FGameplayTagContainer& InTags, const TArray<FAssetData>& InAssets)
+{
+	TArray<FAssetData> Asset;
+	for (const FAssetData& AD : InAssets)
+	{
+		FGameplayTagContainer Tags = UArcItemDefinition::GetItemTags(AD);
+		if (Tags.HasAll(InTags))
+		{
+			Asset.Add(AD);
+		}
+	}
+	return Asset;
+}
+
+TArray<FAssetData> UArcItemDefinition::FilterByTags(const FGameplayTagContainer& InItemTags, const FGameplayTagContainer& InRequiredTags, const FGameplayTagContainer& InDenyTags, const TArray<FAssetData>& InAssets)
+{
+	TArray<FAssetData> Asset;
+
+	for (const FAssetData& AD : InAssets)
+	{
+		const bool bItemTagsEmpty = InItemTags.IsEmpty();
+		const bool bRequiredTagsEmpty = InRequiredTags.IsEmpty();
+		const bool bDenyTagsEmpty = InDenyTags.IsEmpty();
+		
+		FGameplayTagContainer ItemTags = bItemTagsEmpty ? UArcItemDefinition::GetItemTags(AD) : FGameplayTagContainer();
+		FGameplayTagContainer RequiredTags = bRequiredTagsEmpty ? UArcItemDefinition::GetRequiredTags(AD) : FGameplayTagContainer();
+		FGameplayTagContainer DenyTags = bDenyTagsEmpty ? UArcItemDefinition::GetDenyTags(AD) : FGameplayTagContainer();
+		
+		if ((bItemTagsEmpty || ItemTags.HasAll(InItemTags))
+			&& (bRequiredTagsEmpty || RequiredTags.HasAll(InRequiredTags))
+			&& (bDenyTagsEmpty || !DenyTags.HasAny(InDenyTags)))
+		{
+			Asset.Add(AD);
+		}
+	}
+	
 	return Asset;
 }
 

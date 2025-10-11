@@ -81,9 +81,29 @@ public:
 	const FArcItemData* GetSourceItemPtr() const;
 
 	const TWeakPtr<FArcItemData> GetSourceItemWeakPtr() const;
+
+	void SetSourceItemId(const FArcItemId& InSourceItemId)
+	{
+		SourceItemId = InSourceItemId;
+	}
+	
+	void SetItemStoreComponent(UArcItemsStoreComponent* InItemsStoreComponent)
+	{
+		ItemsStoreComponent = InItemsStoreComponent;
+	}
+
+	void SetSourceItemPtr(FArcItemData* InSourceItemPtr)
+	{
+		SourceItemPtr = InSourceItemPtr;
+	}
 	
 	const UArcItemDefinition* GetSourceItem() const;
 
+	void SetSourceItemDef(const UArcItemDefinition* InSourceItem)
+	{
+		SourceItem = InSourceItem;
+	}
+	
 	FArcTargetDataId GetTargetDataHandle() const
 	{
 		return TargetDataHandle;

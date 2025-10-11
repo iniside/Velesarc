@@ -24,6 +24,7 @@
 
 #include "AbilitySystemInterface.h"
 #include "GameplayTagAssetInterface.h"
+#include "MoverSimulationTypes.h"
 #include "GameFramework/Pawn.h"
 #include "AbilitySystem/ArcAbilitySet.h"
 #include "ArcCorePawn.generated.h"
@@ -32,15 +33,36 @@ class UGameplayAbility;
 class UGameplayEffect;
 class UArcAttributeSet;
 class UArcCoreAbilitySystemComponent;
+class UCharacterMoverComponent;
+class UNavMoverComponent;
 
 UCLASS(Abstract)
-class ARCCORE_API AArcCorePawn : public APawn
+class ARCCORE_API AArcCorePawn : public APawn, public IMoverInputProducerInterface
 {
 	GENERATED_BODY()
 
+protected:
+protected:
+	UPROPERTY(Category = Movement, VisibleAnywhere, BlueprintReadOnly, Transient, meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UCharacterMoverComponent> CharacterMotionComponent;
+
+	/** Holds functionality for nav movement data and functions */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category="Nav Movement")
+	TObjectPtr<UNavMoverComponent> NavMoverComponent;
+
+	FVector CachedMoveInputIntent = FVector::ZeroVector;
+	FRotator CachedLookInput = FRotator::ZeroRotator;
+
+	FVector CachedMoveInputVelocity = FVector::ZeroVector;
+	FVector LastAffirmativeMoveInput = FVector::ZeroVector;
+	
+	bool bOrientRotationToMovement = false;
+	bool bMaintainLastInputOrientation = true;
 public:
 	// Sets default values for this pawn's properties
 	AArcCorePawn();
+
+	virtual void PostInitializeComponents() override;
 
 protected:
 	virtual void PossessedBy(AController* NewController) override;
@@ -60,6 +82,21 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1, bool bForce = false) override;
+	
+	virtual void AddControllerYawInput(float Val) override;
+	virtual void AddControllerPitchInput(float Val) override;
+	
+	// IMoverInputProducerInterface - Start
+	
+	// Entry point for input production. Do not override. To extend in derived character types, override OnProduceInput for native types or implement "Produce Input" blueprint event
+	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
+
+	// IMoverInputProducerInterface - End
+	
+	// Override this function in native class to author input for the next simulation frame. Consider also calling Super method.
+	virtual void OnProduceInput(float DeltaMs, FMoverInputCmdContext& InputCmdResult);
 };
 
 UCLASS(Abstract)

@@ -21,7 +21,7 @@
 
 #pragma once
 
-
+#include "ArcNamedPrimaryAssetId.h"
 #include "Templates/SubclassOf.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "ArcStaticsBFL.generated.h"
@@ -59,6 +59,12 @@ public:
 										  , const FPrimaryAssetId Level
 										  , bool bAbsolute = true
 										  , FString Options = FString(TEXT("")));
+
+	UFUNCTION(BlueprintPure, Category = "Arc Core")
+	static FPrimaryAssetId ToPrimaryAssetId (const FArcNamedPrimaryAssetId& InAssetId)
+	{
+		return InAssetId.AssetId;
+	}
 
 	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"), Category = "Arc Core|Game")
 	static void OpenLevelFromUserFacingExperience(const UObject* WorldContextObject, UArcUserFacingExperienceDefinition* InDefinition);

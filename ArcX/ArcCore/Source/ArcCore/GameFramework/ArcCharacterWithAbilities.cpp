@@ -24,6 +24,12 @@
 #include "ArcCharacterMovementComponent.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "Pawn/ArcPawnExtensionComponent.h"
+#include "Perception/AIPerceptionComponent.h"
+
+UAIPerceptionComponent* AArcCharacterWithAbilities::GetPerceptionComponent()
+{
+	return FindComponentByClass<UAIPerceptionComponent>();
+}
 
 const FName AArcCharacterWithAbilities::AbilitySystemName = TEXT("AbilitySystem");
 const FName AArcCharacterWithAbilities::PawnExtenstionName = TEXT("PawnExtenstion");

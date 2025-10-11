@@ -76,6 +76,10 @@ void FArcAttachmentHandler_StaticMesh::HandleItemAttach(UArcItemAttachmentCompon
 	}
 
 	const FArcItemFragment_StaticMeshAttachment* Fragment = FindAttachmentFragment<FArcItemFragment_StaticMeshAttachment>(*ItemAttachment);
+	if (!Fragment)
+	{
+		return;
+	}
 	
 	if (UStaticMesh* AttachedObject = Fragment->StaticMeshAttachClass.LoadSynchronous())
 	{	

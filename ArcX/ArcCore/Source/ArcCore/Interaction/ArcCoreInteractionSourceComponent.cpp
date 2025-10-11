@@ -158,14 +158,20 @@ bool UArcTargetingFilterTask_Interactable::ShouldFilterTarget(const FTargetingRe
 {
 	if (AActor* Actor = TargetData.HitResult.GetActor())
 	{
-		return !Actor->Implements<UInteractionTarget>();
+		bool bIsTargetInteractable = Actor->Implements<UInteractionTarget>();
+		bool bIsTargetComponentInteractable = TargetData.HitResult.GetComponent()->Implements<UInteractionTarget>();
+		
+		if (bIsTargetInteractable)
+		{
+			return false;
+		}
+
+		if (bIsTargetComponentInteractable)
+		{
+			return false;
+		}
 	}
 	
-	if (USceneComponent* Component = TargetData.HitResult.GetComponent())
-	{
-		return !Component->Implements<UInteractionTarget>();
-	}
-
 	return true;
 }
 

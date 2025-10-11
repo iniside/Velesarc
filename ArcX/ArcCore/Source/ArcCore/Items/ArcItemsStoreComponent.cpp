@@ -209,6 +209,21 @@ const FArcItemData* UArcItemsStoreComponent::GetItemByTags(const FGameplayTagCon
 	return nullptr;
 }
 
+int32 UArcItemsStoreComponent::CountItemsByDefinition(const FPrimaryAssetId& ItemDefinitionId)
+{
+	int32 Count = 0;
+
+	for (const FArcItemDataInternalWrapper& Item : ItemsArray.Items)
+	{
+		if (Item.ToItem()->GetItemDefinitionId() == ItemDefinitionId)
+		{
+			Count += Item.ToItem()->GetStacks();
+		}
+	}
+
+	return Count;
+}
+
 // Sets default values for this component's properties
 UArcItemsStoreComponent::UArcItemsStoreComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)

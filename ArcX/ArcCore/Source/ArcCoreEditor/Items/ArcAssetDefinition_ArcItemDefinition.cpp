@@ -33,6 +33,7 @@
 #include "Kismet2/SClassPickerDialog.h"
 #include "ObjectTools.h"
 #include "SDetailsDiff.h"
+#include "ToolMenus.h"
 #include "ToolMenuSection.h"
 #include "Core/ArcCoreAssetManager.h"
 #include "Serialization/ObjectReader.h"

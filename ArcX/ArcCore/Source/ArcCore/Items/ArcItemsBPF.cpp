@@ -135,7 +135,7 @@ bool UArcItemsBPF::ItemHasAnyTag(const FArcItemDataHandle& InItem
 	return false;
 }
 
-bool UArcItemsBPF::ItemHasAallTags(const FArcItemDataHandle& InItem
+bool UArcItemsBPF::ItemHasAllTags(const FArcItemDataHandle& InItem
 	, FGameplayTagContainer InTag, bool bExact)
 {
 	if (const FArcItemFragment_Tags* Tags = ArcItems::FindFragment<FArcItemFragment_Tags>(*InItem))
@@ -151,4 +151,9 @@ bool UArcItemsBPF::ItemHasAallTags(const FArcItemDataHandle& InItem
 	}
 
 	return false;
+}
+
+int32 UArcItemsBPF::GetItemStacks(const FArcItemDataHandle& Item)
+{
+	return Item->GetStacks();
 }

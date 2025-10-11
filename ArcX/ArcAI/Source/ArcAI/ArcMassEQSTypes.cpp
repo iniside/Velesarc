@@ -1,22 +1,12 @@
 ﻿#include "ArcMassEQSTypes.h"
 
-#include "AIController.h"
-#include "GameplayTasksComponent.h"
-#include "MassActorSubsystem.h"
-#include "MassAgentComponent.h"
+#include "ArcMassEQSResultStore.h"
 #include "MassCommonFragments.h"
-#include "MassEntityElementTypes.h"
-#include "MassEntitySettings.h"
 #include "MassEntitySubsystem.h"
-#include "MassSignalSubsystem.h"
-#include "MassStateTreeExecutionContext.h"
-#include "MassStateTreeTypes.h"
-#include "StateTreeConsiderationBase.h"
-#include "StateTreeExecutionContext.h"
+#include "MassEQSBlueprintLibrary.h"
+#include "EnvironmentQuery/Items/EnvQueryItemType_Actor.h"
 #include "EnvironmentQuery/Items/EnvQueryItemType_Point.h"
-#include "EnvironmentQuery/Items/EnvQueryItemType_VectorBase.h"
 #include "Items/EnvQueryItemType_MassEntityHandle.h"
-#include "Tasks/AITask.h"
 
 UEnvQueryContext_MassEntityQuerier::UEnvQueryContext_MassEntityQuerier(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -38,196 +28,258 @@ void UEnvQueryContext_MassEntityQuerier::ProvideContext(FEnvQueryInstance& Query
 	}
 }
 
-
-const TArray<FMassStateTreeDependency>& UArcMassActorStateTreeSchema::GetDependencies() const
+UEnvQueryContext_MassEQSStoreBase::UEnvQueryContext_MassEQSStoreBase(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
-	return Dependencies;
 }
 
-bool UArcMassActorStateTreeSchema::IsStructAllowed(const UScriptStruct* InScriptStruct) const
+void UEnvQueryContext_MassEQSStoreBase::ProvideContext(FEnvQueryInstance& QueryInstance, FEnvQueryContextData& ContextData) const
 {
-	return Super::IsStructAllowed(InScriptStruct) ||
-		InScriptStruct->IsChildOf(FMassStateTreeEvaluatorBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FMassStateTreeTaskBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FMassStateTreeConditionBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FMassStateTreePropertyFunctionBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FStateTreeEvaluatorCommonBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FStateTreeConditionCommonBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FStateTreeConsiderationCommonBase::StaticStruct())
-			|| InScriptStruct->IsChildOf(FStateTreePropertyFunctionCommonBase::StaticStruct());
-}
-
-bool UArcMassActorStateTreeSchema::IsExternalItemAllowed(const UStruct& InStruct) const
-{
-	return Super::IsExternalItemAllowed(InStruct) ||
-		InStruct.IsChildOf(AActor::StaticClass())
-			|| InStruct.IsChildOf(UActorComponent::StaticClass())
-			|| InStruct.IsChildOf(UWorldSubsystem::StaticClass())
-			|| UE::Mass::IsA<FMassFragment>(&InStruct)
-			|| UE::Mass::IsA<FMassSharedFragment>(&InStruct)
-			|| UE::Mass::IsA<FMassConstSharedFragment>(&InStruct);
-}
-
-bool UArcMassActorStateTreeSchema::Link(FStateTreeLinker& Linker)
-{
-	Dependencies.Empty();
-	UE::MassBehavior::FStateTreeDependencyBuilder Builder(Dependencies);
-
-	auto BuildDependencies = [&Builder](const UStateTree* StateTree)
-		{
-			for (FConstStructView Node : StateTree->GetNodes())
-			{
-				if (const FMassStateTreeEvaluatorBase* Evaluator = Node.GetPtr<const FMassStateTreeEvaluatorBase>())
-				{
-					Evaluator->GetDependencies(Builder);
-				}
-				else if (const FMassStateTreeTaskBase* Task = Node.GetPtr<const FMassStateTreeTaskBase>())
-				{
-					Task->GetDependencies(Builder);
-				}
-				else if (const FMassStateTreeConditionBase* Condition = Node.GetPtr<const FMassStateTreeConditionBase>())
-				{
-					Condition->GetDependencies(Builder);
-				}
-				else if (const FMassStateTreePropertyFunctionBase* PropertyFunction = Node.GetPtr<const FMassStateTreePropertyFunctionBase>())
-				{
-					PropertyFunction->GetDependencies(Builder);
-				}
-			}
-		};
-
-	TArray<const UStateTree*, TInlineAllocator<4>> StateTrees;
-	StateTrees.Add(CastChecked<const UStateTree>(GetOuter()));
-	for (int32 Index = 0; Index < StateTrees.Num(); ++Index)
+	if (QueryInstance.OwningEntity.IsValid())
 	{
-		const UStateTree* StateTree = StateTrees[Index];
-		BuildDependencies(StateTree);
-
-		// The StateTree::Link order is not deterministic. Build the dependencies and add them to this list.
-		for (const FCompactStateTreeState& State : StateTree->GetStates())
+		UMassEntitySubsystem* MassSubsystem = QueryInstance.World->GetSubsystem<UMassEntitySubsystem>();
+		UArcMassEQSResultStore* ResultStoreSubsystem = QueryInstance.World->GetSubsystem<UArcMassEQSResultStore>();
+		if (!ResultStoreSubsystem)
 		{
-			if (State.LinkedAsset && State.Type == EStateTreeStateType::LinkedAsset)
+			if (AActor* A = Cast<AActor>(QueryInstance.Owner))
 			{
-				StateTrees.AddUnique(State.LinkedAsset);
+				UEnvQueryItemType_Actor::SetContextHelper(ContextData, A);	
+			}	
+		}
+		if (FArcMassEQSResultTypeMap* TypeMap = ResultStoreSubsystem->EQSResults.Find(QueryInstance.OwningEntity))
+		{
+			if (FArcMassEQSResults* Result = TypeMap->Results.Find(ResultName))
+			{
+				switch (InputType)
+				{
+					case EArcMassEQSInputType::Actor:
+					{
+						switch (ResultType)
+						{
+							case EArcMassEQSResultType::Actor:
+							{
+								if (Result->ActorResult)
+								{
+									UEnvQueryItemType_Actor::SetContextHelper(ContextData, Result->ActorResult);	
+								}
+								break;
+							}
+							case EArcMassEQSResultType::ActorArray:
+								break;
+							case EArcMassEQSResultType::Vector:
+							{
+								if (Result->ActorResult)
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->ActorResult->GetActorLocation());	
+								}
+								else
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, FNavigationSystem::InvalidLocation);
+								}
+								break;
+							}
+							case EArcMassEQSResultType::VectorArray:
+								break;
+							case EArcMassEQSResultType::Entity:
+								break;
+							case EArcMassEQSResultType::EntityArray:
+								break;
+						}
+						break;
+					}
+					case EArcMassEQSInputType::ActorArray:
+						switch (ResultType)
+						{
+						case EArcMassEQSResultType::Actor:
+						{
+							if (Result->ActorArrayResult.IsEmpty())
+							{
+								UEnvQueryItemType_Actor::SetContextHelper(ContextData, nullptr);
+							}
+							else
+							{
+								UEnvQueryItemType_Actor::SetContextHelper(ContextData, Result->ActorArrayResult[0]);
+							}
+							break;
+						}
+						case EArcMassEQSResultType::ActorArray:
+								UEnvQueryItemType_Actor::SetContextHelper(ContextData, Result->ActorResult);
+								break;
+						case EArcMassEQSResultType::Vector:
+						{
+							if (Result->ActorArrayResult.IsEmpty())
+							{
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, FNavigationSystem::InvalidLocation);	
+							}
+							else
+							{
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->ActorArrayResult[0]->GetActorLocation());
+							}
+							break;
+						}
+						case EArcMassEQSResultType::VectorArray:
+								if (Result->ActorArrayResult.IsEmpty())
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, FNavigationSystem::InvalidLocation);	
+								}
+								else
+								{
+									TArray<FVector> VectorArray;
+									VectorArray.Reserve(Result->ActorArrayResult.Num());
+									for (AActor* Actor : Result->ActorArrayResult)
+									{
+										VectorArray.Add(Actor->GetActorLocation());
+									}
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, VectorArray);
+								}
+								break;
+						case EArcMassEQSResultType::Entity:
+								break;
+						case EArcMassEQSResultType::EntityArray:
+								break;
+						}
+						break;
+					case EArcMassEQSInputType::Vector:
+						switch (ResultType)
+						{
+						case EArcMassEQSResultType::Actor:
+								break;
+						case EArcMassEQSResultType::ActorArray:
+								break;
+						case EArcMassEQSResultType::Vector:
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->VectorResult);
+								break;
+						case EArcMassEQSResultType::VectorArray:
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->VectorResult);
+								break;
+						case EArcMassEQSResultType::Entity:
+								break;
+						case EArcMassEQSResultType::EntityArray:
+								break;
+						}
+						break;
+					case EArcMassEQSInputType::VectorArray:
+						switch (ResultType)
+						{
+						case EArcMassEQSResultType::Actor:
+								break;
+						case EArcMassEQSResultType::ActorArray:
+								break;
+						case EArcMassEQSResultType::Vector:
+								if (Result->VectorArrayResult.IsEmpty())
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, FNavigationSystem::InvalidLocation);	
+								}
+								else
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->VectorArrayResult[0]);
+								}
+								break;
+						case EArcMassEQSResultType::VectorArray:
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->VectorArrayResult);
+								break;
+						case EArcMassEQSResultType::Entity:
+								break;
+						case EArcMassEQSResultType::EntityArray:
+								break;
+						}
+						break;
+					case EArcMassEQSInputType::Entity:
+						switch (ResultType)
+						{
+						case EArcMassEQSResultType::Actor:
+								break;
+						case EArcMassEQSResultType::ActorArray:
+								break;
+						case EArcMassEQSResultType::Vector:
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->EntityResult.GetCachedEntityPosition());
+								break;
+						case EArcMassEQSResultType::VectorArray:
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->EntityResult.GetCachedEntityPosition());
+								break;
+						case EArcMassEQSResultType::Entity:
+								ContextData.ValueType = UEnvQueryItemType_MassEntityHandle::StaticClass();
+								ContextData.NumValues = 1;
+								ContextData.RawData.SetNumUninitialized(sizeof(FMassEnvQueryEntityInfo));
+								UEnvQueryItemType_MassEntityHandle::SetValue(ContextData.RawData.GetData(), Result->EntityResult.GetEntityInfo());
+								break;
+						case EArcMassEQSResultType::EntityArray:
+								ContextData.ValueType = UEnvQueryItemType_MassEntityHandle::StaticClass();
+								ContextData.NumValues = 1;
+								ContextData.RawData.SetNumUninitialized(sizeof(FMassEnvQueryEntityInfo));
+								UEnvQueryItemType_MassEntityHandle::SetValue(ContextData.RawData.GetData(), Result->EntityResult.GetEntityInfo());
+								break;
+						}
+						break;
+					case EArcMassEQSInputType::EntityArray:
+					{
+						switch (ResultType)
+						{
+							case EArcMassEQSResultType::Actor:
+								break;
+							case EArcMassEQSResultType::ActorArray:
+								break;
+							case EArcMassEQSResultType::Vector:
+								if (Result->EntityArrayResult.IsEmpty())
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, FNavigationSystem::InvalidLocation);	
+								}
+								else
+								{
+									UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->EntityArrayResult[0].GetCachedEntityPosition());	
+								}
+								
+								break;
+							case EArcMassEQSResultType::VectorArray:
+							{
+								TArray<FVector> VectorArray;
+								VectorArray.Reserve(Result->EntityArrayResult.Num());
+								for (const FMassEnvQueryEntityInfoBlueprintWrapper& EntityInfo : Result->EntityArrayResult)
+								{
+									VectorArray.Add(EntityInfo.GetCachedEntityPosition());
+								}
+								UEnvQueryItemType_Point::SetContextHelper(ContextData, VectorArray);
+								break;
+							}
+							case EArcMassEQSResultType::Entity:
+							{
+								if (!Result->EntityArrayResult.IsEmpty())
+								{
+									ContextData.ValueType = UEnvQueryItemType_MassEntityHandle::StaticClass();
+									ContextData.NumValues = 1;
+									ContextData.RawData.SetNumUninitialized(sizeof(FMassEnvQueryEntityInfo));
+									UEnvQueryItemType_MassEntityHandle::SetValue(ContextData.RawData.GetData(), Result->EntityArrayResult[0].GetEntityInfo());	
+								}
+								
+								break;
+							}
+							case EArcMassEQSResultType::EntityArray:
+							{
+								ContextData.ValueType = UEnvQueryItemType_MassEntityHandle::StaticClass();
+								ContextData.NumValues = 1;
+								ContextData.RawData.SetNumUninitialized(sizeof(FMassEnvQueryEntityInfo) * Result->EntityArrayResult.Num());
+
+								uint8* RawData = (uint8*)ContextData.RawData.GetData();
+								for (int32 i = 0; i < Result->EntityArrayResult.Num(); ++i)
+								{
+									UEnvQueryItemType_MassEntityHandle::SetValue(RawData, Result->EntityArrayResult[i].GetEntityInfo());
+									RawData += sizeof(FMassEnvQueryEntityInfo);
+								}
+								break;
+							}
+						}
+						break;
+					}
+				}	
 			}
 		}
 	}
-
-#if UE_WITH_MASS_STATETREE_DEPENDENCIES_DEBUG
-	for (const FStateTreeExternalDataDesc& Desc : Linker.GetExternalDataDescs())
+	else
 	{
-		const bool bContains = Dependencies.ContainsByPredicate([&Desc](const FMassStateTreeDependency& Other) { return Desc.Struct == Other.Type; });
-		ensureMsgf(bContains, TEXT("Tree %s is missing a mass dependency"), *StateTree->GetPathName());
-	}
-#endif
-	return Super::Link(Linker);
-}
-
-void FArcStateTreeMassTargetLocationPropertyFunction::Execute(FStateTreeExecutionContext& Context) const
-{
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	InstanceData.Output.EndOfPathPosition = InstanceData.Input;
-	InstanceData.Output.EndOfPathIntent = InstanceData.EndOfPathIntent;
-}
-
-FArcMassStateTreeRunEnvQueryTask::FArcMassStateTreeRunEnvQueryTask()
-{
-	bShouldCallTick = true;
-	bShouldCopyBoundPropertiesOnTick = false;
-	bShouldCopyBoundPropertiesOnExitState = false;
-}
-
-EStateTreeRunStatus FArcMassStateTreeRunEnvQueryTask::EnterState(FStateTreeExecutionContext& Context
-																 , const FStateTreeTransitionResult& Transition) const
-{
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	if (!InstanceData.QueryTemplate)
-	{
-		return EStateTreeRunStatus::Failed;
-	}
-
-	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-	
-	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
-	AActor* Owner = nullptr;
-	if (FMassActorFragment* MassActorFragment = EntityManager.GetFragmentDataPtr<FMassActorFragment>(MassCtx.GetEntity()))
-	{
-		Owner = MassActorFragment->GetMutable();
-	}
-	FEnvQueryRequest Request(InstanceData.QueryTemplate, Owner, MassCtx.GetEntity(), Context.GetWorld());
-
-	for (FAIDynamicParam& DynamicParam : InstanceData.QueryConfig)
-	{
-		Request.SetDynamicParam(DynamicParam, nullptr);
-	}
-
-	InstanceData.RequestId = Request.Execute(InstanceData.RunMode,
-		FQueryFinishedSignature::CreateLambda([WeakContext = Context.MakeWeakExecutionContext()](TSharedPtr<FEnvQueryResult> QueryResult) mutable
+		if (AActor* A = Cast<AActor>(QueryInstance.Owner))
 		{
-			const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-			if (FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>())
-			{
-				InstanceDataPtr->RequestId = INDEX_NONE;
-
-				bool bSuccess = false;
-				if (QueryResult && QueryResult->IsSuccessful())
-				{
-					auto [VectorPtr, ActorPtr, ArrayOfVector, ArrayOfActor] = InstanceDataPtr->Result.GetPtrTupleFromStrongExecutionContext<FVector,AActor*, TArray<FVector>, TArray<AActor*>>(StrongContext);
-					if (VectorPtr)
-					{
-						*VectorPtr = QueryResult->GetItemAsLocation(0);
-					}
-					else if (ActorPtr)
-					{
-						*ActorPtr = QueryResult->GetItemAsActor(0);
-					}
-					else if (ArrayOfVector)
-					{
-						QueryResult->GetAllAsLocations(*ArrayOfVector);
-					}
-					else if (ArrayOfActor)
-					{
-						QueryResult->GetAllAsActors(*ArrayOfActor);
-					}
-
-					bSuccess = true;
-				}
-				InstanceDataPtr->bFinished = true;
-				//StrongContext.FinishTask(bSuccess ? EStateTreeFinishTaskType::Succeeded : EStateTreeFinishTaskType::Failed);
-				//StrongContext.FinishTask(EStateTreeFinishTaskType::Succeeded);
-			}
-		}));
-
-	return InstanceData.RequestId != INDEX_NONE ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
-}
-
-EStateTreeRunStatus FArcMassStateTreeRunEnvQueryTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
-{
-	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	if (InstanceData.bFinished)
-	{
-		SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
-		return EStateTreeRunStatus::Succeeded;
-	}
-
-	SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
-	return EStateTreeRunStatus::Running;
-}
-
-void FArcMassStateTreeRunEnvQueryTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
-{
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	if (InstanceData.RequestId != INDEX_NONE)
-	{
-		if (UEnvQueryManager* QueryManager = UEnvQueryManager::GetCurrent(Context.GetOwner()))
-		{
-			QueryManager->AbortQuery(InstanceData.RequestId);
+			UEnvQueryItemType_Actor::SetContextHelper(ContextData, A);	
 		}
-		InstanceData.RequestId = INDEX_NONE;
-		InstanceData.bFinished = false;
 	}
 }
 
@@ -249,3 +301,4 @@ void UArcMassEnvQueryGenerator_MassEntityHandles::GenerateItems(FEnvQueryInstanc
 
 	const UMassEntitySubsystem* MassSubsystem = QueryInstance.World->GetSubsystem<UMassEntitySubsystem>();
 }
+

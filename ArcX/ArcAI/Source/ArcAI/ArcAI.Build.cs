@@ -32,6 +32,9 @@ public class ArcAI : ModuleRules
 			new string[]
 			{
 				"Core"
+				, "CoreUObject"
+				, "Engine"
+				, "AIModule"
 				, "MassCommon"
 				, "MassEntity"
 				, "MassSpawner"
@@ -39,12 +42,25 @@ public class ArcAI : ModuleRules
 				, "MassActors"
 				, "MassAIBehavior"
 				, "MassNavigation"
+				, "MassNavMeshNavigation"
+				, "MassMovement"
 				, "MassEQS"
+				, "MassLOD"
 				, "StateTreeModule"
 				, "GameplayStateTreeModule" 
 				, "PropertyPath"
 				, "GameplayAbilities"
 				, "PropertyBindingUtils"
+				, "ArcMass"
+				, "NavCorridor"
+				, "NavigationSystem"
+				, "Navmesh"
+				, "SmartObjectsModule"
+				, "MassSmartObjects"
+				, "ArcCore"
+				, "GameplayBehaviorSmartObjectsModule"
+				, "GameplayBehaviorsModule"
+				, "GameplayInteractionsModule"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -65,7 +81,11 @@ public class ArcAI : ModuleRules
 				, "GameplayTags"
 				, "MassCommon"
 				, "MassEntity"
-				, "MassSpawner", 
+				, "MassSpawner"
+				, "MassEQS"
+				, "ArcCore"
+				, "GameplayBehaviorSmartObjectsModule"
+				, "ArcGameplayInteraction"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

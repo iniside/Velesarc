@@ -27,27 +27,27 @@
 
 #include "ArcItemFragment_RequiredItems.generated.h"
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct ARCCORE_API FArcItemDefCount
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FArcNamedPrimaryAssetId ItemDefinitionId;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	int32 Count = 1;
 };
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct ARCCORE_API FArcItemTagCount
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FGameplayTagContainer RequiredTags;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	int32 Count = 1;
 };
 
@@ -57,9 +57,9 @@ struct ARCCORE_API FArcItemFragment_RequiredItems : public FArcItemFragment
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
 	TArray<FArcItemDefCount> RequiredItemDefs;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TArray<FArcItemTagCount> RequiredItemsWithTags;
 };

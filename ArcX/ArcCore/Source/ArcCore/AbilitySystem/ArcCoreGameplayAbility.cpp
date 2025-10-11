@@ -494,19 +494,7 @@ bool UArcCoreGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHandl
 {
 	if (bRequiresItem)
 	{
-		const FGameplayAbilitySpec* Spec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle);
-		if (!Spec)
-		{
-			return false;
-		}
-
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
-		if (!ArcAbility)
-		{
-			return false;
-		}
-		
-		if (ArcAbility->GetSourceItemEntryPtr() == nullptr)
+		if (GetSourceItemEntryPtr() == nullptr)
 		{
 			return false;
 		}

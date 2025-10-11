@@ -70,9 +70,12 @@ void ArcAbility::SetSourceItem(FGameplayEffectContext* Context
 		return;
 	}
 
+	FArcItemData* ItemPtr = ItemsStore->GetItemPtr(SourceItemHandle);
 	Ctx->SetSourceItemHandle(SourceItemHandle);
-	Ctx->ItemsStoreComponent = ItemsStore;
-	Ctx->SourceItemPtr = ItemsStore->GetItemPtr(SourceItemHandle);
+	Ctx->SetItemStoreComponent(ItemsStore);
+	Ctx->SetSourceItemPtr(ItemPtr);
+	Ctx->SetSourceItemDef(ItemPtr->GetItemDefinition());
+	Ctx->SetSourceItemId(SourceItemHandle);
 }
 
 FArcTargetDataId ArcAbility::GetTargetDataHandle(const FGameplayEffectContextHandle& Context)

@@ -26,6 +26,7 @@
 #include "Framework/Notifications/NotificationManager.h"
 #include "GameMode/ArcCoreWorldSettings.h"
 #include "Settings/ContentBrowserSettings.h"
+#include "Settings/LevelEditorPlaySettings.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
 #define LOCTEXT_NAMESPACE "LyraEditor"

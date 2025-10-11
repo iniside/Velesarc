@@ -148,6 +148,9 @@ public:
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Arc Core|Items")
+	FArcGenericItemStoreDynamicDelegate OnItemChangedDynamic;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Arc Core|Items")
 	FArcGenericItemStoreDynamicDelegate OnItemAddedToStoreDynamic;
 
 	UPROPERTY(BlueprintAssignable, Category = "Arc Core|Items")

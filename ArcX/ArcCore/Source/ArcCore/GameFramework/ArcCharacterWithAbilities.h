@@ -25,6 +25,7 @@
 
 #include "GameplayTagAssetInterface.h"
 #include "ModularCharacter.h"
+#include "Perception/AIPerceptionListenerInterface.h"
 #include "ArcCharacterWithAbilities.generated.h"
 
 /**
@@ -36,8 +37,13 @@ class ARCCORE_API AArcCharacterWithAbilities
 		: public AModularCharacter
 		, public IAbilitySystemInterface
 		, public IGameplayTagAssetInterface
+		, public IAIPerceptionListenerInterface 
 
 {
+public:
+	virtual UAIPerceptionComponent* GetPerceptionComponent() override;
+
+private:
 	GENERATED_BODY()
 
 protected:

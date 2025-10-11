@@ -11,6 +11,10 @@ class ARCCORE_API UArcInstancedActorsComponent : public UInstancedActorsComponen
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(Category = "Traits", EditAnywhere, Instanced)
+	TArray<TObjectPtr<UMassEntityTraitBase>> Traits;
+
+public:
 	// Sets default values for this component's properties
 	UArcInstancedActorsComponent();
 
@@ -19,6 +23,8 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
+	virtual void ModifyMassEntityConfig(FMassEntityManager& InMassEntityManager, UInstancedActorsData* InstancedActorData, FMassEntityConfig& InOutMassEntityConfig) const override;
+	
 	virtual void OnServerPreSpawnInitForInstance(FInstancedActorsInstanceHandle InInstanceHandle) override;
 
 	virtual void InitializeComponentForInstance(FInstancedActorsInstanceHandle InInstanceHandle) override;

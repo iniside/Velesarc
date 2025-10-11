@@ -56,7 +56,7 @@ struct ARCCORE_API FArcItemAttachmentSlot
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (NoCategoryGrouping, Categories = "QuickSlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (NoCategoryGrouping, Categories = "SlotId"))
 	FGameplayTag SlotId;
 
 	UPROPERTY(EditAnywhere, meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false))

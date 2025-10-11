@@ -1,4 +1,4 @@
-﻿#include "ArcMassActorTagCondition.h"
+﻿#include "ArcMassActorTagsCondition.h"
 
 #include "GameplayTagAssetInterface.h"
 #include "MassStateTreeDependency.h"
@@ -6,19 +6,19 @@
 #include "StateTreeLinker.h"
 #include "StateTreeNodeDescriptionHelpers.h"
 
-bool FArcMassActorTagCondition::Link(FStateTreeLinker& Linker)
+bool FArcMassActorTagsCondition::Link(FStateTreeLinker& Linker)
 {
 	Linker.LinkExternalData(MassActorHandle);
 	
 	return true;
 }
 
-void FArcMassActorTagCondition::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
+void FArcMassActorTagsCondition::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
 	Builder.AddReadOnly<FMassActorFragment>();
 }
 
-bool FArcMassActorTagCondition::TestCondition(FStateTreeExecutionContext& Context) const
+bool FArcMassActorTagsCondition::TestCondition(FStateTreeExecutionContext& Context) const
 {
 	const FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
 	FMassActorFragment* MassActor = MassStateTreeContext.GetExternalDataPtr(MassActorHandle);

@@ -25,11 +25,15 @@
 #include "MassProcessor.h"
 #include "MassEntityTraitBase.h"
 #include "MassEntityTemplateRegistry.h"
+#include "MassEQSBlueprintLibrary.h"
 #include "MassNavigationTypes.h"
 #include "MassStateTreeSchema.h"
+#include "MassSubsystemBase.h"
 #include "StateTreeConsiderationBase.h"
 #include "StateTreePropertyFunctionBase.h"
+#include "StateTreeTaskBase.h"
 #include "Considerations/StateTreeCommonConsiderations.h"
+#include "Tasks/ArcMassStateTreeRunEnvQueryTask.h"
 #include "ArcNeedsFragment.generated.h"
 
 USTRUCT(BlueprintType)
@@ -67,6 +71,15 @@ struct ARCAI_API FArcNeedsFragment : public FMassFragment
 	TArray<FArcNeedItem> Needs;
 };
 
+template<>
+struct TMassFragmentTraits<FArcNeedsFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
 class ARCAI_API UArcNeedsTraitBase : public UMassEntityTraitBase
 {
@@ -80,13 +93,6 @@ public:
 		BuildContext.AddFragment<FArcNeedsFragment>();
 	}
 };
-
-USTRUCT()
-struct ARCAI_API FArcDummyFragment : public FMassFragment
-{
-	GENERATED_BODY()
-};
-
 
 UCLASS(meta = (DisplayName = "Arc Needs Processor"))
 class ARCAI_API UArcNeedsProcessor : public UMassProcessor
@@ -188,4 +194,150 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
+USTRUCT()
+struct FArcMassNeedsConsiderationInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Parameter")
+	FName NeedName = NAME_None;
+};
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Mass Needs Consideration")
+struct FArcMassNeedsConsideration : public FStateTreeConsiderationCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassNeedsConsiderationInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	//~ Begin FStateTreeConsiderationBase Interface
+	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
+	//~ End FStateTreeConsiderationBase Interface
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Default")
+	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
+USTRUCT()
+struct ARCAI_API FArcScoreEntity
+{
+	GENERATED_BODY()
+
+public:
+	virtual void Check(FMassEntityManager& EntityManager, FMassEntityHandle OwningEntity, FMassEntityHandle InteractingEntity) {}
+
+	virtual ~FArcScoreEntity() = default;
+};
+// shared fragment ?
+
+USTRUCT()
+struct ARCAI_API FArcNeedStateTreeFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UStateTree> StateTree;
+
+	// What Entity with this fragment need ?
+	UPROPERTY(EditAnywhere)
+	FInstancedStruct OwnerNeed;
+};
+
+template<>
+struct TMassFragmentTraits<FArcNeedStateTreeFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
+class UStateTree;
+
+USTRUCT()
+struct FArcMassInjectStateTreeTaskInstanceData
+{
+	GENERATED_BODY()
+
+	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	TObjectPtr<UStateTree> StateTree = nullptr;
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FGameplayTag StateTag;
+
+	FStateTreeReference StateTreeRef;
+	FStateTreeReferenceOverrides LinkedStateTreeOverrides;
+};
+
+
+USTRUCT(meta = (DisplayName = "Arc Mass Inject StateTree"))
+struct FArcMassInjectStateTreeTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassInjectStateTreeTaskInstanceData;
+public:
+	FArcMassInjectStateTreeTask();
+
+	virtual const UStruct* GetInstanceDataType() const override
+	{
+		return FInstanceDataType::StaticStruct();
+	}
+	
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+};
+
+class UStateTree;
+
+USTRUCT()
+struct FArcProvideNextStateTreeTaskInstanceData
+{
+	GENERATED_BODY()
+
+public:
+	// Target From which we will try get State Tree(s)
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FMassEnvQueryEntityInfoBlueprintWrapper TargetInput;
+	
+	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	UPROPERTY(EditAnywhere, Category = Out, meta = (RefType = "/Script/StateTreeModule.StateTree"))
+	FStateTreePropertyRef StateTree;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	TArray<TObjectPtr<UStateTree>> StateTrees;
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FStateTreeDelegateDispatcher OnQueueFinished;
+	
+	UPROPERTY()
+	TArray<TObjectPtr<UStateTree>> QueuedStateTrees;
+	
+};
+
+USTRUCT(meta = (DisplayName = "Arc Provide Next StateTree Task"))
+struct ARCAI_API FArcProvideNextStateTreeTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+	
+	using FInstanceDataType = FArcProvideNextStateTreeTaskInstanceData;
+	
+public:
+	FArcProvideNextStateTreeTask();
+
+	virtual const UStruct* GetInstanceDataType() const override
+	{
+		return FInstanceDataType::StaticStruct();
+	}
+	
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 };

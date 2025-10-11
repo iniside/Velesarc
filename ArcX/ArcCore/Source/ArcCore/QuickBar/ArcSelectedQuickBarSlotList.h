@@ -185,9 +185,9 @@ public:
 		InvalidationHandle++;
 		NewSelectedSlot.InvalidationHandle = InvalidationHandle;
 		
-		Edit().Add(NewSelectedSlot);
+		Items.Add(NewSelectedSlot);
 		const int32 NewIndex = Items.Num() -1;
-
+		
 		return Items[NewIndex];
 	}
 

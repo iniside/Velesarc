@@ -270,9 +270,20 @@ public:
 
 	static FGameplayTagContainer GetDenyTags(const FAssetData& AssetData);
 
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Items")
 	static FAssetData FindByItemTags(const FGameplayTagContainer& InTags
 									 , const TArray<FAssetData>& InAssets);
 
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Items")
+	static TArray<FAssetData> FilterByItemTags(const FGameplayTagContainer& InItemTags
+									 , const TArray<FAssetData>& InAssets);
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Items")
+	static TArray<FAssetData> FilterByTags(const FGameplayTagContainer& InItemTags
+									 , const FGameplayTagContainer& InRequiredTags
+									 , const FGameplayTagContainer& InDenyTags
+									 , const TArray<FAssetData>& InAssets);
+	
 	/** Tried to load single item with tag. Only works if item have Tags Fragment. */
 	static UArcItemDefinition* LoadItemData(const FGameplayTag& InItemTag);
 };

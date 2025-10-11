@@ -3,7 +3,7 @@
 #include "MassActorSubsystem.h"
 #include "MassStateTreeTypes.h"
 
-#include "ArcMassActorTagCondition.generated.h"
+#include "ArcMassActorTagsCondition.generated.h"
 
 USTRUCT()
 struct FArcMassActorTagConditionConditionInstanceData
@@ -14,15 +14,15 @@ struct FArcMassActorTagConditionConditionInstanceData
 	FGameplayTagContainer TagContainer;
 };
 
-USTRUCT(DisplayName="Arc Mass Actor Tag Condition")
-struct FArcMassActorTagCondition : public FMassStateTreeConditionBase
+USTRUCT(DisplayName="Arc Mass Actor Tags Condition")
+struct FArcMassActorTagsCondition : public FMassStateTreeConditionBase
 {
 	GENERATED_BODY()
 	
 public:
 	using FInstanceDataType = FArcMassActorTagConditionConditionInstanceData;
 
-	FArcMassActorTagCondition() = default;
+	FArcMassActorTagsCondition() = default;
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 	

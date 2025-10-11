@@ -24,6 +24,7 @@
 
 #include "GameplayTagAssetInterface.h"
 #include "ModularCharacter.h"
+#include "Equipment/ArcSkeletalMeshOwnerInterface.h"
 #include "ArcCoreCharacter.generated.h"
 
 class UGameplayCameraComponent;
@@ -34,7 +35,9 @@ class IGameplayCameraSystemHost;
 DECLARE_LOG_CATEGORY_EXTERN(LogArcCoreCharacter, Log, Log);
 
 UCLASS(Abstract)
-class ARCCORE_API AArcCoreCharacter : public AModularCharacter, public IGameplayTagAssetInterface
+class ARCCORE_API AArcCoreCharacter : public AModularCharacter
+	, public IGameplayTagAssetInterface
+	, public IArcSkeletalMeshOwnerInterface
 {
 	GENERATED_BODY()
 
@@ -55,7 +58,13 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void OnPlayerControllerReplicated(APlayerController* PC);
-	
+
+	// IArcSkeletalMeshOwnerInterface - Begin
+	virtual USkeletalMeshComponent* GetSkeletalMesh() const override
+	{
+		return GetMesh();
+	}
+	// IArcSkeletalMeshOwnerInterface - End
 public:
 	AArcCoreCharacter(const FObjectInitializer& ObjectInitializer);
 

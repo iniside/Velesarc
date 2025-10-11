@@ -4,6 +4,9 @@
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeLinker.h"
 
+#include "GameFramework/Pawn.h"
+#include "AIController.h"
+
 FArcGetMassAIControllerTask::FArcGetMassAIControllerTask()
 {
 	bShouldCallTick = false;

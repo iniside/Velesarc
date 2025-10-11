@@ -98,10 +98,15 @@ void AArcCorePlayerController::BeginPlay()
 	GameplayCameraSystemHost = IGameplayCameraSystemHost::FindActiveHost(this);
 	UGameplayControlRotationComponent* ControlRotationComp = FindComponentByClass<UGameplayControlRotationComponent>();
 	
-	if (ControlRotationComp)
-	{
-		ControlRotationComp->PrimaryComponentTick.SetTickFunctionEnable(false);
-	}
+	//if (ControlRotationComp)
+	//{
+	//	ControlRotationComp->PrimaryComponentTick.SetTickFunctionEnable(false);
+	//}
+	//
+	//if (PlayerCameraManager)
+	//{
+	//	PlayerCameraManager->PrimaryActorTick.SetTickFunctionEnable(false);
+	//}
 }
 
 void AArcCorePlayerController::TickActor(float DeltaSeconds
@@ -109,13 +114,33 @@ void AArcCorePlayerController::TickActor(float DeltaSeconds
 	, FActorTickFunction& ThisTickFunction)
 {
 	Super::TickActor(DeltaSeconds
-		, TickType
-		, ThisTickFunction);
-
+					, TickType
+					, ThisTickFunction);
+	//
+	//UE_LOG(LogTemp, Log, TEXT("Delta %f"), DeltaSeconds);
+	
 	UGameplayControlRotationComponent* ControlRotationComp = FindComponentByClass<UGameplayControlRotationComponent>();
 	if (ControlRotationComp)
 	{
-		ControlRotationComp->TickComponent(DeltaSeconds, ELevelTick::LEVELTICK_All, &ControlRotationComp->PrimaryComponentTick);
+		const float FixedUpdateRate = 1 / 120.f;
+
+		// Add the current frame's delta time to our accumulator
+		TimeAccumulator += DeltaSeconds;
+
+		// Process as many fixed time steps as we've accumulated
+		//while (TimeAccumulator >= FixedUpdateRate)
+		{
+		//	Super::TickActor(FixedUpdateRate
+		//		, TickType
+		//		, ThisTickFunction);
+		//	PlayerCameraManager->TickActor(DeltaSeconds, TickType, ThisTickFunction);
+			//TimeAccumulator -= FixedUpdateRate;
+			//TimeAccumulator += 0.001;
+		//	ControlRotationComp->TickComponent(DeltaSeconds, ELevelTick::LEVELTICK_All, &ControlRotationComp->PrimaryComponentTick);
+
+			TimeAccumulator -= FixedUpdateRate;
+			//TimeAccumulator += 0.001;
+		}
 	}
 }
 
@@ -214,6 +239,8 @@ void AArcCorePlayerController::OnRep_PlayerState()
 	{
 		PSExt->CheckDefaultInitialization();
 	}
+
+	GetPlayerState<APlayerState>()->EnableInput(this);
 	
 	if(AArcCorePlayerState* ArcPS = GetPlayerState<AArcCorePlayerState>())
 	{
@@ -314,6 +341,7 @@ void AArcCorePlayerController::InitPlayerState()
 				// yet
 
 				PlayerState->SetPlayerNameInternal(GameMode->DefaultPlayerName.ToString());
+				PlayerState->EnableInput(this);
 			}
 		}
 

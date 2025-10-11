@@ -126,8 +126,8 @@ void FArcCoreEditorModule::StartupModule()
 	PropertyEditor.RegisterCustomClassLayout("ArcItemDefinition"
 		, FOnGetDetailCustomizationInstance::CreateStatic(&FArcItemDefinitionDetailCustomization::MakeInstance));
 
-	PropertyEditor.RegisterCustomClassLayout("ArcItemFragment_MakeLocationInfo"
-		, FOnGetDetailCustomizationInstance::CreateStatic(&FArcItemFragment_MakeLocationInfoDetailCustomization::MakeInstance));
+	//PropertyEditor.RegisterCustomClassLayout("ArcItemFragment_MakeLocationInfo"
+	//	, FOnGetDetailCustomizationInstance::CreateStatic(&FArcItemFragment_MakeLocationInfoDetailCustomization::MakeInstance));
 	
 	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcNamedPrimaryAssetId"
 		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcNamedPrimaryAssetIdCustomization::MakeInstance));

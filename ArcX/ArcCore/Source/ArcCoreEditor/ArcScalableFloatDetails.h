@@ -21,6 +21,8 @@
 
 #pragma once
 #include "DataRegistryId.h"
+#include "IPropertyTypeCustomization.h"
+#include "PropertyEditorModule.h"
 
 class FArcScalableFloatDetails : public IPropertyTypeCustomization
 {

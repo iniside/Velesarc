@@ -32,3 +32,10 @@ bool FArcIsMassActorAvailableCondition::TestCondition(FStateTreeExecutionContext
 
 	return true;
 }
+
+bool FArcIsSmartObjectHandleValidCondition::TestCondition(FStateTreeExecutionContext& Context) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	return InstanceData.SmartObjectHandle.IsValid();
+}

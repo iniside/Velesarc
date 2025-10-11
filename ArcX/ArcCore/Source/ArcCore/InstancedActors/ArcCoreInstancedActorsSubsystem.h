@@ -4,11 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFeatureAction.h"
+#include "InstancedActorsComponent.h"
 #include "InstancedActorsData.h"
 #include "InstancedActorsSubsystem.h"
+#include "MassEntityTraitBase.h"
+#include "SmartObjectTypes.h"
 #include "Engine/DeveloperSettings.h"
 #include "ArcCoreInstancedActorsSubsystem.generated.h"
 
+class USmartObjectDefinition;
 
 USTRUCT()
 struct FArcActorInstanceTag : public FMassTag
@@ -34,6 +38,56 @@ struct FArcActorInstanceFragment : public FMassFragment
 	TObjectPtr<UStaticMesh> CurrentMesh;
 };
 
+template<>
+struct TMassFragmentTraits<FArcActorInstanceFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
+USTRUCT()
+struct FArcSmartObjectDefinitionSharedFragment : public FMassConstSharedFragment
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<USmartObjectDefinition> SmartObjectDefinition;
+};
+
+template<>
+struct TMassFragmentTraits<FArcSmartObjectDefinitionSharedFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
+USTRUCT()
+struct FArcSmartObjectOwnerFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(VisibleAnywhere)
+	FSmartObjectHandle SmartObjectHandle;
+};
+
+UCLASS(MinimalAPI)
+class UArcMassSmartObjectOwnerTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere)
+	FArcSmartObjectDefinitionSharedFragment SmartObjectDefinition;
+	
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
 UCLASS(Blueprintable, BlueprintType)
 class ARCCORE_API UArcCoreInstancedActorsData : public UInstancedActorsData
 {
@@ -42,6 +96,8 @@ class ARCCORE_API UArcCoreInstancedActorsData : public UInstancedActorsData
 public:
 	virtual void ApplyInstanceDelta(FMassEntityManager& EntityManager, const FInstancedActorsDelta& InstanceDelta, TArray<FInstancedActorsInstanceIndex>& OutEntitiesToRemove) override;
 	void SwitchInstanceVisualizationWithContext(FMassExecutionContext& Context, FInstancedActorsInstanceIndex InstanceToSwitch, uint8 NewVisualizationIndex);
+
+	virtual void OnSpawnEntities() override;
 };
 
 UCLASS()

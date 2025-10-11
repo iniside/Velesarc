@@ -86,6 +86,15 @@ public:
 	TObjectPtr<class UArcItemFactoryAttributes> Attributes;
 };
 
+USTRUCT()
+struct FArcItemFragment_ItemGenerator : public FArcItemFragment
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Data")
+	TObjectPtr<UArcItemSpecGeneratorDefinition> ItemGeneratorDef;
+};
 
 USTRUCT()
 struct ARCCORE_API FArcItemSpecGenerator_RandomItemStats : public FArcItemSpecGenerator

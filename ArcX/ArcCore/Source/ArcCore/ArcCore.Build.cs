@@ -85,6 +85,7 @@ public class ArcCore : ModuleRules
 				, "MovieSceneTracks"
 				, "TemplateSequence"
 				, "Mover"
+				, "ChaosMover"
 				, "DaySequence"
 				, "PoseSearch"
 				, "ChaosClothAssetEngine"

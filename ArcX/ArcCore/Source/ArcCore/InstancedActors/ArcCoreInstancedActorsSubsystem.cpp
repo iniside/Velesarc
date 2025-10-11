@@ -6,6 +6,10 @@
 #include "MassRepresentationFragments.h"
 #include "Algo/NoneOf.h"
 #include "EngineUtils.h"
+#include "MassCommonFragments.h"
+#include "MassEntityTemplateRegistry.h"
+#include "MassEntityTraitBase.h"
+#include "SmartObjectSubsystem.h"
 #include "UObject/UObjectBase.h"
 
 AArcCoreInstancedActorsManager::AArcCoreInstancedActorsManager()
@@ -53,6 +57,16 @@ AActor* AArcCoreInstancedActorsManager::ArcFindActor(const FActorInstanceHandle&
 	return FindActor(Handle);
 }
 
+void UArcMassSmartObjectOwnerTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+{
+	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(World);
+
+	BuildContext.AddFragment<FArcSmartObjectOwnerFragment>();
+
+	const FConstSharedStruct SmartObjectDefFragment = EntityManager.GetOrCreateConstSharedFragment(SmartObjectDefinition);
+	BuildContext.AddConstSharedFragment(SmartObjectDefFragment);
+}
+
 void UArcCoreInstancedActorsData::ApplyInstanceDelta(FMassEntityManager& EntityManager, const FInstancedActorsDelta& InstanceDelta
 													 , TArray<FInstancedActorsInstanceIndex>& OutEntitiesToRemove)
 {
@@ -85,6 +99,36 @@ void UArcCoreInstancedActorsData::SwitchInstanceVisualizationWithContext(FMassEx
 	MeshSwitchFragment.NewStaticMeshDescHandle = NewVisualization.MassStaticMeshDescHandle;
 
 	Context.Defer().PushCommand<FMassCommandAddFragmentInstances>(EntityHandle, MeshSwitchFragment);
+}
+
+void UArcCoreInstancedActorsData::OnSpawnEntities()
+{
+	Super::OnSpawnEntities();
+
+	FMassEntityManager& MassEntityManager = GetMassEntityManagerChecked();
+	USmartObjectSubsystem* SmartObjectSubsystem = MassEntityManager.GetWorld()->GetSubsystem<USmartObjectSubsystem>();
+
+	for (const FMassEntityHandle& Handle : Entities)
+	{
+		FArcSmartObjectOwnerFragment* SmartObjectOwnerFragment = MassEntityManager.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(Handle);
+		FArcSmartObjectDefinitionSharedFragment* SmartObjectDefinitionFragment = MassEntityManager.GetConstSharedFragmentDataPtr<FArcSmartObjectDefinitionSharedFragment>(Handle);
+		FTransformFragment* TransformFragment = MassEntityManager.GetFragmentDataPtr<FTransformFragment>(Handle);
+		if (!SmartObjectDefinitionFragment || !SmartObjectDefinitionFragment->SmartObjectDefinition)
+		{
+			continue;
+		}
+		if (!TransformFragment)
+		{
+			continue;
+		}
+		if (!SmartObjectOwnerFragment)
+		{
+			continue;
+		}
+
+		SmartObjectOwnerFragment->SmartObjectHandle = SmartObjectSubsystem->CreateSmartObject(*SmartObjectDefinitionFragment->SmartObjectDefinition
+			, TransformFragment->GetTransform(), FConstStructView::Make(Handle));
+	}
 }
 
 UArcCoreInstancedActorsSubsystem::UArcCoreInstancedActorsSubsystem()

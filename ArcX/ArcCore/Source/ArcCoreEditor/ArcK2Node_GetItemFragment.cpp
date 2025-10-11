@@ -28,6 +28,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "KismetCompiler.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "Interaction/ArcCoreInteractionSourceComponent.h"
 #include "Items/ArcItemDefinition.h"
 
 UArcK2Node_GetItemFragmentFromItemDefinition::UArcK2Node_GetItemFragmentFromItemDefinition()
@@ -546,5 +547,77 @@ void UArcK2Node_SendCommandToServer::GetMenuActions(FBlueprintActionDatabaseRegi
 
 		InActionRegistrar.AddBlueprintAction(ActionKey
 			, NodeSpawner);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+UArcK2Node_GetInteractionTargetConfiguration::UArcK2Node_GetInteractionTargetConfiguration()
+{
+	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcInteractableInterfaceLibrary
+			, GetInteractionTargetConfiguration)
+		, UArcInteractableInterfaceLibrary::StaticClass());
+}
+
+void UArcK2Node_GetInteractionTargetConfiguration::PostReconstructNode()
+{
+	Super::PostReconstructNode();
+	UEdGraphPin* PayloadPin = FindPin(FName("InteractionTargetConfiguration"));
+	UEdGraphPin* PayloadTypePin = FindPinChecked(FName("InConfigType"));
+
+	if (PayloadTypePin->DefaultObject != PayloadPin->PinType.PinSubCategoryObject)
+	{
+		PayloadPin->PinType.PinSubCategoryObject = PayloadTypePin->DefaultObject;
+		PayloadPin->PinType.PinCategory = (PayloadTypePin->DefaultObject == nullptr)
+										  ? UEdGraphSchema_K2::PC_Wildcard
+										  : UEdGraphSchema_K2::PC_Struct;
+	}
+}
+
+void UArcK2Node_GetInteractionTargetConfiguration::PinDefaultValueChanged(UEdGraphPin* ChangedPin)
+{
+	Super::PinDefaultValueChanged(ChangedPin);
+	UEdGraphPin* Pin = FindPin(FName("InConfigType"));
+	if (ChangedPin == Pin)
+	{
+		if (ChangedPin->LinkedTo.Num() == 0)
+		{
+			UEdGraphPin* PayloadPin = FindPin(FName("InteractionTargetConfiguration"));
+			UEdGraphPin* PayloadTypePin = FindPinChecked(FName("InConfigType"));
+
+			if (PayloadTypePin->DefaultObject != PayloadPin->PinType.PinSubCategoryObject)
+			{
+				if (PayloadPin->SubPins.Num() > 0)
+				{
+					GetSchema()->RecombinePin(PayloadPin);
+				}
+
+				PayloadPin->PinType.PinSubCategoryObject = PayloadTypePin->DefaultObject;
+				PayloadPin->PinType.PinCategory = (PayloadTypePin->DefaultObject == nullptr)
+												  ? UEdGraphSchema_K2::PC_Wildcard
+												  : UEdGraphSchema_K2::PC_Struct;
+			}
+		}
+	}
+}
+
+FText UArcK2Node_GetInteractionTargetConfiguration::GetTooltipText() const
+{
+	return FText::FromString("Get Interaction Target Configuration");
+}
+
+bool UArcK2Node_GetInteractionTargetConfiguration::IsNodePure() const
+{
+	return false;
+}
+
+void UArcK2Node_GetInteractionTargetConfiguration::GetMenuActions(FBlueprintActionDatabaseRegistrar& InActionRegistrar) const
+{
+	const UClass* ActionKey = GetClass();
+	if (InActionRegistrar.IsOpenForRegistration(ActionKey))
+	{
+		UBlueprintNodeSpawner* NodeSpawner = UBlueprintNodeSpawner::Create(GetClass());
+		check(NodeSpawner != nullptr);
+
+		InActionRegistrar.AddBlueprintAction(ActionKey, NodeSpawner);
 	}
 }

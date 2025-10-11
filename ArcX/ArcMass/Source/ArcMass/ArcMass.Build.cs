@@ -25,7 +25,17 @@ public class ArcMass : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
+				"Core"
+				, "Engine"
+				, "MassActors"
+				, "MassCommon"
+				, "MassEntity"
+				, "MassMovement"
+				, "MassSimulation"
+				, "MassSpawner"
+				, "MassRepresentation"
+				, "MassLOD"
+				, "GameplayTags"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

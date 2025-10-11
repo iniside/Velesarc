@@ -204,3 +204,28 @@ public:
 
 	//~ End K2Node Interface
 };
+
+UCLASS()
+class ARCCOREEDITOR_API UArcK2Node_GetInteractionTargetConfiguration : public UK2Node_CallFunction
+{
+	GENERATED_BODY()
+
+public:
+	UArcK2Node_GetInteractionTargetConfiguration();
+
+	//~ Begin UEdGraphNode Interface.
+	virtual void PostReconstructNode() override;
+
+	virtual void PinDefaultValueChanged(UEdGraphPin* ChangedPin) override;
+
+	virtual FText GetTooltipText() const override;
+
+	//~ End UEdGraphNode Interface.
+
+	//~ Begin K2Node Interface
+	virtual bool IsNodePure() const override;
+
+	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& InActionRegistrar) const override;
+
+	//~ End K2Node Interface
+};

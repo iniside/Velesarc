@@ -33,9 +33,9 @@ void FArcItemFragment_GrantedGameplayEffects::OnItemAddedToSlot(const FArcItemDa
 	FGameplayEffectContextHandle ContextHandle = ArcASC->MakeEffectContext();
 	FArcGameplayEffectContext* ArcContext = static_cast<FArcGameplayEffectContext*>(ContextHandle.Get());
 
-	ArcContext->SetSourceItemHandle(InItem->GetItemId());
-	ArcContext->SourceItem = InItem->GetItemDefinition();;
-	ArcContext->ItemsStoreComponent = InItem->GetItemsStoreComponent();
+	ArcContext->SetSourceItemDef(InItem->GetItemDefinition());
+	ArcContext->SetItemStoreComponent(InItem->GetItemsStoreComponent());
+	ArcContext->SetSourceItemId(InItem->GetItemId());
 
 	for (TSubclassOf<UGameplayEffect> Effect : Effects)
 	{

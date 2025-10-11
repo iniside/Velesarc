@@ -27,6 +27,7 @@
 #include "Components/GameFrameworkComponent.h"
 #include "Components/GameFrameworkInitStateInterface.h"
 #include "Engine/Blueprint.h"
+#include "Fragments/ArcItemFragment_RequiredItems.h"
 #include "Items/ArcItemTypes.h"
 #include "Items/ArcItemId.h"
 
@@ -121,7 +122,9 @@ public:
 	const FArcItemData* GetItemByDefinition(const UArcItemDefinition* InItemType);
 	const FArcItemData* GetItemByDefinition(const FPrimaryAssetId& InItemDefinitionId);
 	const FArcItemData* GetItemByTags(const FGameplayTagContainer& inTags);
-	
+
+	int32 CountItemsByDefinition(const FPrimaryAssetId& ItemDefinitionId);
+
 public:
 	// Sets default values for this component's properties
 	UArcItemsStoreComponent(const FObjectInitializer& ObjectInitializer);
