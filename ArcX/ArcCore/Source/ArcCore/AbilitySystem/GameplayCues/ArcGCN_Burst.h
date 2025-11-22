@@ -50,36 +50,36 @@ public:
 
 	// Target's socket (or bone) used for location and rotation.  If "None", it uses the target's root.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	FName SocketName;
+	FName SocketName = NAME_None;
 
 	// Whether to attach to the target actor or not attach.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	EGameplayCueNotify_AttachPolicy AttachPolicy;
+	EGameplayCueNotify_AttachPolicy AttachPolicy = EGameplayCueNotify_AttachPolicy::AttachToTarget;
 
 	// How the transform is handled when attached.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	EAttachmentRule AttachmentRule;
+	EAttachmentRule AttachmentRule = EAttachmentRule::KeepWorld;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	uint32 bSpawnOnFloor : 1;
+	uint32 bSpawnOnFloor : 1 = true;
 	
 	// If enabled, will always spawn using rotation override.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (InlineEditConditionToggle))
-	uint32 bOverrideRotation : 1;
+	uint32 bOverrideRotation : 1 = false;
 
 	// If enabled, will always spawn using the scale override.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (InlineEditConditionToggle))
-	uint32 bOverrideScale : 1;
+	uint32 bOverrideScale : 1 = false;
 
 	// If enabled, will always spawn using rotation override.
 	// This will also set the rotation to be absolute, so any changes to the parent's rotation will be ignored after attachment.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (EditCondition = "bOverrideRotation"))
-	FRotator RotationOverride;
+	FRotator RotationOverride = FRotator::ZeroRotator;
 
 	// If enabled, will always spawn using scale override.
 	// This will also set the scale to be absolute, so any changes to the parent's scale will be ignored after attachment.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (EditCondition = "bOverrideScale"))
-	FVector ScaleOverride;
+	FVector ScaleOverride = FVector::ZeroVector;
 };
 
 /**
@@ -118,17 +118,17 @@ protected:
 
 public:
 
-	UWorld* World;
-	AActor* TargetActor;
+	UWorld* World = nullptr;
+	AActor* TargetActor = nullptr;
 	const FGameplayCueParameters& CueParameters;
-	const FHitResult* HitResult;
-	USceneComponent* TargetComponent;
-	EPhysicalSurface SurfaceType;
+	const FHitResult* HitResult = nullptr;;
+	USceneComponent* TargetComponent = nullptr;
+	EPhysicalSurface SurfaceType = EPhysicalSurface::SurfaceType_Default;
 
 private:
 
-	const FArcGameplayCueNotify_SpawnCondition* DefaultSpawnCondition;
-	const FArcGameplayCueNotify_PlacementInfo* DefaultPlacementInfo;
+	const FArcGameplayCueNotify_SpawnCondition* DefaultSpawnCondition = nullptr;
+	const FArcGameplayCueNotify_PlacementInfo* DefaultPlacementInfo = nullptr;
 };
 
 USTRUCT(BlueprintType)
@@ -146,11 +146,11 @@ public:
 
 	// Source actor to use when determining if it is locally controlled.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	EGameplayCueNotify_LocallyControlledSource LocallyControlledSource;
+	EGameplayCueNotify_LocallyControlledSource LocallyControlledSource = EGameplayCueNotify_LocallyControlledSource::InstigatorActor;
 
 	// Locally controlled policy used to determine if the gameplay cue effects should spawn.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	EGameplayCueNotify_LocallyControlledPolicy LocallyControlledPolicy;
+	EGameplayCueNotify_LocallyControlledPolicy LocallyControlledPolicy = EGameplayCueNotify_LocallyControlledPolicy::LocalOnly;
 
 	// Random chance to play the effects.  (1.0 = always play,  0.0 = never play)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (UIMin = "0.0", ClampMin = "0.0", UIMax = "1.0", ClampMax = "1.0"))
@@ -203,15 +203,15 @@ public:
 
 	// If enabled, use the spawn condition override and not the default one.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (InlineEditConditionToggle))
-	uint32 bOverrideSpawnCondition : 1;
+	uint32 bOverrideSpawnCondition : 1 = false;
 
 	// If enabled, use the placement info override and not the default one.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify, Meta = (InlineEditConditionToggle))
-	uint32 bOverridePlacementInfo : 1;
+	uint32 bOverridePlacementInfo : 1 = false;
 
 	// If enabled, this particle system will cast a shadow.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = GameplayCueNotify)
-	uint32 bCastShadow : 1;
+	uint32 bCastShadow : 1 = false;
 };
 
 USTRUCT(BlueprintType)

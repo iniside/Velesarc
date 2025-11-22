@@ -78,7 +78,19 @@ float UArcCoreGameplayAbility::GetActivationTime() const
 	{
 		FGameplayTagContainer OwnedGameplayTags;
 		GetAbilitySystemComponentFromActorInfo()->GetOwnedGameplayTags(OwnedGameplayTags);
-		return ActivationTimeType->UpdateActivationTime(this, OwnedGameplayTags);
+		
+		const float Current = ActivationTimeType->GetActivationTime(this);
+		const float NewTime = ActivationTimeType->UpdateActivationTime(this, OwnedGameplayTags);
+		
+		if (Current != NewTime)
+		{
+			if (UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+			{
+				ArcASC->OnAbilityActivationTimeChanged.Broadcast(GetSpecHandle(), const_cast<UArcCoreGameplayAbility*>(this), NewTime);
+			}
+		}
+		
+		return NewTime;
 	}
 
 	return 0.0f;
@@ -96,6 +108,16 @@ void UArcCoreGameplayAbility::UpdateActivationTime(const FGameplayTagContainer& 
 		{
 			ArcASC->OnAbilityActivationTimeChanged.Broadcast(GetSpecHandle(), this, NewTime);
 		}
+	}
+}
+
+void UArcCoreGameplayAbility::CallOnActionTimeFinished()
+{
+	OnActivationTimeFinished.Broadcast(this, 0.f);
+	
+	if (UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+	{
+		ArcASC->OnAbilityActivationTimeFinished.Broadcast(GetSpecHandle(), this);
 	}
 }
 
@@ -861,12 +883,21 @@ UArcItemsStoreComponent* UArcCoreGameplayAbility::GetItemsStoreComponent(TSubcla
 
 const UArcItemDefinition* UArcCoreGameplayAbility::GetSourceItemData() const
 {
-	return GetSourceItemEntryPtr()->GetItemDefinition();
+	if (bRequiresItem)
+	{
+		return GetSourceItemEntryPtr()->GetItemDefinition();	
+	}
+	
+	return nullptr;
 }
 
 const UArcItemDefinition* UArcCoreGameplayAbility::NativeGetSourceItemData() const
 {
-	return GetSourceItemEntryPtr()->GetItemDefinition();
+	if (bRequiresItem)
+	{
+		return GetSourceItemEntryPtr()->GetItemDefinition();
+	}
+	return nullptr;
 }
 
 const UArcItemDefinition* UArcCoreGameplayAbility::NativeGetOwnerItemData() const
@@ -1328,6 +1359,7 @@ bool UArcCoreGameplayAbility::SpawnAbilityActor(TSubclassOf<AActor> ActorClass
 
 bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> ActorClass
 	, const FGameplayAbilityTargetDataHandle& InTargetData
+	, bool bUseOrigin
 	, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility)
 {
 	if (ActorClass == nullptr)
@@ -1341,14 +1373,24 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 	}
 	
 	const bool bHasOrigin = InTargetData.Get(0)->HasOrigin();
-	if (!bHasOrigin)
-	{
-		return false;
-	}
+	
 	FTransform OriginTM = InTargetData.Get(0)->GetOrigin();
-	FVector Location = OriginTM.GetLocation();
-	FRotator Rotation = OriginTM.GetRotation().Rotator();
+	FVector Location = InTargetData.Get(0)->GetEndPoint();
+	FRotator Rotation = InTargetData.Get(0)->GetEndPointTransform().GetRotation().Rotator();
 
+	if (const FHitResult* Hit = InTargetData.Get(0)->GetHitResult())
+	{
+		Location = Hit->ImpactPoint;
+		Rotation = Hit->ImpactNormal.Rotation();
+	}
+	
+	if (bHasOrigin && bUseOrigin)
+	{
+		OriginTM = InTargetData.Get(0)->GetOrigin();
+		Location = OriginTM.GetLocation();
+		Rotation = OriginTM.GetRotation().Rotator();
+	}
+	
 	const bool bIsServer = ActorClass->ImplementsInterface(UArcAbilityServerActorInterface::StaticClass());
 	const bool bIsClientAuth = ActorClass->ImplementsInterface(UArcAbilityClientAuthActorInterface::StaticClass());
 	const bool bIsClientPredicted = ActorClass->ImplementsInterface(UArcAbilityClientPredictedActorInterface::StaticClass());

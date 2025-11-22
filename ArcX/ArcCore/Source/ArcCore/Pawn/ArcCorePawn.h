@@ -27,6 +27,7 @@
 #include "MoverSimulationTypes.h"
 #include "GameFramework/Pawn.h"
 #include "AbilitySystem/ArcAbilitySet.h"
+#include "Perception/AIPerceptionListenerInterface.h"
 #include "ArcCorePawn.generated.h"
 
 class UGameplayAbility;
@@ -40,8 +41,68 @@ UCLASS(Abstract)
 class ARCCORE_API AArcCorePawn : public APawn, public IMoverInputProducerInterface
 {
 	GENERATED_BODY()
+	
+	
+public:
+	// Sets default values for this pawn's properties
+	AArcCorePawn(const FObjectInitializer& ObjectInitializer);
 
+public:
+	// Called every frame
+	virtual void Tick(float DeltaTime) override;
+
+	virtual void BeginPlay() override;
+
+	virtual void PostInitializeComponents() override;
+
+	// Accessor for the actor's movement component
+	UFUNCTION(BlueprintPure, Category = Mover)
+	UCharacterMoverComponent* GetMoverComponent() const { return CharacterMotionComponent; }
+
+	// Request the character starts moving with an intended directional magnitude. A length of 1 indicates maximum acceleration.
+	UFUNCTION(BlueprintCallable, Category=MoverExamples)
+	virtual void RequestMoveByIntent(const FVector& DesiredIntent) { CachedMoveInputIntent = DesiredIntent; }
+
+	// Request the character starts moving with a desired velocity. This will be used in lieu of any other input.
+	UFUNCTION(BlueprintCallable, Category=MoverExamples)
+	virtual void RequestMoveByVelocity(const FVector& DesiredVelocity) { CachedMoveInputVelocity=DesiredVelocity; }
+
+	//~ Begin INavAgentInterface Interface
+	virtual FVector GetNavAgentLocation() const override;
+	//~ End INavAgentInterface Interface
+	
+	virtual void UpdateNavigationRelevance() override;
+	
 protected:
+	// Entry point for input production. Do not override. To extend in derived character types, override OnProduceInput for native types or implement "Produce Input" blueprint event
+	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
+
+	// Override this function in native class to author input for the next simulation frame. Consider also calling Super method.
+	virtual void OnProduceInput(float DeltaMs, FMoverInputCmdContext& InputCmdResult);
+
+	// Implement this event in Blueprints to author input for the next simulation frame. Consider also calling Parent event.
+	UFUNCTION(BlueprintImplementableEvent, DisplayName="On Produce Input", meta = (ScriptName = "OnProduceInput"))
+	FMoverInputCmdContext OnProduceInputInBlueprint(float DeltaMs, FMoverInputCmdContext InputCmd);
+
+
+public:
+	// Whether or not we author our movement inputs relative to whatever base we're standing on, or leave them in world space. Only applies if standing on a base of some sort.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=MoverExamples)
+	bool bUseBaseRelativeMovement = true;
+	
+	/**
+	 * If true, rotate the Character toward the direction the actor is moving
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=MoverExamples)
+	bool bOrientRotationToMovement = true;
+	
+	/**
+	 * If true, the actor will continue orienting towards the last intended orientation (from input) even after movement intent input has ceased.
+	 * This makes the character finish orienting after a quick stick flick from the player.  If false, character will not turn without input.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MoverExamples)
+	bool bMaintainLastInputOrientation = false;
+
 protected:
 	UPROPERTY(Category = Movement, VisibleAnywhere, BlueprintReadOnly, Transient, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCharacterMoverComponent> CharacterMotionComponent;
@@ -49,64 +110,33 @@ protected:
 	/** Holds functionality for nav movement data and functions */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category="Nav Movement")
 	TObjectPtr<UNavMoverComponent> NavMoverComponent;
+	
+private:
+	FVector LastAffirmativeMoveInput = FVector::ZeroVector;	// Movement input (intent or velocity) the last time we had one that wasn't zero
 
 	FVector CachedMoveInputIntent = FVector::ZeroVector;
+	FVector CachedMoveInputVelocity = FVector::ZeroVector;
+
+	FRotator CachedTurnInput = FRotator::ZeroRotator;
 	FRotator CachedLookInput = FRotator::ZeroRotator;
 
-	FVector CachedMoveInputVelocity = FVector::ZeroVector;
-	FVector LastAffirmativeMoveInput = FVector::ZeroVector;
-	
-	bool bOrientRotationToMovement = false;
-	bool bMaintainLastInputOrientation = true;
-public:
-	// Sets default values for this pawn's properties
-	AArcCorePawn();
+	bool bIsJumpJustPressed = false;
+	bool bIsJumpPressed = false;
+	bool bIsFlyingActive = false;
+	bool bShouldToggleFlying = false;
 
-	virtual void PostInitializeComponents() override;
 
-protected:
-	virtual void PossessedBy(AController* NewController) override;
-
-	virtual void UnPossessed() override;
-
-	virtual void OnRep_Controller() override;
-
-	virtual void OnRep_PlayerState() override;
-
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-public:
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1, bool bForce = false) override;
-	
-	virtual void AddControllerYawInput(float Val) override;
-	virtual void AddControllerPitchInput(float Val) override;
-	
-	// IMoverInputProducerInterface - Start
-	
-	// Entry point for input production. Do not override. To extend in derived character types, override OnProduceInput for native types or implement "Produce Input" blueprint event
-	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
-
-	// IMoverInputProducerInterface - End
-	
-	// Override this function in native class to author input for the next simulation frame. Consider also calling Super method.
-	virtual void OnProduceInput(float DeltaMs, FMoverInputCmdContext& InputCmdResult);
+	uint8 bHasProduceInputinBpFunc : 1;
 };
 
 UCLASS(Abstract)
-class ARCCORE_API AArcCorePawnAbilitySystem : public AArcCorePawn, public IAbilitySystemInterface, public IGameplayTagAssetInterface
+class ARCCORE_API AArcCorePawnAbilitySystem : public AArcCorePawn, public IAbilitySystemInterface, public IGameplayTagAssetInterface, public IAIPerceptionListenerInterface
 {
 	GENERATED_BODY()
 
 public:
 	// Sets default values for this pawn's properties
-	AArcCorePawnAbilitySystem();
+	AArcCorePawnAbilitySystem(const FObjectInitializer& ObjectInitializer);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ability System")
@@ -120,4 +150,6 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
+	
+	virtual UAIPerceptionComponent* GetPerceptionComponent() override;
 };

@@ -40,7 +40,7 @@ EStateTreeRunStatus FArcGetMassActorTask::EnterState(FStateTreeExecutionContext&
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.Output = const_cast<AActor*>(MassActor->Get());
 
-	auto [ActorPtr] = InstanceData.Result.GetMutablePtrTuple<AActor*>(Context);
+	AActor** ActorPtr = InstanceData.Result.GetMutablePtr<AActor*>(Context);
 	
 	if (ActorPtr)
 	{

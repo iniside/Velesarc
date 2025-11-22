@@ -31,7 +31,7 @@ public:
 	float SearchRadius = 1000.f;
 
 	UPROPERTY()
-	FVector SearchOrigin;
+	FVector SearchOrigin = FVector::ZeroVector;
 
 	FArcSmartObjectPlanResponseDelegate FinishedDelegate;
 

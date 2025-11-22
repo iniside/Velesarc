@@ -23,6 +23,8 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemLog.h"
+#include "ArcAN_SendGameplayEvent.h"
+#include "ArcLogs.h"
 #include "Animation/AnimInstance.h"
 #include "ArcCore/AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "GameFramework/Character.h"
@@ -167,6 +169,7 @@ UArcAT_PlayMontageAndWaitForEvent* UArcAT_PlayMontageAndWaitForEvent::PlayMontag
 	, TMap<FGameplayTag, UAnimMontage*> InEventTagToMontageMap
 	, FName StartSection
 	, float DesiredPlayTime
+	, bool bInUseMontageGameplayEvents
 	, bool bStopWhenAbilityEnds
 	, float AnimRootMotionTranslationScale
 	, bool bInClientOnlyMontage
@@ -179,7 +182,9 @@ UArcAT_PlayMontageAndWaitForEvent* UArcAT_PlayMontageAndWaitForEvent::PlayMontag
 		{
 			return TPair<FGameplayTag, TObjectPtr<UAnimMontage>>(Pair.Key, Pair.Value);
 		});
+	
 	MyObj->DesiredPlayTime = DesiredPlayTime;
+	MyObj->bUseMontageGameplayEvents = bInUseMontageGameplayEvents;
 	MyObj->MontageToPlay = MontageToPlay;
 	MyObj->EventTags = EventTags;
 	MyObj->StartSection = StartSection;
@@ -200,7 +205,36 @@ void UArcAT_PlayMontageAndWaitForEvent::Activate()
 	}
 
 	bool bPlayedMontage = false;
-
+	Notifies.Empty();
+	if (!bUseMontageGameplayEvents)
+	{
+		FAnimNotifyContext Context;
+		MontageToPlay->GetAnimNotifies(0, 10, Context);
+		
+		for (const FAnimNotifyEventReference& AN : Context.ActiveNotifies)
+		{
+			const FAnimNotifyEvent* Event = AN.GetNotify();
+			if (!Event)
+			{
+				continue;
+			}
+			UArcAnimNotify_MarkGameplayEvent* MGE = Cast<UArcAnimNotify_MarkGameplayEvent>(Event->Notify);
+			if (!MGE)
+			{
+				continue;
+			}
+			
+			Notify NewNotify;
+			NewNotify.Tag = MGE->GetEventTag();
+			float Time = Event->GetTime();
+			NewNotify.Time = Event->GetTriggerTime();
+			Notifies.Add(NewNotify);
+		}
+		
+		CurrentNotifyTime = 0.f;
+		TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::HandleNotifiesTick));
+	}
+	
 	UArcCoreAbilitySystemComponent* ArcASC = GetTargetASC();
 
 	if (ArcASC)
@@ -311,6 +345,34 @@ void UArcAT_PlayMontageAndWaitForEvent::OnDestroy(bool AbilityEnded)
 	}
 	
 	Super::OnDestroy(AbilityEnded);
+}
+
+bool UArcAT_PlayMontageAndWaitForEvent::HandleNotifiesTick(float DeltaTime)
+{
+	if (!AbilitySystemComponent.IsValid())
+	{
+		CurrentNotifyTime = 0.f;
+		return false;
+	}
+	for (int32 Idx = Notifies.Num() - 1; Idx >= 0; --Idx)
+	{
+		if (CurrentNotifyTime >= Notifies[Idx].Time)
+		{
+			FGameplayEventData Payload;
+			UE_LOG(LogArcCore, Log, TEXT("Notify %s Time %.2f, CurrentTime %.2f"), *Notifies[Idx].Tag.ToString(), Notifies[Idx].Time, CurrentNotifyTime);
+			AbilitySystemComponent->HandleGameplayEvent(Notifies[Idx].Tag, &Payload);
+			Notifies.RemoveAt(Idx);
+		}
+	}
+	
+	if (Notifies.Num() == 0)
+	{
+		CurrentNotifyTime = 0.f;
+		return false;
+	}
+	
+	CurrentNotifyTime += DeltaTime;
+	return true;
 }
 
 bool UArcAT_PlayMontageAndWaitForEvent::PlayMontage()

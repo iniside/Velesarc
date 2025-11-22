@@ -15,7 +15,7 @@ public:
 	FGameplayTagContainer Requires;
 	
 	UPROPERTY(EditAnywhere)
-	FVector Location;
+	FVector Location = FVector::ZeroVector;
 
 	UPROPERTY()
 	FMassEntityHandle EntityHandle;

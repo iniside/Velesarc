@@ -115,7 +115,7 @@ public:
 	//}
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Ability Effects To Apply"))
+USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_AbilityEffectsToApply : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

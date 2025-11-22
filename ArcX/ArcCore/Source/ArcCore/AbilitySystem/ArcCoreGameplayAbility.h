@@ -43,7 +43,7 @@ struct FArcItemDataHandle;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogArcAbility, Log, Log);
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_AbilityTags : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -144,6 +144,11 @@ struct ARCCORE_API FArcAbilityActivationTime
 	GENERATED_BODY()
 
 public:
+	virtual float GetActivationTime(const UArcCoreGameplayAbility* InAbility) const
+	{
+		return 0.0f;
+	}
+	
 	virtual float UpdateActivationTime(const UArcCoreGameplayAbility* InAbility
 									   , FGameplayTagContainer ActivationTimeTags) const
 	{
@@ -151,6 +156,29 @@ public:
 	}
 
 	virtual ~FArcAbilityActivationTime() = default;
+};
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAbilityActivationTime_Static : public FArcAbilityActivationTime
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere)
+	float ActivationTime = 4;
+	
+	virtual float GetActivationTime(const UArcCoreGameplayAbility* InAbility) const
+	{
+		return ActivationTime;	
+	}
+	
+	virtual float UpdateActivationTime(const UArcCoreGameplayAbility* InAbility
+									   , FGameplayTagContainer ActivationTimeTags) const override
+	{
+		return ActivationTime;
+	}
+
+	virtual ~FArcAbilityActivationTime_Static() override = default;
 };
 
 USTRUCT(BlueprintType)
@@ -250,6 +278,10 @@ public:
 	
 	FArcAbilityActivationTimeDelegate OnActivationTimeChanged;
 
+	FArcAbilityActivationTimeDelegate OnActivationTimeFinished;
+	
+	void CallOnActionTimeFinished();
+	
 protected:
 	/* Item from which this ability has been created. Might be null, but shouldn't be. */
 	UPROPERTY(Transient)
@@ -629,12 +661,14 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability", meta=(ExpandBoolAsExecs = "ReturnValue"))
 	bool SpawnAbilityActorTargetData(TSubclassOf<AActor> ActorClass
 						   , const FGameplayAbilityTargetDataHandle& InTargetData
+						   , bool bUseOrigin
 						   , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility);
 	
 public:
-	const FGameplayTagContainer* GetAbilityTags() const
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")
+	const FGameplayTagContainer& GetAbilityTags() const
 	{
-		return &GetAssetTags();
+		return GetAssetTags();
 	};
 
 	const FGameplayTagContainer& GetCustomCooldownTags() const

@@ -27,10 +27,11 @@
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 #include "AbilitySystem/Delegates/ArcPlayMontageAndWaitForEventDynamic.h"
 #include "Animation/AnimMontage.h"
+#include "Containers/Ticker.h"
 #include "Items/Fragments/ArcItemFragment.h"
 #include "ArcAT_WaitActivationTimeWithAnimation.generated.h"
 
-USTRUCT()
+USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct FArcItemFragment_ActivationTimeMontages : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -40,10 +41,6 @@ struct FArcItemFragment_ActivationTimeMontages : public FArcItemFragment
 
 	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
 	TSoftObjectPtr<UAnimMontage> LoopMontage;
-
-	// Optional montage that will loop, when activation time is reached, and we wait for user confirmation.
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
-	TSoftObjectPtr<UAnimMontage> LoopActivatedMontage;;
 	
 	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
 	TSoftObjectPtr<UAnimMontage> EndMontage;
@@ -83,7 +80,7 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 	void HandleFinished();
 	
 	void OnStartMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
+	
 	void HandleActivationTimeChanged(UArcCoreGameplayAbility* InAbility, float NewTime);
 
 	void OnGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload);
@@ -95,6 +92,7 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 	bool bBroadcastEventTagsOnInputConfirm = false;
 	bool bReachedActivationTime = false;
 
+	
 	FGameplayTagContainer InputConfirmedRequiredTags;
 	FGameplayTagContainer InputDenyRequiredTags;
 	
@@ -109,6 +107,8 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 	FOnMontageEnded MontageEndedDelegate;
 	FOnMontageBlendingOutStarted BlendingOutDelegate;
 	
+	TWeakObjectPtr<UAnimMontage> CurrentMontage;
+	
 	UPROPERTY(BlueprintAssignable)
 	FArcPlayMontageAndWaitForEventDynamic OnEventReceived;
 
@@ -117,4 +117,26 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 	
 	UPROPERTY(BlueprintAssignable)
 	FArcPlayMontageAndWaitForEventDynamic OnInputConfirmed;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcPlayMontageAndWaitForEventDynamic OnActivationTimeChanged;
+	
+	bool HandleNotifiesTick(float DeltaTime);
+	
+	struct Notify
+	{
+		float OriginalTime = 0;
+		float Time = 0;
+		FGameplayTag Tag;
+		bool bPlayed;
+		
+		bool bChangePlayRate = false;
+		float PlayRate = 1.0f;
+	};
+	TArray<Notify> Notifies;
+	
+	bool bPlayNotifiesInLoop = false;
+	
+	FTSTicker::FDelegateHandle TickerHandle;
+	float CurrentNotifyTime = 0;
 };

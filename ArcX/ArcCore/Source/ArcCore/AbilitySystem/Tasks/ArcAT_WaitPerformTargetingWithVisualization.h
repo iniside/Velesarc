@@ -42,9 +42,10 @@ class ARCCORE_API UArcAT_WaitPerformTargetingWithVisualization : public UAbility
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable, Category = "Ability|Tasks", meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "TRUE"))
-	static UArcAT_WaitPerformTargetingWithVisualization* WaitPerformTargetingWithVisualization(UGameplayAbility* OwningAbility
-		, UArcTargetingObject* InTargetingObject);
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability|Tasks", meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "TRUE"))
+	static UArcAT_WaitPerformTargetingWithVisualization* WaitPerformTargetingWithVisualization(UGameplayAbility* OwningAbility, UArcTargetingObject* InTargetingObject
+		, FGameplayTag InGlobalTargetingTag
+		, bool bInUseResultFromGlobalTargeting);
 
 	virtual void Activate() override;
 
@@ -60,6 +61,9 @@ public:
 
 	UPROPERTY()
 	TObjectPtr<AArcTargetingVisualizationActor> VisualizationActor;
+	
+	FGameplayTag GlobalTargetingTag;
+	bool bUseResultFromGlobalTargeting;
 	
 	FTargetingRequestHandle AsyncTargetingHandle;
 	FTargetingRequestHandle ExecuteTargetingHandle;

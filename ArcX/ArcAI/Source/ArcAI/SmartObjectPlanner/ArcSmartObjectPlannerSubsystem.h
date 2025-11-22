@@ -6,6 +6,7 @@
 #include "ArcPotentialEntity.h"
 #include "ArcSmartObjectPlanContainer.h"
 #include "ArcSmartObjectPlanRequest.h"
+#include "GameplayDebuggerCategory.h"
 #include "MassSubsystemBase.h"
 #include "ArcSmartObjectPlannerSubsystem.generated.h"
 
@@ -27,6 +28,18 @@ public:
 		return Request.Handle;
 	}
 
+	TMap<FMassEntityHandle, FArcSmartObjectPlanContainer> DebugPlans;
+	void SetDebugPlan(FMassEntityHandle EntityHandle, const FArcSmartObjectPlanContainer& Plan)
+	{
+		DebugPlans.Add(EntityHandle, Plan);
+	}
+	
+	const FArcSmartObjectPlanContainer* GetDebugPlan(FMassEntityHandle EntityHandle) const
+	{
+		return DebugPlans.Find(EntityHandle);
+	}
+	
+	
 	void BuildAllPlans(
 		FArcSmartObjectPlanRequest Request,
 		TArray<FArcPotentialEntity>& AvailableEntities);
@@ -62,4 +75,35 @@ public:
 
 	bool EvaluateCustomConditions(const FArcPotentialEntity& Entity,
 								FMassEntityManager& EntityManager) const;
+};
+
+class FGameplayDebuggerCategory_SmartObjectPlanner : public FGameplayDebuggerCategory
+{
+	using Super = FGameplayDebuggerCategory;
+	
+public:
+	FGameplayDebuggerCategory_SmartObjectPlanner();
+	virtual ~FGameplayDebuggerCategory_SmartObjectPlanner() override;
+
+	void OnEntitySelected(const FMassEntityManager& EntityManager, FMassEntityHandle EntityHandle);
+
+	static TSharedRef<FGameplayDebuggerCategory> MakeInstance();
+	
+	void SetCachedEntity(const FMassEntityHandle Entity, const FMassEntityManager& EntityManager);
+
+	void PickEntity(const FVector& ViewLocation, const FVector& ViewDirection, const UWorld& World, FMassEntityManager& EntityManager
+					, bool bLimitAngle = true);
+
+	virtual void CollectData(APlayerController* OwnerPC, AActor* DebugActor) override;
+	virtual void DrawData(APlayerController* OwnerPC, FGameplayDebuggerCanvasContext& CanvasContext) override;
+	
+	void OnPickEntity()
+	{
+		bPickEntity = true;
+	}
+	
+	FDelegateHandle OnEntitySelectedHandle;
+	bool bPickEntity = false;
+	TWeakObjectPtr<AActor> CachedDebugActor;
+	FMassEntityHandle CachedEntity;
 };

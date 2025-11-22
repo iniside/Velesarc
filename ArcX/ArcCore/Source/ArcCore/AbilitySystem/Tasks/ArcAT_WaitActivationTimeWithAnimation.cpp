@@ -23,6 +23,8 @@
 
 #include "ArcAT_WaitActivationTimeWithAnimation.h"
 
+#include "ArcAN_SendGameplayEvent.h"
+#include "ArcLogs.h"
 #include "TimerManager.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 #include "Animation/AnimInstance.h"
@@ -55,7 +57,7 @@ void UArcAT_WaitActivationTimeWithAnimation::Activate()
 {
 	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
-
+		
 	if (!MontagesFragment)
 	{
 		return;
@@ -90,6 +92,55 @@ void UArcAT_WaitActivationTimeWithAnimation::Activate()
 	{
 		PlayRate = 1.f;
 	}
+	
+	{
+		FAnimNotifyContext Context;
+		MontagesFragment->StartMontage->GetAnimNotifies(0, 30, Context);
+		
+		Notifies.Empty();
+		
+		for (const FAnimNotifyEventReference& AN : Context.ActiveNotifies)
+		{
+			const FAnimNotifyEvent* Event = AN.GetNotify();
+			if (!Event)
+			{
+				continue;
+			}
+			
+			if (UArcAnimNotify_SetPlayRate* SPR = Cast<UArcAnimNotify_SetPlayRate>(Event->Notify))
+			{
+				Notify NewNotify;
+				float Time = Event->GetTime();
+				NewNotify.OriginalTime = Event->GetTriggerTime();
+				NewNotify.Time = Event->GetTriggerTime() / PlayRate;
+				NewNotify.bChangePlayRate = true;
+				NewNotify.PlayRate = SPR->GetNewPlayRate();
+				Notifies.Add(NewNotify);
+			}
+			
+			UArcAnimNotify_MarkGameplayEvent* MGE = Cast<UArcAnimNotify_MarkGameplayEvent>(Event->Notify);
+			if (MGE)
+			{
+				Notify NewNotify;
+				NewNotify.Tag = MGE->GetEventTag();
+				float Time = Event->GetTime();
+				NewNotify.OriginalTime = Event->GetTriggerTime();
+				NewNotify.Time = Event->GetTriggerTime() / PlayRate;
+				Notifies.Add(NewNotify);	
+			}
+		}
+		
+		bPlayNotifiesInLoop = false;
+		
+		CurrentNotifyTime = 0.f;
+		if (Notifies.Num() > 0)
+		{
+			TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::HandleNotifiesTick));
+		}
+	}	
+	
+	CurrentMontage = MontagesFragment->StartMontage.Get();
+	
 	const UArcItemDefinition* ItemDef = ArcCoreAbility->NativeGetOwnerItemData();
 	ArcASC->PlayAnimMontage(Ability, MontagesFragment->StartMontage.Get(), PlayRate, NAME_None, 0, false, ItemDef);
 
@@ -100,8 +151,59 @@ void UArcAT_WaitActivationTimeWithAnimation::Activate()
 	AnimInstance->Montage_SetBlendingOutDelegate(BlendingOutDelegate, MontagesFragment->StartMontage.Get());
 }
 
+bool UArcAT_WaitActivationTimeWithAnimation::HandleNotifiesTick(float DeltaTime)
+{
+	if (!AbilitySystemComponent.IsValid())
+	{
+		CurrentNotifyTime = 0.f;
+		return false;
+	}
+	for (int32 Idx = Notifies.Num() - 1; Idx >= 0; --Idx)
+	{
+		if (CurrentNotifyTime >= Notifies[Idx].Time)
+		{
+			FGameplayEventData Payload;
+			UE_LOG(LogArcCore, Log, TEXT("Notify %s Time %.2f, CurrentTime %.2f"), *Notifies[Idx].Tag.ToString(), Notifies[Idx].Time, CurrentNotifyTime);
+			AbilitySystemComponent->HandleGameplayEvent(Notifies[Idx].Tag, &Payload);
+			
+			if (Notifies[Idx].bChangePlayRate)
+			{
+				const FGameplayAbilityActorInfo* ActorInfo = Ability->GetCurrentActorInfo();
+				UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
+				for (int32 NIdx = 0; NIdx < Notifies.Num(); ++NIdx)
+				{
+					Notifies[NIdx].Time = Notifies[NIdx].OriginalTime;
+				}
+				AnimInstance->Montage_SetPlayRate(CurrentMontage.Get(), Notifies[Idx].PlayRate);
+			}
+			
+			if (!bPlayNotifiesInLoop)
+			{
+				Notifies.RemoveAt(Idx);
+			}
+		}
+	}
+	
+	if (Notifies.Num() == 0)
+	{
+		CurrentNotifyTime = 0.f;
+		return false;
+	}
+	
+	CurrentNotifyTime += DeltaTime;
+	return true;
+}
+
 void UArcAT_WaitActivationTimeWithAnimation::HandleOnActivationFinished()
 {
+	if (UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent))
+	{
+		if (UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability))
+		{
+			ArcCoreAbility->CallOnActionTimeFinished();
+		}
+	}
+	
 	bReachedActivationTime = true;
 	FGameplayEventData TempData;
 	if (!bWaitForInputConfirm)
@@ -123,8 +225,46 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleFinished()
 
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
 
-	const UArcItemDefinition* ItemDef = ArcCoreAbility->NativeGetOwnerItemData();
-	ArcASC->PlayAnimMontage(Ability, MontagesFragment->EndMontage.Get(), 1.f, NAME_None, 0, false, ItemDef);
+	if (!MontagesFragment->EndMontage.IsNull())
+	{
+		FAnimNotifyContext Context;
+		MontagesFragment->EndMontage->GetAnimNotifies(0, 30, Context);
+		
+		Notifies.Empty();
+		
+		for (const FAnimNotifyEventReference& AN : Context.ActiveNotifies)
+		{
+			const FAnimNotifyEvent* Event = AN.GetNotify();
+			if (!Event)
+			{
+				continue;
+			}
+			
+			UArcAnimNotify_MarkGameplayEvent* MGE = Cast<UArcAnimNotify_MarkGameplayEvent>(Event->Notify);
+			if (!MGE)
+			{
+				continue;
+			}
+			
+			Notify NewNotify;
+			NewNotify.Tag = MGE->GetEventTag();
+			float Time = Event->GetTime();
+			NewNotify.Time = Event->GetTriggerTime();
+			Notifies.Add(NewNotify);
+		}
+		
+		bPlayNotifiesInLoop = false;
+		CurrentNotifyTime = 0.f;
+		if (Notifies.Num() > 0 && !TickerHandle.IsValid())
+		{
+			TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::HandleNotifiesTick));	
+		}
+		
+		CurrentMontage = MontagesFragment->EndMontage.Get();
+		
+		const UArcItemDefinition* ItemDef = ArcCoreAbility->NativeGetOwnerItemData();
+		ArcASC->PlayAnimMontage(Ability, MontagesFragment->EndMontage.Get(), 1.f, NAME_None, 0, false, ItemDef);
+	}
 }
 
 void UArcAT_WaitActivationTimeWithAnimation::OnStartMontageEnded(UAnimMontage* Montage, bool bInterrupted)
@@ -140,8 +280,43 @@ void UArcAT_WaitActivationTimeWithAnimation::OnStartMontageEnded(UAnimMontage* M
 
 	if (!MontagesFragment->LoopMontage.IsNull())
 	{
+		FAnimNotifyContext Context;
+		MontagesFragment->LoopMontage->GetAnimNotifies(0, 30, Context);
+		
+		Notifies.Empty();
+		
+		for (const FAnimNotifyEventReference& AN : Context.ActiveNotifies)
+		{
+			const FAnimNotifyEvent* Event = AN.GetNotify();
+			if (!Event)
+			{
+				continue;
+			}
+			
+			UArcAnimNotify_MarkGameplayEvent* MGE = Cast<UArcAnimNotify_MarkGameplayEvent>(Event->Notify);
+			if (!MGE)
+			{
+				continue;
+			}
+			
+			Notify NewNotify;
+			NewNotify.Tag = MGE->GetEventTag();
+			float Time = Event->GetTime();
+			NewNotify.Time = Event->GetTriggerTime();
+			Notifies.Add(NewNotify);
+		}
+		
+		bPlayNotifiesInLoop = true;
+		CurrentNotifyTime = 0.f;
+		if (Notifies.Num() > 0 && !TickerHandle.IsValid())
+		{
+			TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::HandleNotifiesTick));	
+		}
+		
+		CurrentMontage = MontagesFragment->LoopMontage.Get();
+		
 		const UArcItemDefinition* ItemDef = ArcCoreAbility->NativeGetOwnerItemData();
-		ArcASC->PlayAnimMontage(Ability, MontagesFragment->LoopMontage.Get(), 1.f, NAME_None, 0, false, ItemDef);	
+		ArcASC->PlayAnimMontage(Ability, MontagesFragment->LoopMontage.Get(), 1.f, NAME_None, 0, false, ItemDef);
 	}
 }
 
@@ -179,6 +354,10 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleActivationTimeChanged(UArcCor
 	{
 		AnimInstance->Montage_SetPlayRate(MontagesFragment->StartMontage.Get(), PlayRate);	
 	}
+	
+	FGameplayEventData TempData;
+	TempData.EventMagnitude = NewTime;
+	OnActivationTimeChanged.Broadcast(FGameplayTag(), TempData);
 	
 	TimerManager.ClearTimer(ActivationTimerHandle);
 	TimerManager.SetTimer(ActivationTimerHandle,

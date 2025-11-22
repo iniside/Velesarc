@@ -5,8 +5,15 @@
 #include "ArcSmartObjectPlanContainer.h"
 #include "ArcSmartObjectPlanConditionEvaluator.h"
 #include "ArcSmartObjectPlanResponse.h"
+#include "GameplayDebuggerCategoryReplicator.h"
 #include "GameplayTagContainer.h"
+#include "MassActorSubsystem.h"
+#include "MassAgentComponent.h"
+#include "MassDebugger.h"
 #include "MassEntitySubsystem.h"
+#include "MassExecutionContext.h"
+#include "MassGameplayDebugTypes.h"
+#include "SmartObjectSubsystem.h"
 
 #define ARC_PRINT_DEBUG_INFO 0
 
@@ -60,6 +67,8 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 	}
 	
 	bool bFoundValidPlan = false;
+
+	USmartObjectSubsystem* SmartObjectSubsystem = GetWorld()->GetSubsystem<USmartObjectSubsystem>();
 	
 	// Try each available entity
 	for (int32 EntityIndex = 0; EntityIndex < AvailableEntities.Num(); EntityIndex++)
@@ -72,6 +81,23 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 		
 		FArcPotentialEntity& Entity = AvailableEntities[EntityIndex];
 
+		bool bHasAnyFreeSlot = false;
+		
+		for (const FSmartObjectCandidateSlot& Slot : Entity.FoundCandidateSlots.Slots)
+		{
+			const bool bCanBeClaimed = SmartObjectSubsystem->CanBeClaimed(Slot.Result.SlotHandle);
+			if (bCanBeClaimed)
+			{
+				bHasAnyFreeSlot = true;
+				break;
+			}
+		}
+		
+		if (!bHasAnyFreeSlot)
+		{
+			continue;
+		}
+		
 		if (!EvaluateCustomConditions(Entity, EntityManager))
 		{
 			continue;
@@ -477,4 +503,232 @@ bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(const FArcPotenti
 	
 	// maybe tryto use world condition from smart object ?
 	return true;
+}
+
+namespace Arcx
+{
+	FMassEntityHandle GetEntityFromActor(const AActor& Actor, const UMassAgentComponent*& OutMassAgentComponent)
+	{
+		FMassEntityHandle EntityHandle;
+		if (const UMassAgentComponent* AgentComp = Actor.FindComponentByClass<UMassAgentComponent>())
+		{
+			EntityHandle = AgentComp->GetEntityHandle();
+			OutMassAgentComponent = AgentComp;
+		}
+		else if (UMassActorSubsystem* ActorSubsystem = UWorld::GetSubsystem<UMassActorSubsystem>(Actor.GetWorld()))
+		{
+			EntityHandle = ActorSubsystem->GetEntityHandleFromActor(&Actor);
+		}
+		return EntityHandle;
+	};
+
+	FMassEntityHandle GetBestEntity(const FVector ViewLocation, const FVector ViewDirection, const TConstArrayView<FMassEntityHandle> Entities
+		, const TConstArrayView<FVector> Locations, const bool bLimitAngle, const FVector::FReal MaxScanDistance)
+	{
+		constexpr FVector::FReal MinViewDirDot = 0.707; // 45 degrees		
+		const FVector::FReal MaxScanDistanceSq = MaxScanDistance * MaxScanDistance;
+
+		checkf(Entities.Num() == Locations.Num(), TEXT("Both Entities and Locations lists are expected to be of the same size: %d vs %d"), Entities.Num(), Locations.Num());
+		
+		FVector::FReal BestScore = bLimitAngle ? MinViewDirDot : (-1. - KINDA_SMALL_NUMBER);
+		FMassEntityHandle BestEntity;
+
+		for (int i = 0; i < Entities.Num(); ++i)
+		{
+			if (Entities[i].IsSet() == false)
+			{
+				continue;
+			}
+			
+			const FVector DirToEntity = (Locations[i] - ViewLocation);
+			const FVector::FReal DistToEntitySq = DirToEntity.SizeSquared();
+			if (DistToEntitySq > MaxScanDistanceSq)
+			{
+				continue;
+			}
+
+			const FVector::FReal Distance = FMath::Sqrt(DistToEntitySq);
+			const FVector DirToEntityNormal = (FMath::IsNearlyZero(DistToEntitySq)) ? ViewDirection : (DirToEntity / Distance);
+			const FVector::FReal ViewDot = FVector::DotProduct(ViewDirection, DirToEntityNormal);
+			const FVector::FReal Score = ViewDot * 0.1 * (1. - Distance / MaxScanDistance);
+			if (ViewDot > BestScore)
+			{
+				BestScore = ViewDot;
+				BestEntity = Entities[i];
+			}
+		}
+
+		return BestEntity;
+	}
+} // namespace UE::Mass:Debug
+
+FGameplayDebuggerCategory_SmartObjectPlanner::FGameplayDebuggerCategory_SmartObjectPlanner()
+	: Super()
+{
+	bPickEntity = false;
+	
+	BindKeyPress(EKeys::P.GetFName(), FGameplayDebuggerInputModifier::Shift, this, &FGameplayDebuggerCategory_SmartObjectPlanner::OnPickEntity, EGameplayDebuggerInputMode::Replicated);
+	
+	OnEntitySelectedHandle = FMassDebugger::OnEntitySelectedDelegate.AddRaw(this, &FGameplayDebuggerCategory_SmartObjectPlanner::OnEntitySelected);
+}
+
+FGameplayDebuggerCategory_SmartObjectPlanner::~FGameplayDebuggerCategory_SmartObjectPlanner()
+{
+	FMassDebugger::OnEntitySelectedDelegate.Remove(OnEntitySelectedHandle);
+}
+
+void FGameplayDebuggerCategory_SmartObjectPlanner::OnEntitySelected(const FMassEntityManager& EntityManager, const FMassEntityHandle EntityHandle)
+{
+	UWorld* World = EntityManager.GetWorld();
+	if (World != GetWorldFromReplicator())
+	{ 
+		// ignore, this call is for a different world
+		return;
+	}
+
+	AActor* BestActor = nullptr;
+	if (EntityHandle.IsSet() && World)
+	{
+		if (const UMassActorSubsystem* ActorSubsystem = World->GetSubsystem<UMassActorSubsystem>())
+		{
+			BestActor = ActorSubsystem->GetActorFromHandle(EntityHandle);
+		}
+	}
+
+	CachedEntity = EntityHandle;
+	CachedDebugActor = BestActor;
+	check(GetReplicator());
+	GetReplicator()->SetDebugActor(BestActor);
+}
+
+TSharedRef<FGameplayDebuggerCategory> FGameplayDebuggerCategory_SmartObjectPlanner::MakeInstance()
+{
+	return MakeShareable(new FGameplayDebuggerCategory_SmartObjectPlanner());
+}
+
+void FGameplayDebuggerCategory_SmartObjectPlanner::SetCachedEntity(const FMassEntityHandle Entity, const FMassEntityManager& EntityManager)
+{
+	if (CachedEntity != Entity)
+	{
+		FMassDebugger::SelectEntity(EntityManager, Entity);
+	}
+}
+
+void FGameplayDebuggerCategory_SmartObjectPlanner::PickEntity(const FVector& ViewLocation, const FVector& ViewDirection, const UWorld& World, FMassEntityManager& EntityManager, const bool bLimitAngle)
+{
+	FMassEntityHandle BestEntity;
+	float SearchRange = 25000.f;
+	// entities indicated by UE::Mass::Debug take precedence
+	if (UE::Mass::Debug::HasDebugEntities() && !UE::Mass::Debug::IsDebuggingSingleEntity())
+	{
+		TArray<FMassEntityHandle> Entities;
+		TArray<FVector> Locations;
+		UE::Mass::Debug::GetDebugEntitiesAndLocations(EntityManager, Entities, Locations);
+		BestEntity = Arcx::GetBestEntity(ViewLocation, ViewDirection, Entities, Locations, bLimitAngle, SearchRange);
+	}
+	else
+	{
+		TArray<FMassEntityHandle> Entities;
+		TArray<FVector> Locations;
+		FMassExecutionContext ExecutionContext(EntityManager);
+		FMassEntityQuery Query(EntityManager.AsShared());
+		Query.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+		Query.ForEachEntityChunk(ExecutionContext, [&Entities, &Locations](FMassExecutionContext& Context)
+		{
+			Entities.Append(Context.GetEntities().GetData(), Context.GetEntities().Num());
+			TConstArrayView<FTransformFragment> InLocations = Context.GetFragmentView<FTransformFragment>();
+			Locations.Reserve(Locations.Num() + InLocations.Num());
+			for (const FTransformFragment& TransformFragment : InLocations)
+			{
+				Locations.Add(TransformFragment.GetTransform().GetLocation());
+			}
+		});
+
+		BestEntity = Arcx::GetBestEntity(ViewLocation, ViewDirection, Entities, Locations, bLimitAngle, SearchRange);
+	}
+
+	SetCachedEntity(BestEntity, EntityManager);
+}
+
+void FGameplayDebuggerCategory_SmartObjectPlanner::CollectData(APlayerController* OwnerPC, AActor* DebugActor)
+{
+	const UWorld* World = GetDataWorld(OwnerPC, DebugActor);
+	if (!World)
+	{
+		return;
+	}
+	
+	UMassEntitySubsystem* EntitySubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(World);
+	UArcSmartObjectPlannerSubsystem* SmartObjectPlanner = UWorld::GetSubsystem<UArcSmartObjectPlannerSubsystem>(World);
+	
+	if (EntitySubsystem == nullptr || SmartObjectPlanner == nullptr)
+	{
+		AddTextLine(FString::Printf(TEXT("{Red}EntitySubsystem instance is missing")));
+		return;
+	}
+	
+	FMassEntityManager& EntityManager = EntitySubsystem->GetMutableEntityManager();
+	const UMassAgentComponent* AgentComp = nullptr;
+	if (DebugActor)
+	{
+		const FMassEntityHandle EntityHandle = Arcx::GetEntityFromActor(*DebugActor, AgentComp);	
+		SetCachedEntity(EntityHandle, EntityManager);
+		CachedDebugActor = DebugActor;
+	}
+	
+	FVector ViewLocation = FVector::ZeroVector;
+	FVector ViewDirection = FVector::ForwardVector;
+	if (GetViewPoint(OwnerPC, ViewLocation, ViewDirection))
+	{
+		// Ideally we would have a way to register in the main picking flow but that would require more changes to
+		// also support client-server picking. For now, we handle explicit mass picking requests on the authority
+		if (bPickEntity)
+		{
+			PickEntity(ViewLocation, ViewDirection, *World, EntityManager);
+			bPickEntity = false;
+		}
+	}
+	
+	if (!CachedEntity.IsSet())
+	{
+		return;
+	}
+	
+	const FArcSmartObjectPlanContainer* Plan = SmartObjectPlanner->GetDebugPlan(CachedEntity);
+	if (!Plan)
+	{
+		return;
+	}
+	
+	int32 Num = 0;
+	for (const auto& Step : Plan->Items)
+	{
+		FString Desc = FString::Printf(TEXT("Step Num %d"), Num);
+		AddShape(FGameplayDebuggerShape::MakeCylinder(Step.Location, 25.f, 240.f, FColor::Red, Desc));
+		Num++;
+	}
+	
+	
+	for (int32 StepNum = 0; StepNum < Plan->Items.Num(); StepNum++)
+	{
+		const FArcSmartObjectPlanStep& Step = Plan->Items[StepNum];
+		
+		int32 NextStepNum = StepNum + 1;
+		if (!Plan->Items.IsValidIndex(NextStepNum))
+		{
+			break;
+		}
+		
+		const FArcSmartObjectPlanStep& NextStep = Plan->Items[NextStepNum];
+		
+		FVector Start = Step.Location + FVector(0.f, 0.f, 100.f);
+		FVector End = NextStep.Location + FVector(0.f, 0.f, 100.f);
+		
+		AddShape(FGameplayDebuggerShape::MakeArrow(Start, End, 20.f, 5.f, FColor::Red, FString::Printf(TEXT("Step %d To %d"), StepNum, NextStepNum)));
+	}
+}
+
+void FGameplayDebuggerCategory_SmartObjectPlanner::DrawData(APlayerController* OwnerPC, FGameplayDebuggerCanvasContext& CanvasContext)
+{
+	FGameplayDebuggerCategory::DrawData(OwnerPC, CanvasContext);
 }

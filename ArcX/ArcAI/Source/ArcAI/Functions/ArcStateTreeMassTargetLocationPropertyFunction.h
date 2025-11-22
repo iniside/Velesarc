@@ -75,7 +75,7 @@ struct FArcStateTreeGetLocationFromTransformPropertyFunctionInstanceData
 	FTransform Input = FTransform::Identity;
 
 	UPROPERTY(EditAnywhere, Category = Output)
-	FVector Output;;
+	FVector Output = FVector::ZeroVector;
 };
 
 USTRUCT(DisplayName = "Get Location From Transform")

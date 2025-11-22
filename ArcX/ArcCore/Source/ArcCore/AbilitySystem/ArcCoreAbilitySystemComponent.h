@@ -359,6 +359,9 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FArcAbilityActivationTimeDynamicDelegate OnAbilityActivationTimeChanged;
 	
+	UPROPERTY(BlueprintAssignable)
+	FArcGenericAbilityDynamicDelegate OnAbilityActivationTimeFinished;
+	
 protected:
 	TMap<FGameplayAbilitySpecHandle, FTimerHandle> AbilitiesOnCooldown;
 	TMap<FTimerHandle, FGameplayAbilitySpecHandle> CooldownTimerToSpec;
@@ -801,10 +804,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
 	void DestroyActor(bool bReplicate);
 	
-	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability"
-		, meta = (ItemClass = "/Script/ArcCore.ArcItemDefinition", DeterminesOutputType
-		= "ItemClass"))
-	const UArcItemDefinition* GetSourceItemData(TSubclassOf<UArcItemDefinition> ItemClass) const;
+	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability")
+	const UArcItemDefinition* GetSourceItemData() const;
 
 	UFUNCTION(BlueprintCallable, CustomThunk, BlueprintInternalUseOnly, Category = "Arc Core|Ability", meta = (CustomStructureParam = "OutFragment", ExpandBoolAsExecs = "ReturnValue"))
 	bool FindItemFragment(UPARAM(meta = (MetaStruct = "/Script/ArcCore.ArcItemFragment")) UScriptStruct* InFragmentType
@@ -881,6 +882,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
 	static void MakeLocationInfoFragment(const FArcItemFragment_MakeLocationInfo& Transformer, UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation);
+	
+	//UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
+	//static FGameplayAbilityTargetDataHandle MakeProjectileTargetDataFromHitResult();
 };
 
 USTRUCT()

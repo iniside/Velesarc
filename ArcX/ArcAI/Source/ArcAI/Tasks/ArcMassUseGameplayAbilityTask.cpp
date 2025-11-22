@@ -60,6 +60,7 @@ EStateTreeRunStatus FArcMassUseGameplayAbilityTask::EnterState(FStateTreeExecuti
 			{
 				StrongContext.FinishTask(EStateTreeFinishTaskType::Failed);
 				SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
+				return;
 			}
 			
 			if (InstanceDataPtr->AbilityHandle == Ability->GetCurrentAbilitySpecHandle())

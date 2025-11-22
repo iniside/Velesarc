@@ -84,17 +84,6 @@ void FArcGameplayEffectsDebugger::Draw()
 			ImGui::TreePop();
 		}
 
-		if (ImGui::TreeNode("Explicit Gameplay Tag Count"))
-		{
-			const TMap<FGameplayTag, int32> GameplayTagCountMap = DebugHack::GetPrivateExplicitTagCountMap(&Tags);
-			for (const auto& TagCountPair : GameplayTagCountMap)
-			{
-				ImGui::Text(TCHAR_TO_ANSI(*TagCountPair.Key.ToString())); ImGui::SameLine();
-				ImGui::Text(TCHAR_TO_ANSI(*FString::Printf(TEXT(" Count: %d"), TagCountPair.Value)));
-			}
-			ImGui::TreePop();
-		}
-
 		if (ImGui::TreeNode("Explicit Gameplay Tags"))
 		{
 			const FGameplayTagContainer& GameplayTagCountMap = Tags.GetExplicitGameplayTags();

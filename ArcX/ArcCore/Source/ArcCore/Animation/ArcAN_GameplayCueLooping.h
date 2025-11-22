@@ -26,6 +26,7 @@
 
 #include "GameplayCueInterface.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
+#include "Animation/AnimNotifies/AnimNotifyState.h"
 #include "Items/Fragments/ArcItemFragment.h"
 #include "ArcAN_GameplayCueLooping.generated.h"
 
@@ -79,4 +80,23 @@ protected:
 	// GameplayCue tag to invoke.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = GameplayCue, meta = (Categories = "GameplayCue"))
 	FGameplayCueTag GameplayCue;
+};
+
+UCLASS()
+class ARCCORE_API UArcANS_GameplayCueState : public UAnimNotifyState
+{
+	GENERATED_BODY()
+	
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = GameplayCue, meta = (Categories = "GameplayCue"))
+	FGameplayCueTag GameplayCue;
+	
+public:
+	virtual void NotifyBegin(USkeletalMeshComponent * MeshComp, UAnimSequenceBase * Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference) override;
+	virtual void NotifyTick(USkeletalMeshComponent * MeshComp, UAnimSequenceBase * Animation, float FrameDeltaTime, const FAnimNotifyEventReference& EventReference) override;
+	virtual void NotifyEnd(USkeletalMeshComponent * MeshComp, UAnimSequenceBase * Animation, const FAnimNotifyEventReference& EventReference) override;
+	
+	virtual void BranchingPointNotifyBegin(FBranchingPointNotifyPayload& BranchingPointPayload) override;
+	virtual void BranchingPointNotifyTick(FBranchingPointNotifyPayload& BranchingPointPayload, float FrameDeltaTime) override;
+	virtual void BranchingPointNotifyEnd(FBranchingPointNotifyPayload& BranchingPointPayload) override;
 };

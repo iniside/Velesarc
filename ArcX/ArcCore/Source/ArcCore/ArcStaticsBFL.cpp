@@ -21,15 +21,21 @@
 
 #include "ArcStaticsBFL.h"
 
+#include "AIController.h"
 #include "Engine/Engine.h"
 #include "MassEntityConfigAsset.h"
 #include "MassSpawnerSubsystem.h"
 #include "MassSpawnerTypes.h"
 #include "MassSpawnLocationProcessor.h"
+#include "MoverComponent.h"
+#include "ChaosMover/Backends/ChaosMoverBackend.h"
+#include "ChaosMover/Character/Effects/ChaosCharacterApplyVelocityEffect.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
 #include "Core/ArcCoreAssetManager.h"
+#include "DefaultMovementSet/LayeredMoves/LaunchMove.h"
 #include "GameMode/ArcUserFacingExperienceDefinition.h"
 #include "Kismet/GameplayStatics.h"
+#include "Navigation/PathFollowingComponent.h"
 
 void UArcStaticsBFL::OpenLevelByPrimaryAssetId(const UObject* WorldContextObject
 											   , const FPrimaryAssetId Level
@@ -132,4 +138,118 @@ UObject* UArcStaticsBFL::IsObjectChildOf(UObject* InObject
 
 	bSuccess = false;
 	return nullptr;
+}
+
+void UArcStaticsBFL::AddChaosMoverStance(AActor* Actor, FChaosStanceModifier NewStance)
+{
+	UChaosMoverBackendComponent* Backend = Actor->FindComponentByClass<UChaosMoverBackendComponent>();
+	if (!Backend)
+	{
+		UMoverComponent* Mover = Actor->FindComponentByClass<UMoverComponent>();
+		//if (Mover)
+		//{
+		//	Mover->
+		//}
+	}
+	if (Backend)
+	{
+		UChaosMoverSimulation* Sim = Backend->GetSimulation();
+		
+		TSharedPtr<FMovementModifierBase> Modifer = MakeShared<FChaosStanceModifier>(NewStance);
+		Sim->QueueMovementModifier(Modifer);
+	}
+}
+
+void UArcStaticsBFL::PauseCurrentMove(AAIController* AIController)
+{
+	AIController->GetPathFollowingComponent()->PauseMove();
+}
+
+void UArcStaticsBFL::ResumeCurrentMove(AAIController* AIController)
+{
+	AIController->GetPathFollowingComponent()->ResumeMove();
+}
+
+void UArcStaticsBFL::LaunchMove(AActor* Actor, FVector LaunchVelocity, EMoveMixMode MixMode)
+{
+	UChaosMoverBackendComponent* Backend = Actor->FindComponentByClass<UChaosMoverBackendComponent>();
+	if (!Backend)
+	{
+		UMoverComponent* Mover = Actor->FindComponentByClass<UMoverComponent>();
+		//if (Mover)
+		//{
+		//	Mover->
+		//}
+	}
+	if (Backend)
+	{
+		UChaosMoverSimulation* Sim = Backend->GetSimulation();
+		
+		TSharedPtr<FLayeredMove_Launch> Move = MakeShared<FLayeredMove_Launch>();
+		Move->LaunchVelocity = LaunchVelocity;
+		Move->MixMode = MixMode;
+		Sim->QueueLayeredMove(Move);
+	}
+}
+
+void UArcStaticsBFL::ApplyVelocityEffect(AActor* Actor, FVector LaunchVelocity, EChaosMoverVelocityEffectMode Mode)
+{
+	UChaosMoverBackendComponent* Backend = Actor->FindComponentByClass<UChaosMoverBackendComponent>();
+	if (!Backend)
+	{
+		UMoverComponent* Mover = Actor->FindComponentByClass<UMoverComponent>();
+		//if (Mover)
+		//{
+		//	Mover->
+		//}
+	}
+	if (Backend)
+	{
+		UChaosMoverSimulation* Sim = Backend->GetSimulation();
+		
+		TSharedPtr<FChaosCharacterApplyVelocityEffect> Move = MakeShared<FChaosCharacterApplyVelocityEffect>();
+		Move->VelocityOrImpulseToApply = LaunchVelocity;
+		Move->Mode = Mode;
+		Sim->QueueInstantMovementEffect(Move);
+	}
+}
+
+void UArcStaticsBFL::MoveToMove(AActor* Actor, FLayeredMove_MoveTo MoveTo)
+{
+	UChaosMoverBackendComponent* Backend = Actor->FindComponentByClass<UChaosMoverBackendComponent>();
+	if (!Backend)
+	{
+		UMoverComponent* Mover = Actor->FindComponentByClass<UMoverComponent>();
+		//if (Mover)
+		//{
+		//	Mover->
+		//}
+	}
+	if (Backend)
+	{
+		UChaosMoverSimulation* Sim = Backend->GetSimulation();
+		
+		TSharedPtr<FLayeredMove_MoveTo> Move = MakeShared<FLayeredMove_MoveTo>(MoveTo);
+		Sim->QueueLayeredMove(Move);
+	}
+}
+
+void UArcStaticsBFL::MoveLift(AActor* Actor, FArcLayeredMove_Lift Lift)
+{
+	UChaosMoverBackendComponent* Backend = Actor->FindComponentByClass<UChaosMoverBackendComponent>();
+	if (!Backend)
+	{
+		UMoverComponent* Mover = Actor->FindComponentByClass<UMoverComponent>();
+		//if (Mover)
+		//{
+		//	Mover->
+		//}
+	}
+	if (Backend)
+	{
+		UChaosMoverSimulation* Sim = Backend->GetSimulation();
+		
+		TSharedPtr<FArcLayeredMove_Lift> Move = MakeShared<FArcLayeredMove_Lift>(Lift);
+		Sim->QueueLayeredMove(Move);
+	}
 }

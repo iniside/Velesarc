@@ -86,8 +86,6 @@ public:
 	bool BP_FindItemFragment(UPARAM(meta = (MetaStruct = "/Script/ArcCore.ArcItemFragment")) UScriptStruct* InFragmentType
 						  , int32& OutFragment);
  
-	DECLARE_FUNCTION(execBP_FindItemFragment);
-	
 	template <typename T>
 	const T* FindEditorFragment() const
 	{
@@ -124,6 +122,8 @@ public:
 		return OutArray;
 	}
 #endif
+	
+	DECLARE_FUNCTION(execBP_FindItemFragment);
 	
 public:
 	const TSet<FArcInstancedStruct>& GetScalableFloatFragments() const

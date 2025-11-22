@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "MassEntityHandle.h"
 #include "StateTreeEvents.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 
 #include "ArcMassStateTreeFunctionLibrary.generated.h"
 

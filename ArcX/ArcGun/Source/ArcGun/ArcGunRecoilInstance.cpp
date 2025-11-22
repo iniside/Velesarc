@@ -164,9 +164,8 @@ void FArcGunRecoilInstance_Base::CalculateRecoilModifires(const FArcItemData* In
 
 		const float SpreadAttributeFinalValue = ArcAbility::CalculateAttributeLog(Params, AccuracyStat, AccuracyBaseAttributes, HandlingMultipliers);
 
-		UCharacterMovementComponent* CMC = CharacterOwner->GetCharacterMovement();
-		const float Velocity = CMC->Velocity.Size();
-		const float Acceleration = CMC->GetCurrentAcceleration().Size();
+		const float Velocity = CharacterOwner->GetVelocity().Size();
+		const float Acceleration = 0;//CharacterOwner->Acce.Size();
 	
 		bIsAiming = ArcASC->HasMatchingGameplayTag(AimTag);
 		const float TimeSinceFired = InGunState->GetWorld()->TimeSince(InGunState->GetLastShootTime());

@@ -21,71 +21,144 @@
 
 #include "ArcCraftComponent.h"
 
+#include "ArcCoreUtils.h"
 #include "Core/ArcCoreAssetManager.h"
 #include "Items/ArcItemsStoreComponent.h"
+#include "Items/Factory/ArcItemSpecGeneratorDefinition.h"
+#include "Items/Fragments/ArcItemFragment_RequiredItems.h"
 #include "Net/UnrealNetwork.h"
 
-bool FArcCraftRequirement_ItemDefinitionCount::MeetsRequirement(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner) const
+bool FArcCraftRequirement_InstigatorItemsStore::CheckAndConsumeItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData
+	, const UObject* InInstigator, bool bConsume) const
 {
-	const AActor* OwnerActor = Cast<AActor>(InOwner);
+	const FArcItemFragment_RequiredItems* RequiredItems = InCraftData->FindFragment<FArcItemFragment_RequiredItems>();
+	if (!RequiredItems)
+	{
+		return true;
+	}
+	const AActor* OwnerActor = Cast<AActor>(InInstigator);
 	if (!OwnerActor)
 	{
 		return false;
 	}
-
-	UArcItemsStoreComponent* ItemsStore = OwnerActor->FindComponentByClass<UArcItemsStoreComponent>();
+	
+	UArcItemsStoreComponent* ItemsStore = Arcx::Utils::GetComponent(OwnerActor, ItemsStoreClass);
 	if (!ItemsStore)
 	{
 		return false;
 	}
 
-	for (const FArcCraftItemDefinitionCount& ItemDefCount : ItemDefinitions)
+	TArray<TPair<FArcItemId, int32>> ItemDefsNeeded;
+	
+	// First check if we have anough items to begin with.
+	for (const FArcItemDefCount& RequiredItem : RequiredItems->RequiredItemDefs)
 	{
-		const FArcItemData* ItemData = ItemsStore->GetItemByDefinition(ItemDefCount.ItemDefinition);
+		const FArcItemData* ItemData =  ItemsStore->GetItemByDefinition(RequiredItem.ItemDefinitionId);
 		if (!ItemData)
 		{
-			return false; // Item definition not found in store
+			return false;
 		}
 
-		const uint16 Stacks = ItemData->GetStacks();
-		if (ItemDefCount.Count > Stacks)
+		if (ItemData->GetStacks() < RequiredItem.Count)
 		{
-			return false; // Not enough items of this type
+			return false;
 		}
+		
+		ItemDefsNeeded.Add({ItemData->GetItemId(), RequiredItem.Count});
 	}
-}
 
-void FArcCraftExecution_MakeItemSpec::OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner
-	, FArcItemSpec& ItemSpec) const
-{
-	int32 SpecIdx = InCraftComponent->GetCraftedItemSpecList().Items.IndexOfByKey(InCraftData->ItemDefinition.AssetId);
-	if (SpecIdx != INDEX_NONE)
+	for (const FArcItemTagCount& RequiredItem : RequiredItems->RequiredItemsWithTags)
 	{
-		ItemSpec = InCraftComponent->GetCraftedItemSpecList().Items[SpecIdx];
-		ItemSpec.Amount++;
-		return;
+		const FArcItemData* ItemData =  ItemsStore->GetItemByTags(RequiredItem.RequiredTags);
+		if (!ItemData)
+		{
+			return false;
+		}
+
+		if (ItemData->GetStacks() < RequiredItem.Count)
+		{
+			return false;
+		}
+		
+		ItemDefsNeeded.Add({ItemData->GetItemId(), RequiredItem.Count});
+	}
+
+	if (bConsume)
+	{
+		for (const TPair<FArcItemId, int32>& ItemDef : ItemDefsNeeded)
+		{
+			ItemsStore->RemoveItem(ItemDef.Key, ItemDef.Value, true);
+		}	
 	}
 	
-	ItemSpec = FArcItemSpec::NewItem(InCraftData->ItemDefinition, 1, 1);
+	return true;
 }
 
-void FArcCraftExecution_AddToCraftingStore::OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData
-															, const UObject* InOwner, FArcItemSpec& ItemSpec) const
+TArray<FArcCraftItemAmount> FArcCraftRequirement_InstigatorItemsStore::AvailableItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator) const
 {
-	if (!ItemSpec.GetItemDefinitionId().IsValid())
+	TArray<FArcCraftItemAmount> AvailableItems;
+
+	const FArcItemFragment_RequiredItems* RequiredItems = InCraftData->FindFragment<FArcItemFragment_RequiredItems>();
+	if (!RequiredItems)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Crafting execution failed: ItemSpec is invalid."));
-		return;
+		return AvailableItems;
+	}
+	const AActor* OwnerActor = Cast<AActor>(InInstigator);
+	if (!OwnerActor)
+	{
+		return AvailableItems;
+	}
+	
+	UArcItemsStoreComponent* ItemsStore = Arcx::Utils::GetComponent(OwnerActor, ItemsStoreClass);
+	if (!ItemsStore)
+	{
+		return AvailableItems;
 	}
 
-	int32 SpecIdx = InCraftComponent->GetCraftedItemSpecList().Items.IndexOfByKey(InCraftData->ItemDefinition.AssetId);
-	if (SpecIdx != INDEX_NONE)
+	for (const FArcItemDefCount& RequiredItem : RequiredItems->RequiredItemDefs)
 	{
-		InCraftComponent->GetCraftedItemSpecList().Items[SpecIdx].Amount = ItemSpec.Amount;
-		return;
+		int32 Amount = ItemsStore->CountItemsByDefinition(RequiredItem.ItemDefinitionId);
+		AvailableItems.Add({RequiredItem.ItemDefinitionId, Amount});
+	}
+	
+	return AvailableItems;
+}
+
+FArcItemSpec FArcCraftRequirement_InstigatorItemsStore::OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator) const
+{
+	const FArcItemFragment_CraftData* CraftData = InCraftData->FindFragment<FArcItemFragment_CraftData>();
+	FArcItemSpec NewItemSpec;
+	if (!CraftData)
+	{
+		return NewItemSpec;
 	}
 
-	InCraftComponent->GetCraftedItemSpecList().Edit().Add(ItemSpec);
+	const AActor* OwnerActor = Cast<AActor>(InInstigator);
+	if (!OwnerActor)
+	{
+		return NewItemSpec;
+	}
+
+	UArcItemsStoreComponent* ItemsStore = Arcx::Utils::GetComponent(OwnerActor, ItemsStoreClass);
+	if (!ItemsStore)
+	{
+		return NewItemSpec;
+	}
+
+	const FArcItemFragment_ItemGenerator* ItemGenerator = InCraftData->FindFragment<FArcItemFragment_ItemGenerator>();
+	if (ItemGenerator && ItemGenerator->ItemGeneratorDef)
+	{
+		
+	}
+	else
+	{
+		NewItemSpec = FArcItemSpec::NewItem(CraftData->ItemDefinition, 1, 1);
+
+		ItemsStore->AddItem(NewItemSpec, FArcItemId::InvalidId);
+	}
+
+	
+	return NewItemSpec;
 }
 
 // Sets default values for this component's properties
@@ -115,6 +188,7 @@ void UArcCraftComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProper
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION(UArcCraftComponent, CraftedItemList, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UArcCraftComponent, StoredResourceItemList, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UArcCraftComponent, CraftedItemSpecList, COND_OwnerOnly);
 }
 
@@ -125,7 +199,9 @@ void UArcCraftComponent::UpdateStatus()
 	
 	for (FArcCraftItem& Item : CraftedItemList.Items)
 	{
-		const int32 OneItemCraftTime = Item.Recipe->CraftTime;
+		const FArcItemFragment_CraftData* CraftData = Item.Recipe->FindFragment<FArcItemFragment_CraftData>();
+		
+		const int32 OneItemCraftTime = CraftData->CraftTime;
 		const int64 ElapsedTime = CurrentTime - Item.StartTime;
 
 		// How much items cloud we created in the time that elapsed since we last checked ?
@@ -133,23 +209,42 @@ void UArcCraftComponent::UpdateStatus()
 	}
 }
 
-void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, UObject* Instigator, int32 Amount, int32 Priority)
+bool UArcCraftComponent::CheckRequirements(const UArcItemDefinition* InCraftData, const UObject* Instigator) const
 {
-	for (const TInstancedStruct<FArcCraftRequirement>& Requirement : InCraftData->Requirements)
+	const FArcItemFragment_CraftData* CraftData = InCraftData->FindFragment<FArcItemFragment_CraftData>();
+	if (!CraftData)
 	{
-		if (!Requirement.GetPtr<FArcCraftRequirement>()->MeetsRequirement(this, InCraftData, Instigator))
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Crafting requirements not met for %s"), *InCraftData->GetName());
-			return;
-		}
+		return false;
 	}
 	
+	if (!CraftExecution.GetPtr<FArcCraftExecution>()->CheckAndConsumeItems(this, InCraftData, Instigator, false))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Crafting requirements not met for %s"), *InCraftData->GetName());
+		return false;
+	}
+	
+
+	return true;
+}
+
+void UArcCraftComponent::CraftItem(const UArcItemDefinition* InCraftData, UObject* Instigator, int32 Amount, int32 Priority)
+{
+	const bool bMeetsRequirements = CheckRequirements(InCraftData, Instigator);
+	if (!bMeetsRequirements)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Crafting requirements not met for %s"), *InCraftData->GetName());
+		return;
+	}
+
+	CurrentInstigator = Instigator;
+	const FArcItemFragment_CraftData* CraftData = InCraftData->FindFragment<FArcItemFragment_CraftData>();
+
 	const bool bIsDisabled = CraftedItemList.Items.IsEmpty();
 	
 	const FDateTime Time = FDateTime::UtcNow();
 	const int64 CurrentTime = Time.ToUnixTimestamp();
 
-	const int32 EndTime = (InCraftData->CraftTime * Amount) + CurrentTime;
+	const int32 EndTime = (CraftData->CraftTime * Amount) + CurrentTime;
 	FArcCraftItem CraftedItem;
 
 	CraftedItem.Id = FGuid::NewGuid();
@@ -184,8 +279,10 @@ void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, UObject* In
 	
 	if (bIsDisabled)
 	{
-		CraftedItemList.Items.Add(CraftedItem);
-		PrimaryComponentTick.SetTickFunctionEnable(true);	
+		int32 Idx = CraftedItemList.Items.Add(CraftedItem);
+		PrimaryComponentTick.SetTickFunctionEnable(true);
+
+		OnCraftItemAdded.Broadcast(this, CraftedItemList.Items[Idx]);
 	}
 	else
 	{
@@ -195,11 +292,42 @@ void UArcCraftComponent::CraftItem(const UArcCraftData* InCraftData, UObject* In
 
 void UArcCraftComponent::OnCraftFinished(const FArcCraftItem& CraftedItem)
 {
-	FArcItemSpec NewItemSpec;
-	for (const TInstancedStruct<FArcCraftExecution>& Requirement : CraftedItem.Recipe->OnFinishedExecutions)
+	FArcItemSpec NewItemSpec = CraftExecution.GetPtr<FArcCraftExecution>()->OnCraftFinished(this, CraftedItem.Recipe, CraftedItem.Instigator);
+	
+	OnCraftFinishedDelegate.Broadcast(this, CraftedItem.Recipe, NewItemSpec);
+}
+
+bool UArcCraftComponent::DoesHaveItemsToCraft(const UArcItemDefinition* InRecipe, UObject* InOwner) const
+{
+	const FArcItemFragment_CraftData* CraftData = InRecipe->FindFragment<FArcItemFragment_CraftData>();
+	if (!CraftData)
 	{
-		Requirement.GetPtr<FArcCraftExecution>()->OnCraftFinished(this, CraftedItem.Recipe, CraftedItem.Instigator, NewItemSpec);
+		return false;
 	}
+	
+	if (!CraftExecution.GetPtr<FArcCraftExecution>()->CheckAndConsumeItems(this, InRecipe, InOwner, false))
+	{
+		return false;
+	}
+	
+
+	return true;
+}
+
+TArray<FArcCraftItemAmount> UArcCraftComponent::GetAvailableItems(const UArcItemDefinition* InRecipe, UObject* InOwner) const
+{
+	TArray<FArcCraftItemAmount> OutItems;
+	
+	const FArcItemFragment_CraftData* CraftData = InRecipe->FindFragment<FArcItemFragment_CraftData>();
+	if (!CraftData)
+	{
+		return TArray<FArcCraftItemAmount>();
+	}
+	
+	OutItems.Append(CraftExecution.GetPtr<FArcCraftExecution>()->AvailableItems(this, InRecipe, InOwner));
+	
+
+	return OutItems;
 }
 
 // Called every frame
@@ -207,24 +335,63 @@ void UArcCraftComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	if (!CraftExecution.IsValid())
+	{
+		return;
+	}
+	
+	const bool bCanCraft = CraftExecution.GetPtr<FArcCraftExecution>()->CanCraft(this, CurrentInstigator.Get());
+	if (!bCanCraft)
+	{
+		return;
+	}
+	
 	for (const FArcCraftItem& Item : PendingAdds)
 	{
-		CraftedItemList.Items.Add(Item);
+		int32 Idx = CraftedItemList.Items.Add(Item);
+		OnCraftItemAdded.Broadcast(this, CraftedItemList.Items[Idx]);
 	}
 	
 	PendingAdds.Reset(16);
 	// ...
 
-	int32 HighestPriority = INT_MAX;
-	int32 HighestPriorityIndex = -1;
-	for (int32 Idx = 0; Idx < CraftedItemList.Items.Num(); Idx++)
+	int32 OldHighestPriority = HighestPriorityIndex;
+	if (HighestPriorityIndex == INDEX_NONE)
 	{
-		FArcCraftItem& Item = CraftedItemList.Items[Idx];
-		if (Item.Priority < HighestPriority)
+		int32 HighestPriority = INT_MAX;
+		for (int32 Idx = 0; Idx < CraftedItemList.Items.Num(); Idx++)
 		{
-			HighestPriority = Item.Priority;
-			HighestPriorityIndex = Idx;
+			FArcCraftItem& Item = CraftedItemList.Items[Idx];
+			const bool bMeetsRequirements = CheckRequirements(Item.Recipe, Item.Instigator);
+			if (!bMeetsRequirements)
+			{
+				UE_LOG(LogTemp, Log, TEXT("Selecting Highest Priority item. Crafting requirements not met for %s"), *Item.Recipe->GetName());
+				continue;
+			}
+		
+			if (Item.Priority < HighestPriority)
+			{
+				HighestPriority = Item.Priority;
+				HighestPriorityIndex = Idx;
+			}
 		}
+
+		if (HighestPriorityIndex != INDEX_NONE && HighestPriorityIndex != OldHighestPriority)
+		{
+			const FArcItemFragment_CraftData* CraftData = CraftedItemList.Items[HighestPriorityIndex].Recipe->FindFragment<FArcItemFragment_CraftData>();
+			
+			CraftExecution.GetPtr<FArcCraftExecution>()->CheckAndConsumeItems(this, CraftedItemList.Items[HighestPriorityIndex].Recipe
+				, CraftedItemList.Items[HighestPriorityIndex].Instigator, true);
+
+			OnCraftStarted.Broadcast(this, CraftedItemList.Items[HighestPriorityIndex]);
+		}
+	}
+	
+	if (HighestPriorityIndex == -1)
+	{
+		// No valid items to craft
+		// TODO:: Dosable ticking ? Or let it keep trying to find something ?
+		return;
 	}
 	
 	TArray<int32> PendingRemoves;
@@ -232,7 +399,10 @@ void UArcCraftComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	if (CraftedItemList.Items.IsValidIndex(HighestPriorityIndex))
 	{
 		FArcCraftItem& Item = CraftedItemList.Items[HighestPriorityIndex];
-		const float SingleItemCraftTime = Item.Recipe->CraftTime;
+
+		const FArcItemFragment_CraftData* CraftData = Item.Recipe->FindFragment<FArcItemFragment_CraftData>();
+		
+		const float SingleItemCraftTime = CraftData->CraftTime;
 		Item.CurrentTime += DeltaTime;
 
 		if (Item.CurrentTime >= SingleItemCraftTime)
@@ -240,11 +410,13 @@ void UArcCraftComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 			OnCraftFinished(Item);
 			Item.CurrentAmount++;
 			Item.CurrentTime = 0;
-			
+
 			if (Item.CurrentAmount >= Item.MaxAmount)
 			{
 				PendingRemoves.Add(HighestPriorityIndex);
 			}
+
+			HighestPriorityIndex = INDEX_NONE;
 		}
 	}
 

@@ -24,17 +24,6 @@ namespace DebugHack
 	inline const TMap<FGameplayTag, int32>& GetPrivateGameplayTagCountMap(const FGameplayTagCountContainer* Component) {
 		return Component->*get(GameplayTagCountMap());
 	}
-	
-	struct ExplicitTagCountMap {
-		typedef TMap<FGameplayTag, int32> FGameplayTagCountContainer::*type;
-		friend type get(ExplicitTagCountMap);
-	};
-
-	template struct PropertyAccessor<ExplicitTagCountMap, &FGameplayTagCountContainer::ExplicitTagCountMap>;
-
-	inline const TMap<FGameplayTag, int32>& GetPrivateExplicitTagCountMap(const FGameplayTagCountContainer* Component) {
-		return Component->*get(ExplicitTagCountMap());
-	}
 
 	struct AttributeAggregatorMap {
 		typedef TMap<FGameplayAttribute, FAggregatorRef> FActiveGameplayEffectsContainer::*type;

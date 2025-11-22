@@ -17,6 +17,7 @@ AArcCoreInstancedActorsManager::AArcCoreInstancedActorsManager()
 	InstancedActorsDataClass = UArcCoreInstancedActorsData::StaticClass();
 }
 
+#if WITH_EDITOR
 UInstancedActorsData* AArcCoreInstancedActorsManager::CreateNextInstanceActorData(TSubclassOf<AActor> ActorClass
 	, const FInstancedActorsTagSet& AdditionalInstanceTags)
 {
@@ -51,6 +52,7 @@ UInstancedActorsData* AArcCoreInstancedActorsManager::CreateNextInstanceActorDat
 	
 	return Super::CreateNextInstanceActorData(ActorClass, AdditionalInstanceTags);
 }
+#endif
 
 AActor* AArcCoreInstancedActorsManager::ArcFindActor(const FActorInstanceHandle& Handle)
 {

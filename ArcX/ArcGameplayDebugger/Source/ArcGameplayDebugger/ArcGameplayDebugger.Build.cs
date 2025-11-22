@@ -37,7 +37,13 @@ public class ArcGameplayDebugger : ModuleRules
 				"EnhancedInput",
 				"TargetingSystem",
 				"UMG",
-				"ArcBuilder"
+				"ArcBuilder",
+				"ArcAI",
+				"MassEntity",
+				"MassSpawner",
+				"MassCommon",
+				"MassActors",
+				"MassAIBehavior"
 				
 				// ... add other public dependencies that you statically link with here ...
 			}

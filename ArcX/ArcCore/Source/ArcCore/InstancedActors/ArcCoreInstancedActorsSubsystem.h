@@ -107,9 +107,9 @@ class AArcCoreInstancedActorsManager : public AInstancedActorsManager
 
 public:
 	AArcCoreInstancedActorsManager();
-
+#if WITH_EDITOR
 	virtual UInstancedActorsData* CreateNextInstanceActorData(TSubclassOf<AActor> ActorClass, const FInstancedActorsTagSet& AdditionalInstanceTags) override;
-
+#endif
 	virtual AActor* ArcFindActor(const FActorInstanceHandle& Handle);
 	
 };

@@ -86,6 +86,8 @@ public class ArcAI : ModuleRules
 				, "ArcCore"
 				, "GameplayBehaviorSmartObjectsModule"
 				, "ArcGameplayInteraction"
+				, "MassGameplayDebug"
+				, "MoverMassIntegration"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

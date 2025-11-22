@@ -56,7 +56,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogArcQuickBar
  * item added to this slot, and if added it will be automatically added to @link UArcQuickBarComponent::ItemSlotMapping
  * but nothing else will happen.
  *
- * If @link FArcQuickBarSlot::InputBind have @link FGF1047QuickBarInputBindHandling::ItemSlotId set
+ * If @link FArcQuickBarSlot::InputBind have @link FArcQuickBarInputBindHandling::ItemSlotId set
  * it will listen for the @link FArcQuickBarInputBindHandling::ItemSlotId and if item is added to this slot
  * applicable input tags will be added.
  *
@@ -277,6 +277,7 @@ protected:
 	
 	DEFINE_ARC_CHANNEL_DELEGATE(AActor*, Actor, FArcQuickBarComponentDelegate, OnSlotCycleConfirmed)
 
+	DEFINE_ARC_CHANNEL_DELEGATE(AActor*, Actor, FArcQuickBarDelegate, OnQuickSlotCycled);
 public:
 	UPROPERTY(BlueprintAssignable)
 	FArcItemOnQuickSlotDynamic OnQuickSlotAdded;
@@ -289,6 +290,12 @@ public:
 
 	UPROPERTY(BlueprintAssignable)
 	FArcItemOnQuickSlotDynamic OnQuickSlotDeactivated;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcItemOnQuickSlotDynamic OnQuickSlotSelected;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcItemOnQuickSlotDynamic OnQuickSlotDeselected;
 };
 
 /**
@@ -418,13 +425,13 @@ protected:
 	virtual void BeginPlay() override;
 
 	/**
-	 * We override it to register delegates from @link UGF1047ItemSlotComponent
+	 * We override it to register delegates from @link UArcItemSlotComponent
 	 * which will listen to Items added/removed from slot.
 	 *
 	 * In simplest case we will add item to @link ItemSlotMapping when it is added to slot.
-	 * In More complex case we will also call @link FGF1047QuickBarInputBindHandling
+	 * In More complex case we will also call @link FArcQuickBarInputBindHandling
 	 *
-	 * QuickSlots which will react to these delegates will not call @link FGF1047QuickBarSlot::SelectedHandlers
+	 * QuickSlots which will react to these delegates will not call @link FArcQuickBarSlot::SelectedHandlers
 	 * I may change it later though. Right now these handlers are only called when Player decides
 	 * to perform some action on this component.
 	 */
@@ -476,6 +483,10 @@ public:
 	FGameplayTag CycleSlotBackward(const FGameplayTag& BarId
 					  , const FGameplayTag& CurrentSlotId
 					  , TFunction<bool(const FArcItemData*)> SlotValidCondition);
+	
+	UFUNCTION(BlueprintCallable, Category = "Arc Core")
+	void DeselectCurrentQuickSlot(FGameplayTag InBarId);
+	
 private:
 	/**
 	 * Check if we can cycle at all. If can return valid BarIdx.
@@ -513,7 +524,7 @@ private:
 	void ClientConfirmSlotCycled();
 	
 	/**
- 	 * Helper function to look for @link FGF1047QuickBarInputBindHandling
+ 	 * Helper function to look for @link FArcQuickBarInputBindHandling
  	 * and try to bind input. Return true if successful
  	 */
 	bool InternalTryBindInput(const int32 BarIdx
@@ -521,7 +532,7 @@ private:
 		, UArcCoreAbilitySystemComponent* InArcASC);
 
 	/**
-	 * Helper function to look for @link FGF1047QuickBarInputBindHandling
+	 * Helper function to look for @link FArcQuickBarInputBindHandling
 	 * and try to unbind input. Return true if successful
 	 */
 	bool InternalTryUnbindInput(const int32 BarIdx

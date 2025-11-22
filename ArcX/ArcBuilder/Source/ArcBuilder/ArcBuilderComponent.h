@@ -77,6 +77,40 @@ public:
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FArcBuilderComponent_OnPlacementCompleted, UArcItemDefinition*, InItemDef, FGameplayTag, Tag);
 
+UCLASS()
+class UArcBuilderSharedConfigData : public UDataAsset
+{
+	GENERATED_BODY()
+	
+public:
+	// Will snap, only if target object hass all these tags.
+	UPROPERTY(EditAnywhere)
+	FGameplayTagContainer SnappingRequiredTags;
+
+	UPROPERTY(EditAnywhere)
+	TArray<TInstancedStruct<FArcBuildRequirement>> BuildRequirements;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UMaterialInterface> RequirementMeetMaterial;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UMaterialInterface> RequirementFailedMaterial;
+	
+	// Only Sockets with the same name will be matched.
+	UPROPERTY(EditAnywhere)
+	bool bMatchSocketsByName = true;
+	
+	UPROPERTY(EditAnywhere)
+	bool bSnapToClosestSocket = false;
+
+	// Default size of grid cell, when we are using grid snapping. 
+	UPROPERTY(EditAnywhere)
+	int32 DefaultGridSize = 100;
+
+	UPROPERTY(EditAnywhere)
+	FVector ApproximateSize = FVector(100.0, 100.0, 100.0);
+};
+
 USTRUCT(BlueprintType)
 struct FArcItemFragment_BuilderData : public FArcItemFragment
 {
@@ -88,6 +122,9 @@ public:
 	TSoftClassPtr<AActor> ActorClass;
 
 	UPROPERTY(EditAnywhere)
+	TObjectPtr<UArcBuilderSharedConfigData> SharedConfig;
+	
+	UPROPERTY(EditAnywhere)
 	FArcBuildSocketInfo SocketInfo;
 
 	// Will snap, only if target object hass all these tags.
@@ -96,9 +133,6 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	TArray<TInstancedStruct<FArcBuildRequirement>> BuildRequirements;
-
-	UPROPERTY(EditAnywhere)
-	TInstancedStruct<FArcConsumeItemsRequirement> ConsumeItemRequirement;
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UMaterialInterface> RequirementMeetMaterial;
@@ -138,6 +172,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Config")
 	TObjectPtr<AActor> TemporaryPlacementActor;
 
+	UPROPERTY(EditAnywhere)
+	TInstancedStruct<FArcConsumeItemsRequirement> ConsumeItemRequirement;
+	
 	TWeakObjectPtr<UArcItemDefinition> CurrentItemDef;
 
 	bool bDidMeetPlaceRequirements = true;

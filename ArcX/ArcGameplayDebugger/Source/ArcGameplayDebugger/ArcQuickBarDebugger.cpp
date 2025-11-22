@@ -207,8 +207,7 @@ void FArcQuickBarDebugger::Draw()
 					}
 					
 					Items = FilteredItems;
-					FString PreviewValue = "Select Item";
-					if (ImGui::BeginCombo("Selected Item", TCHAR_TO_ANSI(*PreviewValue)))
+					if (ImGui::TreeNode("Available Items"))
 					{
 						for (int32 ItemIdx = 0; ItemIdx < FilteredItems.Num(); ++ItemIdx)
 						{
@@ -217,31 +216,36 @@ void FArcQuickBarDebugger::Draw()
 							{
 								continue;
 							}
-							
-						
+
+							FString PreviewValue = "Select Item";
 							if (ItemId == Item->GetItemId())
 							{
 								PreviewValue = FString::Printf(TEXT("%s"), *GetNameSafe(Item->GetItemDefinition()));
 							}
-							
-							FString ItemName = GetNameSafe(Item->GetItemDefinition());
-							FString ItemDisplayName = FString::Printf(TEXT("Add (%s)"), *ItemName);
-							ImGui::PushID(TCHAR_TO_ANSI(*Item->GetItemId().ToString()));
-							if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemDisplayName)))
+						
+							if (ImGui::BeginCombo("Selected Item", TCHAR_TO_ANSI(*PreviewValue)))
 							{
-								Arcx::SendServerCommand<FArcAddItemToQuickBarCommand>(PC, QuickBarComponent, QuickBarStore
-									, Item->GetItemId(), QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId);
-							}
+								FString ItemName = GetNameSafe(Item->GetItemDefinition());
+								FString ItemDisplayName = FString::Printf(TEXT("Add (%s)"), *ItemName);
+								ImGui::PushID(TCHAR_TO_ANSI(*Item->GetItemId().ToString()));
+								if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemDisplayName)))
+								{
+									Arcx::SendServerCommand<FArcAddItemToQuickBarCommand>(PC, QuickBarComponent, QuickBarStore
+										, Item->GetItemId(), QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId);
+								}
 							
-							ImGui::PopID();
-								
+								ImGui::PopID();
+								ImGui::EndCombo();
+							}
 						}
-						ImGui::EndCombo();
+					
+						ImGui::TreePop();
 					}
 					
 					ImGui::TreePop();
 				}
 			}
+			
 			ImGui::TreePop();
 		}
 	}

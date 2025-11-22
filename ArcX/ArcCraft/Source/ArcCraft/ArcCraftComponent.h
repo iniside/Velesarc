@@ -23,58 +23,33 @@
 
 #include "CoreMinimal.h"
 #include "ArcNamedPrimaryAssetId.h"
+#include "GameplayTagContainer.h"
 #include "Components/ActorComponent.h"
 #include "Iris/ReplicationState/IrisFastArraySerializer.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "Iris/ReplicationState/Private/IrisFastArraySerializerInternal.h"
+#include "Items/ArcItemSpec.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "StructUtils/InstancedStruct.h"
 
 #include "ArcCraftComponent.generated.h"
 
 class UArcCraftComponent;
 class UArcItemsStoreComponent;
+class UArcItemDefinition;
 
-USTRUCT()
-struct ARCCRAFT_API FArcCraftRequirement
+USTRUCT(BlueprintType)
+struct ARCCRAFT_API FArcCraftItemAmount
 {
 	GENERATED_BODY()
 
 public:
-	virtual bool MeetsRequirement(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, UObject* InOwner) const
-	{
-		return true; // Default implementation, can be overridden
-	}
-	
-	virtual ~FArcCraftRequirement() = default;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FPrimaryAssetId ItemDefinition;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Amount = 1;
 };
-
-USTRUCT()
-struct FArcCraftItemDefinitionCount
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere)
-	FArcNamedPrimaryAssetId ItemDefinition;
-
-	UPROPERTY()
-	uint16 Count = 1;
-};
-
-USTRUCT()
-struct ARCCRAFT_API FArcCraftRequirement_ItemDefinitionCount : public FArcCraftRequirement
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere)
-	TArray<FArcCraftItemDefinitionCount> ItemDefinitions;
-	
-public:
-	virtual bool MeetsRequirement(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner) const override;
-
-	virtual ~FArcCraftRequirement_ItemDefinitionCount() override = default;
-};
-
-struct FArcItemSpec;
 
 USTRUCT()
 struct ARCCRAFT_API FArcCraftExecution
@@ -82,62 +57,62 @@ struct ARCCRAFT_API FArcCraftExecution
 	GENERATED_BODY()
 
 public:
-	virtual void OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner, FArcItemSpec& ItemSpec) const
+	virtual bool CanCraft(const UArcCraftComponent* InCraftComponent, const UObject* InInstigator) const
 	{
+		return  true;
+	}
+	
+	virtual bool CheckAndConsumeItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator, bool bConsume) const
+	{
+		return  true;
+	}
+
+	virtual TArray<FArcCraftItemAmount> AvailableItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator) const { return {}; }
+	
+	virtual FArcItemSpec OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator) const
+	{
+		return FArcItemSpec();
 	}
 	
 	virtual ~FArcCraftExecution() = default;
 };
 
+
+
 USTRUCT()
-struct ARCCRAFT_API FArcCraftExecution_MakeItemSpec : public FArcCraftExecution
+struct ARCCRAFT_API FArcCraftRequirement_InstigatorItemsStore : public FArcCraftExecution
 {
 	GENERATED_BODY()
 
 public:
-	virtual void OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner, FArcItemSpec& ItemSpec) const override;
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
+	
+	virtual bool CheckAndConsumeItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator, bool bConsume) const override;
 
-	virtual ~FArcCraftExecution_MakeItemSpec() override = default;
+	virtual TArray<FArcCraftItemAmount> AvailableItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator) const override;
+
+	virtual FArcItemSpec OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData, const UObject* InInstigator) const override;
+	
+	virtual ~FArcCraftRequirement_InstigatorItemsStore() override = default;
 };
 
-USTRUCT()
-struct ARCCRAFT_API FArcCraftExecution_AddToCraftingStore : public FArcCraftExecution
-{
-	GENERATED_BODY()
-
-public:
-	virtual void OnCraftFinished(UArcCraftComponent* InCraftComponent, const UArcCraftData* InCraftData, const UObject* InOwner, FArcItemSpec& ItemSpec) const override;
-
-	virtual ~FArcCraftExecution_AddToCraftingStore() override = default;
-};
-
-/**
- * You can call it recipe. It is information needed to create Item.
- */
-UCLASS(BlueprintType)
-class ARCCRAFT_API UArcCraftData : public UDataAsset
+USTRUCT(BlueprintType)
+struct FArcItemFragment_CraftData : public FArcItemFragment
 {
 	GENERATED_BODY()
 
 public:
 	// How much time it will take to craft single item in seconds
-	UPROPERTY(EditAnywhere)
-	int32 CraftTime;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int32 CraftTime = 0;
 
 	// Item Definition used as base for crafted item.
-	UPROPERTY(EditAnywhere, meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail= false))
 	FArcNamedPrimaryAssetId ItemDefinition;
-
-	// What is required to craft this item.
-	UPROPERTY(EditAnywhere)
-	TArray<TInstancedStruct<FArcCraftRequirement>> Requirements;
-
-	// What will happen when crafting finished.
-	UPROPERTY(EditAnywhere)
-	TArray<TInstancedStruct<FArcCraftExecution>> OnFinishedExecutions;
 };
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct ARCCRAFT_API FArcCraftItem : public FFastArraySerializerItem
 {
 	GENERATED_BODY()
@@ -145,29 +120,29 @@ struct ARCCRAFT_API FArcCraftItem : public FFastArraySerializerItem
 	UPROPERTY()
 	FGuid Id;
 	
-	UPROPERTY()
-	TObjectPtr<const UArcCraftData> Recipe;
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<const UArcItemDefinition> Recipe;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<const UObject> Instigator;
 	
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	int32 MaxAmount = 0;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	int32 CurrentAmount = 0;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	int64 StartTime = 0;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	int64 UnpausedEndTime = 0;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	float CurrentTime = 0;
 
 	// The lower the number the higher priority
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	int32 Priority = 0;
 };
 
@@ -200,7 +175,7 @@ struct ARCCRAFT_API FArcCraftItemList : public FIrisFastArraySerializer
 };
 
 USTRUCT()
-struct ARCCRAFT_API FArcCraftedItemSpecList : public FIrisFastArraySerializer
+struct ARCCRAFT_API FArcCraftItemSpecList : public FIrisFastArraySerializer
 {
 	GENERATED_BODY()
 
@@ -219,7 +194,7 @@ struct ARCCRAFT_API FArcCraftedItemSpecList : public FIrisFastArraySerializer
 		return Items;
 	}
 	
-	typedef UE::Net::TIrisFastArrayEditor<FArcCraftedItemSpecList> FFastArrayEditor;
+	typedef UE::Net::TIrisFastArrayEditor<FArcCraftItemSpecList> FFastArrayEditor;
 	
 	FFastArrayEditor Edit()
 	{
@@ -227,6 +202,19 @@ struct ARCCRAFT_API FArcCraftedItemSpecList : public FIrisFastArraySerializer
 	}
 };
 
+USTRUCT(BlueprintType)
+struct ARCCRAFT_API FArcCraftMessage
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintReadWrite)
+	TWeakObjectPtr<UArcCraftComponent> CraftComponent;
+};
+
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FArcCraftDynamicDelegate, UArcCraftComponent*, Component, const FArcCraftItem&, CraftedItem);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FArcCraftFinishedDynamicDelegate, UArcCraftComponent*, Component, const UArcItemDefinition*, Recipe, const FArcItemSpec&, ItemSpec);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ARCCRAFT_API UArcCraftComponent : public UActorComponent
@@ -237,17 +225,45 @@ protected:
 	UPROPERTY(Replicated)
 	FArcCraftItemList CraftedItemList;
 
+	// TODO:: Maybe use ItemsStore for it ?
 	UPROPERTY(Replicated)
-	FArcCraftedItemSpecList CraftedItemSpecList;;
+	FArcCraftItemSpecList StoredResourceItemList;
+	
+	UPROPERTY(Replicated)
+	FArcCraftItemSpecList CraftedItemSpecList;
+
+	// This craft component, can only craft from recipies, which have these tags.
+	UPROPERTY(EditAnywhere)
+	FGameplayTagContainer ItemTags;
 	
 	UPROPERTY(EditAnywhere)
-	int32 MaxQueuedCraftedItems;
+	int32 MaxQueuedCraftedItems = 1;
 	
 	UPROPERTY(EditAnywhere)
-	int32 MaxCraftedItemsAtOneTime;
+	int32 MaxCraftedItemsAtOneTime = 5;
 	
 	TArray<FArcCraftItem> PendingAdds;
 
+	UPROPERTY()
+	TObjectPtr<AActor> PlayerOwner;
+
+	TWeakObjectPtr<UObject> CurrentInstigator;
+	
+	int32 HighestPriorityIndex = INDEX_NONE;
+
+	// What is required to craft this item. Executed In order.
+	UPROPERTY(EditAnywhere)
+	TInstancedStruct<FArcCraftExecution> CraftExecution;
+
+	UPROPERTY(BlueprintAssignable)
+	FArcCraftDynamicDelegate OnCraftItemAdded;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcCraftDynamicDelegate OnCraftStarted;
+
+	UPROPERTY(BlueprintAssignable)
+	FArcCraftFinishedDynamicDelegate OnCraftFinishedDelegate;
+	
 public:
 	// Sets default values for this component's properties
 	UArcCraftComponent();
@@ -259,13 +275,22 @@ protected:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void UpdateStatus();
+
+	virtual bool CheckRequirements(const UArcItemDefinition* InCraftData, const UObject* Instigator) const;
+
+	virtual void ConsumeRequiredItems(const UArcItemDefinition* InCraftData, const UObject* Instigator) {};
 	
 public:
-	void CraftItem(const UArcCraftData* InCraftData, UObject* Instigator, int32 Amount = 1, int32 Priority = 0);
+	void CraftItem(const UArcItemDefinition* InCraftData, UObject* Instigator, int32 Amount = 1, int32 Priority = 0);
 
 	void OnCraftFinished(const FArcCraftItem& CraftedItem);
-	
 
+	UFUNCTION(BlueprintCallable, Category = "Arc Craft")
+	bool DoesHaveItemsToCraft(const UArcItemDefinition* InRecipe, UObject* InOwner) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Craft")
+	TArray<FArcCraftItemAmount> GetAvailableItems(const UArcItemDefinition* InRecipe, UObject* InOwner) const;
+	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -274,7 +299,7 @@ public:
 		return CraftedItemList.GetItemArray();
 	}
 
-	FArcCraftedItemSpecList& GetCraftedItemSpecList()
+	FArcCraftItemSpecList& GetCraftedItemSpecList()
 	{
 		return CraftedItemSpecList;
 	}

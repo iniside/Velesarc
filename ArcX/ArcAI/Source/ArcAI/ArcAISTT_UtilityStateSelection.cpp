@@ -35,7 +35,7 @@ float FArcStateTreeExecutionContext::ArcEvaluateUtility(FStateTreeStateHandle Ne
 	const FStateTreeExecutionFrame* CurrentFrame = FindFrame(GetStateTree(), FStateTreeStateHandle(0), Exec.ActiveFrames, ParentFrame);
 	FStateSelectionResult OutSelectionResult;
 	
-	TGuardValue<const FStateSelectionResult*> GuardValue(CurrentSelectionResult, &OutSelectionResult);
+	//TGuardValue<const FStateSelectionResult*> GuardValue(CurrentSelectionResult, &OutSelectionResult);
 
 	if (Exec.ActiveFrames.IsEmpty())
 	{

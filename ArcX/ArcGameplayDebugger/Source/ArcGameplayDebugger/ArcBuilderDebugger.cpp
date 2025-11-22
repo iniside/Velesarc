@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "imgui.h"
+#include "Items/ArcItemDefinition.h"
 
 void FArcBuilderDebugger::Initialize()
 {
@@ -43,7 +44,7 @@ void FArcBuilderDebugger::Initialize()
 
 	BuildDataAssetList.Reset(1024);
 	
-	AR.GetAssetsByClass(UArcBuilderData::StaticClass()->GetClassPathName(), BuildDataAssetList);
+	//AR.GetAssetsByClass(UArcBuilderData::StaticClass()->GetClassPathName(), BuildDataAssetList);
 }
 
 void FArcBuilderDebugger::Uninitialize()
@@ -111,7 +112,7 @@ void FArcBuilderDebugger::Draw()
 		return;
 	}
 
-	UArcBuilderData* BuildData = Cast<UArcBuilderData>(BuildDataAssetList[SelectedBuildDataAssetIndex].GetAsset());
+	UArcItemDefinition* BuildData = Cast<UArcItemDefinition>(BuildDataAssetList[SelectedBuildDataAssetIndex].GetAsset());
 	if (!BuildData)
 	{
 		return;
@@ -119,9 +120,29 @@ void FArcBuilderDebugger::Draw()
 
 	if (ImGui::Button("Begin Placment"))
 	{
-		BuilderComponent->BeginPlacement(BuildData);
+		//BuilderComponent->BeginPlacement(BuildData);
 	}
-	if (ImGui::Button("Begin Placment"))
+
+	ImGui::Checkbox("Use Grid Placement", &bUsePlacementGrid);
+	BuilderComponent->SetUsePlacementGrid(bUsePlacementGrid);
+
+	if (bUsePlacementGrid)
+	{
+		ImGui::Checkbox("Use Relative Grid", &bUseRelativeGrid);
+		BuilderComponent->SetUseRelativeGrid(bUseRelativeGrid);
+
+		if (bUseRelativeGrid)
+		{
+			ImGui::Checkbox("Align To Normal", &bAlignGridToSurfaceNormal);
+			BuilderComponent->SetAlignGridToSurfaceNormal(bAlignGridToSurfaceNormal);	
+		}
+	}
+	
+	
+	ImGui::SliderFloat("Set Height", &CurrentHeight, -1000.f, 1000.f, "%.1f");
+	BuilderComponent->SetPlacementOffsetLocation(FVector(0.f, 0.f, CurrentHeight));
+	
+	if (ImGui::Button("End Placement"))
 	{
 		BuilderComponent->EndPlacement();
 	}

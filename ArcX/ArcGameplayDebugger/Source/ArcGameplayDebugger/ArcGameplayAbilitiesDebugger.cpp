@@ -188,14 +188,6 @@ void FArcGameplayAbilitiesDebugger::Draw()
 				FString AbilitySatisfyTagRequirements = FString::Printf(TEXT("%s"), BoolToText(bAbilitySatisfyTagRequirements));
 				ImGui::Text(TCHAR_TO_ANSI(*AbilitySatisfyTagRequirements));
 
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				if (ImGui::TreeNode("Dynamic Tags"))
-				{
-					ImGui::Text(TCHAR_TO_ANSI(*AbilitySpec.GetDynamicSpecSourceTags().ToStringSimple()));
-					ImGui::TreePop();
-				}
-				
 				if (ArcAbility)
 				{
 					const FGameplayTagContainer& OwnedTags = AbilitySystem->GetOwnedGameplayTags();

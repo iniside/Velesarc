@@ -446,7 +446,7 @@ protected:
 	TObjectPtr<UArcCoreAbilitySystemComponent> ArcASC;
 
 	UPROPERTY()
-	TObjectPtr<ACharacter> CharacterOwner;
+	TObjectPtr<APawn> CharacterOwner;
 
 	UPROPERTY()
 	TObjectPtr<APlayerCameraManager> CameraManager;

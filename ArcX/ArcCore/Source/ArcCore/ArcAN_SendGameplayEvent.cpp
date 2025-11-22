@@ -67,3 +67,57 @@ void UArcAN_SendGameplayEvent::ValidateAssociatedAssets()
 	Super::ValidateAssociatedAssets();
 }
 #endif
+
+UArcAnimNotify_MarkGameplayEvent::UArcAnimNotify_MarkGameplayEvent(const FObjectInitializer& O)
+	: Super(O)
+{
+};
+
+
+FString UArcAnimNotify_MarkGameplayEvent::GetNotifyName_Implementation() const
+{
+	return "Mark Gameplay Event";
+}
+
+void UArcAnimNotify_MarkGameplayEvent::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation
+											  , const FAnimNotifyEventReference& EventReference)
+{
+	// just do nothing.
+}
+
+void UArcAnimNotify_MarkGameplayEvent::BranchingPointNotify(FBranchingPointNotifyPayload& BranchingPointPayload)
+{
+	Super::BranchingPointNotify(BranchingPointPayload);
+}
+#if WITH_EDITOR
+void UArcAnimNotify_MarkGameplayEvent::ValidateAssociatedAssets()
+{
+	Super::ValidateAssociatedAssets();
+}
+
+UArcAnimNotify_SetPlayRate::UArcAnimNotify_SetPlayRate(const FObjectInitializer& O)
+	: Super(O)
+{
+};
+
+FString UArcAnimNotify_SetPlayRate::GetNotifyName_Implementation() const
+{
+	return "Set Play Rate";
+}
+
+void UArcAnimNotify_SetPlayRate::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation
+	, const FAnimNotifyEventReference& EventReference)
+{
+	
+}
+
+void UArcAnimNotify_SetPlayRate::BranchingPointNotify(FBranchingPointNotifyPayload& BranchingPointPayload)
+{
+	Super::BranchingPointNotify(BranchingPointPayload);
+}
+
+void UArcAnimNotify_SetPlayRate::ValidateAssociatedAssets()
+{
+	Super::ValidateAssociatedAssets();
+}
+#endif

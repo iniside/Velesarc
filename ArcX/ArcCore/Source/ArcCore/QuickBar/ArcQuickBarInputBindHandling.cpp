@@ -35,19 +35,47 @@ bool FArcQuickBarInputBindHandling::OnAddedToQuickBar(UArcCoreAbilitySystemCompo
 	for (const FArcItemData* SDE : InSlots)
 	{
 		const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItems::FindInstance<FArcItemInstance_GrantedAbilities>(SDE);
+		const FArcItemFragment_GrantedAbilities* GrantedAbilitiesFragment = ArcItems::FindFragment<FArcItemFragment_GrantedAbilities>(SDE);
+		
 		if (GrantedAbilities && GrantedAbilities->GetGrantedAbilities().Num() > 0)
 		{
 			for (const FGameplayAbilitySpecHandle& H : GrantedAbilities->GetGrantedAbilities())
 			{
 				FGameplayAbilitySpec* Spec = InArcASC->FindAbilitySpecFromHandle(H);
+				
 				if (Spec == nullptr || Spec->GetPrimaryInstance() == nullptr)
 				{
 					bHandled = false;
 					continue;
 				}
+				
+				const int32 Idx = GrantedAbilitiesFragment->Abilities.IndexOfByPredicate([Spec](const FArcAbilityEntry& Entry)
+				{
+					if (Entry.GrantedAbility == Spec->GetPrimaryInstance()->GetClass())
+					{
+						return true;
+					}
+					return false;
+				});
+				
 				if (Spec->GetPrimaryInstance()->GetAssetTags().HasTagExact(AbilityRequiredTag))
 				{
-					InArcASC->AddAbilityDynamicTag(H, TagInput);
+					bool bInputTagFromItem = false;
+					
+					if (Idx != INDEX_NONE)
+					{
+						const FGameplayTag& InputTag = GrantedAbilitiesFragment->Abilities[Idx].InputTag;
+						if (InputTag.IsValid())
+						{
+							InArcASC->AddAbilityDynamicTag(H, InputTag);	
+							bInputTagFromItem = true;
+						}
+					}
+					
+					if (bInputTagFromItem == false)
+					{
+						InArcASC->AddAbilityDynamicTag(H, TagInput);	
+					}
 				}
 			}
 		}
@@ -63,6 +91,8 @@ bool FArcQuickBarInputBindHandling::OnRemovedFromQuickBar(UArcCoreAbilitySystemC
 	for (const FArcItemData* SDE : InSlots)
 	{
 		const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItems::FindInstance<FArcItemInstance_GrantedAbilities>(SDE);
+		const FArcItemFragment_GrantedAbilities* GrantedAbilitiesFragment = ArcItems::FindFragment<FArcItemFragment_GrantedAbilities>(SDE);
+		
 		if (GrantedAbilities && GrantedAbilities->GetGrantedAbilities().Num() > 0)
 		{
 			for (const FGameplayAbilitySpecHandle& H : GrantedAbilities->GetGrantedAbilities())
@@ -73,12 +103,37 @@ bool FArcQuickBarInputBindHandling::OnRemovedFromQuickBar(UArcCoreAbilitySystemC
 					bHandled = false;
 					continue;
 				}
+				
+				const int32 Idx = GrantedAbilitiesFragment->Abilities.IndexOfByPredicate([Spec](const FArcAbilityEntry& Entry)
+				{
+					if (Entry.GrantedAbility == Spec->GetPrimaryInstance()->GetClass())
+					{
+						return true;
+					}
+					return false;
+				});
+				
 				if (Spec->GetPrimaryInstance()->GetAssetTags().HasTagExact(AbilityRequiredTag))
 				{
-					InArcASC->RemoveAbilityDynamicTag(H, TagInput);
+					bool bInputTagFromItem = false;
+					
+					if (Idx != INDEX_NONE)
+					{
+						const FGameplayTag& InputTag = GrantedAbilitiesFragment->Abilities[Idx].InputTag;
+						if (InputTag.IsValid())
+						{
+							InArcASC->RemoveAbilityDynamicTag(H, InputTag);	
+							bInputTagFromItem = true;
+						}
+					}
+					if (bInputTagFromItem == false)
+					{
+						InArcASC->RemoveAbilityDynamicTag(H, TagInput);
+					}
 				}
 			}
 		}
 	}
+	
 	return bHandled;
 }

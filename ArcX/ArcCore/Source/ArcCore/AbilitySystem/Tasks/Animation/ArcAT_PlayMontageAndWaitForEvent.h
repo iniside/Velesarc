@@ -25,6 +25,7 @@
 #include "Abilities/Tasks/AbilityTask.h"
 #include "AbilitySystem/Delegates/ArcPlayMontageAndWaitForEventDynamic.h"
 #include "Animation/AnimInstance.h"
+#include "Containers/Ticker.h"
 #include "ArcAT_PlayMontageAndWaitForEvent.generated.h"
 
 /**
@@ -100,6 +101,7 @@ public:
 																		 , TMap<FGameplayTag, UAnimMontage*> InEventTagToMontageMap 
 																		 , FName StartSection = NAME_None
 																		 , float DesiredPlayTime = -1.f
+																		 , bool bInUseMontageGameplayEvents = true
 																		 , bool bStopWhenAbilityEnds = true
 																		 , float AnimRootMotionTranslationScale = 1.f
 																		 , bool bInClientOnlyMontage = false
@@ -136,7 +138,10 @@ private:
 	bool bStopWhenAbilityEnds;
 
 	bool bClientOnlyMontage = false;
-
+	bool bUseMontageGameplayEvents = true;
+	
+	bool HandleNotifiesTick(float DeltaTime);
+	
 	bool PlayMontage();
 	
 	/** Checks if the ability is playing a montage and stops that montage, returns true if
@@ -161,4 +166,15 @@ private:
 	FOnMontageEnded MontageEndedDelegate;
 	FDelegateHandle CancelledHandle;
 	FDelegateHandle EventHandle;
+	
+	struct Notify
+	{
+		float Time = 0;
+		FGameplayTag Tag;
+		bool bPlayed;
+	};
+	TArray<Notify> Notifies;
+	
+	FTSTicker::FDelegateHandle TickerHandle;
+	float CurrentNotifyTime = 0;
 };

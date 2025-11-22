@@ -80,6 +80,44 @@ struct TMassFragmentTraits<FArcNeedsFragment> final
 	};
 };
 
+USTRUCT()
+struct ARCAI_API FArcNeedFragment : public FMassFragment
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere)
+	uint8 NeedType = 0;
+	
+	UPROPERTY(EditAnywhere)
+	float ChangeRate = 0;
+	
+	UPROPERTY(EditAnywhere)
+	float CurrentValue = 0;
+};
+
+
+USTRUCT()
+struct ARCAI_API FArcHungerNeedFragment : public FArcNeedFragment
+{
+	GENERATED_BODY()
+};
+
+UCLASS(meta = (DisplayName = "Arc Hunger Need Processor"))
+class ARCAI_API UArcHungerNeedProcessor : public UMassProcessor
+{
+	GENERATED_BODY()
+	
+private:
+	FMassEntityQuery NeedsQuery;
+	
+public:
+	UArcHungerNeedProcessor();
+
+protected:
+	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
+	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
+};
+
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
 class ARCAI_API UArcNeedsTraitBase : public UMassEntityTraitBase
 {
@@ -108,58 +146,6 @@ public:
 protected:
 	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-};
-
-/*
- * Simple way to register actor with needs system. By no means the only way, if you have custom spawn system
- * for actors in which you can inject needed data and register with Mass, it would be better than using this component.
- */
-UCLASS(Blueprintable, BlueprintType, meta=(BlueprintSpawnableComponent))
-class UArcNeedsComponent : public UActorComponent
-{
-	GENERATED_BODY()
-	
-public:
-	UPROPERTY(EditDefaultsOnly, Category=Config)
-	TArray<FArcNeedItem> Needs;
-	
-	UArcNeedsComponent();
-
-	virtual void BeginPlay() override;
-};
-
-UCLASS(Blueprintable, BlueprintType, meta=(BlueprintSpawnableComponent))
-class UArcRestoreNeedComponent : public UActorComponent
-{
-	GENERATED_BODY()
-protected:
-	UPROPERTY(EditDefaultsOnly, Category=Config)
-	FName NeedName;
-
-	UPROPERTY(EditDefaultsOnly, Category=Config, meta=(ClampMin=0, ClampMax=100, UIMin=0, UIMax=100))
-	float RestoreValue = 0.f;
-
-	UPROPERTY(EditDefaultsOnly, Category=Config)
-	float RestoreCooldown = 0.0f;
-
-	double LastUseTime = 0;
-	
-	UArcRestoreNeedComponent();
-public:
-	UFUNCTION(BlueprintCallable, Category="Arc AI")
-	void Restore(class AActor* For);
-
-	bool GetCanBeUsed() const;
-
-	float GetRestoreValue() const
-	{
-		return RestoreValue;
-	}
-
-	double GetLastUseTime() const
-	{
-		return LastUseTime;
-	};
 };
 
 USTRUCT()

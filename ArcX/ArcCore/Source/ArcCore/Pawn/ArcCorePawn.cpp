@@ -25,17 +25,29 @@
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "DefaultMovementSet/CharacterMoverComponent.h"
 #include "DefaultMovementSet/NavMoverComponent.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/PlayerController.h"
 #include "MoveLibrary/BasedMovementUtils.h"
 #include "Pawn/ArcPawnExtensionComponent.h"
+#include "Perception/AIPerceptionComponent.h"
 
-// Sets default values
-AArcCorePawn::AArcCorePawn()
+AArcCorePawn::AArcCorePawn(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+	, NavMoverComponent(nullptr)
 {
-	// Set this pawn to call Tick() every frame.  You can turn this off to improve
-	// performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-	SetReplicatingMovement(false);
+
+	SetReplicatingMovement(false);	// disable Actor-level movement replication, since our Mover component will handle it
+
+	auto IsImplementedInBlueprint = [](const UFunction* Func) -> bool
+	{
+		return Func && ensure(Func->GetOuter())
+			&& Func->GetOuter()->IsA(UBlueprintGeneratedClass::StaticClass());
+	};
+
+	static FName ProduceInputBPFuncName = FName(TEXT("OnProduceInputInBlueprint"));
+	UFunction* ProduceInputFunction = GetClass()->FindFunctionByName(ProduceInputBPFuncName);
+	bHasProduceInputinBpFunc = IsImplementedInBlueprint(ProduceInputFunction);
 }
 
 void AArcCorePawn::PostInitializeComponents()
@@ -53,91 +65,78 @@ void AArcCorePawn::PostInitializeComponents()
 	}
 }
 
-
-void AArcCorePawn::PossessedBy(AController* NewController)
-{
-	Super::PossessedBy(NewController);
-	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
-	{
-		PawnExtComp->HandleControllerChanged();
-	}
-}
-
-void AArcCorePawn::UnPossessed()
-{
-	Super::UnPossessed();
-	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
-	{
-		PawnExtComp->HandleControllerChanged();
-	}
-}
-
-void AArcCorePawn::OnRep_Controller()
-{
-	Super::OnRep_Controller();
-	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
-	{
-		PawnExtComp->HandleControllerChanged();
-	}
-}
-
-void AArcCorePawn::OnRep_PlayerState()
-{
-	Super::OnRep_PlayerState();
-	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
-	{
-		PawnExtComp->HandlePlayerStateReplicated();
-	}
-	// disable Ticking on camera on remote proxies, since we will update it from server
-	// regardless.
-}
-
-// Called when the game starts or when spawned
-void AArcCorePawn::BeginPlay()
-{
-	Super::BeginPlay();
-}
-
 // Called every frame
 void AArcCorePawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	
+	// Clear all camera-related cached input
+	CachedLookInput = FRotator::ZeroRotator;
 }
 
-// Called to bind functionality to input
-void AArcCorePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+void AArcCorePawn::BeginPlay()
 {
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
+	Super::BeginPlay();
+
+	NavMoverComponent = FindComponentByClass<UNavMoverComponent>();
+}
+
+FVector AArcCorePawn::GetNavAgentLocation() const
+{
+	FVector AgentLocation = FNavigationSystem::InvalidLocation;
+	const USceneComponent* UpdatedComponent = CharacterMotionComponent ? CharacterMotionComponent->GetUpdatedComponent() : nullptr;
+	
+	if (NavMoverComponent)
 	{
-		PawnExtComp->SetupPlayerInputComponent();
+		AgentLocation = NavMoverComponent->GetFeetLocation();
 	}
+	
+	if (FNavigationSystem::IsValidLocation(AgentLocation) == false && UpdatedComponent != nullptr)
+	{
+		AgentLocation = UpdatedComponent->GetComponentLocation() - FVector(0,0,UpdatedComponent->Bounds.BoxExtent.Z);
+	}
+
+	return AgentLocation;
 }
 
-void AArcCorePawn::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
+void AArcCorePawn::UpdateNavigationRelevance()
 {
-	//Super::AddMovementInput(WorldDirection, ScaleValue, bForce);
-	CachedMoveInputIntent = WorldDirection * ScaleValue;
-}
-
-void AArcCorePawn::AddControllerYawInput(float Val)
-{
-	CachedLookInput.Yaw = Val;
-}
-
-void AArcCorePawn::AddControllerPitchInput(float Val)
-{
-	CachedLookInput.Pitch = Val;
+	if (CharacterMotionComponent)
+	{
+		if (USceneComponent* UpdatedComponent = CharacterMotionComponent->GetUpdatedComponent())
+		{
+			UpdatedComponent->SetCanEverAffectNavigation(bCanAffectNavigationGeneration);
+		}
+	}
 }
 
 void AArcCorePawn::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
 {
 	OnProduceInput((float)SimTimeMs, InputCmdResult);
+
+	if (bHasProduceInputinBpFunc)
+	{
+		InputCmdResult = OnProduceInputInBlueprint((float)SimTimeMs, InputCmdResult);
+	}
 }
+
 
 void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInputCmd)
 {
-		FCharacterDefaultInputs& CharacterInputs = OutInputCmd.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
+
+	// Generate user commands. Called right before the Character movement simulation will tick (for a locally controlled pawn)
+	// This isn't meant to be the best way of doing a camera system. It is just meant to show a couple of ways it may be done
+	// and to make sure we can keep distinct the movement, rotation, and view angles.
+	// Styles 1-3 are really meant to be used with a gamepad.
+	//
+	// Its worth calling out: the code that happens here is happening *outside* of the Character movement simulation. All we are doing
+	// is generating the input being fed into that simulation. That said, this means that A) the code below does not run on the server
+	// (and non controlling clients) and B) the code is not rerun during reconcile/resimulates. Use this information guide any
+	// decisions about where something should go (such as aim assist, lock on targeting systems, etc): it is hard to give absolute
+	// answers and will depend on the game and its specific needs. In general, at this time, I'd recommend aim assist and lock on 
+	// targeting systems to happen /outside/ of the system, i.e, here. But I can think of scenarios where that may not be ideal too.
+
+	FCharacterDefaultInputs& CharacterInputs = OutInputCmd.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
 
 	if (GetController() == nullptr)
 	{
@@ -152,7 +151,6 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 		return;
 	}
 
-
 	CharacterInputs.ControlRotation = FRotator::ZeroRotator;
 
 	APlayerController* PC = Cast<APlayerController>(GetController());
@@ -160,7 +158,7 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 	{
 		CharacterInputs.ControlRotation = PC->GetControlRotation();
 	}
-#if 1
+
 	bool bRequestedNavMovement = false;
 	if (NavMoverComponent)
 	{
@@ -216,23 +214,23 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 		CharacterInputs.OrientationIntent = LastAffirmativeMoveInput;
 	}
 	
-	CharacterInputs.bIsJumpPressed = false; //bIsJumpPressed;
-	CharacterInputs.bIsJumpJustPressed = false; //bIsJumpJustPressed;
+	CharacterInputs.bIsJumpPressed = bIsJumpPressed;
+	CharacterInputs.bIsJumpJustPressed = bIsJumpJustPressed;
 
-	//if (bShouldToggleFlying)
-	//{
-	//	if (!bIsFlyingActive)
-	//	{
-	//		CharacterInputs.SuggestedMovementMode = DefaultModeNames::Flying;
-	//	}
-	//	else
-	//	{
-	//		CharacterInputs.SuggestedMovementMode = DefaultModeNames::Falling;
-	//	}
-	//
-	//	bIsFlyingActive = !bIsFlyingActive;
-	//}
-	//else
+	if (bShouldToggleFlying)
+	{
+		if (!bIsFlyingActive)
+		{
+			CharacterInputs.SuggestedMovementMode = DefaultModeNames::Flying;
+		}
+		else
+		{
+			CharacterInputs.SuggestedMovementMode = DefaultModeNames::Falling;
+		}
+
+		bIsFlyingActive = !bIsFlyingActive;
+	}
+	else
 	{
 		CharacterInputs.SuggestedMovementMode = NAME_None;
 	}
@@ -240,40 +238,40 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 	// Convert inputs to be relative to the current movement base (depending on options and state)
 	CharacterInputs.bUsingMovementBase = false;
 
-	//if (bUseBaseRelativeMovement)
-	//{
-	//	if (const UCharacterMoverComponent* MoverComp = GetComponentByClass<UCharacterMoverComponent>())
-	//	{
-	//		if (UPrimitiveComponent* MovementBase = MoverComp->GetMovementBase())
-	//		{
-	//			FName MovementBaseBoneName = MoverComp->GetMovementBaseBoneName();
-	//
-	//			FVector RelativeMoveInput, RelativeOrientDir;
-	//
-	//			UBasedMovementUtils::TransformWorldDirectionToBased(MovementBase, MovementBaseBoneName, CharacterInputs.GetMoveInput(), RelativeMoveInput);
-	//			UBasedMovementUtils::TransformWorldDirectionToBased(MovementBase, MovementBaseBoneName, CharacterInputs.OrientationIntent, RelativeOrientDir);
-	//
-	//			CharacterInputs.SetMoveInput(CharacterInputs.GetMoveInputType(), RelativeMoveInput);
-	//			CharacterInputs.OrientationIntent = RelativeOrientDir;
-	//
-	//			CharacterInputs.bUsingMovementBase = true;
-	//			CharacterInputs.MovementBase = MovementBase;
-	//			CharacterInputs.MovementBaseBoneName = MovementBaseBoneName;
-	//		}
-	//	}
-	//}
+	if (bUseBaseRelativeMovement)
+	{
+		if (const UCharacterMoverComponent* MoverComp = GetComponentByClass<UCharacterMoverComponent>())
+		{
+			if (UPrimitiveComponent* MovementBase = MoverComp->GetMovementBase())
+			{
+				FName MovementBaseBoneName = MoverComp->GetMovementBaseBoneName();
+
+				FVector RelativeMoveInput, RelativeOrientDir;
+
+				UBasedMovementUtils::TransformWorldDirectionToBased(MovementBase, MovementBaseBoneName, CharacterInputs.GetMoveInput(), RelativeMoveInput);
+				UBasedMovementUtils::TransformWorldDirectionToBased(MovementBase, MovementBaseBoneName, CharacterInputs.OrientationIntent, RelativeOrientDir);
+
+				CharacterInputs.SetMoveInput(CharacterInputs.GetMoveInputType(), RelativeMoveInput);
+				CharacterInputs.OrientationIntent = RelativeOrientDir;
+
+				CharacterInputs.bUsingMovementBase = true;
+				CharacterInputs.MovementBase = MovementBase;
+				CharacterInputs.MovementBaseBoneName = MovementBaseBoneName;
+			}
+		}
+	}
 
 	// Clear/consume temporal movement inputs. We are not consuming others in the event that the game world is ticking at a lower rate than the Mover simulation. 
 	// In that case, we want most input to carry over between simulation frames.
-	//{
-//
-//		bIsJumpJustPressed = false;
-//		bShouldToggleFlying = false;
-//	}
-#endif
+	{
+
+		bIsJumpJustPressed = false;
+		bShouldToggleFlying = false;
+	}
 }
 
-AArcCorePawnAbilitySystem::AArcCorePawnAbilitySystem()
+AArcCorePawnAbilitySystem::AArcCorePawnAbilitySystem(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
 	AbilitySystemComponent = CreateDefaultSubobject<UArcCoreAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
@@ -298,4 +296,9 @@ UAbilitySystemComponent* AArcCorePawnAbilitySystem::GetAbilitySystemComponent() 
 void AArcCorePawnAbilitySystem::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
 {
 	return GetAbilitySystemComponent()->GetOwnedGameplayTags(TagContainer);
+}
+
+UAIPerceptionComponent* AArcCorePawnAbilitySystem::GetPerceptionComponent()
+{
+	return FindComponentByClass<UAIPerceptionComponent>();
 }

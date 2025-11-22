@@ -25,7 +25,7 @@
 
 #include "Templates/SubclassOf.h"
 
-#include "ArcItemFragment.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "ArcItemFragment_AbilityActor.generated.h"
 
 class UArcActorGameplayAbility;
@@ -47,7 +47,7 @@ public:
 /**
  * 
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_AbilityActor : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -61,7 +61,7 @@ public:
 /**
  * 
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_AbilityActorMap : public FArcItemFragment
 {
 	GENERATED_BODY()

@@ -163,11 +163,6 @@ void FArcDebuggerItems::Draw()
 						{
 							ImGui::CloseCurrentPopup();
 						}
-						
-						if (ImGui::Button("Add Item"))
-						{
-							Arcx::SendServerCommand<FArcAddItemSpecCommand>(PC, ItemsStores[SelectedItemStoreIndex], ItemSpecCreator.TempNewSpec);
-						}
 						ImGui::EndPopup();
 					}
 					ImGui::EndPopup();
@@ -254,9 +249,6 @@ void FArcDebuggerItems::Draw()
 							ImGui::Text("OwnerId: "); ImGui::SameLine();
 							ImGui::Text(TCHAR_TO_ANSI(*ItemData->GetOwnerId().ToString()));
 
-							ImGui::Text("Stacks: "); ImGui::SameLine();
-							ImGui::Text("%d", ItemData->GetStacks());
-							
 							ImGui::Text("Slot: "); ImGui::SameLine();
 							ImGui::Text(TCHAR_TO_ANSI(*ItemData->GetSlotId().ToString()));
 
@@ -271,9 +263,6 @@ void FArcDebuggerItems::Draw()
 									{
 										FArcItemInstanceDebugger::DrawGrantedAbilities(InItemData, Instance);
 										FArcItemInstanceDebugger::DrawAbilityEffectsToApply(InItemData, Instance);
-										FArcItemInstanceDebugger::DrawGrantedPassiveAbilities(InItemData, Instance);
-										FArcItemInstanceDebugger::DrawGrantedEffects(InItemData, Instance);
-										FArcItemInstanceDebugger::DrawItemStats(InItemData, Instance);
 										ImGui::TreePop();
 									}
 								});

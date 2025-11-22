@@ -10,6 +10,7 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
+#include "MoverMassTranslators.h"
 #include "NavCorridor.h"
 #include "NavigationSystem.h"
 #include "StateTreeAsyncExecutionContext.h"
@@ -171,6 +172,13 @@ EStateTreeRunStatus FArcMassHybridMoveToTask::EnterState(FStateTreeExecutionCont
 		//
 		//EntityManager.Defer().RemoveTag<FMassCodeDrivenMovementTag>(MassCtx.GetEntity());
 		EntityManager.Defer().AddTag<FArcMassActorMoveToTag>(MassCtx.GetEntity());
+		EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(MassCtx.GetEntity());
+		EntityManager.Defer().AddTag<FMassNavMoverCopyToMassTag>(MassCtx.GetEntity());
+		
+		//EntityManager.Defer().RemoveTag<FMassOrientationCopyToNavMoverActorOrientationTag>(MassCtx.GetEntity());
+		//EntityManager.Defer().AddTag<FMassNavMoverActorOrientationCopyToMassTag>(MassCtx.GetEntity());
+		//EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(MassCtx.GetEntity());
+		
 		//EntityManager.Defer().AddTag<FMassSceneComponentVelocityCopyToMassTag>(MassCtx.GetEntity());
 		//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToActorTag, FMassCharacterMovementCopyToMassTag>(MassCtx.GetEntity());
 		//EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToActorTag, FMassCharacterOrientationCopyToMassTag>(MassCtx.GetEntity());
@@ -183,7 +191,10 @@ EStateTreeRunStatus FArcMassHybridMoveToTask::EnterState(FStateTreeExecutionCont
 	{
 		FMassStateTreeExecutionContext& MassContext = static_cast<FMassStateTreeExecutionContext&>(Context);
 		FMassEntityHandle Handle = MassContext.GetEntity();
+		EntityManager.Defer().AddTag<FMassCopyToNavMoverTag>(MassCtx.GetEntity());
+		EntityManager.Defer().RemoveTag<FMassNavMoverCopyToMassTag>(MassCtx.GetEntity());
 		
+		//EntityManager.Defer().AddTag<FMassCopyToNavMoverTag>(MassCtx.GetEntity());
 		//EntityManager.Defer().AddTag<FMassCodeDrivenMovementTag>(Handle);
 		//EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
 		//EntityManager.Defer().RemoveTag<FMassSceneComponentVelocityCopyToMassTag>(Handle);
@@ -361,6 +372,9 @@ void FArcMassHybridMoveToTask::ExitState(FStateTreeExecutionContext& Context, co
 		//
 		//EntityManager.Defer().AddTag<FMassCodeDrivenMovementTag>(Handle);
 		EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
+		EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(Handle);
+		EntityManager.Defer().RemoveTag<FMassNavMoverCopyToMassTag>(MassCtx.GetEntity());
+		
 		//EntityManager.Defer().RemoveTag<FMassSceneComponentVelocityCopyToMassTag>(Handle);
 		//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToMassTag, FMassCharacterMovementCopyToActorTag>(Handle);
 		//EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToMassTag, FMassCharacterOrientationCopyToActorTag>(Handle);
@@ -553,7 +567,7 @@ bool FArcMassHybridMoveToTask::RequestPath(FStateTreeExecutionContext& Context, 
 
 			// Apply DesiredMaxSpeedOverride
 			const FMassDesiredMovementFragment& DesiredMovementFragment = Context.GetExternalData(DesiredMovementHandle);
-			DesiredSpeed = FMath::Min(DesiredSpeed, DesiredMovementFragment.DesiredMaxSpeedOverride);
+			DesiredSpeed = 370.f;//FMath::Min(DesiredSpeed, DesiredMovementFragment.DesiredMaxSpeedOverride);
 
 			MoveTarget.Center = TargetLocation.EndOfPathPosition.GetValue();
 			MoveTarget.DesiredSpeed.Set(DesiredSpeed);

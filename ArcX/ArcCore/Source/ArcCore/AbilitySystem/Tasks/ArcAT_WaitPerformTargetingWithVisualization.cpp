@@ -32,11 +32,15 @@
 
 UArcAT_WaitPerformTargetingWithVisualization* UArcAT_WaitPerformTargetingWithVisualization::WaitPerformTargetingWithVisualization(
 	UGameplayAbility* OwningAbility
-	, UArcTargetingObject* InTargetingObject)
+	, UArcTargetingObject* InTargetingObject
+	, FGameplayTag InGlobalTargetingTag
+	, bool bInUseResultFromGlobalTargeting)
 {
 	UArcAT_WaitPerformTargetingWithVisualization* Task = NewAbilityTask<UArcAT_WaitPerformTargetingWithVisualization>(OwningAbility);
 	Task->TargetingObject = InTargetingObject;
-
+	Task->GlobalTargetingTag = InGlobalTargetingTag;
+	Task->bUseResultFromGlobalTargeting = bInUseResultFromGlobalTargeting;
+	
 	return Task;
 }
 
@@ -52,28 +56,36 @@ void UArcAT_WaitPerformTargetingWithVisualization::Activate()
 		{
 			if (!TargetingObject->VisualizationActor.IsNull())
 			{
-				UClass* VisualizationActorClass = TargetingObject->VisualizationActor.LoadSynchronous();
-				if (VisualizationActorClass)
+				if (GlobalTargetingTag.IsValid())
 				{
-					FActorSpawnParameters SpawnParameters;
-					SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-					
-					VisualizationActor = SourceActor->GetWorld()->SpawnActor<AArcTargetingVisualizationActor>(VisualizationActorClass, FTransform::Identity, SpawnParameters);
+					//UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ArcAbility->GetAbilitySystemComponentFromActorInfo());
+					//ASC->RegisterC
 				}
+				else
+				{
+					UClass* VisualizationActorClass = TargetingObject->VisualizationActor.LoadSynchronous();
+					if (VisualizationActorClass)
+					{
+						FActorSpawnParameters SpawnParameters;
+						SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+					
+						VisualizationActor = SourceActor->GetWorld()->SpawnActor<AArcTargetingVisualizationActor>(VisualizationActorClass, FTransform::Identity, SpawnParameters);
+					}
 				
-				FArcTargetingSourceContext Context;
-				Context.SourceActor = ArcAbility->GetAvatarActorFromActorInfo();
-				Context.InstigatorActor = ArcAbility->GetActorInfo().OwnerActor.Get();
-				Context.SourceObject = ArcAbility;
+					FArcTargetingSourceContext Context;
+					Context.SourceActor = ArcAbility->GetAvatarActorFromActorInfo();
+					Context.InstigatorActor = ArcAbility->GetActorInfo().OwnerActor.Get();
+					Context.SourceObject = ArcAbility;
 	
-				AsyncTargetingHandle = Arcx::MakeTargetRequestHandle(TargetingObject->TargetingPreset, Context);
+					AsyncTargetingHandle = Arcx::MakeTargetRequestHandle(TargetingObject->TargetingPreset, Context);
 				
-				FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcAT_WaitPerformTargetingWithVisualization::HandleTargetingCompleted);
+					FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcAT_WaitPerformTargetingWithVisualization::HandleTargetingCompleted);
 				
-				FTargetingAsyncTaskData& AsyncTaskData = FTargetingAsyncTaskData::FindOrAdd(AsyncTargetingHandle);
-				AsyncTaskData.bRequeueOnCompletion = true;
+					FTargetingAsyncTaskData& AsyncTaskData = FTargetingAsyncTaskData::FindOrAdd(AsyncTargetingHandle);
+					AsyncTaskData.bRequeueOnCompletion = true;
 				
-				TargetingSubsystem->StartAsyncTargetingRequestWithHandle(AsyncTargetingHandle, CompletionDelegate);
+					TargetingSubsystem->StartAsyncTargetingRequestWithHandle(AsyncTargetingHandle, CompletionDelegate);	
+				}
 			}
 		}
 	}

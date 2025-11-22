@@ -21,6 +21,8 @@
 
 #include "ArcAIModule.h"
 
+#include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
+
 #if WITH_GAMEPLAY_DEBUGGER
 #include "GameplayDebugger.h"
 #endif
@@ -33,7 +35,13 @@ void FArcAIModule::StartupModule()
 	IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
 	//GameplayDebuggerModule.RegisterCategory("Arc AI", IGameplayDebugger::FOnGetCategory::CreateStatic(&FArcGameplayDebuggerCategory_ArcAI::MakeInstance), EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
 	//GameplayDebuggerModule.NotifyCategoriesChanged();
+	
+	GameplayDebuggerModule.RegisterCategory("Arc Planner"
+		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_SmartObjectPlanner::MakeInstance)
+		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
+	GameplayDebuggerModule.NotifyCategoriesChanged();
 #endif
+	
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 }
 
@@ -43,8 +51,8 @@ void FArcAIModule::ShutdownModule()
 	if (IGameplayDebugger::IsAvailable())
 	{
 		IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
-		//GameplayDebuggerModule.UnregisterCategory("Arc AI");
-		//GameplayDebuggerModule.NotifyCategoriesChanged();
+		GameplayDebuggerModule.UnregisterCategory("Arc Planner");
+		GameplayDebuggerModule.NotifyCategoriesChanged();
 	}
 #endif
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,

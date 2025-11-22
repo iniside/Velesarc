@@ -108,6 +108,9 @@ public class ArcCore : ModuleRules
 				"AIModule"
 				, "NavigationSystem"
 				, "ArcJson"
+				, "StateTreeModule"
+				, "MassAIBehavior"
+				, "MassSignals"
 			});
 
 		

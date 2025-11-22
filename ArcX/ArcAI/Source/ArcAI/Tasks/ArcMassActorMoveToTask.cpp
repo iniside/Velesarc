@@ -1,6 +1,7 @@
 ﻿#include "ArcMassActorMoveToTask.h"
 
 #include "AIController.h"
+#include "DrawDebugHelpers.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonTypes.h"
 #include "MassEntitySubsystem.h"
@@ -11,6 +12,7 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
+#include "MoverMassTranslators.h"
 #include "StateTreeAsyncExecutionContext.h"
 #include "StateTreeExecutionContext.h"
 #include "StateTreeLinker.h"
@@ -21,6 +23,7 @@
 #include "Translators/MassCapsuleComponentTranslators.h"
 #include "Translators/MassCharacterMovementTranslators.h"
 #include "Translators/MassSceneComponentVelocityTranslator.h"
+#include "VisualLogger/VisualLogger.h"
 
 FArcMassActorMoveToTask::FArcMassActorMoveToTask()
 {
@@ -160,6 +163,8 @@ EStateTreeRunStatus FArcMassActorMoveToTask::EnterState(FStateTreeExecutionConte
 	//
 	//EntityManager.Defer().RemoveTag<FMassCodeDrivenMovementTag>(MassCtx.GetEntity());
 	EntityManager.Defer().AddTag<FArcMassActorMoveToTag>(MassCtx.GetEntity());
+	EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(MassCtx.GetEntity());
+	EntityManager.Defer().AddTag<FMassNavMoverActorOrientationCopyToMassTag>(MassCtx.GetEntity());
 	//EntityManager.Defer().AddTag<FMassSceneComponentVelocityCopyToMassTag>(MassCtx.GetEntity());
 	//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToActorTag, FMassCharacterMovementCopyToMassTag>(MassCtx.GetEntity());
     //EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToActorTag, FMassCharacterOrientationCopyToMassTag>(MassCtx.GetEntity());
@@ -263,6 +268,8 @@ void FArcMassActorMoveToTask::ExitState(FStateTreeExecutionContext& Context, con
 	//
 	//EntityManager.Defer().AddTag<FMassCodeDrivenMovementTag>(Handle);
 	EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
+	EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(Handle);
+	EntityManager.Defer().RemoveTag<FMassNavMoverActorOrientationCopyToMassTag>(Handle);
 	//EntityManager.Defer().RemoveTag<FMassSceneComponentVelocityCopyToMassTag>(Handle);
 	//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToMassTag, FMassCharacterMovementCopyToActorTag>(Handle);
 	//EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToMassTag, FMassCharacterOrientationCopyToActorTag>(Handle);

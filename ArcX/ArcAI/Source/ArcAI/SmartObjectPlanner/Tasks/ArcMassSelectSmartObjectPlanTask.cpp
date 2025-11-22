@@ -3,6 +3,7 @@
 #include "ArcAILogs.h"
 #include "MassEntitySubsystem.h"
 #include "MassStateTreeExecutionContext.h"
+#include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 
 FArcMassSelectSmartObjectPlanTask::FArcMassSelectSmartObjectPlanTask()
 {
@@ -16,6 +17,7 @@ EStateTreeRunStatus FArcMassSelectSmartObjectPlanTask::EnterState(FStateTreeExec
 
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	UMassEntitySubsystem* MassEntitySubsystem = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	UArcSmartObjectPlannerSubsystem* PlannerSubsystem = Context.GetWorld()->GetSubsystem<UArcSmartObjectPlannerSubsystem>();
 	
 	FString DebugString = "Selected Next Step :\n";
 	if (InstanceData.PlanInput.Plans.IsEmpty())
@@ -37,6 +39,8 @@ EStateTreeRunStatus FArcMassSelectSmartObjectPlanTask::EnterState(FStateTreeExec
 	
 	int32 RandPlan = FMath::RandRange(0, InstanceData.PlanInput.Plans.Num() - 1);
 	*PlanSteps = InstanceData.PlanInput.Plans[RandPlan].Items;
+	
+	PlannerSubsystem->SetDebugPlan(MassCtx.GetEntity(), InstanceData.PlanInput.Plans[RandPlan]);
 	
 	return EStateTreeRunStatus::Succeeded;
 }

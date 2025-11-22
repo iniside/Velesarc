@@ -15,7 +15,7 @@ struct ARCAI_API FArcMassEQSResults
 	TArray<TObjectPtr<AActor>> ActorArrayResult;
 
 	UPROPERTY(EditAnywhere)
-	FVector VectorResult;
+	FVector VectorResult = FVector::ZeroVector;
 	
 	UPROPERTY(EditAnywhere)
 	TArray<FVector> VectorArrayResult;

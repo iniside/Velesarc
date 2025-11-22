@@ -34,6 +34,7 @@
 #include "Core/CameraSystemEvaluator.h"
 #include "Engine/AssetManager.h"
 #include "GameFramework/GameplayCameraComponent.h"
+#include "GameFramework/GameplayCamerasPlayerCameraManager.h"
 #include "GameFramework/GameplayCameraSystemComponent.h"
 
 #include "Net/UnrealNetwork.h"
@@ -111,7 +112,11 @@ void AArcCoreCharacter::PossessedBy(AController* NewController)
 
 		if (GetNetMode() == NM_Standalone)
 		{
-			GameplayCameraComponent->ActivateCameraForPlayerController(PC);
+			AGameplayCamerasPlayerCameraManager* GCP = Cast<AGameplayCamerasPlayerCameraManager>(PC->PlayerCameraManager);
+			
+			GCP->ActivateGameplayCamera(GameplayCameraComponent);
+			
+			//GameplayCameraComponent->ActivateCameraForPlayerController(PC);
 		}
 	}
 }

@@ -1707,26 +1707,24 @@ void UArcAbilityActorComponent::Initialize(UArcCoreAbilitySystemComponent* Ownin
 	InstigatorAbility = InInstigatorAbility;
 	ActorGrantedAbility = InActorGrantedAbility;
 	
-	if (SpawnMode == EArcActorSpawnMode::ClientAuthoritative && NetMode == NM_DedicatedServer)
+	if ((SpawnMode == EArcActorSpawnMode::ClientAuthoritative || SpawnMode == EArcActorSpawnMode::Server) 
+		&& ActorGrantedAbility && GetOwnerRole() == ROLE_Authority)
 	{
-		if (ActorGrantedAbility && GetOwnerRole() == ROLE_Authority)
+		FGameplayAbilitySpec Spec(ActorGrantedAbility);
+		Spec.SourceObject = this;
+		GrantedAbility = ASC->GiveAbilityUnsafe(Spec);
+	
+		FGameplayAbilitySpec* AbilitySpec = ASC->FindAbilitySpecFromHandle(GrantedAbility);
+		if (InstigatorAbility != nullptr)
 		{
-			FGameplayAbilitySpec Spec(ActorGrantedAbility);
-			Spec.SourceObject = this;
-			GrantedAbility = ASC->GiveAbilityUnsafe(Spec);
-	
-			FGameplayAbilitySpec* AbilitySpec = ASC->FindAbilitySpecFromHandle(GrantedAbility);
-			if (InstigatorAbility != nullptr)
-			{
-				Cast<UArcCoreGameplayAbility>(AbilitySpec->GetPrimaryInstance())->AssingItemFromAbility(InstigatorAbility);
+			Cast<UArcCoreGameplayAbility>(AbilitySpec->GetPrimaryInstance())->AssingItemFromAbility(InstigatorAbility);
 
-				if (AbilitySpec->GetPrimaryInstance()->IsInstantiated())
-				{
-					ASC->TryActivateAbility(Spec.Handle);
-				}
-			}	
-		}
-	
+			if (AbilitySpec->GetPrimaryInstance()->IsInstantiated())
+			{
+				ASC->TryActivateAbility(Spec.Handle);
+			}
+		}	
+		
 		OnInitializedEvent.Broadcast();
 		return;
 	}
@@ -1781,7 +1779,7 @@ void UArcAbilityActorComponent::DestroyActor(bool bReplicate)
 	ASC->DestroyActor(AbilityActorHandle, bReplicate);
 }
 
-const UArcItemDefinition* UArcAbilityActorComponent::GetSourceItemData(TSubclassOf<UArcItemDefinition> ItemClass) const
+const UArcItemDefinition* UArcAbilityActorComponent::GetSourceItemData() const
 {
 	return InstigatorAbility->GetSourceItemData();
 }
@@ -1891,7 +1889,7 @@ void UArcAbilityActorComponent::NativeDispatchOnActorHit(AActor* SelfActor
 {
 	OnActorHitEvent.Broadcast(RootPrim, Hit.GetActor(), Hit.GetComponent(), Hit.ImpactNormal, Hit);
 }
-
+ 
 void UArcAbilityActorComponent::NativeDispatchOnActorOverlapStart(AActor* SelfActor
 	, const FHitResult& Hit)
 {

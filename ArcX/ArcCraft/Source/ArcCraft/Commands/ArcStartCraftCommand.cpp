@@ -2,10 +2,26 @@
 
 #include "ArcStartCraftCommand.h"
 
-ArcStartCraftCommand::ArcStartCraftCommand()
+#include "ArcCraft/ArcCraftComponent.h"
+
+bool FArcStartCraftCommand::CanSendCommand() const
 {
+	// TODO:: Add checks for resources etc.
+	return true;
 }
 
-ArcStartCraftCommand::~ArcStartCraftCommand()
+void FArcStartCraftCommand::PreSendCommand()
 {
+	
+}
+
+bool FArcStartCraftCommand::Execute()
+{
+	if (CraftComponent)
+	{
+		CraftComponent->CraftItem(RecipeItem, Instigator, Amount, Priority);
+		return true;
+	}
+
+	return false;
 }

@@ -59,7 +59,7 @@ void FArcCraftGameplayDebugger::Initialize()
 
 	CraftDataAssetList.Reset(1024);
 	
-	AR.GetAssetsByClass(UArcCraftData::StaticClass()->GetClassPathName(), CraftDataAssetList);
+	//AR.GetAssetsByClass(UArcCraftData::StaticClass()->GetClassPathName(), CraftDataAssetList);
 }
 
 void FArcCraftGameplayDebugger::Uninitialize()
@@ -158,7 +158,7 @@ void FArcCraftGameplayDebugger::Draw()
 	{
 		if (CraftDataAssetList.IsValidIndex(SelectedCratDataAssetIndex))
 		{
-			UArcCraftData* CraftData = Cast<UArcCraftData>(CraftDataAssetList[SelectedCratDataAssetIndex].GetAsset());
+			UArcItemDefinition* CraftData = Cast<UArcItemDefinition>(CraftDataAssetList[SelectedCratDataAssetIndex].GetAsset());
 			if (CraftData)
 			{
 				Station.CraftComponent->CraftItem(CraftData, PS, CraftAmount);

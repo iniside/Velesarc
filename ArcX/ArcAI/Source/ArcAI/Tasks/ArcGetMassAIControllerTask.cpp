@@ -48,7 +48,7 @@ EStateTreeRunStatus FArcGetMassAIControllerTask::EnterState(FStateTreeExecutionC
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.Output = P->GetController<AAIController>();
 
-	auto [ActorPtr] = InstanceData.Result.GetMutablePtrTuple<AAIController*>(Context);
+	AAIController** ActorPtr = InstanceData.Result.GetMutablePtr<AAIController*>(Context);
 	
 	if (ActorPtr)
 	{

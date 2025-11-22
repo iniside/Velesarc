@@ -77,7 +77,9 @@ namespace Arcx
 				// Always use ASC's owner for instigator
 				Parameters.Instigator = ASC->GetOwner();
 			}
-
+			
+			Parameters.SourceObject = MeshComp->GetOwner();
+			Parameters.EffectCauser = MeshComp->GetOwner();
 			Parameters.TargetAttachComponent = MeshComp;
 
 			(*Func)(OwnerActor, GameplayCue, Parameters);
@@ -99,13 +101,19 @@ void UArcAN_GameplayCueLoopingStart::Notify(USkeletalMeshComponent* MeshComp
 	, const FAnimNotifyEventReference& EventReference)
 {
 	FGameplayCueParameters Parameters;
-	Parameters.Instigator = MeshComp->GetOwner();
+	
+	Parameters.SourceObject = MeshComp->GetOwner();
+	Parameters.EffectCauser = MeshComp->GetOwner();
+	
+	
 	Parameters.TargetAttachComponent = MeshComp;
 	
 	if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(MeshComp->GetOwner()))
 	{
 		if (UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent()))
 		{
+			Parameters.Instigator = ASC->GetOwnerActor();
+			
 			UAnimMontage* Montage = Cast<UAnimMontage>(Animation);
 			
 			if (const TWeakObjectPtr<const UArcItemDefinition>* ItemDef = ASC->MontageToItemDef.Find(Montage))
@@ -141,13 +149,16 @@ void UArcAN_GameplayCueLoopingFinish::Notify(USkeletalMeshComponent* MeshComp
 	, const FAnimNotifyEventReference& EventReference)
 {
 	FGameplayCueParameters Parameters;
-	Parameters.Instigator = MeshComp->GetOwner();
+	Parameters.SourceObject = MeshComp->GetOwner();
+	Parameters.EffectCauser = MeshComp->GetOwner();
 	Parameters.TargetAttachComponent = MeshComp;
 
 	if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(MeshComp->GetOwner()))
 	{
 		if (UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent()))
 		{
+			Parameters.Instigator = ASC->GetOwnerActor();
+			
 			UAnimMontage* Montage = Cast<UAnimMontage>(Animation);
 
 			if (const TWeakObjectPtr<const UArcItemDefinition>* ItemDef = ASC->MontageToItemDef.Find(Montage))
@@ -177,4 +188,115 @@ FString UArcAN_GameplayCueLoopingFinish::GetNotifyName_Implementation() const
 	}
 
 	return DisplayName;
+}
+
+void UArcANS_GameplayCueState::NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float TotalDuration
+	, const FAnimNotifyEventReference& EventReference)
+{
+	FGameplayCueParameters Parameters;
+	Parameters.SourceObject = MeshComp->GetOwner();
+	Parameters.EffectCauser = MeshComp->GetOwner();
+	Parameters.TargetAttachComponent = MeshComp;
+	
+	if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(MeshComp->GetOwner()))
+	{
+		if (UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent()))
+		{
+			UAnimMontage* Montage = Cast<UAnimMontage>(Animation);
+			
+			Parameters.Instigator = ASC->GetOwnerActor();
+			
+			if (const TWeakObjectPtr<const UArcItemDefinition>* ItemDef = ASC->MontageToItemDef.Find(Montage))
+			{
+				const FArcItemFragment_AnimMontageGameplayCue* Cue = ItemDef->Get()->FindFragment<FArcItemFragment_AnimMontageGameplayCue>();
+				if (Cue)
+				{
+					UGameplayCueManager::AddGameplayCue_NonReplicated(MeshComp->GetOwner(), Cue->Cue.GameplayCueTag, Parameters);
+					return;
+				}
+			}
+		}
+	}
+	
+	Arcx::ProcessGameplayCue(&UGameplayCueManager::AddGameplayCue_NonReplicated, MeshComp, GameplayCue.GameplayCueTag, Animation);
+}
+
+void UArcANS_GameplayCueState::NotifyTick(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float FrameDeltaTime
+	, const FAnimNotifyEventReference& EventReference)
+{
+	if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(MeshComp->GetOwner()))
+	{
+		if (UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent()))
+		{
+			
+			
+			UAnimMontage* Montage = Cast<UAnimMontage>(Animation);
+
+			if (const TWeakObjectPtr<const UArcItemDefinition>* ItemDef = ASC->MontageToItemDef.Find(Montage))
+			{
+				const FArcItemFragment_AnimMontageGameplayCue* Cue = ItemDef->Get()->FindFragment<FArcItemFragment_AnimMontageGameplayCue>();
+				if (Cue)
+				{
+					FGameplayCueParameters Parameters;
+					Parameters.Instigator = ASC->GetOwnerActor();
+					
+					Parameters.SourceObject = MeshComp->GetOwner();
+					Parameters.EffectCauser = MeshComp->GetOwner();
+					
+					Parameters.TargetAttachComponent = MeshComp;
+					
+					UGameplayCueManager::ExecuteGameplayCue_NonReplicated(MeshComp->GetOwner(), Cue->Cue.GameplayCueTag, Parameters);
+					ASC->MontageToItemDef.Empty();
+					return;
+				}
+			}
+		}
+	}
+}
+
+void UArcANS_GameplayCueState::NotifyEnd(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation
+	, const FAnimNotifyEventReference& EventReference)
+{
+	FGameplayCueParameters Parameters;
+	Parameters.SourceObject = MeshComp->GetOwner();
+	Parameters.EffectCauser = MeshComp->GetOwner();
+	Parameters.TargetAttachComponent = MeshComp;
+
+	if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(MeshComp->GetOwner()))
+	{
+		if (UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent()))
+		{
+			Parameters.Instigator = ASC->GetOwnerActor();
+			
+			UAnimMontage* Montage = Cast<UAnimMontage>(Animation);
+
+			if (const TWeakObjectPtr<const UArcItemDefinition>* ItemDef = ASC->MontageToItemDef.Find(Montage))
+			{
+				const FArcItemFragment_AnimMontageGameplayCue* Cue = ItemDef->Get()->FindFragment<FArcItemFragment_AnimMontageGameplayCue>();
+				if (Cue)
+				{
+					UGameplayCueManager::RemoveGameplayCue_NonReplicated(MeshComp->GetOwner(), Cue->Cue.GameplayCueTag, Parameters);
+					ASC->MontageToItemDef.Empty();
+					return;
+				}
+			}
+		}
+	}
+	
+	UGameplayCueManager::RemoveGameplayCue_NonReplicated(MeshComp->GetOwner(), GameplayCue.GameplayCueTag, Parameters);
+}
+
+void UArcANS_GameplayCueState::BranchingPointNotifyBegin(FBranchingPointNotifyPayload& BranchingPointPayload)
+{
+	Super::BranchingPointNotifyBegin(BranchingPointPayload);
+}
+
+void UArcANS_GameplayCueState::BranchingPointNotifyTick(FBranchingPointNotifyPayload& BranchingPointPayload, float FrameDeltaTime)
+{
+	Super::BranchingPointNotifyTick(BranchingPointPayload, FrameDeltaTime);
+}
+
+void UArcANS_GameplayCueState::BranchingPointNotifyEnd(FBranchingPointNotifyPayload& BranchingPointPayload)
+{
+	Super::BranchingPointNotifyEnd(BranchingPointPayload);
 }

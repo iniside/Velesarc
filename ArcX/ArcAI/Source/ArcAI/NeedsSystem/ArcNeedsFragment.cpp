@@ -43,6 +43,34 @@
 #include "Tasks/StateTreeAITask.h"
 
 #include "StateTree.h"
+#include "VisualLogger/VisualLogger.h"
+
+UArcHungerNeedProcessor::UArcHungerNeedProcessor()
+{
+}
+
+void UArcHungerNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
+{
+	NeedsQuery.Initialize(EntityManager);
+	
+	NeedsQuery.AddRequirement<FArcHungerNeedFragment>(EMassFragmentAccess::ReadWrite);
+	NeedsQuery.RegisterWithProcessor(*this);
+}
+
+void UArcHungerNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
+{
+	const float DeltaTime = Context.GetDeltaTimeSeconds();
+	NeedsQuery.ForEachEntityChunk(Context, [this, DeltaTime](FMassExecutionContext& Ctx)
+	{
+		TArrayView<FArcHungerNeedFragment> Needs = Ctx.GetMutableFragmentView<FArcHungerNeedFragment>();
+		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+		{
+			FArcHungerNeedFragment& Need = Needs[EntityIt];
+			Need.CurrentValue = Need.CurrentValue + (Need.ChangeRate * DeltaTime);
+			Need.CurrentValue = FMath::Clamp(Need.CurrentValue, 0.f, 100.f);
+		}
+	});
+}
 
 UArcNeedsProcessor::UArcNeedsProcessor()
 {
@@ -82,59 +110,6 @@ void UArcNeedsProcessor::Execute(
 	});
 }
 
-UArcNeedsComponent::UArcNeedsComponent()
-{
-	PrimaryComponentTick.bCanEverTick = false;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
-}
-
-void UArcNeedsComponent::BeginPlay()
-{
-	Super::BeginPlay();
-
-	UMassEntitySubsystem* MES = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-	FMassEntityManager& MEM = MES->GetMutableEntityManager();
-
-
-	UMassAgentComponent* AgentComponent = GetOwner()->FindComponentByClass<UMassAgentComponent>();
-	if (!AgentComponent)
-	{
-		return;
-	}
-
-	FMassEntityHandle Handle = AgentComponent->GetEntityHandle();
-	if (!Handle.IsValid())
-	{
-		return;
-	}
-	
-	FArcNeedsFragment* Data = MEM.GetFragmentDataPtr<FArcNeedsFragment>(Handle);
-
-	Data->Needs = Needs;
-}
-
-UArcRestoreNeedComponent::UArcRestoreNeedComponent()
-{
-	PrimaryComponentTick.bCanEverTick = false;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
-}
-
-void UArcRestoreNeedComponent::Restore(
-	AActor* For)
-{
-
-}
-
-bool UArcRestoreNeedComponent::GetCanBeUsed() const
-{
-	double CurrentTime = GetWorld()->GetTimeSeconds();
-	double Difference = CurrentTime - LastUseTime;
-	if(Difference < LastUseTime)
-	{
-		return false;
-	}
-	return true;
-}
 
 float FArcNeedstConsideration::GetScore(FStateTreeExecutionContext& Context) const
 {
@@ -221,8 +196,9 @@ EStateTreeRunStatus FArcProvideNextStateTreeTask::EnterState(FStateTreeExecution
 			
 		}
 		
-	}	
-	auto [StateTreePtr] = InstanceData.StateTree.GetMutablePtrTuple<UStateTree*>(Context);
+	}
+	
+	UStateTree** StateTreePtr = InstanceData.StateTree.GetMutablePtr<UStateTree*>(Context);
 
 	UStateTree* NextStateTree = nullptr;
 	if (StateTreePtr)
@@ -233,7 +209,7 @@ EStateTreeRunStatus FArcProvideNextStateTreeTask::EnterState(FStateTreeExecution
 	if (InstanceData.QueuedStateTrees.IsEmpty() && NextStateTree)
 	{
 		Context.BroadcastDelegate(InstanceData.OnQueueFinished);
-		*StateTreePtr = nullptr;
+		StateTreePtr = nullptr;
 		return EStateTreeRunStatus::Succeeded;
 	}
 	

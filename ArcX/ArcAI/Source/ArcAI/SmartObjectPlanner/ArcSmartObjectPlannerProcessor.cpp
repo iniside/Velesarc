@@ -124,7 +124,12 @@ void UArcSmartObjectPlannerProcessor::Execute(FMassEntityManager& EntityManager,
 
 				for (int32 SlotIndex = 0; SlotIndex < OutSlots.Num(); SlotIndex++)
 				{
-					if (SlotIndex >= 4)
+					if (!SOSubsystem->CanBeClaimed(OutSlots[SlotIndex]))
+					{
+						continue;
+					}
+					
+					if (PotentialEntity.FoundCandidateSlots.NumSlots >= 4)
 					{
 						PotentialEntity.FoundCandidateSlots.NumSlots = 4;
 						break;

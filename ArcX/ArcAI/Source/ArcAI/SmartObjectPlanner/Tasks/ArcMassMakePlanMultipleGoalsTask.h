@@ -21,13 +21,13 @@ struct FArcMassMakePlanMultipleGoalsTaskInstanceData
 	FGameplayTagContainer InitialTags;
 
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	float SearchRadius;
+	float SearchRadius = 1000.f;
 
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	int32 MaxPlans;
+	int32 MaxPlans = 5;
 	
 	UPROPERTY(EditAnywhere, Category = Input)
-	FVector SearchOrigin;
+	FVector SearchOrigin = FVector::ZeroVector;
 	
 	UPROPERTY(EditAnywhere, Category = Output)
 	FArcSmartObjectPlanResponse PlanResponseOut;

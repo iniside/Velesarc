@@ -317,42 +317,6 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 	
 					ImGui::EndMenu();
 				}
-
-				if (ImGui::BeginMenu("Crafting"))
-				{
-					if (ImGui::MenuItem("Craft"))
-					{
-						if (CraftingDebugger.bShow == false)
-						{
-							CraftingDebugger.bShow = true;
-							CraftingDebugger.Initialize();
-						}
-						else
-						{
-							CraftingDebugger.bShow = false;
-							CraftingDebugger.Uninitialize();
-						}
-					}
-					ImGui::EndMenu();
-				}
-
-				if (ImGui::BeginMenu("Building"))
-				{
-					if (ImGui::MenuItem("Builder"))
-					{
-						if (BuilderDebugger.bShow == false)
-						{
-							BuilderDebugger.bShow = true;
-							BuilderDebugger.Initialize();
-						}
-						else
-						{
-							BuilderDebugger.bShow = false;
-							BuilderDebugger.Uninitialize();
-						}
-					}
-					ImGui::EndMenu();
-				}
 				
 				ImGui::EndMainMenuBar();
 
@@ -400,19 +364,10 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					ArcGunDebugger.Draw();
 				}
-				if (CraftingDebugger.bShow)
-                {
-                	CraftingDebugger.Draw();
-                }
-				if (BuilderDebugger.bShow)
-				{
-					BuilderDebugger.Draw();
-				}
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();
 				}
-				
 			}
 			// Your ImGui code goes here!
 			//ImGui::ShowDemoWindow();

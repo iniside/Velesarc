@@ -62,6 +62,7 @@
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 #include "AbilitySystem/ArcTargetingBPF.h"
 #include "AbilitySystem/Targeting/ArcTargetingObject.h"
+#include "Equipment/ArcSkeletalMeshOwnerInterface.h"
 #include "GameFramework/GameplayControlRotationComponent.h"
 #include "Targeting/ArcTargetingSourceContext.h"
 #include "TargetingSystem/TargetingSubsystem.h"
@@ -903,7 +904,8 @@ FVector UArcGunStateComponent::GetWeaponSocketLocation(FName SocketName) const
 {
 	if(SelectedGun.GunActor == nullptr)
 	{
-		FVector SocketLocation = CharacterOwner->GetMesh()->GetSocketLocation(BaseSkeletonSocketName);
+		IArcSkeletalMeshOwnerInterface* SMOwner = Cast<IArcSkeletalMeshOwnerInterface>(CharacterOwner);
+		FVector SocketLocation = SMOwner->GetSkeletalMesh()->GetSocketLocation(BaseSkeletonSocketName);
 		FVector EyeLoc;
 		FRotator EyeRot;
 		CharacterOwner->GetActorEyesViewPoint(EyeLoc, EyeRot);
@@ -916,8 +918,9 @@ FVector UArcGunStateComponent::GetWeaponSocketLocation(FName SocketName) const
 	{
 		return Mesh->GetSocketLocation(SocketName);
 	}
-	
-	FVector SocketLocation = CharacterOwner->GetMesh()->GetSocketLocation(BaseSkeletonSocketName);
+
+	IArcSkeletalMeshOwnerInterface* SMOwner = Cast<IArcSkeletalMeshOwnerInterface>(CharacterOwner);
+	FVector SocketLocation = SMOwner->GetSkeletalMesh()->GetSocketLocation(BaseSkeletonSocketName);
 	FVector EyeLoc;
 	FRotator EyeRot;
 	CharacterOwner->GetActorEyesViewPoint(EyeLoc, EyeRot);
@@ -942,12 +945,14 @@ AArcGunActor* UArcGunStateComponent::GetGunActor() const
 
 FVector UArcGunStateComponent::GetGunAimPoint() const
 {
+	IArcSkeletalMeshOwnerInterface* SMOwner = Cast<IArcSkeletalMeshOwnerInterface>(CharacterOwner);
+	
 	FVector AimPoint = FVector::ZeroVector;
 
 	FVector EyeLoc;
 	FRotator EyeRot;
 	CharacterOwner->GetActorEyesViewPoint(EyeLoc, EyeRot);
-	const FVector SocketLocation = CharacterOwner->GetMesh()->GetSocketLocation(BaseSkeletonSocketName);
+	const FVector SocketLocation = SMOwner->GetSkeletalMesh()->GetSocketLocation(BaseSkeletonSocketName);
 	AimPoint = SocketLocation + (EyeRot.Vector() * ForwardOffset);
 	
 	AArcGunActor* GunActor = GetGunActor();

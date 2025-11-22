@@ -5,6 +5,8 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeFragments.h"
 #include "MassStateTreeSubsystem.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
 
 void UArcMassStateTreeFunctionLibrary::SendStateTreeEvent(UObject* WorldContext, const FStateTreeEvent& Event
 														  , const TArray<FMassEntityHandle>& EntityHandles)

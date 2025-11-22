@@ -13,7 +13,7 @@ struct FArcStateTreeMassEntityVectorLocationPropertyFunctionInstanceData
 	FMassEnvQueryEntityInfoBlueprintWrapper Input;
 
 	UPROPERTY(EditAnywhere, Category = Output)
-	FVector Output;;
+	FVector Output = FVector::ZeroVector;
 };
 
 USTRUCT(DisplayName = "Get Mass Entity Vector Location")

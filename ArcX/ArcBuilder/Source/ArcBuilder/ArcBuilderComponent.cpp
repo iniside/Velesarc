@@ -56,7 +56,7 @@ bool UArcBuilderComponent::DoesMeetItemRequirement(UArcItemDefinition* InItemDef
 		return false;
 	}
 
-	if (const FArcConsumeItemsRequirement* ItemReq = BuildFragment->ConsumeItemRequirement.GetPtr<FArcConsumeItemsRequirement>())
+	if (const FArcConsumeItemsRequirement* ItemReq = ConsumeItemRequirement.GetPtr<FArcConsumeItemsRequirement>())
 	{
 		if (ItemReq->CheckAndConsumeItems(InItemDef, this, false))
 		{
@@ -456,7 +456,7 @@ void UArcBuilderComponent::PlaceObject()
 		return;
 	}
 
-	if (const FArcConsumeItemsRequirement* ItemReq = BuildFragment->ConsumeItemRequirement.GetPtr<FArcConsumeItemsRequirement>())
+	if (const FArcConsumeItemsRequirement* ItemReq = ConsumeItemRequirement.GetPtr<FArcConsumeItemsRequirement>())
 	{
 		if (!ItemReq->CheckAndConsumeItems(CurrentItemDef.Get(), this, true))
 		{

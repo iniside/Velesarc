@@ -128,7 +128,12 @@ EStateTreeRunStatus FArcAIStateTreeRunEnvQueryTask::Tick(FStateTreeExecutionCont
 	{
 		if (InstanceData.QueryResult->IsSuccessful())
 		{
-			auto [VectorPtr, ActorPtr, ArrayOfVector, ArrayOfActor] = InstanceData.Result.GetMutablePtrTuple<FVector, AActor*, TArray<FVector>, TArray<AActor*>>(Context);
+			TTuple<FVector*, AActor**, TArray<FVector>*, TArray<AActor*>*> tup = InstanceData.Result.GetMutablePtrTuple<FVector, AActor*, TArray<FVector>, TArray<AActor*>>(Context);
+			FVector* VectorPtr = tup.Get<0>();
+			AActor** ActorPtr = tup.Get<1>();
+			TArray<FVector>* ArrayOfVector = tup.Get<2>();
+			TArray<AActor*>* ArrayOfActor = tup.Get<3>();
+
 			if (VectorPtr)
 			{
 				*VectorPtr = InstanceData.QueryResult->GetItemAsLocation(0);
