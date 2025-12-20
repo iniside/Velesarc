@@ -27,9 +27,11 @@
 #include "MoverSimulationTypes.h"
 #include "GameFramework/Pawn.h"
 #include "AbilitySystem/ArcAbilitySet.h"
+#include "Equipment/ArcSkeletalMeshOwnerInterface.h"
 #include "Perception/AIPerceptionListenerInterface.h"
 #include "ArcCorePawn.generated.h"
 
+class IGameplayCameraSystemHost;
 class UGameplayAbility;
 class UGameplayEffect;
 class UArcAttributeSet;
@@ -86,6 +88,9 @@ protected:
 
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=MoverExamples)
+	bool bNativeProduceInput = true;
+	
 	// Whether or not we author our movement inputs relative to whatever base we're standing on, or leave them in world space. Only applies if standing on a base of some sort.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=MoverExamples)
 	bool bUseBaseRelativeMovement = true;
@@ -152,4 +157,87 @@ public:
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
 	
 	virtual UAIPerceptionComponent* GetPerceptionComponent() override;
+};
+
+class UGameplayCameraComponent;
+class UCapsuleComponent;
+
+UCLASS()
+class ARCCORE_API AArcCorePlayerPawn : public APawn
+	, public IAbilitySystemInterface
+	, public IGameplayTagAssetInterface
+	, public IAIPerceptionListenerInterface
+	, public IArcSkeletalMeshOwnerInterface
+{
+	GENERATED_BODY()
+
+public:
+	// Sets default values for this pawn's properties
+	AArcCorePlayerPawn(const FObjectInitializer& ObjectInitializer);
+
+	UPROPERTY(Replicated)
+	FVector LocalViewPoint = FVector::ZeroVector;
+
+	UPROPERTY(Replicated)
+	FRotator LocalViewRotation = FRotator::ZeroRotator;
+	
+protected:
+	UPROPERTY()
+	mutable TObjectPtr<UCapsuleComponent> CachedCapsuleComponent;
+	
+	UPROPERTY()
+	mutable TObjectPtr<UGameplayCameraComponent> CachedGameplayCameraComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ability System")
+	TObjectPtr<UArcCoreAbilitySystemComponent> AbilitySystemComponent;
+		
+	IGameplayCameraSystemHost* GameplayCameraSystemHost;
+	
+public:
+	virtual void PossessedBy(AController* NewController) override;
+
+	virtual void UnPossessed() override;
+
+	virtual void OnRep_Controller() override;
+
+	virtual void OnRep_PlayerState() override;
+	
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
+	
+	virtual void GetActorEyesViewPoint(FVector& OutLocation, FRotator& OutRotation) const override;
+	
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	
+	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;
+	
+	virtual UAIPerceptionComponent* GetPerceptionComponent() override;
+	
+	UCapsuleComponent* GetCapsuleComponent() const;
+
+	UGameplayCameraComponent* GetGameplayCameraComponent() const;
+
+	virtual USkeletalMeshComponent* GetSkeletalMesh() const override
+	{
+		return nullptr;
+	}
+};
+
+UINTERFACE(BlueprintType, Blueprintable)
+class ARCCORE_API UArcCoreFloorLocationInterface : public UInterface
+{
+	GENERATED_BODY()
+};
+
+class IArcCoreFloorLocationInterface
+{
+	GENERATED_BODY()
+	
+public:
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "ArcCore")
+	FVector ArcGetFloorLocation() const;
+	
+	virtual FVector ArcGetFloorLocation_Implementation() const { return FVector::ZeroVector; }
 };

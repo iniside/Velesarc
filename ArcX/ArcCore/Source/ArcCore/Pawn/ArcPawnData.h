@@ -332,7 +332,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data", meta = (BaseStruct = "/Script/ArcCore.ArcPawnInitializationFragment", ExcludeBaseStruct))
 	TArray<FInstancedStruct> InitializationFragments;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Data", meta = (AllowedClasses = "/Script/ArcCore.ArcPawnBase, /Script/ArcCore.ArcCoreCharacter"))
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	TSoftClassPtr<APawn> PawnClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Components", meta = (BaseStruct = "/Script/ArcCore.ArcAddPawnComponent", ExcludeBaseStruct))

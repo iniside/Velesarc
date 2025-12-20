@@ -68,10 +68,17 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Config")
 	FGameplayTag EventTag;
 
+	UPROPERTY(EditAnywhere, Category = "Config")
+	bool bResetPlayRate;
+	
 public:
 	const FGameplayTag& GetEventTag() const
 	{
 		return EventTag;
+	}
+	bool GetResetPlayeRate() const
+	{
+		return bResetPlayRate;
 	}
 	// Begin UAnimNotify interface
 	virtual FString GetNotifyName_Implementation() const override;

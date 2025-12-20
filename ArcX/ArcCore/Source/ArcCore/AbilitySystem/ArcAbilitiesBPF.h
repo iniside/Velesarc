@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include "ArcScalableFloat.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "ArcCore/AbilitySystem/ArcAttributesTypes.h"
 #include "ArcCore/Items/ArcItemTypes.h"
@@ -44,10 +45,12 @@ class ARCCORE_API UArcAbilitiesBPF : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintPure
-		, Category = "Arc Core|Ability|Helpers")
+	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability|Helpers")
 	static FString GetAttributeName(const FGameplayAttribute& Attribute);
 
+	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability|Helpers")
+	static float GetScalableFloatValue(const FArcScalableFloat& Value);
+	
 	static FArcItemId GetSourceItem(const FGameplayEffectSpec& Spec);
 
 	static class UArcCoreAbilitySystemComponent* GetInstigatorNxASC(const FGameplayEffectSpec& Spec);

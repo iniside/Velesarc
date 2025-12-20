@@ -215,6 +215,15 @@ enum class EArcClientServer : uint8
 	, Server
 };
 
+UENUM(BlueprintType)
+enum class EArcAbilityActorSpawnOrigin : uint8
+{
+	ImpactPoint,
+	ActorLocation,
+	Origin,
+	Custom
+};
+
 /**
  *
  */
@@ -508,6 +517,8 @@ public:
 			DeterminesOutputType = "IC"))
 	UArcItemsStoreComponent* GetItemsStoreComponent(TSubclassOf<UArcItemsStoreComponent> IC) const;
 
+	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability")
+	FArcItemDataHandle GetItemDataHandle() const;
 	/**
 	 * @brief Get Item Definition which is source of this ability.
 	 */
@@ -661,7 +672,8 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability", meta=(ExpandBoolAsExecs = "ReturnValue"))
 	bool SpawnAbilityActorTargetData(TSubclassOf<AActor> ActorClass
 						   , const FGameplayAbilityTargetDataHandle& InTargetData
-						   , bool bUseOrigin
+						   , EArcAbilityActorSpawnOrigin SpawnLocationType
+						   , FVector CustomSpawnLocation
 						   , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility);
 	
 public:

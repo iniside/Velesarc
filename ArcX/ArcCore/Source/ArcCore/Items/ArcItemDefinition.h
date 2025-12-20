@@ -51,6 +51,10 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	FGuid ItemId;
 	
+	UFUNCTION(BlueprintCallable, CallInEditor)
+	void RegenerateItemId();
+	
+	
 	/** Fragments are way to add custom data into Item Definition. */
 	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcCore.ArcItemFragment", ShowTreeView, ExcludeBaseStruct), Category = "Item")
 	TSet<FArcInstancedStruct> FragmentSet;
@@ -147,6 +151,8 @@ public:
 
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
 #endif
+	
+	virtual void PostDuplicate(EDuplicateMode::Type DuplicateMode) override;
 	
 #if WITH_EDITORONLY_DATA
 	/** This scans the class for AssetBundles metadata on asset properties and initializes the AssetBundleData with InitializeAssetBundlesFromMetadata */

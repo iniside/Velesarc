@@ -155,7 +155,8 @@ void UArcStaticsBFL::AddChaosMoverStance(AActor* Actor, FChaosStanceModifier New
 	{
 		UChaosMoverSimulation* Sim = Backend->GetSimulation();
 		
-		TSharedPtr<FMovementModifierBase> Modifer = MakeShared<FChaosStanceModifier>(NewStance);
+		TSharedPtr<FChaosStanceModifier> Modifer = MakeShared<FChaosStanceModifier>(NewStance);
+		Modifer->MaxSpeedOverride = 10.f;
 		Sim->QueueMovementModifier(Modifer);
 	}
 }

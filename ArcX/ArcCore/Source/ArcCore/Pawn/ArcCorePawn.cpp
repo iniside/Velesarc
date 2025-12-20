@@ -21,15 +21,25 @@
 
 #include "Pawn/ArcCorePawn.h"
 
+#include "AIController.h"
 #include "AbilitySystem/ArcAttributeSet.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Core/CameraSystemEvaluator.h"
 #include "DefaultMovementSet/CharacterMoverComponent.h"
 #include "DefaultMovementSet/NavMoverComponent.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "GameFramework/GameplayCameraComponent.h"
+#include "GameFramework/GameplayCamerasPlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
 #include "MoveLibrary/BasedMovementUtils.h"
+#include "Net/UnrealNetwork.h"
 #include "Pawn/ArcPawnExtensionComponent.h"
 #include "Perception/AIPerceptionComponent.h"
+#include "Player/ArcCorePlayerController.h"
+#include "Player/ArcCorePlayerState.h"
+#include "Player/ArcPlayerStateExtensionComponent.h"
+#include "Pawn/ArcPawnData.h"
 
 AArcCorePawn::AArcCorePawn(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -101,6 +111,10 @@ FVector AArcCorePawn::GetNavAgentLocation() const
 
 void AArcCorePawn::UpdateNavigationRelevance()
 {
+	if (!bNativeProduceInput)
+	{
+		return;
+	}
 	if (CharacterMotionComponent)
 	{
 		if (USceneComponent* UpdatedComponent = CharacterMotionComponent->GetUpdatedComponent())
@@ -178,6 +192,7 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 		CharacterInputs.SetMoveInput(EMoveInputType::Velocity, CachedMoveInputVelocity);
 	}
 
+	
 	// Normally cached input is cleared by OnMoveCompleted input event but that won't be called if movement came from nav movement
 	if (bRequestedNavMovement)
 	{
@@ -212,6 +227,16 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 	{
 		// There is no movement intent, so use the last-known affirmative move input
 		CharacterInputs.OrientationIntent = LastAffirmativeMoveInput;
+	}
+	
+	if (AAIController* AI = Cast<AAIController>(GetController()))
+	{
+		if (AI->GetFocusActor())
+		{
+			const FVector FocalPoint = AI->GetFocalPoint();
+			const FVector Dir = (FocalPoint - GetActorLocation()).GetSafeNormal();
+			CharacterInputs.OrientationIntent = Dir;	
+		}
 	}
 	
 	CharacterInputs.bIsJumpPressed = bIsJumpPressed;
@@ -301,4 +326,208 @@ void AArcCorePawnAbilitySystem::GetOwnedGameplayTags(FGameplayTagContainer& TagC
 UAIPerceptionComponent* AArcCorePawnAbilitySystem::GetPerceptionComponent()
 {
 	return FindComponentByClass<UAIPerceptionComponent>();
+}
+//////////////////////////
+
+AArcCorePlayerPawn::AArcCorePlayerPawn(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	AbilitySystemComponent = CreateDefaultSubobject<UArcCoreAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
+	
+}
+
+void AArcCorePlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	FDoRepLifetimeParams SharedParams;
+	SharedParams.bIsPushBased = true;
+	SharedParams.RepNotifyCondition = ELifetimeRepNotifyCondition::REPNOTIFY_Always;
+	SharedParams.Condition = COND_SkipOwner;
+	
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, LocalViewPoint, SharedParams);
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, LocalViewRotation, SharedParams)
+}
+
+void AArcCorePlayerPawn::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
+	{
+		PawnExtComp->HandleControllerChanged();
+	}
+
+	if (APlayerState* PS = GetPlayerState<APlayerState>())
+	{
+		if (UArcPlayerStateExtensionComponent* PSExt = UArcPlayerStateExtensionComponent::Get(PS))
+		{
+			PSExt->CheckDefaultInitialization();
+		}	
+	}
+	
+	if (AArcCorePlayerState* ArcPS = GetPlayerState<AArcCorePlayerState>())
+	{
+		//UE_LOG(LogArcCoreCharacter, Log, TEXT("AArcCoreCharacter::PossessedBy CheckDataReady"))
+		ArcPS->CheckDataReady();
+	}
+
+	AArcCorePlayerController* PC = GetController<AArcCorePlayerController>();
+	if (PC)
+	{
+		GameplayCameraSystemHost = PC->GetGameplayCameraSystemHost();
+
+		if (GetNetMode() == NM_Standalone)
+		{
+			AGameplayCamerasPlayerCameraManager* GCP = Cast<AGameplayCamerasPlayerCameraManager>(PC->PlayerCameraManager);
+			
+			GCP->ActivateGameplayCamera(GetGameplayCameraComponent());
+			
+			//GameplayCameraComponent->ActivateCameraForPlayerController(PC);
+		}
+	}
+}
+
+void AArcCorePlayerPawn::UnPossessed()
+{
+	Super::UnPossessed();
+	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
+	{
+		PawnExtComp->HandleControllerChanged();
+	}
+}
+
+void AArcCorePlayerPawn::OnRep_Controller()
+{
+	Super::OnRep_Controller();
+	UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this);
+	if (PawnExtComp != nullptr)
+	{
+		PawnExtComp->HandleControllerChanged();
+
+		if(AArcCorePlayerState* ArcPS = GetPlayerState<AArcCorePlayerState>())
+		{
+			//UE_LOG(LogArcCoreCharacter, Log, TEXT("AArcCoreCharacter::OnRep_Controller CheckDataReady"))
+			ArcPS->CheckDataReady(PawnExtComp->GetPawnData<UArcPawnData>());
+		}
+
+		AArcCorePlayerController* PC = GetController<AArcCorePlayerController>();
+		if (PC)
+		{
+			//OnPlayerControllerReplicated(PC);
+			GameplayCameraSystemHost = PC->GetGameplayCameraSystemHost();
+
+			GetGameplayCameraComponent()->ActivateCameraForPlayerController(PC);
+		}
+	}
+}
+
+void AArcCorePlayerPawn::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
+	{
+		PawnExtComp->HandlePlayerStateReplicated();
+
+		if(AArcCorePlayerState* ArcPS = GetPlayerState<AArcCorePlayerState>())
+		{
+			if (UArcPlayerStateExtensionComponent* PSExt = UArcPlayerStateExtensionComponent::Get(ArcPS))
+			{
+				PSExt->CheckDefaultInitialization();
+			}
+			
+			//UE_LOG(LogArcCoreCharacter, Log, TEXT("AArcCoreCharacter::OnRep_PlayerState CheckDataReady [PS %s]")
+			//	, *GetNameSafe(ArcPS))
+		
+			ArcPS->CheckDataReady(PawnExtComp->GetPawnData<UArcPawnData>());
+		}
+	}
+}
+
+void AArcCorePlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(this))
+	{
+		PawnExtComp->SetupPlayerInputComponent();
+	}
+}
+
+void AArcCorePlayerPawn::BeginPlay()
+{
+	Super::BeginPlay();
+}
+
+void AArcCorePlayerPawn::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (GetNetMode() == NM_Standalone || GetNetMode() == NM_Client)
+	{
+		if (!GameplayCameraSystemHost)
+		{
+			GameplayCameraSystemHost = IGameplayCameraSystemHost::FindActiveHost(GetLocalViewingPlayerController());	
+		}
+		
+		if (GameplayCameraSystemHost)
+		{
+			FMinimalViewInfo ViewInfo;
+			GameplayCameraSystemHost->GetCameraSystemEvaluator()->GetEvaluatedCameraView(ViewInfo);
+			LocalViewPoint = ViewInfo.Location;//FMath::VInterpConstantTo(LocalViewPoint, ViewInfo.Location, DeltaTime, 8.f);
+			//LocalViewPoint = FMath::VInterpNormalRotationTo(LocalViewPoint, ViewInfo.Location, DeltaTime, 8.f);
+			//LocalViewPoint = ViewInfo.Location;
+			LocalViewRotation = GetViewRotation(); //OutResult.Rotation;	
+			
+			if (GetNetMode() == NM_Client)
+			{
+				//ServerSetViewPointAndRotation(LocalViewPoint, LocalViewRotation);
+			}	
+		}
+	}
+}
+
+void AArcCorePlayerPawn::GetActorEyesViewPoint(FVector& OutLocation
+	, FRotator& OutRotation) const
+{
+	OutLocation = LocalViewPoint;
+	OutRotation = LocalViewRotation;
+}
+
+
+UAbilitySystemComponent* AArcCorePlayerPawn::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+void AArcCorePlayerPawn::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
+{
+	return GetAbilitySystemComponent()->GetOwnedGameplayTags(TagContainer);
+}
+
+UAIPerceptionComponent* AArcCorePlayerPawn::GetPerceptionComponent()
+{
+	return FindComponentByClass<UAIPerceptionComponent>();
+}
+
+UCapsuleComponent* AArcCorePlayerPawn::GetCapsuleComponent() const
+{
+	if (CachedCapsuleComponent)
+	{
+		return CachedCapsuleComponent;
+	}
+	
+	CachedCapsuleComponent = FindComponentByClass<UCapsuleComponent>();
+	return CachedCapsuleComponent;
+}
+
+UGameplayCameraComponent* AArcCorePlayerPawn::GetGameplayCameraComponent() const
+{
+	if (CachedGameplayCameraComponent)
+	{
+		return CachedGameplayCameraComponent;
+	}
+	
+	CachedGameplayCameraComponent = FindComponentByClass<UGameplayCameraComponent>();
+	return CachedGameplayCameraComponent;
 }

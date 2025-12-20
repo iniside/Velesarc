@@ -925,6 +925,15 @@ public:
 	float GravityScale = 0.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float Lifetime = 0.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	bool bUseSuggestVelocity = false;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float ArcParam = 0.5f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	bool bVelocityInLocalSpace = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)

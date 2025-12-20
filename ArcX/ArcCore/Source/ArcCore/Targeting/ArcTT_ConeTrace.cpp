@@ -70,13 +70,13 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	FCollisionResponseParams ResponseParams;
 	ResponseParams.CollisionResponse = ECollisionResponse::ECR_Overlap;
 
-	World->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, Params);
+	World->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, CollisionChannel, Params);
 
 	FHitResult HitFromSource;
 	{
 		FVector FromActorStartLocation = Ctx->SourceActor->GetActorLocation();
 		FVector FromActorEndLocation = FromActorStartLocation + Ctx->SourceActor->GetActorForwardVector() * FromSourceActorLength;
-		World->SweepSingleByChannel(HitFromSource, FromActorStartLocation, FromActorEndLocation, FQuat::Identity, ECC_Visibility
+		World->SweepSingleByChannel(HitFromSource, FromActorStartLocation, FromActorEndLocation, FQuat::Identity, CollisionChannel
 			, FCollisionShape::MakeSphere(32.f), Params);
 	}
 	
@@ -185,11 +185,16 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 		if (bDrawDebug)
 		DrawDebugSphere(World, FilteredHitResults[BestHit].ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
-	else
+	else if (!HitResult.bBlockingHit)
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		HitResult.ImpactPoint = HitResult.TraceEnd;
 		HitResult.Location = HitResult.TraceEnd;
+		ResultData->HitResult = HitResult;
+	}
+	else
+	{
+		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = HitResult;
 	}
 	//DrawSphereSweeps(World, StartLocation, EndLocation, 20.f, HitResults, 0.5f);

@@ -12,6 +12,7 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
+#include "MassStateTreeFragments.h"
 #include "MoverMassTranslators.h"
 #include "StateTreeAsyncExecutionContext.h"
 #include "StateTreeExecutionContext.h"
@@ -39,6 +40,7 @@ bool FArcMassActorMoveToTask::Link(FStateTreeLinker& Linker)
 
 	Linker.LinkExternalData(MassActorFragment);
 	Linker.LinkExternalData(MoveTargetHandle);
+	Linker.LinkExternalData(MassActorMoveToFragment);
 	
 	return true;
 }
@@ -47,6 +49,7 @@ void FArcMassActorMoveToTask::GetDependencies(UE::MassBehavior::FStateTreeDepend
 {
 	Builder.AddReadWrite<FMassActorFragment>();
 	Builder.AddReadWrite<FMassMoveTargetFragment>();
+	Builder.AddReadWrite<FArcMassActorMoveToFragment>();
 }
 
 EStateTreeRunStatus FArcMassActorMoveToTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
@@ -122,53 +125,10 @@ EStateTreeRunStatus FArcMassActorMoveToTask::EnterState(FStateTreeExecutionConte
 
 		InstanceData.CalculatedAcceptanceRadius = Frag->AcceptanceRadius;
 	}
-	//EntityManager.Defer().PushCommand<FMassDeferredSetCommand>([Entity = MassCtx.GetEntity()](const FMassEntityManager& Manager)
-	//		{
-	//			if (Manager.IsEntityValid(Entity) )
-	//			{
-	//				FMassVelocityFragment* VelocityFragment = Manager.GetFragmentDataPtr<FMassVelocityFragment>(Entity);
-	//				if (VelocityFragment)
-	//				{
-	//					VelocityFragment->Value = FVector::ZeroVector;
-	//				}
-	//
-	//				FMassDesiredMovementFragment* DesiredMovement = Manager.GetFragmentDataPtr<FMassDesiredMovementFragment>(Entity);
-	//				if (DesiredMovement)
-	//				{
-	//					DesiredMovement->DesiredFacing = FQuat::Identity;
-	//					DesiredMovement->DesiredVelocity = FVector::ZeroVector;
-	//					//DesiredMovement->DesiredMaxSpeedOverride = 0;
-	//				}
-	//				FMassForceFragment* Force = Manager.GetFragmentDataPtr<FMassForceFragment>(Entity);
-	//				if (Force)
-	//				{
-	//					Force->Value = FVector::ZeroVector;
-	//				}
-	//				FMassStandingSteeringFragment* Steering = Manager.GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
-	//				if (Steering)
-	//				{
-	//					Steering->TargetLocation = FVector::ZeroVector;
-	//					//Steering->TrackedTargetSpeed = 0;
-	//					//Steering->TargetSelectionCooldown = 0;
-	//					//Steering->bIsUpdatingTarget = false;
-	//					//Steering->bEnteredFromMoveAction = false;
-	//				}
-	//				FMassSteeringFragment* Steer = Manager.GetFragmentDataPtr<FMassSteeringFragment>(Entity);
-	//				if (Steer)
-	//				{
-	//					Steer->DesiredVelocity = FVector::ZeroVector;
-	//				}
-	//			}
-	//		});
-	//
-	//EntityManager.Defer().RemoveTag<FMassCodeDrivenMovementTag>(MassCtx.GetEntity());
+	
 	EntityManager.Defer().AddTag<FArcMassActorMoveToTag>(MassCtx.GetEntity());
 	EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(MassCtx.GetEntity());
 	EntityManager.Defer().AddTag<FMassNavMoverActorOrientationCopyToMassTag>(MassCtx.GetEntity());
-	//EntityManager.Defer().AddTag<FMassSceneComponentVelocityCopyToMassTag>(MassCtx.GetEntity());
-	//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToActorTag, FMassCharacterMovementCopyToMassTag>(MassCtx.GetEntity());
-    //EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToActorTag, FMassCharacterOrientationCopyToMassTag>(MassCtx.GetEntity());
-    //EntityManager.Defer().SwapTags<FMassCapsuleTransformCopyToActorTag, FMassCapsuleTransformCopyToMassTag>(MassCtx.GetEntity());
 
 	DrawDebugSphere(Context.GetWorld(), InstanceData.Destination, InstanceData.AcceptableRadius, 12, FColor::Green, false, 10.f);
 	return NewStatus;
@@ -177,11 +137,16 @@ EStateTreeRunStatus FArcMassActorMoveToTask::EnterState(FStateTreeExecutionConte
 EStateTreeRunStatus FArcMassActorMoveToTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+	FMassEntityHandle Handle = MassCtx.GetEntity();
+	
 	if (InstanceData.MoveToTask)
 	{
 		const FVector CurrentDestination = InstanceData.MoveToTask->GetMoveRequestRef().GetDestination();
 		const float Distance = FVector::Dist(CurrentDestination, InstanceData.Destination);
-		const float Tolerance = (InstanceData.DestinationMoveTolerance * InstanceData.DestinationMoveTolerance) + (InstanceData.CalculatedAcceptanceRadius);
+		const float Tolerance = (InstanceData.DestinationMoveTolerance * InstanceData.DestinationMoveTolerance);
 		
 		if (InstanceData.bTrackMovingGoal && !InstanceData.TargetActor)
 		{
@@ -190,23 +155,22 @@ EStateTreeRunStatus FArcMassActorMoveToTask::Tick(FStateTreeExecutionContext& Co
 			if (Distance > Tolerance)
 			{
 				UE_VLOG(Context.GetOwner(), LogStateTree, Log, TEXT("FArcMassActorMoveToTask destination has moved enough. Restarting task."));
+				
 				return PerformMoveTask(Context, *InstanceData.AIController);
-			}
-			else
-			{
-				return EStateTreeRunStatus::Succeeded;
 			}
 		}
 		else
 		{
 			if (Distance <= (InstanceData.CalculatedAcceptanceRadius))
 			{
+				EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
 				return EStateTreeRunStatus::Succeeded;
 			}
 		}
 		return EStateTreeRunStatus::Running;
 	}
-
+	
+	EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
 	return EStateTreeRunStatus::Failed;
 }
 
@@ -228,52 +192,9 @@ void FArcMassActorMoveToTask::ExitState(FStateTreeExecutionContext& Context, con
 
 	FMassEntityHandle Handle = MassCtx.GetEntity();
 
-	//EntityManager.Defer().PushCommand<FMassDeferredSetCommand>([Entity = Handle](const FMassEntityManager& Manager)
-	//{
-	//	if (Manager.IsEntityValid(Entity) )
-	//	{
-	//		FMassVelocityFragment* VelocityFragment = Manager.GetFragmentDataPtr<FMassVelocityFragment>(Entity);
-	//		if (VelocityFragment)
-	//		{
-	//			VelocityFragment->Value = FVector::ZeroVector;
-	//		}
-	//		FMassDesiredMovementFragment* DesiredMovement = Manager.GetFragmentDataPtr<FMassDesiredMovementFragment>(Entity);
-	//		if (DesiredMovement)
-	//		{
-	//			DesiredMovement->DesiredFacing = FQuat::Identity;
-	//			DesiredMovement->DesiredVelocity = FVector::ZeroVector;
-	//			//DesiredMovement->DesiredMaxSpeedOverride = 0;
-	//		}
-	//		FMassForceFragment* Force = Manager.GetFragmentDataPtr<FMassForceFragment>(Entity);
-	//				if (Force)
-	//				{
-	//					Force->Value = FVector::ZeroVector;
-	//				}
-	//		FMassStandingSteeringFragment* Steering = Manager.GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
-	//				if (Steering)
-	//				{
-	//					Steering->TargetLocation = FVector::ZeroVector;
-	//					//Steering->TrackedTargetSpeed = 0;
-	//					//Steering->TargetSelectionCooldown = 0;
-	//					//Steering->bIsUpdatingTarget = false;
-	//					//Steering->bEnteredFromMoveAction = false;
-	//				}
-	//		FMassSteeringFragment* Steer = Manager.GetFragmentDataPtr<FMassSteeringFragment>(Entity);
-	//				if (Steer)
-	//				{
-	//					Steer->DesiredVelocity = FVector::ZeroVector;
-	//				}
-	//	}
-	//});
-	//
-	//EntityManager.Defer().AddTag<FMassCodeDrivenMovementTag>(Handle);
-	EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
+	//EntityManager.Defer().RemoveTag<FArcMassActorMoveToTag>(Handle);
 	EntityManager.Defer().RemoveTag<FMassCopyToNavMoverTag>(Handle);
 	EntityManager.Defer().RemoveTag<FMassNavMoverActorOrientationCopyToMassTag>(Handle);
-	//EntityManager.Defer().RemoveTag<FMassSceneComponentVelocityCopyToMassTag>(Handle);
-	//EntityManager.Defer().SwapTags<FMassCharacterMovementCopyToMassTag, FMassCharacterMovementCopyToActorTag>(Handle);
-	//EntityManager.Defer().SwapTags<FMassCharacterOrientationCopyToMassTag, FMassCharacterOrientationCopyToActorTag>(Handle);
-	//EntityManager.Defer().SwapTags<FMassCapsuleTransformCopyToMassTag, FMassCapsuleTransformCopyToActorTag>(Handle);
 }
 
 UAITask_MoveTo* FArcMassActorMoveToTask::PrepareMoveToTask(FStateTreeExecutionContext& Context, AAIController& Controller, UAITask_MoveTo* ExistingTask, FAIMoveRequest& MoveRequest) const
@@ -291,8 +212,15 @@ UAITask_MoveTo* FArcMassActorMoveToTask::PrepareMoveToTask(FStateTreeExecutionCo
 EStateTreeRunStatus FArcMassActorMoveToTask::PerformMoveTask(FStateTreeExecutionContext& Context, AAIController& Controller) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	FAIMoveRequest MoveReq;
-	MoveReq.SetNavigationFilter(InstanceData.FilterClass ? InstanceData.FilterClass : Controller.GetDefaultNavigationFilterClass())
+	
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FArcMassActorMoveToFragment* MassActor = MassCtx.GetExternalDataPtr(MassActorMoveToFragment);
+	MassActor->DestinationMoveTolerance = InstanceData.DestinationMoveTolerance;
+	MassActor->bTrackMovingGoal = InstanceData.bTrackMovingGoal;
+	
+	MassActor->MoveReq = FAIMoveRequest();
+	
+	MassActor->MoveReq.SetNavigationFilter(InstanceData.FilterClass ? InstanceData.FilterClass : Controller.GetDefaultNavigationFilterClass())
 		.SetAllowPartialPath(InstanceData.bAllowPartialPath)
 		.SetAcceptanceRadius(InstanceData.AcceptableRadius)
 		.SetCanStrafe(InstanceData.bAllowStrafe)
@@ -306,21 +234,21 @@ EStateTreeRunStatus FArcMassActorMoveToTask::PerformMoveTask(FStateTreeExecution
 	{
 		if (InstanceData.bTrackMovingGoal)
 		{
-			MoveReq.SetGoalActor(InstanceData.TargetActor);
+			MassActor->MoveReq.SetGoalActor(InstanceData.TargetActor);
 		}
 		else
 		{
-			MoveReq.SetGoalLocation(InstanceData.TargetActor->GetActorLocation());
+			MassActor->MoveReq.SetGoalLocation(InstanceData.TargetActor->GetActorLocation());
 		}
 	}
 	else
 	{
-		MoveReq.SetGoalLocation(InstanceData.Destination);
+		MassActor->MoveReq.SetGoalLocation(InstanceData.Destination);
 	}
 
-	if (MoveReq.IsValid())
+	if (MassActor->MoveReq.IsValid())
 	{	
-		InstanceData.MoveToTask = PrepareMoveToTask(Context, Controller, InstanceData.MoveToTask, MoveReq);
+		InstanceData.MoveToTask = PrepareMoveToTask(Context, Controller, InstanceData.MoveToTask, MassActor->MoveReq);
 		if (InstanceData.MoveToTask)
 		{
 			const bool bIsGameplayTaskAlreadyActive = InstanceData.MoveToTask->IsActive();
@@ -344,7 +272,6 @@ EStateTreeRunStatus FArcMassActorMoveToTask::PerformMoveTask(FStateTreeExecution
 				}
 
 				UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-				FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 				
 				InstanceData.MoveToTask->OnMoveTaskFinished.AddLambda(
 					[WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity = MassCtx.GetEntity()]
@@ -379,12 +306,15 @@ void UArcMassActorMoveToProcessor::InitializeInternal(UObject& Owner, const TSha
 
 void UArcMassActorMoveToProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	EntityQuery_Conditional.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadOnly);
-	EntityQuery_Conditional.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	EntityQuery_Conditional.AddRequirement<FArcMassActorMoveToFragment>(EMassFragmentAccess::ReadOnly);
+	//EntityQuery_Conditional.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadOnly);
+	//EntityQuery_Conditional.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	//EntityQuery_Conditional.AddRequirement<FArcMassActorMoveToFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery_Conditional.AddRequirement<FMassStateTreeInstanceFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery_Conditional.AddConstSharedRequirement<FMassStateTreeSharedFragment>();
 	
 	EntityQuery_Conditional.AddTagRequirement<FArcMassActorMoveToTag>(EMassFragmentPresence::All);
-
+	EntityQuery_Conditional.AddSubsystemRequirement<UMassStateTreeSubsystem>(EMassFragmentAccess::ReadWrite);
+	
 	EntityQuery_Conditional.RegisterWithProcessor(*this);
 	// @todo: validate LOD and variable ticking
 	//EntityQuery_Conditional.AddRequirement<FMassSimulationLODFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
@@ -402,30 +332,56 @@ void UArcMassActorMoveToProcessor::Execute(FMassEntityManager& EntityManager, FM
 
 	EntityQuery_Conditional.ForEachEntityChunk(Context, [this, &EntitiesToSignalPathDone](FMassExecutionContext& MyContext)
 	{
-		const TConstArrayView<FTransformFragment> TransformList = MyContext.GetFragmentView<FTransformFragment>();
-		const TConstArrayView<FArcMassActorMoveToFragment> ActorMoveToFragments = MyContext.GetFragmentView<FArcMassActorMoveToFragment>();
+		//const TConstArrayView<FTransformFragment> TransformList = MyContext.GetFragmentView<FTransformFragment>();
+		//const TConstArrayView<FArcMassActorMoveToFragment> ActorMoveToFragments = MyContext.GetFragmentView<FArcMassActorMoveToFragment>();
+			
+		const TArrayView<FMassStateTreeInstanceFragment> StateTreeInstanceList = MyContext.GetMutableFragmentView<FMassStateTreeInstanceFragment>();
+		const FMassStateTreeSharedFragment& SharedStateTree = MyContext.GetConstSharedFragment<FMassStateTreeSharedFragment>();
+			
+		const UStateTree* StateTree = SharedStateTree.StateTree;
 			
 		const float WorldDeltaTime = MyContext.GetDeltaTimeSeconds();
-		
+		UMassStateTreeSubsystem& MassStateTreeSubsystem = MyContext.GetMutableSubsystemChecked<UMassStateTreeSubsystem>();
+			
 		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
-			const FTransformFragment& Transform = TransformList[EntityIt];
-			const FArcMassActorMoveToFragment& ActorMoveto = ActorMoveToFragments[EntityIt];
-			FVector CurrentDestination = FVector::ZeroVector;
-			if (ActorMoveto.TargetActor.IsValid())
-			{
-				CurrentDestination = ActorMoveto.TargetActor->GetActorLocation();
-			}
-			else
-			{
-				CurrentDestination = ActorMoveto.Destination;
-			}
-			FVector::FReal Dist = FVector::Dist(Transform.GetTransform().GetLocation(), CurrentDestination);
-			if (Dist <= (ActorMoveto.AcceptanceRadius))
-			{
-				FMassEntityHandle Handle = MyContext.GetEntity(EntityIt);
-				EntitiesToSignalPathDone.Add(Handle);
-			}
+			const FMassEntityHandle Entity = MyContext.GetEntity(EntityIt);
+			
+			FMassStateTreeInstanceFragment& StateTreeFragment = StateTreeInstanceList[EntityIt];
+			FStateTreeInstanceData* InstanceData = MassStateTreeSubsystem.GetInstanceData(StateTreeFragment.InstanceHandle);
+			
+			FMassStateTreeExecutionContext StateTreeContext(MassStateTreeSubsystem, *StateTree, *InstanceData, MyContext);
+			StateTreeContext.SetEntity(Entity);
+			StateTreeContext.SetOuterTraceId(Entity.AsNumber());
+			
+			StateTreeContext.Tick(WorldDeltaTime);
+			
+			//const FTransformFragment& Transform = TransformList[EntityIt];
+			//const FArcMassActorMoveToFragment& ActorMoveto = ActorMoveToFragments[EntityIt];
+			//
+			//const float Distance = FVector::Dist(CurrentDestination, InstanceData.Destination);
+			//const float Tolerance = (ActorMoveto.DestinationMoveTolerance * ActorMoveto.DestinationMoveTolerance) + (ActorMoveto.AcceptanceRadius);
+		    //
+			//if (ActorMoveto.bTrackMovingGoal && !ActorMoveto.TargetActor.IsValid())
+			//{
+			//	ActorMoveto.MoveReq.UpdateGoalLocation(ActorMoveto.Destination);
+			//}
+			
+			//FVector CurrentDestination = FVector::ZeroVector;
+			//if (ActorMoveto.TargetActor.IsValid())
+			//{
+			//	CurrentDestination = ActorMoveto.TargetActor->GetActorLocation();
+			//}
+			//else
+			//{
+			//	CurrentDestination = ActorMoveto.Destination;
+			//}
+			//FVector::FReal Dist = FVector::Dist(Transform.GetTransform().GetLocation(), CurrentDestination);
+			//if (Dist <= (ActorMoveto.AcceptanceRadius))
+			//{
+			//	FMassEntityHandle Handle = MyContext.GetEntity(EntityIt);
+			//	EntitiesToSignalPathDone.Add(Handle);
+			//}
 		}
 	});
 

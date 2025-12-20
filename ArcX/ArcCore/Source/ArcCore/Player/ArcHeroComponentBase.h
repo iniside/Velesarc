@@ -28,6 +28,9 @@
 #include "ArcMacroDefines.h"
 #include "GameplayAbilitySpec.h"
 #include "GameplayTagContainer.h"
+#include "MoverSimulationTypes.h"
+#include "NativeGameplayTags.h"
+#include "Mover/ArcMoverTypes.h"
 
 #include "ArcHeroComponentBase.generated.h"
 
@@ -55,6 +58,17 @@ struct FArcCameraModeItem
 	TSubclassOf<UArcCameraMode> CameraMode;
 	UObject* Source = nullptr;
 };
+
+namespace Arcx::Input
+{
+	ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Move);
+	ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Look_Mouse);
+	ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Look_Stick);
+	ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Jump);
+	ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Crouch);
+}
+
+class UCurveFloat;
 
 UCLASS(ClassGroup = (Arc), meta = (BlueprintSpawnableComponent))
 class ARCCORE_API UArcHeroComponentBase
@@ -147,10 +161,141 @@ protected:
 										  , const UArcInputActionConfig* InInputConfig)
 	{
 	};
-
+	
+public:
+	FVector2D MoveInputVector = FVector2D::ZeroVector;
+	
+	void Input_Move_Started(const FInputActionValue& InputActionValue);
+	void Input_Move(const FInputActionValue& InputActionValue);
+	void Input_Move_Completed(const FInputActionValue& InputActionValue);
+	
+	void Input_LookMouse(const FInputActionValue& InputActionValue);
+	void Input_LookStick(const FInputActionValue& InputActionValue);
+	
 	void Input_AbilityInputTagPressed(FGameplayTag InputTag);
 
 	void Input_AbilityInputTagTriggered(FGameplayTag InputTag);
 
 	void Input_AbilityInputTagReleased(FGameplayTag InputTag);
+};
+
+USTRUCT(BlueprintType)
+struct FArcMoverRotationThresholds
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
+	float FL;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
+	float FR;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
+	float BL;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
+	float BR;
+};
+
+UCLASS(ClassGroup = (Arc), meta = (BlueprintSpawnableComponent))
+class ARCCORE_API UArcMoverInputProducerComponent
+	: public UArcPawnComponent
+	, public IMoverInputProducerInterface
+{
+	GENERATED_BODY()
+	
+public:
+	
+	TOptional<bool> bStopImmidietly = false;
+	TOptional<FVector> OverrideInput;
+	TOptional<EArcMoverGaitType> GaitOverride;
+	float ControlRotationRate = 0;
+	FRotator LastControlRotation = FRotator::ZeroRotator;
+	FVector DirectionOfMovement = FVector::ZeroVector;
+	float MovementDirectionAngle = 0;
+	
+	UPROPERTY(EditAnywhere)
+	int32 RotationModeType = 0;
+	
+	UPROPERTY()
+	mutable TObjectPtr<UArcHeroComponentBase> HeroComponent;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetF;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetB;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetLL;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetLR;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetRL;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetRR;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UCurveFloat> RotationOffsetSlide;
+	
+	UArcMoverInputProducerComponent(const FObjectInitializer& ObjectInitializer);
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	
+	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
+	
+	UArcHeroComponentBase* GetHeroComponent() const;
+	
+	FArcMoverRotationThresholds GetRotationThresholds(EArcMoverDirectionType Type) const
+	{
+		FArcMoverRotationThresholds Value;
+		
+		if (RotationModeType == 0)
+		{
+			switch (Type)
+			{
+				case EArcMoverDirectionType::F:
+				case EArcMoverDirectionType::B:
+					Value.FL = -60.f;
+					Value.FR = 60.f;
+					Value.BL = -120.f;
+					Value.BR = 120.f;
+					break;
+				case EArcMoverDirectionType::LL:
+				case EArcMoverDirectionType::LR:
+				case EArcMoverDirectionType::RL:
+				case EArcMoverDirectionType::RR:
+					Value.FL = -40.f;
+					Value.FR = 40.f;
+					Value.BL = -140.f;
+					Value.BR = 140.f;
+					break;
+			}
+		}
+		else if (RotationModeType == 1)
+		{
+			switch (Type)
+			{
+				case EArcMoverDirectionType::B:
+					Value.FL = -120.f;
+					Value.FR = 120.f;
+					Value.BL = -140.f;
+					Value.BR = 140.f;
+					break;
+				case EArcMoverDirectionType::F:
+				case EArcMoverDirectionType::LL:
+				case EArcMoverDirectionType::LR:
+				case EArcMoverDirectionType::RL:
+				case EArcMoverDirectionType::RR:
+					Value.FL = -120.f;
+					Value.FR = 120.f;
+					Value.BL = -120.f;
+					Value.BR = 120.f;
+					break;
+			}
+		}
+		return Value;
+	}
 };

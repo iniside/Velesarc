@@ -51,6 +51,12 @@ public:
 	static FGameplayAbilityTargetDataHandle HitResultArray(const TArray<FHitResult>& HitResults);
 
 	UFUNCTION(BlueprintPure, Category = "Arc Core|Targeting")
+	static FGameplayAbilityTargetDataHandle MakeHitResultTargetData(FTargetingRequestHandle InHandle);
+	
+	UFUNCTION(BlueprintPure, Category = "Arc Core|Targeting")
+	static FGameplayAbilityTargetDataHandle MakeHitResultArrayTargetData(FTargetingRequestHandle InHandle);
+	
+	UFUNCTION(BlueprintPure, Category = "Arc Core|Targeting")
 	static FGameplayAbilityTargetDataHandle MakeProjectileTargetData(FTargetingRequestHandle InHandle);
 
 	template<typename T>

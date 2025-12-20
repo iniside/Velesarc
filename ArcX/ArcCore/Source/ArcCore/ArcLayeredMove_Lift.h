@@ -3,6 +3,7 @@
 #pragma once
 
 #include "LayeredMoveBase.h"
+#include "MovementModifier.h"
 #include "ArcLayeredMove_Lift.generated.h"
 
 class UCurveVector;
@@ -72,6 +73,71 @@ struct TStructOpsTypeTraits< FArcLayeredMove_Lift > : public TStructOpsTypeTrait
 	enum
 	{
 		//WithNetSerializer = true,
+		WithCopy = true
+	};
+};
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcLayeredMove_NoVelocity : public FLayeredMoveBase
+{
+	GENERATED_BODY()
+
+	FArcLayeredMove_NoVelocity();
+	virtual ~FArcLayeredMove_NoVelocity() override = default;
+
+	virtual bool GenerateMove_Async(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, UMoverBlackboard* SimBlackboard, FProposedMove& OutProposedMove) override;
+	
+	virtual FLayeredMoveBase* Clone() const override;
+
+	virtual void NetSerialize(FArchive& Ar) override;
+
+	virtual UScriptStruct* GetScriptStruct() const override;
+
+	virtual FString ToSimpleString() const override;
+
+	virtual void AddReferencedObjects(class FReferenceCollector& Collector) override;
+};
+
+template<>
+struct TStructOpsTypeTraits< FArcLayeredMove_NoVelocity > : public TStructOpsTypeTraitsBase2< FArcLayeredMove_NoVelocity >
+{
+	enum
+	{
+		//WithNetSerializer = true,
+		WithCopy = true
+	};
+};
+
+USTRUCT(MinimalAPI, BlueprintType)
+struct FArcChaosModifier_MaxSpeed : public FMovementModifierBase
+{
+	GENERATED_BODY()
+
+public:
+	FArcChaosModifier_MaxSpeed();
+	virtual ~FArcChaosModifier_MaxSpeed() override = default;
+	
+	/** Override Max Speed */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Parameters, meta = (ClampMin = "0", UIMin = "0", ForceUnits = "cm/s"))
+	TOptional<float> MaxSpeedOverride;
+
+	virtual void OnStart_Async(const FMovementModifierParams_Async& Params) override;
+	virtual void OnEnd_Async(const FMovementModifierParams_Async& Params) override;
+	virtual void OnPostMovement_Async(const FMovementModifierParams_Async& Params) override;
+
+	virtual FMovementModifierBase* Clone() const override;
+	virtual void NetSerialize(FArchive& Ar) override;
+	virtual UScriptStruct* GetScriptStruct() const override;
+	virtual FString ToSimpleString() const override;
+	virtual void AddReferencedObjects(class FReferenceCollector& Collector) override;
+
+};
+
+template<>
+struct TStructOpsTypeTraits< FArcChaosModifier_MaxSpeed > : public TStructOpsTypeTraitsBase2< FArcChaosModifier_MaxSpeed >
+{
+	enum
+	{
 		WithCopy = true
 	};
 };

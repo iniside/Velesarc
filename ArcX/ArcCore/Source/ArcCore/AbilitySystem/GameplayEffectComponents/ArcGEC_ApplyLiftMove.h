@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "ArcLayeredMove_Lift.h"
 #include "StateTreeEvents.h"
+#include "ChaosMover/Character/Modifiers/ChaosStanceModifier.h"
 #include "GameplayEffectComponents/AbilitiesGameplayEffectComponent.h"
 #include "ArcGEC_ApplyLiftMove.generated.h"
 
@@ -30,4 +31,42 @@ public:
 private:
 	/** We must undo all effects when removed */
 	void OnActiveGameplayEffectRemoved(const FGameplayEffectRemovalInfo& RemovalInfo) const;
+};
+
+UCLASS()
+class ARCCORE_API UArcGEC_ApplyNoVelocityMove : public UGameplayEffectComponent
+{
+	GENERATED_BODY()
+	
+public:
+	UPROPERTY(EditAnywhere)
+	FArcLayeredMove_NoVelocity Settings;
+	
+	/**
+	   * Called when a Gameplay Effect is Added to the ActiveGameplayEffectsContainer.  GE's are added to that container when they have duration (or are predicting locally).
+	   * Note: This also occurs as a result of replication (e.g. when the server replicates a GE to the owning client -- including the 'duplicate' GE after a prediction).
+	   * Return if the effect should remain active, or false to inhibit.  Note: Inhibit does not remove the effect (it remains added but dormant, waiting to uninhibit).
+	   */
+	virtual bool OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& ActiveGEContainer, FActiveGameplayEffect& ActiveGE) const override;
+};
+
+UCLASS()
+class ARCCORE_API UArcGEC_ApplyChaosStanceModifier : public UGameplayEffectComponent
+{
+	GENERATED_BODY()
+	
+public:
+	UPROPERTY(EditAnywhere)
+	FArcChaosModifier_MaxSpeed Settings;
+	
+	/**
+	   * Called when a Gameplay Effect is Added to the ActiveGameplayEffectsContainer.  GE's are added to that container when they have duration (or are predicting locally).
+	   * Note: This also occurs as a result of replication (e.g. when the server replicates a GE to the owning client -- including the 'duplicate' GE after a prediction).
+	   * Return if the effect should remain active, or false to inhibit.  Note: Inhibit does not remove the effect (it remains added but dormant, waiting to uninhibit).
+	   */
+	virtual bool OnActiveGameplayEffectAdded(FActiveGameplayEffectsContainer& ActiveGEContainer, FActiveGameplayEffect& ActiveGE) const override;
+
+private:
+	/** We must undo all effects when removed */
+	void OnActiveGameplayEffectRemoved(const FGameplayEffectRemovalInfo& RemovalInfo, FMovementModifierHandle Handle) const;
 };

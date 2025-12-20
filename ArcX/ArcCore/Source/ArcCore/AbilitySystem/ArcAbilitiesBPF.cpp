@@ -46,6 +46,11 @@ FString UArcAbilitiesBPF::GetAttributeName(const FGameplayAttribute& Attribute)
 	return Attribute.GetName();
 }
 
+float UArcAbilitiesBPF::GetScalableFloatValue(const FArcScalableFloat& Value)
+{
+	return Value.GetValue();
+}
+
 FArcItemId UArcAbilitiesBPF::GetSourceItem(const FGameplayEffectSpec& Spec)
 {
 	const UArcCoreGameplayAbility* Ability = Cast<UArcCoreGameplayAbility>(
@@ -171,7 +176,10 @@ FGameplayCueParameters UArcAbilitiesBPF::ArcMakeGameplayCueParametersFromHitResu
 	Params.Normal = HitResult.ImpactNormal;
 	Params.PhysicalMaterial = HitResult.PhysMaterial;
 	Params.TargetAttachComponent = HitResult.Component;
-
+	
+	Params.EffectContext = FGameplayEffectContextHandle(UAbilitySystemGlobals::Get().AllocGameplayEffectContext());
+	Params.EffectContext.AddHitResult(HitResult);
+	
 	return Params;
 }
 

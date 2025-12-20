@@ -881,6 +881,19 @@ UArcItemsStoreComponent* UArcCoreGameplayAbility::GetItemsStoreComponent(TSubcla
 	return SourceItemsStore;
 }
 
+FArcItemDataHandle UArcCoreGameplayAbility::GetItemDataHandle() const
+{
+	if (!SourceItemId.IsValid() || SourceItemsStore == nullptr)
+	{
+		return FArcItemDataHandle();
+	}
+	
+	TWeakPtr<FArcItemData> WeakItemPtr = SourceItemsStore->GetWeakItemPtr(SourceItemId);
+	FArcItemDataHandle ItemDataHandle(WeakItemPtr);
+	
+	return ItemDataHandle;
+}
+
 const UArcItemDefinition* UArcCoreGameplayAbility::GetSourceItemData() const
 {
 	if (bRequiresItem)
@@ -1359,7 +1372,8 @@ bool UArcCoreGameplayAbility::SpawnAbilityActor(TSubclassOf<AActor> ActorClass
 
 bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> ActorClass
 	, const FGameplayAbilityTargetDataHandle& InTargetData
-	, bool bUseOrigin
+	, EArcAbilityActorSpawnOrigin SpawnLocationType
+	, FVector CustomSpawnLocation
 	, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility)
 {
 	if (ActorClass == nullptr)
@@ -1372,23 +1386,66 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 		return false;
 	}
 	
-	const bool bHasOrigin = InTargetData.Get(0)->HasOrigin();
-	
 	FTransform OriginTM = InTargetData.Get(0)->GetOrigin();
+	
 	FVector Location = InTargetData.Get(0)->GetEndPoint();
 	FRotator Rotation = InTargetData.Get(0)->GetEndPointTransform().GetRotation().Rotator();
 
-	if (const FHitResult* Hit = InTargetData.Get(0)->GetHitResult())
+	switch (SpawnLocationType)
 	{
-		Location = Hit->ImpactPoint;
-		Rotation = Hit->ImpactNormal.Rotation();
-	}
-	
-	if (bHasOrigin && bUseOrigin)
-	{
-		OriginTM = InTargetData.Get(0)->GetOrigin();
-		Location = OriginTM.GetLocation();
-		Rotation = OriginTM.GetRotation().Rotator();
+		case EArcAbilityActorSpawnOrigin::ImpactPoint:
+		{
+			Location = InTargetData.Get(0)->GetEndPoint();
+			
+			if (const FHitResult* Hit = InTargetData.Get(0)->GetHitResult())
+			{
+				Location = Hit->ImpactPoint;
+				Rotation = Hit->ImpactNormal.Rotation();
+			}
+			
+			break;
+		}
+		case EArcAbilityActorSpawnOrigin::ActorLocation:
+		{
+			AActor* Actor = nullptr;
+			if (InTargetData.Data.Num() > 0 && InTargetData.Data[0]->HasHitResult())
+			{
+				Actor = InTargetData.Data[0].Get()->GetHitResult()->GetActor();
+			}
+			if (!Actor)
+			{
+				if (const FGameplayAbilityTargetData* TargetData = InTargetData.Get(0))
+				{
+					if (TargetData->GetActors().Num() > 0)
+					{
+						Actor = TargetData->GetActors()[0].Get();
+					}
+				}
+			}
+			
+			if (Actor)
+			{
+				Location = Actor->GetActorLocation();
+			}
+			break;
+		}
+		case EArcAbilityActorSpawnOrigin::Origin:
+		{
+			const bool bHasOrigin = InTargetData.Get(0)->HasOrigin();
+			if (bHasOrigin)
+			{
+				
+				OriginTM = InTargetData.Get(0)->GetOrigin();
+				Location = OriginTM.GetLocation();
+				Rotation = OriginTM.GetRotation().Rotator();
+			}
+			break;
+		}
+		case EArcAbilityActorSpawnOrigin::Custom:
+		{
+			Location = CustomSpawnLocation;
+			break;
+		}
 	}
 	
 	const bool bIsServer = ActorClass->ImplementsInterface(UArcAbilityServerActorInterface::StaticClass());
@@ -1431,10 +1488,13 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 			, Location
 			, Rotation);
 
-		TWeakObjectPtr<AActor> SpawnedActor = ArcASC->SpawnedActors[Handle];
-		UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
+		if (Handle.IsValid())
+		{
+			TWeakObjectPtr<AActor> SpawnedActor = ArcASC->SpawnedActors[Handle];
+			UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
 
-		AAC->Initialize(ArcASC, this, Handle, InTargetData,  ActorGrantedAbility);
+			AAC->Initialize(ArcASC, this, Handle, InTargetData,  ActorGrantedAbility);	
+		}
 	}
 	
 	return true;

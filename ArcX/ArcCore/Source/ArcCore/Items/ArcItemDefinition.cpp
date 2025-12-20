@@ -114,6 +114,14 @@ EDataValidationResult UArcItemDefinition::IsDataValid(FDataValidationContext& Co
 	return Result;
 }
 
+void UArcItemDefinition::PostDuplicate(EDuplicateMode::Type DuplicateMode)
+{
+	if (DuplicateMode == EDuplicateMode::Normal)
+	{
+		ItemId = FGuid::NewGuid();
+	}
+}
+
 void UArcItemDefinition::UpdateAssetBundleData()
 {
 	if (UAssetManager::IsInitialized())
@@ -197,6 +205,11 @@ void UArcItemDefinition::GetAssetRegistryTags(FAssetRegistryTagsContext Context)
 		}
 		S.GetPtr<FArcItemFragment>()->GetAssetRegistryTags(Context);
 	}
+}
+
+void UArcItemDefinition::RegenerateItemId()
+{
+	ItemId = FGuid::NewGuid();
 }
 
 DEFINE_FUNCTION(UArcItemDefinition::execBP_FindItemFragment)

@@ -558,9 +558,9 @@ void UChaosNavWalkingMode::OnUnregistered()
 }
 
 
-void UChaosNavWalkingMode::Activate()
+void UChaosNavWalkingMode::Activate(const FMoverEventContext& Context)
 {
-	Super::Activate();
+	Super::Activate(Context);
 	
 	if (UMoverComponent* MoverComp = GetMoverComponent())
 	{

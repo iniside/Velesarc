@@ -57,8 +57,10 @@ void UArcAT_WaitEnhancedInputAction::Activate()
 
 	const ULocalPlayer* LP = PC->GetLocalPlayer();
 	check(LP);
+	
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	check(Subsystem);
+	
 	FModifyContextOptions Context;
 	Context.bForceImmediately = true;
 	Context.bIgnoreAllPressedKeysUntilRelease = false;

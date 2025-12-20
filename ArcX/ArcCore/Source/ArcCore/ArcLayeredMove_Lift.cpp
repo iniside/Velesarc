@@ -2,10 +2,13 @@
 
 #include "ArcLayeredMove_Lift.h"
 
+#include "ChaosNavWalkingMode.h"
 #include "MoverComponent.h"
 #include "MoverDataModelTypes.h"
 #include "MoverSimulationTypes.h"
 #include "MoverTypes.h"
+#include "ChaosMover/ChaosMoverLog.h"
+#include "ChaosMover/ChaosMoverSimulation.h"
 #include "Curves/CurveFloat.h"
 #include "Curves/CurveVector.h"
 #include "GameFramework/Actor.h"
@@ -240,6 +243,139 @@ FString FArcLayeredMove_Lift::ToSimpleString() const
 }
 
 void FArcLayeredMove_Lift::AddReferencedObjects(FReferenceCollector& Collector)
+{
+	Super::AddReferencedObjects(Collector);
+}
+
+
+FArcLayeredMove_NoVelocity::FArcLayeredMove_NoVelocity()
+{
+	Priority = 255;
+	DurationMs = 5000.f;
+	MixMode = EMoveMixMode::OverrideVelocity;
+}
+
+bool FArcLayeredMove_NoVelocity::GenerateMove_Async(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep
+	, UMoverBlackboard* SimBlackboard, FProposedMove& OutProposedMove)
+{
+	OutProposedMove.LinearVelocity = FVector::ZeroVector;
+	OutProposedMove.MixMode = EMoveMixMode::OverrideAll;
+	return true;
+}
+
+FLayeredMoveBase* FArcLayeredMove_NoVelocity::Clone() const
+{
+	FArcLayeredMove_NoVelocity* CopyPtr = new FArcLayeredMove_NoVelocity(*this);
+	return CopyPtr;
+}
+
+void FArcLayeredMove_NoVelocity::NetSerialize(FArchive& Ar)
+{
+	Super::NetSerialize(Ar);
+}
+
+UScriptStruct* FArcLayeredMove_NoVelocity::GetScriptStruct() const
+{
+	return FArcLayeredMove_NoVelocity::StaticStruct();
+}
+
+FString FArcLayeredMove_NoVelocity::ToSimpleString() const
+{
+	return FString::Printf(TEXT("No Velocity"));
+}
+
+void FArcLayeredMove_NoVelocity::AddReferencedObjects(FReferenceCollector& Collector)
+{
+	Super::AddReferencedObjects(Collector);
+}
+
+FArcChaosModifier_MaxSpeed::FArcChaosModifier_MaxSpeed()
+{
+	DurationMs = -1.0f;
+}
+
+void FArcChaosModifier_MaxSpeed::OnStart_Async(const FMovementModifierParams_Async& AsyncParams)
+{
+	if (!AsyncParams.IsValid())
+	{
+		return;
+	}
+
+	UChaosMoverSimulation* Sim = Cast<UChaosMoverSimulation>(AsyncParams.Simulation);
+	if (!Sim)
+	{
+		return;
+	}
+
+	FName ModeName = AsyncParams.SyncState->MovementMode;
+	IChaosCharacterMovementModeInterface* CharacterMode = Cast<IChaosCharacterMovementModeInterface>(Sim->FindMovementModeByName_Mutable(ModeName));
+	if (!CharacterMode)
+	{
+		UE_LOG(LogChaosMover, Warning, TEXT("ChaosStanceModifier only works with character modes"));
+		return;
+	}
+
+	if (MaxSpeedOverride.IsSet())
+	{
+		CharacterMode->OverrideMaxSpeed(MaxSpeedOverride.GetValue());
+	}
+}
+
+void FArcChaosModifier_MaxSpeed::OnEnd_Async(const FMovementModifierParams_Async& AsyncParams)
+{
+	if (!AsyncParams.IsValid())
+	{
+		return;
+	}
+
+	UChaosMoverSimulation* Sim = Cast<UChaosMoverSimulation>(AsyncParams.Simulation);
+	if (!Sim)
+	{
+		return;
+	}
+
+	FName ModeName = AsyncParams.SyncState->MovementMode;
+	IChaosCharacterMovementModeInterface* CharacterMode = Cast<IChaosCharacterMovementModeInterface>(Sim->FindMovementModeByName_Mutable(ModeName));
+	if (!CharacterMode)
+	{
+		UE_LOG(LogChaosMover, Warning, TEXT("ChaosStanceModifier only works with character modes"));
+		return;
+	}
+	
+	CharacterMode->ClearMaxSpeedOverride();
+}
+
+void FArcChaosModifier_MaxSpeed::OnPostMovement_Async(const FMovementModifierParams_Async& AsyncParams)
+{
+	//if (bCancelOnModeChange && CurrentModeName != AsyncParams.SyncState->MovementMode)
+	//{
+	//	DurationMs = 0;
+	//}
+}
+
+FMovementModifierBase* FArcChaosModifier_MaxSpeed::Clone() const
+{
+	return new FArcChaosModifier_MaxSpeed(*this);
+}
+
+void FArcChaosModifier_MaxSpeed::NetSerialize(FArchive& Ar)
+{
+	Super::NetSerialize(Ar);
+
+	Ar << MaxSpeedOverride;
+}
+
+UScriptStruct* FArcChaosModifier_MaxSpeed::GetScriptStruct() const
+{
+	return FArcChaosModifier_MaxSpeed::StaticStruct();
+}
+
+FString FArcChaosModifier_MaxSpeed::ToSimpleString() const
+{
+	return FString::Printf(TEXT("ArcChaosModifier_MaxSpeed"));
+}
+
+void FArcChaosModifier_MaxSpeed::AddReferencedObjects(class FReferenceCollector& Collector)
 {
 	Super::AddReferencedObjects(Collector);
 }

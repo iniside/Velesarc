@@ -42,13 +42,17 @@
 #include "Pawn/ArcPawnExtensionComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "KismetAnimationLibrary.h"
+#include "MoverComponent.h"
 
 #include "PlayerMappableInputConfig.h"
+#include "Engine/World.h"
 
 #include "GameMode/ArcExperienceData.h"
 #include "Misc/UObjectToken.h"
 #include "Player/ArcLocalPlayerBase.h"
 #include "Items/ArcItemDefinition.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Mover/ArcMoverTypes.h"
 
 #include "UI/ArcHUDBase.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
@@ -60,6 +64,15 @@ namespace ArcxHero
 	static const float LookYawRate = 300.0f;
 	static const float LookPitchRate = 165.0f;
 }; // namespace ArcxHero
+
+namespace Arcx::Input
+{
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Move, "InputTag.Move");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Look_Mouse, "InputTag.Look.Mouse");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Look_Stick, "InputTag.Look.Stick");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Jump, "InputTag.Jump");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Crouch, "InputTag.Crouch");
+}
 
 const FName UArcHeroComponentBase::NAME_BindInputsNow("BindInputsNow");
 const FName UArcHeroComponentBase::NAME_PlayerHeroCharacterInitialized("PlayerHeroCharacterInitialized");
@@ -457,6 +470,11 @@ void UArcHeroComponentBase::InitializePlayerInput(UInputComponent* PlayerInputCo
 			for (UArcInputActionConfig* InputConfig : PawnData->GetInputConfig())
 			{
 				NativeInitializeArcInput(ArcIC, InputConfig);
+
+				ArcIC->BindNativeAction(InputConfig, Arcx::Input::InputTag_Move, ETriggerEvent::Started, this, &ThisClass::Input_Move_Started, true);
+				ArcIC->BindNativeAction(InputConfig, Arcx::Input::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move, true);
+				ArcIC->BindNativeAction(InputConfig, Arcx::Input::InputTag_Move, ETriggerEvent::Completed, this, &ThisClass::Input_Move_Completed, true);
+				ArcIC->BindNativeAction(InputConfig, Arcx::Input::InputTag_Look_Mouse, ETriggerEvent::Triggered, this, &ThisClass::Input_LookMouse, true);
 				
 				TArray<uint32> BindHandles;
 				ArcIC->BindCustomInputHandlerActions(InputConfig, BindHandles);
@@ -523,6 +541,86 @@ bool UArcHeroComponentBase::IsReadyToBindInputs() const
 	return bReadyToBindInputs;
 }
 
+void UArcHeroComponentBase::Input_Move_Started(const FInputActionValue& InputActionValue)
+{
+	UE_LOG(LogTemp, Log, TEXT("Input_Move_Started"));
+	
+	MoveInputVector.X = 0;
+	MoveInputVector.Y = 0;
+}
+
+void UArcHeroComponentBase::Input_Move(const FInputActionValue& InputActionValue)
+{
+	APawn* Pawn = GetPawnChecked<APawn>();
+	AController* Controller = Pawn->GetController();
+	const FVector2D Value = InputActionValue.Get<FVector2D>();
+	MoveInputVector.X = Value.X;
+	MoveInputVector.Y = Value.Y;
+	
+	//if (Controller)
+	//{	
+	//	const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
+	//
+	//	if (Value.X != 0.0f)
+	//	{
+	//		const FVector MovementDirection = MovementRotation.RotateVector(FVector::RightVector);
+	//		
+	//		Pawn->AddMovementInput(MovementDirection, Value.X);
+	//	}
+	//
+	//	if (Value.Y != 0.0f)
+	//	{
+	//		const FVector MovementDirection = MovementRotation.RotateVector(FVector::ForwardVector);
+	//		
+	//		Pawn->AddMovementInput(MovementDirection, Value.Y);
+	//	}
+	//}
+}
+
+void UArcHeroComponentBase::Input_Move_Completed(const FInputActionValue& InputActionValue)
+{
+	UE_LOG(LogTemp, Log, TEXT("Input_Move_Completed"));
+	MoveInputVector.X = 0;
+	MoveInputVector.Y = 0;
+}
+
+void UArcHeroComponentBase::Input_LookMouse(const FInputActionValue& InputActionValue)
+{
+	APawn* Pawn = GetPawnChecked<APawn>();
+
+	const FVector2D Value = InputActionValue.Get<FVector2D>();
+
+	if (Value.X != 0.0f)
+	{
+		Pawn->AddControllerYawInput(Value.X);
+	}
+
+	if (Value.Y != 0.0f)
+	{
+		Pawn->AddControllerPitchInput(Value.Y);
+	}
+}
+
+void UArcHeroComponentBase::Input_LookStick(const FInputActionValue& InputActionValue)
+{
+	APawn* Pawn = GetPawnChecked<APawn>();
+
+	const FVector2D Value = InputActionValue.Get<FVector2D>();
+
+	const UWorld* World = GetWorld();
+	check(World);
+
+	if (Value.X != 0.0f)
+	{
+		//Pawn->AddControllerYawInput(Value.X * ArcHero::LookYawRate * World->GetDeltaSeconds());
+	}
+
+	if (Value.Y != 0.0f)
+	{
+		//Pawn->AddControllerPitchInput(Value.Y * ArcHero::LookPitchRate * World->GetDeltaSeconds());
+	}
+}
+
 void UArcHeroComponentBase::Input_AbilityInputTagPressed(FGameplayTag InputTag)
 {
 	const APawn* Pawn = GetPawnChecked<APawn>();
@@ -560,4 +658,256 @@ void UArcHeroComponentBase::Input_AbilityInputTagReleased(FGameplayTag InputTag)
 			ArcASC->AbilityInputTagReleased(InputTag);
 		}
 	}
+}
+
+UArcMoverInputProducerComponent::UArcMoverInputProducerComponent(const FObjectInitializer& ObjectInitializer)
+	: Super{ObjectInitializer}
+{
+}
+
+void UArcMoverInputProducerComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
+	APawn* Pawn = GetPawnChecked<APawn>();
+	
+	FRotator NewRotation = Pawn->GetControlRotation();
+	FRotator AimRot = UKismetMathLibrary::NormalizedDeltaRotator(NewRotation, LastControlRotation);
+	ControlRotationRate = AimRot.Yaw / GetWorld()->GetDeltaSeconds();
+	LastControlRotation = NewRotation;
+}
+
+void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult)
+{
+	FCharacterDefaultInputs& CharacterInputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
+	FArcMoverCustomInputs& CustomInputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FArcMoverCustomInputs>();
+	UArcHeroComponentBase* HeroComp = GetHeroComponent();
+	APawn* Pawn = GetPawnChecked<APawn>();
+	{
+		FVector Swizzled;
+		Swizzled.X = HeroComp->MoveInputVector.Y;
+		Swizzled.Y = HeroComp->MoveInputVector.X;
+		Swizzled.Z = 0;
+		Swizzled = Swizzled.GetClampedToSize(0, 1);
+		
+		if (OverrideInput.IsSet())
+		{
+			Swizzled = OverrideInput.GetValue();
+		}
+		
+		FRotator ControlRotation = Pawn->GetControlRotation();
+		ControlRotation.Pitch = 0.0f;
+		ControlRotation.Roll = 0.0f;
+		
+		FVector RotatedVector = UKismetMathLibrary::GreaterGreater_VectorRotator(Swizzled, ControlRotation);
+		RotatedVector.Normalize();
+		
+		CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, RotatedVector);	
+	}
+	
+	{
+		CharacterInputs.ControlRotation = Pawn->GetControlRotation();	
+	}
+	
+	{
+		CharacterInputs.bIsJumpJustPressed = false;
+	}
+	
+	{
+		CustomInputs.RotationMode = EArcMoverAimModeType::Strafe;
+	}
+	
+	{
+		FVector Intent = FVector::ZeroVector;
+		if (CharacterInputs.GetMoveInput().Size() != 0)
+		{
+			switch (CustomInputs.RotationMode)
+			{
+				case EArcMoverAimModeType::OrientToMovement:
+					Intent = CharacterInputs.GetMoveInput();
+					break;
+				case EArcMoverAimModeType::Strafe:
+				case EArcMoverAimModeType::Aim:
+					FRotator AimRot = CharacterInputs.ControlRotation;
+					AimRot.Pitch = 0.0f;
+					AimRot.Roll = 0.0f;
+					Intent = AimRot.Vector(); 
+					break;
+			}
+		}
+		else
+		{
+			switch (CustomInputs.RotationMode)
+			{
+				case EArcMoverAimModeType::OrientToMovement:
+				case EArcMoverAimModeType::Strafe:
+					Intent = CharacterInputs.GetMoveInput();
+					break;
+				case EArcMoverAimModeType::Aim:
+					FRotator AimRot = UKismetMathLibrary::NormalizedDeltaRotator(Pawn->GetActorRotation(), CharacterInputs.ControlRotation);
+					if (FMath::Abs(AimRot.Yaw) > 60)
+					{
+						AimRot.Pitch = 0.0f;
+						AimRot.Roll = 0.0f;
+						Intent = AimRot.Vector();
+					}
+					else
+					{
+						Intent = CharacterInputs.OrientationIntent;
+					}
+					break;
+			}
+		}
+		CharacterInputs.OrientationIntent = Intent;
+	}
+	
+	{
+
+		
+		CustomInputs.Gait = EArcMoverGaitType::Run;
+		if (GaitOverride.IsSet())
+		{
+			CustomInputs.Gait = GaitOverride.GetValue();
+		}
+		CustomInputs.ControlRotationRate = ControlRotationRate;
+		CustomInputs.WantsToCrouch = false;
+	}
+	
+	{
+		if (CustomInputs.RotationMode != EArcMoverAimModeType::OrientToMovement)
+		{
+			UMoverComponent* Mover = GetOwner()->FindComponentByClass<UMoverComponent>();
+			FVector Velocity = Mover->GetVelocity();
+			
+			Velocity.Z = 0.0f;
+			Velocity.Normalize();
+			
+			// MovementMode
+			
+			DirectionOfMovement = CharacterInputs.GetMoveInput();
+			if (DirectionOfMovement.Size() <= 0)
+			{
+				CustomInputs.MovementDirection = EArcMoverDirectionType::F;
+				CustomInputs.RotationOffset = 0.f;
+			}
+			else
+			{
+				FRotator MoveRot = UKismetMathLibrary::NormalizedDeltaRotator(DirectionOfMovement.Rotation(), CharacterInputs.OrientationIntent.Rotation());
+				MovementDirectionAngle = MoveRot.Yaw;
+				if (CustomInputs.MovementDirection == EArcMoverDirectionType::F)
+				{
+					FRotator AimRot = UKismetMathLibrary::NormalizedDeltaRotator(Pawn->GetActorRotation(), CharacterInputs.OrientationIntent.Rotation());
+					float Angle = 0;
+					if (CustomInputs.RotationOffset <= 0)
+					{
+						Angle = AimRot.Yaw;
+					}
+					else
+					{
+						Angle = CustomInputs.RotationOffset;
+					}
+					
+					if (Angle > 0)
+					{
+						bool bInRange = UKismetMathLibrary::InRange_FloatFloat(MovementDirectionAngle, -180, -170, true, true);
+						if (bInRange)
+						{
+							MovementDirectionAngle = 179.f;
+						}
+					}
+					else
+					{
+						bool bInRange = UKismetMathLibrary::InRange_FloatFloat(MovementDirectionAngle, 170, 180, true, true);
+						if (bInRange)
+						{
+							MovementDirectionAngle = -179.f;
+						}
+					}
+				}
+				
+				FArcMoverRotationThresholds Dirs = GetRotationThresholds(CustomInputs.MovementDirection);
+				
+				bool bInRangeF  = UKismetMathLibrary::InRange_FloatFloat(MovementDirectionAngle, Dirs.FL, Dirs.FR, true, true);
+				
+				bool bInRangeLL  = UKismetMathLibrary::InRange_FloatFloat(MovementDirectionAngle, Dirs.BL, Dirs.FL, true, true);
+				
+				bool bInRangeRL  = UKismetMathLibrary::InRange_FloatFloat(MovementDirectionAngle, Dirs.FR, Dirs.BR, true, true);
+				
+				if (bInRangeF)
+				{
+					CustomInputs.MovementDirection = EArcMoverDirectionType::F;
+				}
+				else if (bInRangeLL)
+				{
+					CustomInputs.MovementDirection = EArcMoverDirectionType::LL;
+				}
+				else if (bInRangeRL)
+				{
+					CustomInputs.MovementDirection = EArcMoverDirectionType::RL;
+				}
+				else
+				{
+					CustomInputs.MovementDirection = EArcMoverDirectionType::B;
+				}
+				
+				UCurveFloat* SelectedCurve = nullptr;
+				switch (CustomInputs.MovementDirection)
+				{
+					case EArcMoverDirectionType::F:
+						SelectedCurve = RotationOffsetF;
+						break;
+					case EArcMoverDirectionType::B:
+						SelectedCurve = RotationOffsetB;
+						break;
+					case EArcMoverDirectionType::LL:
+						SelectedCurve = RotationOffsetLL;
+						break;
+					case EArcMoverDirectionType::LR:
+						SelectedCurve = RotationOffsetLR;
+						break;
+					case EArcMoverDirectionType::RL:
+						SelectedCurve = RotationOffsetRL;
+						break;
+					case EArcMoverDirectionType::RR:
+						SelectedCurve = RotationOffsetRR;
+						break;
+				}
+		
+				if (SelectedCurve)
+				{
+					CustomInputs.RotationOffset = SelectedCurve->GetFloatValue(MovementDirectionAngle);
+				}
+			}
+		
+		}
+		else
+		{
+			CustomInputs.MovementDirection = EArcMoverDirectionType::F;		
+		}
+		
+		
+	}
+	
+	FString Info;
+	Info += FString::Printf(TEXT("Move Input X: %.2f Y: %.2f\n"), CharacterInputs.GetMoveInput().X, CharacterInputs.GetMoveInput().Y);
+	Info += FString::Printf(TEXT("Control Rotation Rate: %.2f\n"), ControlRotationRate);
+	Info += FString::Printf(TEXT("Movement Direction: %s\n"), *UEnum::GetValueAsString(CustomInputs.MovementDirection));
+	Info += FString::Printf(TEXT("Movement Direction Angle: %.2f\n"), MovementDirectionAngle);
+	Info += FString::Printf(TEXT("Rotation Offset: %.2f\n"), CustomInputs.RotationOffset);
+	Info += FString::Printf(TEXT("CustomInputs.MovementDirection %s\n"), *UEnum::GetValueAsString(CustomInputs.MovementDirection));
+	Info += FString::Printf(TEXT("Orientation Intent: X: %.2f Y: %.2f\n"), CharacterInputs.OrientationIntent.X, CharacterInputs.OrientationIntent.Y);
+	//Info += FString::Printf(TEXT("Orientation Intent: X: %.2f Y: %.2f\n"), CharacterInputs.OrientationIntent.X, CharacterInputs.OrientationIntent.Y);
+	
+	DrawDebugString(GetWorld(), Pawn->GetActorLocation() + FVector(0,0,100), Info, nullptr, FColor::White, 0.f, false, 1.5f);
+}
+
+UArcHeroComponentBase* UArcMoverInputProducerComponent::GetHeroComponent() const
+{
+	if (HeroComponent)
+	{
+		return HeroComponent;
+	}
+	
+	HeroComponent = GetOwner()->FindComponentByClass<UArcHeroComponentBase>();
+	return HeroComponent;
 }

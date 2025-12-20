@@ -78,6 +78,40 @@ FGameplayAbilityTargetDataHandle UArcTargetingBPF::HitResultArray(const TArray<F
 	return Handle;
 }
 
+FGameplayAbilityTargetDataHandle UArcTargetingBPF::MakeHitResultTargetData(FTargetingRequestHandle InHandle)
+{
+	FGameplayAbilityTargetDataHandle Handle;
+	
+	FTargetingDefaultResultsSet* TargetingResults = FTargetingDefaultResultsSet::Find(InHandle);
+	if (!TargetingResults || TargetingResults->TargetResults.IsEmpty())
+	{
+		return Handle;
+	}
+	FGameplayAbilityTargetData_SingleTargetHit*	NewData = new FGameplayAbilityTargetData_SingleTargetHit();
+	NewData->HitResult = TargetingResults->TargetResults[0].HitResult;
+	Handle.Add(NewData);
+	
+	return Handle;
+}
+
+FGameplayAbilityTargetDataHandle UArcTargetingBPF::MakeHitResultArrayTargetData(FTargetingRequestHandle InHandle)
+{
+	FGameplayAbilityTargetDataHandle Handle;
+	
+	FTargetingDefaultResultsSet* TargetingResults = FTargetingDefaultResultsSet::Find(InHandle);
+	
+	Handle.Data.Reserve(TargetingResults->TargetResults.Num());
+	
+	for (const FTargetingDefaultResultData& Hit : TargetingResults->TargetResults)
+	{
+		FGameplayAbilityTargetData_SingleTargetHit*	NewData = new FGameplayAbilityTargetData_SingleTargetHit();
+		NewData->HitResult = Hit.HitResult;
+		Handle.Add(NewData);
+	}
+	
+	return Handle;
+}
+
 FGameplayAbilityTargetDataHandle UArcTargetingBPF::MakeProjectileTargetData(FTargetingRequestHandle InHandle)
 {
 	FTargetingSourceContext* SourceContext = FTargetingSourceContext::Find(InHandle);

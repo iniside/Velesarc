@@ -48,12 +48,19 @@ namespace UE::Cameras
 		virtual void OnRun(const FCameraNodeEvaluationParams& Params, FCameraNodeEvaluationResult& OutResult) override
 		{
 			APlayerController* PC = Params.EvaluationContext->GetPlayerController();
-			if (!PC)
+			UActorComponent* AC = Cast<UActorComponent>(Params.EvaluationContext->GetOwner());
+			APawn* Pawn = nullptr;
+			if (PC)
 			{
-				return;
+				Pawn = PC->GetPawnOrSpectator();
 			}
 
-			const APawn* Pawn = PC->GetPawnOrSpectator();
+			
+			if (!Pawn && AC)
+			{
+				Pawn = AC->GetOwner<APawn>();
+			}
+			
 			if (!Pawn)
 			{
 				return;
@@ -61,15 +68,15 @@ namespace UE::Cameras
 
 			FVector OwnerLocation = Pawn->GetActorLocation();
 			
-			if (const APawn* TargetCharacter = Cast<APawn>(PC->GetPawn()))
+			if (Pawn)
 			{
 				if (ComponentTag.IsNone())
 				{
 					return;
 				}
 				
-				USkeletalMeshComponent* SMC = TargetCharacter->FindComponentByTag<USkeletalMeshComponent>(ComponentTag);
-				if (SocketName != NAME_None)
+				USkeletalMeshComponent* SMC = Pawn->FindComponentByTag<USkeletalMeshComponent>(ComponentTag);
+				if (SocketName != NAME_None && SMC)
 				{
 					FTransform CompSpaceTM = SMC->GetSocketTransform(SocketName
 						, ERelativeTransformSpace::RTS_Component);
@@ -81,12 +88,12 @@ namespace UE::Cameras
 					FTransform WorldSpaceTM = SMC->GetSocketTransform(SocketName
 						, ERelativeTransformSpace::RTS_World);
 				
-					FVector ActorLoc = TargetCharacter->GetActorLocation();
+					FVector ActorLoc = Pawn->GetActorLocation();
 					//OwnerLocation.Y += CompSpaceTM.GetLocation().Y;
 					OwnerLocation.Z = WorldSpaceTM.GetLocation().Z;
 					if (bUsePawnBaseEyeHeight)
 					{
-						OwnerLocation.Z += TargetCharacter->BaseEyeHeight;
+						OwnerLocation.Z += Pawn->BaseEyeHeight;
 					}
 					
 					//PivotSocketTransform.SetLocation(ActorLoc);

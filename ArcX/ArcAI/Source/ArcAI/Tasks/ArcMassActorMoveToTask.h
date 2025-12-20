@@ -82,6 +82,38 @@ struct FArcMassActorMoveToTaskInstanceData
 	float CalculatedAcceptanceRadius = 0.f;
 };
 
+USTRUCT()
+struct FArcMassActorMoveToFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FVector Destination = FVector::Zero();
+
+	UPROPERTY()
+	float AcceptanceRadius = 32.f;
+
+	UPROPERTY()
+	float DestinationMoveTolerance = 0.f;
+	
+	UPROPERTY()
+	bool bTrackMovingGoal = 0.f;
+	
+	UPROPERTY()
+	TWeakObjectPtr<AActor> TargetActor;
+	
+	FAIMoveRequest MoveReq;
+};
+
+template<>
+struct TMassFragmentTraits<FArcMassActorMoveToFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
 USTRUCT(meta = (DisplayName = "Arc Mass Actor Move To", Category = "AI|Action"))
 struct FArcMassActorMoveToTask : public FMassStateTreeTaskBase
 {
@@ -106,31 +138,9 @@ public:
 
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorFragment;
 	TStateTreeExternalDataHandle<FMassMoveTargetFragment> MoveTargetHandle;
+	TStateTreeExternalDataHandle<FArcMassActorMoveToFragment> MassActorMoveToFragment;
 };
 
-USTRUCT()
-struct FArcMassActorMoveToFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-	UPROPERTY()
-	FVector Destination = FVector::Zero();
-
-	UPROPERTY()
-	float AcceptanceRadius = 32.f;
-
-	UPROPERTY()
-	TWeakObjectPtr<AActor> TargetActor;
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassActorMoveToFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
 
 USTRUCT()
 struct FArcMassActorMoveToTag : public FMassTag

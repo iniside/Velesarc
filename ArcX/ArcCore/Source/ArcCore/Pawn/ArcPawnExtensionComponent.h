@@ -38,7 +38,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogPawnExtenstionComponent
  *
  *	Component used to add functionality to all Pawn classes.
  */
-UCLASS()
+UCLASS(ClassGroup = (Arc), meta = (BlueprintSpawnableComponent))
 class ARCCORE_API UArcPawnExtensionComponent
 		: public UArcPawnComponent
 		, public IGameFrameworkInitStateInterface

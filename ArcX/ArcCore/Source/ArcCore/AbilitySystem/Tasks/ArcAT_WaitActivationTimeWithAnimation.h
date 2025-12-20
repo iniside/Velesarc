@@ -31,26 +31,71 @@
 #include "Items/Fragments/ArcItemFragment.h"
 #include "ArcAT_WaitActivationTimeWithAnimation.generated.h"
 
+class UInputMappingContext;
+class UInputAction;
+
+UENUM(BlueprintType)
+enum class EArcActivationMontageMode : uint8
+{
+	// One montage will be played from start to end.
+	SingleMontage,
+	/**
+	 * Started Montage will be played, then loop montage will be played in loop, until there is confirmation
+	 * After confirmation end montage will be played.
+	 */
+	StartEndAndLoopMontage,
+	
+	// Start montage will be played first then End Montage will be played.
+	StartAndEndMontage
+};
+
 USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct FArcItemFragment_ActivationTimeMontages : public FArcItemFragment
 {
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
-	TSoftObjectPtr<UAnimMontage> StartMontage;
-
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
-	TSoftObjectPtr<UAnimMontage> LoopMontage;
+	EArcActivationMontageMode Mode = EArcActivationMontageMode::SingleMontage;
 	
 	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	FGameplayTagContainer EventTags;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	TSoftObjectPtr<UAnimMontage> StartMontage;
+
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game", EditConditionHides, EditCondition="Mode == EArcActivationMontageMode::StartEndAndLoopMontage"))
+	TSoftObjectPtr<UAnimMontage> LoopMontage;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game", EditConditionHides, EditCondition="Mode == EArcActivationMontageMode::StartAndEndMontage || Mode == EArcActivationMontageMode::StartEndAndLoopMontage"))
 	TSoftObjectPtr<UAnimMontage> EndMontage;
 
+	/**
+	 * Montage that will be played after End Montage.
+	 */
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	TSoftObjectPtr<UAnimMontage> PostEndMontage;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	TObjectPtr<UInputMappingContext> InputMappingContext;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	int32 InputPriority = 200;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
+	TObjectPtr<UInputAction> InputAction;
+	
 	UPROPERTY(EditAnywhere)
 	bool bBroadcastEventTagsOnInputConfirm = false;
 
 	UPROPERTY(EditAnywhere)
 	bool bReachedActivationTime = false;
 
+	/**
+	 * If tru it will require pressing input action to confirm activation and then it will play EndMontage and PostEndMontage
+	 */
+	UPROPERTY(EditAnywhere)
+	bool bRequiresInputConfirm = false;
+	
 	UPROPERTY(EditAnywhere)
 	FGameplayTag ActivationTag;
 };
@@ -67,19 +112,23 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 		, meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "TRUE"))
 	static UArcAT_WaitActivationTimeWithAnimation* WaitActivationTimeWithAnimation (UGameplayAbility* OwningAbility
 																					, FName TaskInstanceName
-																					, bool bInWaitForInputConfirm
 																					, bool bInBroadcastEventTagsOnInputConfirm
+																					, float EndTime
+																					, FGameplayTag NotifyEndTimeTag
 																					, FGameplayTagContainer InEventTags
 																					, FGameplayTag InActivationTag
 																					, FGameplayTagContainer InputConfirmedRequiredTags
 																					, FGameplayTagContainer InputDenyRequiredTags);
 
 	virtual void Activate() override;
-
+	virtual void OnDestroy(bool bInOwnerFinished) override;
+	
 	void HandleOnActivationFinished();
 	void HandleFinished();
 	
-	void OnStartMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void HandleOnStartMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void HandleOnEndMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void HandleOnPostEndMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 	
 	void HandleActivationTimeChanged(UArcCoreGameplayAbility* InAbility, float NewTime);
 
@@ -88,38 +137,65 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 	UFUNCTION()
 	void HandleOnInputPressed(FGameplayAbilitySpec& InSpec);
 
-	bool bWaitForInputConfirm = false;
+	void HandleOnInputTriggered(UInputAction* InInputAction);
+	
+	EArcActivationMontageMode Mode;
+	
 	bool bBroadcastEventTagsOnInputConfirm = false;
 	bool bReachedActivationTime = false;
-
+	float EndTime = 0;
+	bool bFinished = false;
+	float StartEndPlayRate = 1.f;
 	
 	FGameplayTagContainer InputConfirmedRequiredTags;
 	FGameplayTagContainer InputDenyRequiredTags;
 	
 	FGameplayTagContainer EventTags;
 	FGameplayTag ActivationTag;
-
+	FGameplayTag NotifyEndTimeTag;
+	
 	FDelegateHandle EventHandle;
 	FTimerHandle ActivationTimerHandle;
 
 	FDelegateHandle InputDelegateHandle;
 	
 	FOnMontageEnded MontageEndedDelegate;
-	FOnMontageBlendingOutStarted BlendingOutDelegate;
+	FOnMontageEnded StartMontageEndedDelegate;
+	
+	FOnMontageEnded EndMontageEndedDelegate;
+	FOnMontageEnded PostEndMontageEndedDelegate;
 	
 	TWeakObjectPtr<UAnimMontage> CurrentMontage;
+	
+	int32 TriggeredHandle;
 	
 	UPROPERTY(BlueprintAssignable)
 	FArcPlayMontageAndWaitForEventDynamic OnEventReceived;
 
 	UPROPERTY(BlueprintAssignable)
 	FArcPlayMontageAndWaitForEventDynamic OnActivationFinished;
+
+	UPROPERTY(BlueprintAssignable)
+	FArcPlayMontageAndWaitForEventDynamic OnStartMontageStarted;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcPlayMontageAndWaitForEventDynamic OnStartMontageEnded;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcPlayMontageAndWaitForEventDynamic OnEndMontageStarted;
+	
+	UPROPERTY(BlueprintAssignable)
+	FArcPlayMontageAndWaitForEventDynamic OnEndMontageEnded;
 	
 	UPROPERTY(BlueprintAssignable)
 	FArcPlayMontageAndWaitForEventDynamic OnInputConfirmed;
 	
 	UPROPERTY(BlueprintAssignable)
 	FArcPlayMontageAndWaitForEventDynamic OnActivationTimeChanged;
+	
+
+	UPROPERTY(BlueprintAssignable)
+	FArcPlayMontageAndWaitForEventDynamic OnPostEndMontageEnded;
 	
 	bool HandleNotifiesTick(float DeltaTime);
 	
@@ -130,6 +206,7 @@ class ARCCORE_API UArcAT_WaitActivationTimeWithAnimation : public UAbilityTask
 		FGameplayTag Tag;
 		bool bPlayed;
 		
+		bool bResetPlayRate = false;
 		bool bChangePlayRate = false;
 		float PlayRate = 1.0f;
 	};

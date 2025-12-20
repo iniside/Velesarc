@@ -1699,7 +1699,7 @@ void UArcAbilityActorComponent::Initialize(UArcCoreAbilitySystemComponent* Ownin
 	if (!RootPrim)
 	{
 		UE_LOG(LogArcAbilitySystem, Warning, TEXT("Actor %s does not have a root primitive component."), *GetOwner()->GetName());
-		return;
+		//return;
 	}
 
 	ENetMode NetMode = GetNetMode();
@@ -1743,17 +1743,20 @@ void UArcAbilityActorComponent::Initialize(UArcCoreAbilitySystemComponent* Ownin
 		return;
 	}
 	
-	if (!RootPrim->OnComponentHit.IsAlreadyBound(this, &UArcAbilityActorComponent::NativeOnActorHit))
+	if (RootPrim)
 	{
-		RootPrim->OnComponentHit.AddDynamic(this, &UArcAbilityActorComponent::NativeOnActorHit);
-	}
-	if (!RootPrim->OnComponentBeginOverlap.IsAlreadyBound(this, &UArcAbilityActorComponent::NativeOnActorOverlapStart))
-	{
-		RootPrim->OnComponentBeginOverlap.AddDynamic(this, &UArcAbilityActorComponent::NativeOnActorOverlapStart);
-	}
-	if (!RootPrim->OnComponentEndOverlap.IsAlreadyBound(this, &UArcAbilityActorComponent::NativeOnActorOverlapEnd))
-	{
-		RootPrim->OnComponentEndOverlap.AddDynamic(this, &UArcAbilityActorComponent::NativeOnActorOverlapEnd);
+		if (!RootPrim->OnComponentHit.IsAlreadyBound(this, &UArcAbilityActorComponent::NativeOnActorHit))
+		{
+			RootPrim->OnComponentHit.AddDynamic(this, &UArcAbilityActorComponent::NativeOnActorHit);
+		}
+		if (!RootPrim->OnComponentBeginOverlap.IsAlreadyBound(this, &UArcAbilityActorComponent::NativeOnActorOverlapStart))
+		{
+			RootPrim->OnComponentBeginOverlap.AddDynamic(this, &UArcAbilityActorComponent::NativeOnActorOverlapStart);
+		}
+		if (!RootPrim->OnComponentEndOverlap.IsAlreadyBound(this, &UArcAbilityActorComponent::NativeOnActorOverlapEnd))
+		{
+			RootPrim->OnComponentEndOverlap.AddDynamic(this, &UArcAbilityActorComponent::NativeOnActorOverlapEnd);
+		}	
 	}
 	
 	OnInitializedEvent.Broadcast();
