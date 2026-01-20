@@ -348,12 +348,14 @@ UArcAT_WaitAbilityStateTree::UArcAT_WaitAbilityStateTree(const FObjectInitialize
 UArcAT_WaitAbilityStateTree* UArcAT_WaitAbilityStateTree::WaitAbilityStateTree(UGameplayAbility* OwningAbility
 																			  , const FStateTreeReference& StateTreeRef
 																			  , FGameplayTag InputEventTag
+																			  , FGameplayTag InputReleasedEventTag
 																			  , FGameplayTagContainer EventTags)
 {
 	UArcAT_WaitAbilityStateTree* MyObj = NewAbilityTask<UArcAT_WaitAbilityStateTree>(OwningAbility);
 	MyObj->StateTreeRef = StateTreeRef;
 	MyObj->EventTags = EventTags;
 	MyObj->InputEventTag = InputEventTag;
+	MyObj->InputReleasedEventTag = InputReleasedEventTag;
 	
 	return MyObj;
 }
@@ -377,6 +379,12 @@ void UArcAT_WaitAbilityStateTree::Activate()
 			, &UArcAT_WaitAbilityStateTree::HandleOnInputPressed));	
 	}
 	
+	if (InputReleasedEventTag.IsValid())
+	{
+		InputDelegateHandle = ArcASC->AddOnInputReleasedMap(GetAbilitySpecHandle(), FArcAbilityInputDelegate::FDelegate::CreateUObject(this
+			, &UArcAT_WaitAbilityStateTree::HandleOnInputReleased));	
+	}
+	
 	if (bActivated)
 	{
 		EventHandle = ArcASC->AddGameplayEventTagContainerDelegate(EventTags
@@ -390,6 +398,13 @@ void UArcAT_WaitAbilityStateTree::HandleOnInputPressed(FGameplayAbilitySpec& InS
 	FArcGameplayAbilityInputEvent Event;
 	Event.InputTag = InputEventTag;
 	Context.SendEvent(InputEventTag, FConstStructView::Make(Event));
+}
+
+void UArcAT_WaitAbilityStateTree::HandleOnInputReleased(FGameplayAbilitySpec& InSpec)
+{
+	FArcGameplayAbilityInputEvent Event;
+	Event.InputTag = InputReleasedEventTag;
+	Context.SendEvent(InputReleasedEventTag, FConstStructView::Make(Event));
 }
 
 void UArcAT_WaitAbilityStateTree::HandleOnGameplayEvent(FGameplayTag EventTag

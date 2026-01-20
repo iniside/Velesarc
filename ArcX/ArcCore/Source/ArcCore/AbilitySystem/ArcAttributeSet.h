@@ -39,6 +39,25 @@ struct FGameplayEffectModCallbackData;
 	AttributeHandlers.FindOrAdd(Get##AttributeName##Attribute()) = \
 		AttributeName##Handler();
 
+#define ARC_DEFINE_PRE_ATTRIBUTE_HANDLER(AttributeName)                    \
+	 TFunction<void(const FGameplayAttribute& Attribute, float& NewValue)> ClassName::PreAttributeName##Handler()
+	 
+#define ARC_DECLARE_PRE_ATTRIBUTE_HANDLER(ClassName, AttributeName)        \
+	 TFunction<void(const FGameplayAttribute& Attribute, float& NewValue)> ClassName::PreAttributeName##Handler()
+	 
+#define ARC_REGISTER_PRE_ATTRIBUTE_HANDLER(AttributeName)              \
+	 PreAttributeHandlers.FindOrAdd(Get##AttributeName##Attribute()) = PreAttributeName##Handler();
+	 
+#define ARC_DEFINE_POST_ATTRIBUTE_HANDLER(AttributeName)                    \
+	TFunction<void(const FGameplayAttribute& Attribute, float OldValue, float NewValue)> Post##AttributeName##Handler();
+
+#define ARC_DECLARE_POST_ATTRIBUTE_HANDLER(ClassName, AttributeName)        \
+	TFunction<void(const FGameplayAttribute& Attribute, float OldValue, float NewValue)> ClassName::Post##AttributeName##Handler()
+
+#define ARC_REGISTER_POST_ATTRIBUTE_HANDLER(AttributeName)              \
+	PostAttributeHandlers.FindOrAdd(Get##AttributeName##Attribute()) = Post##AttributeName##Handler();
+
+
 /**
  *
  */
@@ -53,6 +72,8 @@ protected:
 	TMap<FGameplayAttribute, TFunction<void(const FGameplayEffectModCallbackData& Data)>> AttributeHandlers;
 	mutable TMap<FGameplayAttribute, FAggregator*> Aggregators;
 	
+	TMap<FGameplayAttribute, TFunction<void(const FGameplayAttribute& Attribute, float& NewValue)>> PreAttributeHandlers;
+	TMap<FGameplayAttribute, TFunction<void(const FGameplayAttribute& Attribute, float OldValue, float NewValue)>> PostAttributeHandlers;
 public:
 	void SetArcASC(class UArcCoreAbilitySystemComponent* InNxASC);
 

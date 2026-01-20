@@ -1682,11 +1682,21 @@ void UArcAbilityActorComponent::BeginPlay()
 
 }
 
+void UArcAbilityActorComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (ASC.IsValid() && AbilityActorHandle.IsValid())
+	{
+		ASC->SpawnedActors.Remove(AbilityActorHandle);
+	}
+	
+	Super::EndPlay(EndPlayReason);
+}
+
 void UArcAbilityActorComponent::Initialize(UArcCoreAbilitySystemComponent* OwningASC
-	, UArcCoreGameplayAbility* InInstigatorAbility
-	, const FArcAbilityActorHandle& InHandle
-	, const FGameplayAbilityTargetDataHandle& InTargetData
-	, TSubclassOf<UArcActorGameplayAbility> InActorGrantedAbility)
+										   , UArcCoreGameplayAbility* InInstigatorAbility
+										   , const FArcAbilityActorHandle& InHandle
+										   , const FGameplayAbilityTargetDataHandle& InTargetData
+										   , TSubclassOf<UArcActorGameplayAbility> InActorGrantedAbility)
 {
 	ASC = OwningASC;
 	AbilityActorHandle = InHandle;
@@ -1764,11 +1774,21 @@ void UArcAbilityActorComponent::Initialize(UArcCoreAbilitySystemComponent* Ownin
 
 AActor* UArcAbilityActorComponent::GetAvatar() const
 {
+	if (!ASC.IsValid())
+	{
+		return nullptr;
+	}
+	
 	return ASC->GetAvatarActor();
 }
 
 AActor* UArcAbilityActorComponent::GetOwnerActor() const
 {
+	if (!ASC.IsValid())
+	{
+		return nullptr;
+	}
+	
 	return ASC->GetAvatarActor();
 }
 

@@ -898,7 +898,7 @@ void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeM
 	Info += FString::Printf(TEXT("Orientation Intent: X: %.2f Y: %.2f\n"), CharacterInputs.OrientationIntent.X, CharacterInputs.OrientationIntent.Y);
 	//Info += FString::Printf(TEXT("Orientation Intent: X: %.2f Y: %.2f\n"), CharacterInputs.OrientationIntent.X, CharacterInputs.OrientationIntent.Y);
 	
-	DrawDebugString(GetWorld(), Pawn->GetActorLocation() + FVector(0,0,100), Info, nullptr, FColor::White, 0.f, false, 1.5f);
+	//DrawDebugString(GetWorld(), Pawn->GetActorLocation() + FVector(0,0,100), Info, nullptr, FColor::White, 0.f, false, 1.5f);
 }
 
 UArcHeroComponentBase* UArcMoverInputProducerComponent::GetHeroComponent() const

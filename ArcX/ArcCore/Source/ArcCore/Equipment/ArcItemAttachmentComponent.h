@@ -541,7 +541,7 @@ public:
 	bool DoesSlotHaveAttachedActor(const FGameplayTag& InSlot) const;
 
 public:
-	ACharacter* FindCharacter() const;
+	AActor* FindCharacter() const;
 
 	void SetVisualItemAttachment(UArcItemDefinition* InItemDefinition, const FArcItemId& ForItem);
 	void ResetVisualItemAttachment(const FArcItemId& ForItem);

@@ -93,7 +93,7 @@ void FArcAttachmentHandler_SkeletalMesh::HandleItemAttach(UArcItemAttachmentComp
 	
 	FArcItemAttachment* LocalAttachment = const_cast<FArcItemAttachment*>(InAttachmentComponent->GetAttachment(InItemId));
 	
-	ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+	AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 	
 	USkeletalMeshComponent* SpawnedComponent = SpawnComponent<USkeletalMeshComponent>(OwnerCharacter, InAttachmentComponent, ItemAttachment);
 	if (SpawnedComponent == nullptr)

@@ -22,6 +22,7 @@
 #pragma once
 
 #include "ArcMacroDefines.h"
+#include "ArcNamedPrimaryAssetId.h"
 #include "QuickBar/ArcSelectedQuickBarSlotList.h"
 #include "Components/ActorComponent.h"
 
@@ -30,6 +31,7 @@
 #include "StructUtils/InstancedStruct.h"
 
 #include "Items/ArcItemId.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 
@@ -149,6 +151,9 @@ enum class EArcQuickSlotsMode : uint8
 
 	// Slots can never be cycled, and they are always activated when item is added to slot.
 	AutoActivateOnly,
+	
+	// User needs to manually activate slots on quick bar.
+	ManualActivationOnly
 };
 
 USTRUCT(BlueprintType)
@@ -173,9 +178,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Arc Core")
 	bool bCanAutoSelectOnItemAddedToSlot = false;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core", meta = (Categories = "QuickBar"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core", meta = (Categories = "QuickBar,BarId"))
 	FGameplayTag BarId;
 
+	/**
+	 *  Can be used to add items from parent bar to this bar.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core", meta = (Categories = "QuickSlot"))
+	FGameplayTag ParentQuickSlot;
 	/**
 	 * Item must have all of these tags to be added to this QuickBar.
 	 */
@@ -200,6 +210,29 @@ public:
 	{
 		return BarId == Other;
 	}
+};
+
+USTRUCT(BlueprintType)
+struct FArcQuickBarItem
+{
+	GENERATED_BODY()
+	
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core", meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false))
+	FArcNamedPrimaryAssetId Item;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core")
+	FGameplayTag QuickSlotId;
+};
+
+USTRUCT(BlueprintType)
+struct FArcItemFragment_QuickBarItems : public FArcItemFragment
+{
+	GENERATED_BODY()
+	
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TArray<FArcQuickBarItem> ItemsToAdd;
 };
 
 UCLASS(BlueprintType)
@@ -448,8 +481,18 @@ public:
 
 	void HandleSlotDeactivated(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId);
 
+	UFUNCTION(BlueprintCallable, Category = "Arc Core")
+	FGameplayTag FindQuickSlotForItem(const FArcItemId& InItemId);
 	
-
+	UFUNCTION(BlueprintCallable, Category = "Arc Core")
+	FGameplayTag FindSubQuickBarForSlot(const FGameplayTag& InQuickSlot);
+	
+	UFUNCTION(BlueprintCallable, Category = "Arc Core")
+	void ActivateQuickBar(const FGameplayTag& InBarId);
+	
+	UFUNCTION(BlueprintCallable, Category = "Arc Core")
+	void DeactivateQuickBar(const FGameplayTag& InBarId);
+	
 	const TArray<FArcQuickBar>& GetQuickBars() const
 	{
 		return QuickBars;

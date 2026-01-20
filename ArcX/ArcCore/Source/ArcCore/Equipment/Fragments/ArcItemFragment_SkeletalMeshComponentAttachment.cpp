@@ -94,7 +94,7 @@ void FArcAttachmentHandler_SkeletalMeshComponent::HandleItemAttach(UArcItemAttac
 	
 	FArcItemAttachment* LocalAttachment = const_cast<FArcItemAttachment*>(InAttachmentComponent->GetAttachment(InItemId));
 	
-	ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+	AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 
 	
 	

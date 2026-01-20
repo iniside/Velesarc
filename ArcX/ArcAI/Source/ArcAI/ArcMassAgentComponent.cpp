@@ -5,6 +5,7 @@
 #include "MassCommonFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassEntityView.h"
+#include "Engine/World.h"
 
 // Sets default values for this component's properties
 UArcMassAgentComponent::UArcMassAgentComponent()

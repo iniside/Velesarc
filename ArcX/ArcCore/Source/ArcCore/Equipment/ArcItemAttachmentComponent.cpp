@@ -200,14 +200,14 @@ bool UArcItemAttachmentComponent::DoesSlotHaveAttachedActor(const FGameplayTag& 
 	return ActorCheck != nullptr;
 }
 
-ACharacter* UArcItemAttachmentComponent::FindCharacter() const
+AActor* UArcItemAttachmentComponent::FindCharacter() const
 {
 	if (APlayerState* PS = GetOwner<APlayerState>())
 	{
-		return PS->GetPawn<ACharacter>();
+		return PS->GetPawn<APawn>();
 	}
 
-	return GetOwner<ACharacter>();
+	return GetOwner();
 }
 
 void UArcItemAttachmentComponent::SetVisualItemAttachment(UArcItemDefinition* InItemDefinition, const FArcItemId& ForItem)
@@ -424,7 +424,7 @@ void UArcItemAttachmentComponent::AttachItemToSocket(const FArcItemId& InItem
 	}
 
 	APlayerState* PS = Cast<APlayerState>(GetOwner());
-	ACharacter* Character = PS->GetPawn<ACharacter>();
+	AActor* Character = FindCharacter();
 	if (Character == nullptr)
 	{
 		return;
@@ -872,7 +872,6 @@ void UArcItemAttachmentComponent::HandleAttachSocketChanged(const FArcItemId& In
 
 	if (ItemAttachment.OwnerItemDefinition == nullptr)
 	{
-		AttachedTo = FindCharacter()->GetMesh();
 		if (!ComponentTag.IsNone())
 		{
 			AttachedTo = FindCharacter()->FindComponentByTag<USceneComponent>(ComponentTag);

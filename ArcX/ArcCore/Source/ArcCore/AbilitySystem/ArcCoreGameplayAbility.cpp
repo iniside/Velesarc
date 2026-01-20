@@ -1374,7 +1374,8 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 	, const FGameplayAbilityTargetDataHandle& InTargetData
 	, EArcAbilityActorSpawnOrigin SpawnLocationType
 	, FVector CustomSpawnLocation
-	, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility)
+	, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility
+	, FArcAbilityActorHandle& OutActorHandle)
 {
 	if (ActorClass == nullptr)
 	{
@@ -1497,7 +1498,27 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 		}
 	}
 	
+	OutActorHandle = Handle;
 	return true;
+}
+
+bool UArcCoreGameplayAbility::GetSpawnedActor(const FArcAbilityActorHandle& OutActorHandle, AActor*& OutActor)
+{
+	UArcCoreAbilitySystemComponent* ArcASC =  Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	if (ArcASC == nullptr)
+	{
+		OutActor = nullptr;
+		return false;
+	}
+	
+	if (ArcASC->SpawnedActors.Contains(OutActorHandle))
+	{
+		OutActor = ArcASC->SpawnedActors[OutActorHandle].Get();
+		return true;
+	}
+	
+	OutActor = nullptr;
+	return false;
 }
 
 UGameplayTask* UArcCoreGameplayAbility::GetTaskByName(FName TaskName) const

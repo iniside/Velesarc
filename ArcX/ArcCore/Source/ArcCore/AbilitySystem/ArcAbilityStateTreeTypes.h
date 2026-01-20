@@ -221,6 +221,7 @@ public:
 	static UArcAT_WaitAbilityStateTree* WaitAbilityStateTree(UGameplayAbility* OwningAbility
 															 , const FStateTreeReference& StateTreeRef
 															 , FGameplayTag InputEventTag
+															 , FGameplayTag InputReleasedEventTag
 															 , FGameplayTagContainer EventTags);
 
 	UPROPERTY(BlueprintAssignable)
@@ -238,6 +239,7 @@ public:
 protected:
 	FStateTreeReference StateTreeRef;
 	FGameplayTag InputEventTag;
+	FGameplayTag InputReleasedEventTag;
 	FGameplayTagContainer EventTags;
 	
 	FDelegateHandle EventHandle;
@@ -246,6 +248,7 @@ protected:
 	FArcGameplayAbilityStateTreeContext Context;
 	
 	void HandleOnInputPressed(FGameplayAbilitySpec& InSpec);
+	void HandleOnInputReleased(FGameplayAbilitySpec& InSpec);
 	void HandleOnGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload);
 	
 	virtual void OnDestroy(bool AbilityEnded) override;

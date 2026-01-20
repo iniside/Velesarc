@@ -331,11 +331,7 @@ UAIPerceptionComponent* AArcCorePawnAbilitySystem::GetPerceptionComponent()
 
 AArcCorePlayerPawn::AArcCorePlayerPawn(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-{
-	AbilitySystemComponent = CreateDefaultSubobject<UArcCoreAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
-	AbilitySystemComponent->SetIsReplicated(true);
-	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
-	
+{	
 }
 
 void AArcCorePlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -497,7 +493,15 @@ void AArcCorePlayerPawn::GetActorEyesViewPoint(FVector& OutLocation
 
 UAbilitySystemComponent* AArcCorePlayerPawn::GetAbilitySystemComponent() const
 {
-	return AbilitySystemComponent;
+	if (!AbilitySystemComponent2)
+	{
+		if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(GetPlayerState<AArcCorePlayerState>()))
+		{
+			AbilitySystemComponent2 = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent());
+		}	
+	}
+	
+	return AbilitySystemComponent2;
 }
 
 void AArcCorePlayerPawn::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const

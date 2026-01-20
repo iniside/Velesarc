@@ -27,7 +27,7 @@ void UMassSightPerceptionProcessor::ConfigureQueries(const TSharedRef<FMassEntit
 
     // Query for entities that can be perceived
     PerceivableQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-    PerceivableQuery.AddRequirement<FMassSpatialHashFragment>(EMassFragmentAccess::ReadOnly);
+    PerceivableQuery.AddRequirement<FArcMassSpatialHashFragment>(EMassFragmentAccess::ReadOnly);
     PerceivableQuery.AddTagRequirement<FMassPerceivableTag>(EMassFragmentPresence::All);
 }
 

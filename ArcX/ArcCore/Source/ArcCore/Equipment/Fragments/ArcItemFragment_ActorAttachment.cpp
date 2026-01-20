@@ -43,7 +43,7 @@ bool FArcAttachmentHandler_Actor::HandleItemAddedToSlot(UArcItemAttachmentCompon
 														, const FArcItemData* InItem
 														, const FArcItemData* InOwnerItem) const
 {
-	ACharacter* Character = InAttachmentComponent->FindCharacter();
+	AActor* Character = InAttachmentComponent->FindCharacter();
 
 	if (Character == nullptr)
 	{
@@ -121,7 +121,7 @@ void FArcAttachmentHandler_Actor::HandleItemAttach(UArcItemAttachmentComponent* 
 	
 	if (ActorClass)
 	{	
-		ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+		AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 
 		USceneComponent* ParentComponent = FindAttachmentComponent(InAttachmentComponent, ItemAttachment);
 		if (!ParentComponent)
@@ -130,7 +130,7 @@ void FArcAttachmentHandler_Actor::HandleItemAttach(UArcItemAttachmentComponent* 
 		}
 		
 		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = OwnerCharacter->GetPlayerState();
+		SpawnParams.Owner = OwnerCharacter->GetOwner();
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			
 		AActor* SpawnedActor = InAttachmentComponent->GetWorld()->SpawnActor<AActor>(ActorClass
@@ -185,10 +185,10 @@ void FArcAttachmentHandler_Actor::HandleItemAttachmentChanged(UArcItemAttachment
 	ActorClass = ActorAttachment->ActorClass.LoadSynchronous();
 	if (ActorClass)
 	{	
-		ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+		AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 			
 		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = OwnerCharacter->GetPlayerState();
+		SpawnParams.Owner = OwnerCharacter->GetOwner();
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			
 		AActor* SpawnedActor = InAttachmentComponent->GetWorld()->SpawnActor<AActor>(ActorClass
@@ -196,7 +196,7 @@ void FArcAttachmentHandler_Actor::HandleItemAttachmentChanged(UArcItemAttachment
 			, FRotator::ZeroRotator
 			, SpawnParams);
 			
-		USceneComponent* AttachTo = OwnerCharacter->GetMesh();
+		USceneComponent* AttachTo = FindAttachmentComponent(InAttachmentComponent, &ItemAttachment);
 		SpawnedActor->AttachToComponent(AttachTo, FAttachmentTransformRules::SnapToTargetNotIncludingScale, ItemAttachment.SocketName);
 		
 		InAttachmentComponent->AddAttachmentForItem(ItemAttachment.ItemDefinition, SpawnedActor);

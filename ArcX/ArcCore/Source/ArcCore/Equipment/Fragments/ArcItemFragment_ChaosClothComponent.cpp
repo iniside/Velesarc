@@ -108,7 +108,7 @@ void FArcAttachmentHandler_ChaosCloth::HandleItemAttach(UArcItemAttachmentCompon
 		return;
 	}
 	
-	ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+	AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 
 	UChaosClothComponent* SpawnedComponent = OwnerCharacter->FindComponentByClass<UChaosClothComponent>();
 		

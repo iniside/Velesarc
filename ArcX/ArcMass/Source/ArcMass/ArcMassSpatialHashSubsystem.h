@@ -5,19 +5,17 @@
 #include "CoreMinimal.h"
 #include "ArcMassGameplayTagContainerFragment.h"
 #include "MassProcessor.h"
+#include "Subsystems/WorldSubsystem.h"
 #include "UObject/Object.h"
 #include "ArcMassSpatialHashSubsystem.generated.h"
 
 USTRUCT()
-struct ARCMASS_API FMassSpatialHashFragment : public FMassFragment
+struct ARCMASS_API FArcMassSpatialHashFragment : public FMassFragment
 {
     GENERATED_BODY()
 
     // Grid coordinates this entity is currently in
     FIntVector GridCoords = FIntVector::ZeroValue;
-    
-    // Hash of the grid cell for quick lookup
-    uint32 CellHash = 0;
 };
 
 USTRUCT(BlueprintType)
@@ -35,10 +33,17 @@ struct ARCMASS_API FMassSpatialHashSettings
 };
 
 // Simple hash map using TMap for sparse storage
-struct FMassSpatialHashGrid
+struct ARCMASS_API FMassSpatialHashGrid
 {
-    // Cell hash -> array of entity indices
-    TMap<uint32, TArray<FMassEntityHandle>> SpatialBuckets;
+    // Cell coordinates -> array of entities with their positions
+    struct FEntityWithPosition
+    {
+        FMassEntityHandle Entity;
+        FVector Position;
+    };
+    
+    // Use grid coordinates directly as key instead of hash to avoid collisions
+    TMap<FIntVector, TArray<FEntityWithPosition>> SpatialBuckets;
     FMassSpatialHashSettings Settings;
     
     // Convert world position to grid coordinates
@@ -50,67 +55,50 @@ struct FMassSpatialHashGrid
             FMath::FloorToInt(WorldPos.Z / Settings.CellSize)
         );
     }
-    
-    // Simple hash function for grid coordinates
-    uint32 HashGridCoords(const FIntVector& GridCoords) const
-    {
-        // Simple hash combining x, y, z
-        return HashCombine(HashCombine(GetTypeHash(GridCoords.X), GetTypeHash(GridCoords.Y)), GetTypeHash(GridCoords.Z));
-    }
-    
+        
     // Add entity to spatial hash
-    void AddEntity(FMassEntityHandle EntityIndex, const FVector& Position)
+    void AddEntity(FMassEntityHandle EntityHandle, const FVector& Position)
     {
         FIntVector GridCoords = WorldToGrid(Position);
-        uint32 CellHash = HashGridCoords(GridCoords);
-        SpatialBuckets.FindOrAdd(CellHash).AddUnique(EntityIndex);
+        SpatialBuckets.FindOrAdd(GridCoords).Add({EntityHandle, Position});
     }
     
     // Remove entity from spatial hash
-    void RemoveEntity(FMassEntityHandle EntityIndex, uint32 OldCellHash)
+    void RemoveEntity(FMassEntityHandle EntityHandle, const FIntVector& OldGridCoords)
     {
-        if (TArray<FMassEntityHandle>* Bucket = SpatialBuckets.Find(OldCellHash))
+        if (TArray<FEntityWithPosition>* Bucket = SpatialBuckets.Find(OldGridCoords))
         {
-            Bucket->Remove(EntityIndex);
+            Bucket->RemoveAll([EntityHandle](const FEntityWithPosition& Entry)
+            {
+                return Entry.Entity == EntityHandle;
+            });
             if (Bucket->IsEmpty())
             {
-                SpatialBuckets.Remove(OldCellHash);
+                SpatialBuckets.Remove(OldGridCoords);
             }
         }
     }
     
-    // Query entities within radius
-    void QueryEntitiesInRadius(const FVector& Center, float Radius, TArray<FMassEntityHandle>& OutEntityIndices) const
-    {
-        OutEntityIndices.Reset();
-        
-        // Calculate grid bounds for the query
-        FVector MinBounds = Center - FVector(Radius);
-        FVector MaxBounds = Center + FVector(Radius);
-        
-        FIntVector MinGrid = WorldToGrid(MinBounds);
-        FIntVector MaxGrid = WorldToGrid(MaxBounds);
-        
-        // Check all cells in the bounding box
-        for (int32 X = MinGrid.X; X <= MaxGrid.X; X++)
-        {
-            for (int32 Y = MinGrid.Y; Y <= MaxGrid.Y; Y++)
-            {
-                for (int32 Z = MinGrid.Z; Z <= MaxGrid.Z; Z++)
-                {
-                    FIntVector GridCoords(X, Y, Z);
-                    uint32 CellHash = HashGridCoords(GridCoords);
-                    
-                    if (const TArray<FMassEntityHandle>* Bucket = SpatialBuckets.Find(CellHash))
-                    {
-                        OutEntityIndices.Append(*Bucket);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Clear all entities
+    // Update entity position (call when entity moves)
+    void UpdateEntity(FMassEntityHandle EntityHandle, const FIntVector& OldGridCoords, const FVector& NewPosition);
+
+	// Query entities within radius with precise distance filtering
+    void QueryEntitiesInRadius(const FVector& Center, float Radius, TArray<FMassEntityHandle>& OutEntityHandles) const;
+
+	// Query with distance information if needed
+    void QueryEntitiesInRadiusWithDistance(const FVector& Center, float Radius, TArray<TPair<FMassEntityHandle, float>>& OutEntitiesWithDistance) const;
+
+	// Query entities within a cone
+    // Origin: cone apex position
+    // Direction: normalized direction the cone is facing
+    // Length: how far the cone extends
+    // HalfAngleRadians: half of the cone's opening angle (e.g., PI/6 for 60-degree cone)
+    void QueryEntitiesInCone(const FVector& Origin, const FVector& Direction, float Length, float HalfAngleRadians, TArray<FMassEntityHandle>& OutEntityHandles) const;
+
+	// Query entities in cone with distance information
+    void QueryEntitiesInConeWithDistance(const FVector& Origin, const FVector& Direction, float Length, float HalfAngleRadians, TArray<TTuple<FMassEntityHandle, float>>& OutEntitiesWithDistance) const;
+
+	// Clear all entities
     void Clear()
     {
         SpatialBuckets.Empty();

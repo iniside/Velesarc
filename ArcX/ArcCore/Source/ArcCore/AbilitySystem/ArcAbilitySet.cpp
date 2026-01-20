@@ -129,6 +129,9 @@ void UArcAbilitySet::GiveToAbilitySystem(UArcCoreAbilitySystemComponent* ArcASC
 	}
 	ArcASC->InitializeAttributeSets();
 
+	ArcASC->SetComponentTickEnabled(true);
+	ArcASC->GetShouldTick();
+	
 	// Grant the gameplay abilities.
 	for (int32 AbilityIndex = 0; AbilityIndex < GrantedGameplayAbilities.Num(); ++AbilityIndex)
 	{

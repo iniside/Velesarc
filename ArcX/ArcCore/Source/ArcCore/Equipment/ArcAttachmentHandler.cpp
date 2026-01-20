@@ -33,9 +33,9 @@
 
 USceneComponent* FArcAttachmentHandlerCommon::FindAttachmentComponent(UArcItemAttachmentComponent* InAttachmentComponent, const FArcItemAttachment* ItemAttachment) const
 {
-	ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+	AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 
-	USceneComponent* ParentComponent = OwnerCharacter->GetMesh();
+	USceneComponent* ParentComponent = nullptr;
 
 	if (ComponentTag.IsValid() && !ComponentTag.IsNone())
 	{
@@ -43,7 +43,7 @@ USceneComponent* FArcAttachmentHandlerCommon::FindAttachmentComponent(UArcItemAt
 	}
 	if (ParentComponent == nullptr)
 	{
-		ParentComponent = OwnerCharacter->GetMesh();
+		return nullptr;
 	}
 
 	if (!ItemAttachment->OwnerItemDefinition)

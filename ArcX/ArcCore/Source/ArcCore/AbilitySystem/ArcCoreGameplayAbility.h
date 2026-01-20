@@ -674,7 +674,12 @@ protected:
 						   , const FGameplayAbilityTargetDataHandle& InTargetData
 						   , EArcAbilityActorSpawnOrigin SpawnLocationType
 						   , FVector CustomSpawnLocation
-						   , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility);
+						   , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility
+						   , FArcAbilityActorHandle& OutActorHandle);
+	
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability", meta=(ExpandBoolAsExecs = "ReturnValue"))
+	bool GetSpawnedActor(const FArcAbilityActorHandle& OutActorHandle
+						   , AActor*& OutActor);
 	
 public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")

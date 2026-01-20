@@ -46,6 +46,12 @@ UArcCoreAbilitySystemComponent* UArcAttributeSet::GetArcASC() const
 void UArcAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute
 										  , float& NewValue)
 {
+	auto Handler = PreAttributeHandlers.Find(Attribute);
+	if (Handler)
+	{
+		(*Handler)(Attribute, NewValue);
+	}
+	
 	if (ArcASC.IsValid())
 	{
 		ArcASC->PreAttributeChanged(Attribute, NewValue);
@@ -56,6 +62,12 @@ void UArcAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute
 	, float OldValue
 	, float NewValue)
 {
+	auto Handler = PostAttributeHandlers.Find(Attribute);
+	if (Handler)
+	{
+		(*Handler)(Attribute, OldValue, NewValue);
+	}
+	
 	if (ArcASC.IsValid())
 	{
 		ArcASC->PostAttributeChanged(Attribute, OldValue, NewValue);

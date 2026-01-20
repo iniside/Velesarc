@@ -69,6 +69,25 @@ public:
 		ReplicationHandle.Handle = NewHandle;
 		return ReplicationHandle;
 	}
+	
+	FArcAbilityActorHandle()
+		: Handle(-1)
+	{
+		
+	}
+	
+	FArcAbilityActorHandle(const FArcAbilityActorHandle& Other)
+		: Handle(Other.Handle)
+		, Spec(Other.Spec)
+	{}
+	
+	FArcAbilityActorHandle& operator=(const FArcAbilityActorHandle& Other)
+	{
+		Handle = Other.Handle;
+		Spec = Other.Spec;
+		return *this;
+	}
+	
 	bool operator==(const FArcAbilityActorHandle& Other) const
 	{
 		return Spec == Other.Spec && Handle == Other.Handle;
@@ -87,6 +106,15 @@ public:
 	{
 		return Spec.IsValid() && Handle > -1;
 	}
+};
+
+template <>
+struct TStructOpsTypeTraits<FArcAbilityActorHandle> : public TStructOpsTypeTraitsBase2<FArcAbilityActorHandle>
+{
+	enum
+	{
+		WithCopy = true
+	};
 };
 
 USTRUCT(BlueprintType)
@@ -783,6 +811,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	EArcActorSpawnMode GetSpawnMode() const
 	{

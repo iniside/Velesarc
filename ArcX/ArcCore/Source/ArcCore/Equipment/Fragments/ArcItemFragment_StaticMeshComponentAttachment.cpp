@@ -78,7 +78,7 @@ void FArcAttachmentHandler_ComponentStaticMesh::HandleItemAttach(UArcItemAttachm
 	{
 		FName AttachSocket = ItemAttachment->SocketName;
 
-		ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+		AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 		
 		UStaticMeshComponent* SpawnedComponent = SpawnComponent<UStaticMeshComponent>(OwnerCharacter, InAttachmentComponent, ItemAttachment, SceneComponentClass);
 		if (SpawnedComponent == nullptr)

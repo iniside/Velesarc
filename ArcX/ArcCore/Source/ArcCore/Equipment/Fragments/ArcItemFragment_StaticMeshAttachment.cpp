@@ -50,7 +50,7 @@ bool FArcAttachmentHandler_StaticMesh::HandleItemAddedToSlot(UArcItemAttachmentC
 	}
 	
 	APlayerState* PS = Cast<APlayerState>(InAttachmentComponent->GetOwner());
-	ACharacter* C = PS->GetPawn<ACharacter>();
+	AActor* C = InAttachmentComponent->FindCharacter();
 	if (C == nullptr)
 	{
 		return false;
@@ -83,7 +83,7 @@ void FArcAttachmentHandler_StaticMesh::HandleItemAttach(UArcItemAttachmentCompon
 	
 	if (UStaticMesh* AttachedObject = Fragment->StaticMeshAttachClass.LoadSynchronous())
 	{	
-		ACharacter* OwnerCharacter = InAttachmentComponent->FindCharacter();
+		AActor* OwnerCharacter = InAttachmentComponent->FindCharacter();
 
 		UStaticMeshComponent* SpawnedComponent = SpawnComponent<UStaticMeshComponent>(OwnerCharacter, InAttachmentComponent, ItemAttachment);
 		if (SpawnedComponent == nullptr)

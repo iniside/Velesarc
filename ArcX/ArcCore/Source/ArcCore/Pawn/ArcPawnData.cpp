@@ -191,7 +191,7 @@ void FArcPawnDataFragment_AddItemsToQuickbar::GiveFragment(class APawn* InCharac
 			IC->AddItemToSlot(AddedItemId, DSI.ItemSlot);
 		}
 
-		QBC->AddAndActivateQuickSlot(DSI.BarId, DSI.QuickSlot, AddedItemId);
+		//QBC->AddAndActivateQuickSlot(DSI.BarId, DSI.QuickSlot, AddedItemId);
 	}
 }
 

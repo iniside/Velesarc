@@ -33,12 +33,10 @@ struct ARCCORE_API FArcAttributeSetWithTable
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere
-		, Category = "Arc Core")
+	UPROPERTY(EditAnywhere, Category = "Arc Core")
 	TSubclassOf<class UAttributeSet> DefaultAttributeSetClass;
 
-	UPROPERTY(EditAnywhere
-		, Category = "Arc Core")
+	UPROPERTY(EditAnywhere, Category = "Arc Core")
 	TObjectPtr<class UDataTable> AttributeSetTable;
 
 	FArcAttributeSetWithTable()
@@ -61,16 +59,14 @@ protected:
 	 * If set to true, AbilitySystem will be spawned along with actor.
 	 * If set to false, AbilitySystem will spawn on first usage.
 	 */
-	UPROPERTY(EditDefaultsOnly
-		, Category = "Arc Core")
+	UPROPERTY(EditDefaultsOnly, Category = "Arc Core")
 	bool bSpawnAbiltySystemOnBeginPlay;
 
-	UPROPERTY(EditDefaultsOnly
-		, Category = "Arc Core")
+	UPROPERTY(EditDefaultsOnly, Category = "Arc Core")
 	TArray<FArcAttributeSetWithTable> DefaultAttributeSetsClasses;
 
 	UPROPERTY()
-	mutable TObjectPtr<class UAbilitySystemComponent> AbilitySystem;
+	mutable TObjectPtr<class UArcCoreAbilitySystemComponent> AbilitySystem;
 
 public:
 	// Sets default values for this actor's properties

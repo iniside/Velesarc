@@ -188,8 +188,8 @@ protected:
 	UPROPERTY()
 	mutable TObjectPtr<UGameplayCameraComponent> CachedGameplayCameraComponent;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ability System")
-	TObjectPtr<UArcCoreAbilitySystemComponent> AbilitySystemComponent;
+	UPROPERTY()
+	mutable TObjectPtr<UArcCoreAbilitySystemComponent> AbilitySystemComponent2;
 		
 	IGameplayCameraSystemHost* GameplayCameraSystemHost;
 	

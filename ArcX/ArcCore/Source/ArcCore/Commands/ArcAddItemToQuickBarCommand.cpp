@@ -25,6 +25,7 @@
 #include "Items/ArcItemsStoreComponent.h"
 #include "ArcCoreGameplayTags.h"
 #include "Core/ArcCoreAssetManager.h"
+#include "Items/ArcItemsHelpers.h"
 
 bool FArcAddItemToQuickBarCommand::CanSendCommand() const
 {
@@ -113,6 +114,30 @@ bool FArcAddItemToQuickBarCommand::Execute()
 	}
 	
 	QuickBarComponent->AddAndActivateQuickSlot(QuickBar, QuickSlot, ItemId);
+	
+	//if (const FArcItemFragment_QuickBarItems* Fragment = ArcItems::FindFragment<FArcItemFragment_QuickBarItems>(ItemToSlot))
+	//{
+	//	int32 ChildBarIdx = OutQuickBar.Slots.IndexOfByPredicate([this](const FArcQuickBar& QuickBar)
+	//		{
+	//			if (QuickBar.ParentQuickSlot == QuickSlot)
+	//			{
+	//				return true;
+	//			}
+	//			return false;
+	//		});
+	//	
+	//	if (ChildBarIdx != INDEX_NONE)
+	//	{
+	//		for (const FArcQuickBarItem& Item : Fragment->ItemsToAdd)
+	//		{
+	//			FArcItemSpec Spec = FArcItemSpec::NewItem(Item.Item, 1, 1);
+	//			ISC->AddItem(Spec, FArcItemId());
+	//			ISC->AddItemToSlot(ItemId, FArcCoreGameplayTags::Get().Item_SlotActive);
+	//			
+	//			QuickBarComponent->AddAndActivateQuickSlot(ExistingQuickBarSlot.Key, ExistingQuickBarSlot.Value, ExistingItemId);
+	//		}
+	//	}
+	//}
 	return true;
 }
 
