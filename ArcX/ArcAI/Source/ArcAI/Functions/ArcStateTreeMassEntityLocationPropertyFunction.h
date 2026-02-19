@@ -34,3 +34,34 @@ struct FArcStateTreeMassEntityLocationPropertyFunction : public FStateTreeProper
 	//virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const;
 #endif
 };
+
+USTRUCT()
+struct FStateTreeGetMassEntityCurrentPositionPropertyFunctionInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FMassEnvQueryEntityInfoBlueprintWrapper Input;
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	EMassMovementAction EndOfPathIntent = EMassMovementAction::Move;
+	
+	UPROPERTY(EditAnywhere, Category = Output)
+	FMassTargetLocation Output;;
+};
+
+USTRUCT(DisplayName = "Get Mass Entity Current Position")
+struct FArcStateTreeMassEntityCurrentPositionPropertyFunction : public FStateTreePropertyFunctionCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FStateTreeGetMassEntityCurrentPositionPropertyFunctionInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+
+	virtual void Execute(FStateTreeExecutionContext& Context) const override;
+
+#if WITH_EDITOR
+	//virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const;
+#endif
+};

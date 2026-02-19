@@ -1,6 +1,6 @@
 ﻿// Copyright Lukasz Baran. All Rights Reserved.
 
-#include "ArcMassActorListenPerceptionGameplayAbilityTask.h"
+#include "ArcMassActorListenToAsyncMessageTask.h"
 
 #include "ArcAIPerceptionComponent.h"
 #include "AsyncGameplayMessageSystem.h"
@@ -11,52 +11,62 @@
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeLinker.h"
 
-FArcMassActorListenPerceptionGameplayAbilityTask::FArcMassActorListenPerceptionGameplayAbilityTask()
+FArcMassActorListenToAsyncMessageTask::FArcMassActorListenToAsyncMessageTask()
 {
 	bShouldCallTick = true;
 	bShouldStateChangeOnReselect = true;
 }
 
-bool FArcMassActorListenPerceptionGameplayAbilityTask::Link(FStateTreeLinker& Linker)
+bool FArcMassActorListenToAsyncMessageTask::Link(FStateTreeLinker& Linker)
 {
 	Linker.LinkExternalData(MassActorFragment);
 
 	return true;
 }
 
-void FArcMassActorListenPerceptionGameplayAbilityTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
+void FArcMassActorListenToAsyncMessageTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
 	Builder.AddReadWrite<FMassActorFragment>();
 }
 
-EStateTreeRunStatus FArcMassActorListenPerceptionGameplayAbilityTask::EnterState(FStateTreeExecutionContext& Context
+EStateTreeRunStatus FArcMassActorListenToAsyncMessageTask::EnterState(FStateTreeExecutionContext& Context
 	, const FStateTreeTransitionResult& Transition) const
 {
 	return EStateTreeRunStatus::Running;
 }
 
-EStateTreeRunStatus FArcMassActorListenPerceptionGameplayAbilityTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+EStateTreeRunStatus FArcMassActorListenToAsyncMessageTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	FMassActorFragment* ActorFragment = MassCtx.GetExternalDataPtr(MassActorFragment);
-
-	if (!ActorFragment->Get())
-	{
-		return EStateTreeRunStatus::Running;	
-	}
-
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
+	
 	UWorld* World = Context.GetWorld();
 	if (!World)
 	{
-		return EStateTreeRunStatus::Failed;
+		return EStateTreeRunStatus::Running;
+	}
+	
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	TSharedPtr<FAsyncGameplayMessageSystem> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem<FAsyncGameplayMessageSystem>(World);
+	
+	if (!ActorFragment->Get())
+	{
+		MessageSystem->UnbindListener(InstanceData.BoundListenerHandle);
+		
+		return EStateTreeRunStatus::Running;	
 	}
 
+	if (InstanceData.BoundListenerHandle.IsValid())
+	{
+		return EStateTreeRunStatus::Running;
+	}
+	
+	
+
 	UAsyncMessageBindingComponent* BindComp = ActorFragment->Get()->FindComponentByClass<UAsyncMessageBindingComponent>();
-	TSharedPtr<FAsyncGameplayMessageSystem> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem<FAsyncGameplayMessageSystem>(World);
+	
 	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	IAsyncMessageBindingEndpointInterface* EnpointInerface = Cast<IAsyncMessageBindingEndpointInterface>(BindComp);
+	IAsyncMessageBindingEndpointInterface* EndpointInterface = Cast<IAsyncMessageBindingEndpointInterface>(BindComp);
 	
 	InstanceData.BoundListenerHandle = MessageSystem->BindListener(
 		InstanceData.MessageToListenFor,
@@ -77,7 +87,7 @@ EStateTreeRunStatus FArcMassActorListenPerceptionGameplayAbilityTask::Tick(FStat
 				}
 			}
 			, FAsyncMessageBindingOptions()
-			, EnpointInerface->GetEndpoint());
+			, EndpointInterface->GetEndpoint());
 	
 	return EStateTreeRunStatus::Running;
 }

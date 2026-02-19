@@ -51,7 +51,7 @@ void UArcCoreGameFeaturePolicy::InitGameFeatureManager()
 	UGameFeaturesSubsystem& Subsystem = UGameFeaturesSubsystem::Get();
 	for (UObject* Observer : Observers)
 	{
-		Subsystem.AddObserver(Observer);
+		Subsystem.AddObserver(Observer, UGameFeaturesSubsystem::EObserverPluginStateUpdateMode::CurrentAndFuture);
 	}
 
 	Super::InitGameFeatureManager();
@@ -91,9 +91,9 @@ void UArcCoreGameFeaturePolicy::GetGameFeatureLoadingMode(bool& bLoadClientData
 	bLoadServerData = !IsRunningClientOnly();
 }
 
-bool UArcCoreGameFeaturePolicy::IsPluginAllowed(const FString& PluginURL) const
+bool UArcCoreGameFeaturePolicy::IsPluginAllowed(const FString& PluginURL, FString* OutReason) const
 {
-	return Super::IsPluginAllowed(PluginURL);
+	return Super::IsPluginAllowed(PluginURL, OutReason);
 }
 
 //////////////////////////////////////////////////////////////////////

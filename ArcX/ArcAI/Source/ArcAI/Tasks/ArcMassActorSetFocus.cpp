@@ -4,14 +4,27 @@
 
 FArcMassActorSetFocusTask::FArcMassActorSetFocusTask()
 {
-	bShouldCallTick = false;
+	bShouldCallTick = true;
 }
 
 EStateTreeRunStatus FArcMassActorSetFocusTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
-	if (!InstanceData.FocusTarget || !InstanceData.AIController)
+	if (!InstanceData.AIController)
+	{
+		return EStateTreeRunStatus::Running;
+	}
+	
+	InstanceData.AIController->SetFocus(InstanceData.FocusTarget, EAIFocusPriority::Gameplay);
+	
+	return EStateTreeRunStatus::Running;
+}
+
+EStateTreeRunStatus FArcMassActorSetFocusTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (!InstanceData.AIController)
 	{
 		return EStateTreeRunStatus::Running;
 	}

@@ -19,7 +19,7 @@ struct FArcGetMassAIControllerTaskInstanceData
 	FStateTreePropertyRef Result;
 };
 
-USTRUCT(DisplayName="Get Mass AI Controller")
+USTRUCT(DisplayName="Get Mass AI Controller", meta = (Category = "Arc|Common"))
 struct FArcGetMassAIControllerTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

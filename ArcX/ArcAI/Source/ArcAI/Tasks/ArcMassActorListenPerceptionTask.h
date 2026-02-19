@@ -77,7 +77,7 @@ struct FArcMassActorListenSightPerceptionTaskInstanceData
 	FTimerHandle TimerHandle;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen Perception"))
+USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen Sight Perception"))
 struct FArcMassActorListenSightPerceptionTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

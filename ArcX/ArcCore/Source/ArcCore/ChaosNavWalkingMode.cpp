@@ -103,10 +103,10 @@ void UChaosNavWalkingMode::GenerateMove_Implementation(const FMoverTickStartData
 		Params.PriorVelocity = FVector::VectorPlaneProject(CurrentVelocity, MovementNormal);
 		Params.PriorOrientation = StartingSyncState->GetOrientation_WorldSpace();
 		Params.GroundNormal = MovementNormal;
-		Params.TurningRate = SharedSettings->TurningRate;
+		//Params.TurningRate = SharedSettings->TurningRate;
 		Params.MaxSpeed = GetMaxSpeed();
 		Params.Acceleration = GetAcceleration();
-		Params.Deceleration = SharedSettings->Deceleration;
+		//Params.Deceleration = SharedSettings->Deceleration;
 		Params.DeltaSeconds = DeltaSeconds;
 		Params.WorldToGravityQuat = WorldToGravityTransform;
 
@@ -138,25 +138,25 @@ void UChaosNavWalkingMode::GenerateMove_Implementation(const FMoverTickStartData
 		Params.PriorVelocity = FVector::VectorPlaneProject(CurrentVelocity, MovementNormal);
 		Params.PriorOrientation = StartingSyncState->GetOrientation_WorldSpace();
 		Params.GroundNormal = MovementNormal;
-		Params.TurningRate = SharedSettings->TurningRate;
-		Params.TurningBoost = SharedSettings->TurningBoost;
+		//Params.TurningRate = SharedSettings->TurningRate;
+		//Params.TurningBoost = SharedSettings->TurningBoost;
 		Params.MaxSpeed = GetMaxSpeed();
 		Params.Acceleration = GetAcceleration();
-		Params.Deceleration = SharedSettings->Deceleration;
+		//Params.Deceleration = SharedSettings->Deceleration;
 		Params.DeltaSeconds = DeltaSeconds;
 		Params.WorldToGravityQuat = WorldToGravityTransform;
 		Params.UpDirection = UpDirection;
-		Params.bUseAccelerationForVelocityMove = SharedSettings->bUseAccelerationForVelocityMove;
+		//Params.bUseAccelerationForVelocityMove = SharedSettings->bUseAccelerationForVelocityMove;
 
-		if (Params.MoveInput.SizeSquared() > 0.f && !UMovementUtils::IsExceedingMaxSpeed(Params.PriorVelocity, GetMaxSpeed()))
-		{
-			Params.Friction = SharedSettings->GroundFriction;
-		}
-		else
-		{
-			Params.Friction = SharedSettings->bUseSeparateBrakingFriction ? SharedSettings->BrakingFriction : SharedSettings->GroundFriction;
-			Params.Friction *= SharedSettings->BrakingFrictionFactor;
-		}
+		//if (Params.MoveInput.SizeSquared() > 0.f && !UMovementUtils::IsExceedingMaxSpeed(Params.PriorVelocity, GetMaxSpeed()))
+		//{
+		//	Params.Friction = SharedSettings->GroundFriction;
+		//}
+		//else
+		//{
+		//	Params.Friction = SharedSettings->bUseSeparateBrakingFriction ? SharedSettings->BrakingFriction : SharedSettings->GroundFriction;
+		//	Params.Friction *= SharedSettings->BrakingFrictionFactor;
+		//}
 
 		OutProposedMove = UGroundMovementUtils::ComputeControlledGroundMove(Params);
 	}
@@ -282,13 +282,13 @@ void UChaosNavWalkingMode::SimulationTick_Implementation(const FSimulationTickPa
 		const float InitialHeightAboveFloor = FloorResult.FloorDist - GetTargetHeight();
 		const float EndHeightAboveFloor = InitialHeightAboveFloor + ProjectedRelativeVerticalVelocity * DeltaSeconds;
 		const bool bIsSteppingDown = InitialHeightAboveFloor > UE_KINDA_SMALL_NUMBER;
-		const bool bIsWithinReach = EndHeightAboveFloor <= SharedSettings->MaxStepHeight;
-		const bool bIsSupported = bIsWithinReach && !bIsLiftingOffSurface;
-		const bool bNeedsVerticalVelocityToTarget = bIsSupported && bIsSteppingDown && (EndHeightAboveFloor > 0.0f) && !bIsLiftingOffSurface;
-		if (bNeedsVerticalVelocityToTarget)
-		{
-			TargetVelocity -= FractionalDownwardVelocityToTarget * (EndHeightAboveFloor / DeltaSeconds) * UpDirection;
-		}
+		//const bool bIsWithinReach = EndHeightAboveFloor <= SharedSettings->MaxStepHeight;
+		//const bool bIsSupported = bIsWithinReach && !bIsLiftingOffSurface;
+		//const bool bNeedsVerticalVelocityToTarget = bIsSupported && bIsSteppingDown && (EndHeightAboveFloor > 0.0f) && !bIsLiftingOffSurface;
+		//if (bNeedsVerticalVelocityToTarget)
+		//{
+		//	TargetVelocity -= FractionalDownwardVelocityToTarget * (EndHeightAboveFloor / DeltaSeconds) * UpDirection;
+		//}
 
 		// Put the target position on the floor at the target height
 		if (!bIsGroundMoving)
@@ -315,7 +315,7 @@ bool UChaosNavWalkingMode::CanStepUpOnHitSurface(const FFloorCheckResult& FloorR
 {
 	const float StepHeight = GetTargetHeight() - FloorResult.FloorDist;
 
-	bool bWalkable = StepHeight <= SharedSettings->MaxStepHeight;
+	bool bWalkable = false; //StepHeight <= SharedSettings->MaxStepHeight;
 	constexpr float MinStepHeight = 2.0f;
 	const bool SteppingUp = StepHeight > MinStepHeight;
 	if (bWalkable && SteppingUp)
@@ -351,7 +351,7 @@ void UChaosNavWalkingMode::GetFloorAndCheckMovement(const FMoverDefaultSyncState
 		.DeltaPos = DeltaPos,
 		.UpDir = DefaultSimInputs.UpDir,
 		.World = DefaultSimInputs.World,
-		.QueryDistance = GetTargetHeight() + SharedSettings->MaxStepHeight + VelocityPadding,
+		.QueryDistance = 0,//GetTargetHeight() + SharedSettings->MaxStepHeight + VelocityPadding,
 		.QueryRadius = FMath::Min(GetGroundQueryRadius(), FMath::Max(DefaultSimInputs.PawnCollisionRadius - 5.0f, 0.0f)),
 		.MaxWalkSlopeCosine = GetMaxWalkSlopeCosine(),
 		.TargetHeight = GetTargetHeight(),
@@ -494,7 +494,7 @@ void UChaosNavWalkingMode::ModifyContacts(const FMoverTimeStep& TimeStep, const 
 	const float StepDistance = FMath::Abs(GetTargetHeight() - FloorResult.FloorDist);
 	if (StepDistance >= UE_KINDA_SMALL_NUMBER)
 	{
-		MinContactHeightStepUps = CharacterHeight - GetTargetHeight() + SharedSettings->MaxStepHeight;
+		//MinContactHeightStepUps = CharacterHeight - GetTargetHeight() + SharedSettings->MaxStepHeight;
 	}
 
 	for (Chaos::FContactPairModifier& PairModifier : Modifier.GetContacts(UpdatedParticle))
@@ -617,7 +617,7 @@ void UChaosNavWalkingMode::FindBestNavMeshLocation(const FVector& TraceStart, co
 		{
 			UPrimitiveComponent* PrimComp = TestHit.GetComponent();
 			// Prefer using primitive component if valid
-			if (IPhysicsBodyInstanceOwner* BodyInstanceOwner = !PrimComp ? IPhysicsBodyInstanceOwner::GetPhysicsBodyInstanceOwnerFromHitResult(TestHit) : nullptr)
+			if (const IPhysicsBodyInstanceOwner* BodyInstanceOwner = !PrimComp ? IPhysicsBodyInstanceOwner::GetPhysicsBodyInstanceOwnerFromHitResult(TestHit) : nullptr)
 			{
 				const bool bBlockOnWorldStatic = (BodyInstanceOwner->GetCollisionResponseToChannel(ECC_WorldStatic) == ECR_Block);
 				const bool bBlockOnWorldDynamic = (BodyInstanceOwner->GetCollisionResponseToChannel(ECC_WorldDynamic) == ECR_Block);

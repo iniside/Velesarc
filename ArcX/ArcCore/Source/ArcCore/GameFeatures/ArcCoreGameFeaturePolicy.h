@@ -57,7 +57,7 @@ public:
 																	  , bool bIncludeLoadedAssets = false)
 	const override;
 
-	virtual bool IsPluginAllowed(const FString& PluginURL) const override;
+	virtual bool IsPluginAllowed(const FString& PluginURL, FString* OutReason) const override;
 
 	virtual const TArray<FName> GetPreloadBundleStateForGameFeature() const override;
 

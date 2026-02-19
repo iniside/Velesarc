@@ -4,9 +4,11 @@
 #include "MassCommonFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassEQSBlueprintLibrary.h"
+#include "ArcMass/ArcMassSpatialHashSubsystem.h"
 #include "EnvironmentQuery/Items/EnvQueryItemType_Actor.h"
 #include "EnvironmentQuery/Items/EnvQueryItemType_Point.h"
 #include "Items/EnvQueryItemType_MassEntityHandle.h"
+#include "Perception/ArcMassPerception.h"
 
 UEnvQueryContext_MassEntityQuerier::UEnvQueryContext_MassEntityQuerier(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -24,7 +26,14 @@ void UEnvQueryContext_MassEntityQuerier::ProvideContext(FEnvQueryInstance& Query
 		if (Transform)
 		{
 			UEnvQueryItemType_Point::SetContextHelper(ContextData, Transform->GetTransform().GetLocation());
+			return;
 		}
+	}
+	
+	if (AActor* Actor = Cast<AActor>(QueryInstance.Owner.Get()))
+	{
+		UEnvQueryItemType_Point::SetContextHelper(ContextData, Actor->GetActorLocation());
+		return;
 	}
 }
 
@@ -299,6 +308,27 @@ void UArcMassEnvQueryGenerator_MassEntityHandles::GenerateItems(FEnvQueryInstanc
 		return;
 	}
 
-	const UMassEntitySubsystem* MassSubsystem = QueryInstance.World->GetSubsystem<UMassEntitySubsystem>();
+	const UArcMassSpatialHashSubsystem* SpatialHashSubsystem = QueryInstance.World->GetSubsystem<UArcMassSpatialHashSubsystem>();
+	
+	if (!SpatialHashSubsystem)
+	{
+		return;
+	}
+	
+	const FMassSpatialHashGrid& Grid = SpatialHashSubsystem->GetSpatialHashGrid();
+	TArray<FArcMassEntityInfo> OutEntityHandles;
+	Grid.QueryEntitiesInRadius(OriginLocations[0], Radius, OutEntityHandles);
+	TArray<FMassEnvQueryEntityInfo> Result;
+	Result.Reserve(OutEntityHandles.Num());
+	
+	for (const FArcMassEntityInfo& Entry : OutEntityHandles)
+	{
+		FMassEnvQueryEntityInfo NeWInfo;
+		NeWInfo.EntityHandle = Entry.Entity;
+		NeWInfo.CachedTransform = FTransform(Entry.Location);
+		Result.Add(NeWInfo);
+	}
+	
+	QueryInstance.AddItemData<UEnvQueryItemType_MassEntityHandle>(Result);
 }
 

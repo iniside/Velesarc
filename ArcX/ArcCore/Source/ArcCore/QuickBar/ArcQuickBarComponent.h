@@ -737,6 +737,10 @@ public:
 	FArcItemId GetItemId(const FGameplayTag& InBarId
 						, const FGameplayTag& InQuickSlotId) const;
 
+	UFUNCTION(BlueprintPure, Category = "Arc Core")
+	const UArcItemDefinition* GetItemDefinition(const FGameplayTag& InBarId
+						, const FGameplayTag& InQuickSlotId) const;
+	
 	UFUNCTION(BlueprintCallable, Category = "Arc Core")
 	UArcItemsStoreComponent* BP_GetItemStoreComponent(const FGameplayTag& InQuickBarId) const;
 

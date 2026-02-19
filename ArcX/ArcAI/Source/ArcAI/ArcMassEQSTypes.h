@@ -94,6 +94,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category=Generator)
 	FAIDataProviderFloatValue SearchRadius;
 
+	UPROPERTY(EditDefaultsOnly, Category=Generator)
+	float Radius = 10000.f;
+	
 	/** Context of query */
 	UPROPERTY(EditAnywhere, Category=Generator)
 	TSubclassOf<UEnvQueryContext> SearchCenter;

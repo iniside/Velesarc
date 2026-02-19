@@ -80,11 +80,108 @@ EStateTreeRunStatus FArcMassUseGameplayAbilityTask::EnterState(FStateTreeExecuti
 	
 	InstanceData.AbilityHandle = Spec->Handle;
 	
-	bool bSuccess = ASC->TryActivateAbility(Spec->Handle);
-	if (!bSuccess)
+	if (InstanceData.bUseEvent)
+	{
+		FGameplayEventData EventData;
+		EventData.Instigator = InstanceData.Instigator;
+		EventData.Target = InstanceData.TargetActor;
+		
+		FHitResult HitResult;
+		HitResult.ImpactPoint = InstanceData.Location;
+		HitResult.Location = InstanceData.Location;
+		EventData.TargetData = UAbilitySystemBlueprintLibrary::AbilityTargetDataFromHitResult(HitResult);
+		
+		ASC->TriggerAbilityFromGameplayEvent(Spec->Handle, ASC->AbilityActorInfo.Get(), InstanceData.EventTag, &EventData, *ASC);
+	}
+	else
+	{
+		bool bSuccess = ASC->TryActivateAbility(Spec->Handle);
+		if (!bSuccess)
+		{
+			return EStateTreeRunStatus::Failed;
+		}	
+	}
+	
+	return EStateTreeRunStatus::Running;
+}
+
+void FArcMassUseGameplayAbilityTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	const FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FMassActorFragment* MassActor = MassCtx.GetExternalDataPtr(MassActorHandle);
+	
+	if (!MassActor->Get())
+	{
+		return;
+	}
+
+	AActor* Actor = const_cast<AActor*>(MassActor->Get());
+	IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Actor);
+	if (!ASI)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = ASI->GetAbilitySystemComponent();
+	if (!ASC)
+	{
+		return;
+	}
+	
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromClass(InstanceData.AbilityClassToActivate);
+	if (!Spec)
+	{
+		return;
+	}
+	
+	ASC->CancelAbilityHandle(Spec->Handle);
+}
+
+FArcMassApplyGameplayEffectToOwnerTask::FArcMassApplyGameplayEffectToOwnerTask()
+{
+	bShouldCallTick = false;
+}
+
+bool FArcMassApplyGameplayEffectToOwnerTask::Link(FStateTreeLinker& Linker)
+{
+	Linker.LinkExternalData(MassActorHandle);
+	
+	return true;
+}
+
+void FArcMassApplyGameplayEffectToOwnerTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
+{
+	Builder.AddReadOnly<FMassActorFragment>();
+}
+
+EStateTreeRunStatus FArcMassApplyGameplayEffectToOwnerTask::EnterState(FStateTreeExecutionContext& Context
+	, const FStateTreeTransitionResult& Transition) const
+{
+	const FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FMassActorFragment* MassActor = MassCtx.GetExternalDataPtr(MassActorHandle);
+	
+	if (!MassActor->Get())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
+
+	AActor* Actor = const_cast<AActor*>(MassActor->Get());
+	IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Actor);
+	if (!ASI)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	UAbilitySystemComponent* ASC = ASI->GetAbilitySystemComponent();
+	if (!ASC)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	
+	ASC->ApplyGameplayEffectToSelf(InstanceData.GameplayEffectClass.GetDefaultObject(), 1.0f, ASC->MakeEffectContext());
 	
 	return EStateTreeRunStatus::Running;
 }

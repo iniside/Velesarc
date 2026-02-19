@@ -53,7 +53,11 @@ EStateTreeRunStatus FArcAddAbilityGameplayTagTask::EnterState(FStateTreeExecutio
 	}
 	
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	ASC->AddLooseGameplayTags(InstanceData.TagsToAdd);
+	if (!ASC->HasAnyMatchingGameplayTags(InstanceData.TagsToAdd))
+	{
+		ASC->AddLooseGameplayTags(InstanceData.TagsToAdd);	
+	}
+	
 	
 	return EStateTreeRunStatus::Running;
 }

@@ -59,7 +59,8 @@ protected:
 
 public:
 	virtual bool IsPawnComponentReadyToInitialize() override;
-
+	virtual void OnPawnReady() override;
+	
 protected:
 	void HandleAttributeChangedDelegate(const FOnAttributeChangeData& InChangeData)
 	{
@@ -129,6 +130,9 @@ protected:
 	UFUNCTION()
 	virtual void OnRep_DeathState(EArcDeathState OldDeathState);
 
+	UFUNCTION(BlueprintCallable)
+	void SetDeathState(EArcDeathState InNewState);
+	
 public:
 	UArcHealthComponent();
 

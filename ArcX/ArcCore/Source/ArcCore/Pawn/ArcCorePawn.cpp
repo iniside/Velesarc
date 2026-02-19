@@ -32,7 +32,9 @@
 #include "GameFramework/GameplayCameraComponent.h"
 #include "GameFramework/GameplayCamerasPlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "MoveLibrary/BasedMovementUtils.h"
+#include "Mover/ArcMoverTypes.h"
 #include "Net/UnrealNetwork.h"
 #include "Pawn/ArcPawnExtensionComponent.h"
 #include "Perception/AIPerceptionComponent.h"
@@ -40,6 +42,7 @@
 #include "Player/ArcCorePlayerState.h"
 #include "Player/ArcPlayerStateExtensionComponent.h"
 #include "Pawn/ArcPawnData.h"
+#include "Player/ArcHeroComponentBase.h"
 
 AArcCorePawn::AArcCorePawn(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -137,7 +140,7 @@ void AArcCorePawn::ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdCo
 
 void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInputCmd)
 {
-
+#if 0
 	// Generate user commands. Called right before the Character movement simulation will tick (for a locally controlled pawn)
 	// This isn't meant to be the best way of doing a camera system. It is just meant to show a couple of ways it may be done
 	// and to make sure we can keep distinct the movement, rotation, and view angles.
@@ -151,7 +154,13 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 	// targeting systems to happen /outside/ of the system, i.e, here. But I can think of scenarios where that may not be ideal too.
 
 	FCharacterDefaultInputs& CharacterInputs = OutInputCmd.InputCollection.FindOrAddMutableDataByType<FCharacterDefaultInputs>();
-
+	FArcMoverCustomInputs& CustomInputs = OutInputCmd.InputCollection.FindOrAddMutableDataByType<FArcMoverCustomInputs>();
+	CustomInputs.Gait = EArcMoverGaitType::Walk;
+	CustomInputs.RotationMode = EArcMoverAimModeType::OrientToMovement;
+	CustomInputs.MovementDirection = EArcMoverDirectionType::F;
+	
+	
+	
 	if (GetController() == nullptr)
 	{
 		if (GetLocalRole() == ENetRole::ROLE_Authority && GetRemoteRole() == ENetRole::ROLE_SimulatedProxy)
@@ -235,7 +244,8 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 		{
 			const FVector FocalPoint = AI->GetFocalPoint();
 			const FVector Dir = (FocalPoint - GetActorLocation()).GetSafeNormal();
-			CharacterInputs.OrientationIntent = Dir;	
+			CharacterInputs.OrientationIntent = Dir;
+			CustomInputs.RotationMode = EArcMoverAimModeType::Strafe;
 		}
 	}
 	
@@ -293,6 +303,7 @@ void AArcCorePawn::OnProduceInput(float DeltaMs, FMoverInputCmdContext& OutInput
 		bIsJumpJustPressed = false;
 		bShouldToggleFlying = false;
 	}
+#endif
 }
 
 AArcCorePawnAbilitySystem::AArcCorePawnAbilitySystem(const FObjectInitializer& ObjectInitializer)
@@ -310,6 +321,25 @@ void AArcCorePawnAbilitySystem::BeginPlay()
 	if (AbilitySet && AbilitySystemComponent)
 	{
 		AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, nullptr, this);
+	}
+}
+
+void AArcCorePawnAbilitySystem::OnProduceInput(float DeltaMs, FMoverInputCmdContext& InputCmdResult)
+{
+	Super::OnProduceInput(DeltaMs, InputCmdResult);
+	
+	FArcMoverCustomInputs& CustomInputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FArcMoverCustomInputs>();
+	if (HasMatchingGameplayTag(TAG_Mover_Gait_Walk))
+	{
+		CustomInputs.Gait = EArcMoverGaitType::Walk;
+	}
+	else if (HasMatchingGameplayTag(TAG_Mover_Gait_Run))
+	{
+		CustomInputs.Gait = EArcMoverGaitType::Run;
+	}
+	else if (HasMatchingGameplayTag(TAG_Mover_Gait_Sprint))
+	{
+		CustomInputs.Gait = EArcMoverGaitType::Sprint;
 	}
 }
 

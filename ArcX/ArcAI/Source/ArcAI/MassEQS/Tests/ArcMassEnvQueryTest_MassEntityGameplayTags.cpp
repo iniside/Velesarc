@@ -26,7 +26,7 @@ UArcMassEnvQueryTest_MassEntityGameplayTags::UArcMassEnvQueryTest_MassEntityGame
 
 TUniquePtr<FMassEQSRequestData> UArcMassEnvQueryTest_MassEntityGameplayTags::GetRequestData(FEnvQueryInstance& QueryInstance) const
 {
-	return MakeUnique<FMassEQSRequestData_MassEntityGameplayTags>(HasTags);
+	return MakeUnique<FMassEQSRequestData_MassEntityGameplayTags>(HasTags, MustNotHaveTags);
 }
 
 bool UArcMassEnvQueryTest_MassEntityGameplayTags::TryAcquireResults(FEnvQueryInstance& QueryInstance) const
@@ -87,7 +87,7 @@ void UArcMassEnvQueryTestProcessor_MassEntityGameplayTags::Execute(FMassEntityMa
 
 	
 	const FGameplayTagContainer& HasTags = TestData->HasTags;
-
+	const FGameplayTagContainer& MustNoHaveTags = TestData->MustNotHaveTags;
 	
 	TArray<FMassEntityHandle> ScoreMap = {};
 
@@ -98,7 +98,7 @@ void UArcMassEnvQueryTestProcessor_MassEntityGameplayTags::Execute(FMassEntityMa
 	UE::Mass::Utils::CreateEntityCollections(EntityManager, TestDataUniquePtr->EntityHandles, FMassArchetypeEntityCollection::NoDuplicates, EntityCollectionsToTest);
 
 	EntityQuery.ForEachEntityChunkInCollections(EntityCollectionsToTest, ExecutionContext
-		, [&ScoreMap, &HasTags](FMassExecutionContext& Context)
+		, [&ScoreMap, &HasTags, &MustNoHaveTags](FMassExecutionContext& Context)
 		{
 			const FMassEntityManager& EM = Context.GetEntityManagerChecked();
 				
@@ -107,10 +107,20 @@ void UArcMassEnvQueryTestProcessor_MassEntityGameplayTags::Execute(FMassEntityMa
 				const FMassEntityHandle EntityHandle = Context.GetEntity(EntityIt);
 				FArcMassGameplayTagContainerFragment* GameplayTags = EM.GetFragmentDataPtr<FArcMassGameplayTagContainerFragment>(EntityHandle);
 				
-				if (GameplayTags && GameplayTags->Tags.HasAll(HasTags))
+				if (!GameplayTags)
 				{
-					ScoreMap.Add(EntityHandle);
+					continue;
 				}
+				if (!GameplayTags->Tags.HasAll(HasTags))
+				{
+					continue;
+				}
+				if (!GameplayTags->Tags.HasAny(MustNoHaveTags))
+				{
+					continue;
+				}
+				
+				ScoreMap.Add(EntityHandle);
 			}
 		});
 

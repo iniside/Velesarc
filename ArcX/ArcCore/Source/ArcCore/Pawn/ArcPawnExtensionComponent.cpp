@@ -233,25 +233,24 @@ void UArcPawnExtensionComponent::UninitializeAbilitySystem()
 
 		AbilitySystemComponent->RemoveActiveEffects(Query);
 
-		AbilitySystemComponent->CancelAbilities(nullptr
-			, nullptr);
+		AbilitySystemComponent->CancelAbilities(nullptr, nullptr);
 		AbilitySystemComponent->ClearAbilityInput();
 		AbilitySystemComponent->RemoveAllGameplayCues();
 
-		if (AbilitySystemComponent->GetOwnerActor() != nullptr)
-		{
-			AbilitySystemComponent->SetAvatarActor(nullptr);
-		}
-		else
-		{
-			// If the ASC doesn't have a valid owner, we need to clear *all* actor info, not
-			// just the avatar pairing
-			AbilitySystemComponent->ClearActorInfo();
-		}
+		//if (AbilitySystemComponent->GetOwnerActor() != nullptr)
+		//{
+		//	AbilitySystemComponent->SetAvatarActor(nullptr);
+		//}
+		//else
+		//{
+		//	// If the ASC doesn't have a valid owner, we need to clear *all* actor info, not
+		//	// just the avatar pairing
+		//	AbilitySystemComponent->ClearActorInfo();
+		//}
 
 		OnAbilitySystemUninitialized.Broadcast();
 	}
-	AbilitySystemComponent = nullptr;
+	//AbilitySystemComponent = nullptr;
 }
 
 void UArcPawnExtensionComponent::HandleControllerChanged()
@@ -306,6 +305,11 @@ void UArcPawnExtensionComponent::HandlePawnDataReplicated()
 {
 	LOG_ARC_NET(LogPawnExtenstionComponent
 	, "UArcPawnExtensionComponent::HandlePawnDataReplicated")
+	CheckDefaultInitialization();
+}
+
+void UArcPawnExtensionComponent::HandleMassEntityCreated()
+{
 	CheckDefaultInitialization();
 }
 

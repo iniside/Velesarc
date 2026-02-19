@@ -39,3 +39,20 @@ EStateTreeRunStatus FArcMassGiveGameplayTagsToEntityTask::EnterState(FStateTreeE
 	
 	return EStateTreeRunStatus::Succeeded;
 }
+
+void FArcMassGiveGameplayTagsToEntityTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	if (bRemoveOnExit)
+	{
+		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	
+		FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+		FArcMassGameplayTagContainerFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
+		if (!MassTags)
+		{
+			return;
+		}	
+		
+		MassTags->Tags.RemoveTags(InstanceData.Tags);
+	}
+}

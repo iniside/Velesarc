@@ -165,7 +165,7 @@ void FArcAttachmentHandler_ChaosCloth::HandleItemDetach(UArcItemAttachmentCompon
 			if (UChaosClothComponent* CCC = Cast<UChaosClothComponent>(AttachedObject))
 			{
 				CCC->SetHiddenInGame(true);
-				CCC->DetachFromParent();
+				CCC->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 				CCC->DestroyComponent();		
 			}
 		}

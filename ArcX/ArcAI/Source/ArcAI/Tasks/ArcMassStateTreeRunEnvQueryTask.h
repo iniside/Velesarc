@@ -18,7 +18,7 @@ struct FArcMassStateTreeRunEnvQueryInstanceData
 	GENERATED_BODY()
 
 	// Result of the query. If an array is binded, it will output all the created values otherwise it will output the best one.
-	UPROPERTY(EditAnywhere, Category = Out, meta = (RefType = "/Script/CoreUObject.Vector, /Script/Engine.Actor, /Script/MassEntity.MassEntityHandle, /Script/MassEQS.MassEnvQueryEntityInfoBlueprintWrapper", CanRefToArray))
+	UPROPERTY(EditAnywhere, Category = Out, meta = (RefType = "/Script/CoreUObject.Vector, /Script/Engine.Actor, /Script/MassEntity.MassEntityHandle, /Script/MassEQS.MassEnvQueryEntityInfoBlueprintWrapper, /Script/ArcAI.ArcMassSmartObjectItem", CanRefToArray))
 	FStateTreePropertyRef Result;
 
 	// The query template to run
@@ -56,7 +56,7 @@ struct FArcMassStateTreeRunEnvQueryInstanceData
 *	- Run Env Query (If success go to Use Query Result)
 *	- Use Query Result
 */
-USTRUCT(meta = (DisplayName = "Run Mass Env Query", Category = "Common"))
+USTRUCT(meta = (DisplayName = "Arc Run Mass Env Query", Category = "Arc|Common"))
 struct FArcMassStateTreeRunEnvQueryTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

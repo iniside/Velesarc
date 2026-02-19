@@ -111,7 +111,7 @@ public:
 	void ServerSetUniqueNetId(const FUniqueNetIdRepl& NetId);
 	
 	virtual void PostNetInit() override;
-	virtual void BeginReplication() override;
+	virtual void OnReplicationStartedForIris(const FOnReplicationStartedParams& Params) override;
 	
 	//~APlayerState interface
 	virtual void Reset() override;

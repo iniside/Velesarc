@@ -6,8 +6,14 @@
 #include "MovementModifier.h"
 #include "MoverTypes.h"
 #include "DefaultMovementSet/Modes/SmoothWalkingMode.h"
-#include "UObject/Object.h"
 #include "ArcMoverTypes.generated.h"
+
+
+ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Mover_Gait_Walk);
+ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Mover_Gait_Run);
+ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Mover_Gait_Sprint);
+
+ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Mover_BlockAllInput);
 
 UENUM(BlueprintType)
 enum class EArcMoverGaitType : uint8
@@ -55,6 +61,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	EArcMoverDirectionType MovementDirection = EArcMoverDirectionType::F;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float MaxVelocityMultiplier = 1.0f;
+	
 	/** Please add a variable description */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	double RotationOffset = 0.0;
@@ -66,6 +75,9 @@ public:
 	/** Please add a variable description */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool WantsToCrouch = false;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool bHaveFocusTarget = false;
 	
 	virtual UScriptStruct* GetScriptStruct() const override
 	{

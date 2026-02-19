@@ -124,6 +124,8 @@ public:
 
 	void HandlePawnDataReplicated();
 	
+	void HandleMassEntityCreated();
+	
 	void WaitForExperienceLoad();
 
 	// Call this anytime the pawn needs to check if it's ready to be initialized (pawn

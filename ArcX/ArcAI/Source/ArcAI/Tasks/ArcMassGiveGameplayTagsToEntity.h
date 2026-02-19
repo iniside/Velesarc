@@ -16,7 +16,7 @@ struct FArcMassGiveGameplayTagsToEntityInstanceData
 /**
  * Stop, and stand on current navmesh location
  */
-USTRUCT(meta = (DisplayName = "Arc Mass Give Gameplay Tags To Entity"))
+USTRUCT(meta = (DisplayName = "Arc Mass Give Gameplay Tags To Entity", Category = "Arc|Common"))
 struct FArcMassGiveGameplayTagsToEntityTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -25,6 +25,9 @@ struct FArcMassGiveGameplayTagsToEntityTask : public FMassStateTreeTaskBase
 
 public:
 	FArcMassGiveGameplayTagsToEntityTask();
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	bool bRemoveOnExit = false;
 	
 protected:
 	virtual bool Link(FStateTreeLinker& Linker) override;
@@ -36,6 +39,7 @@ protected:
 	}
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
-
+	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	
 	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
 };

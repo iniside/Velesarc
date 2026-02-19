@@ -137,9 +137,9 @@ void UArcCoreGameplayAbility::K2_ExecuteGameplayCueWithParams(FGameplayTag Gamep
 		, GameplayCueParameters);
 }
 
-void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
+void UArcCoreGameplayAbility::GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
 {
-	Super::GetAssetRegistryTags(OutTags);
+	Super::GetAssetRegistryTags(Context);
 
 	// AbilityTags
 
@@ -156,7 +156,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("AbilityTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("AbilityTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -175,7 +175,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("CancelAbilitiesWithTag")
+		Context.AddTag(FAssetRegistryTag(TEXT("CancelAbilitiesWithTag")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -194,7 +194,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("BlockAbilitiesWithTag")
+		Context.AddTag(FAssetRegistryTag(TEXT("BlockAbilitiesWithTag")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -213,7 +213,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("ActivationOwnedTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("ActivationOwnedTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -232,7 +232,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("ActivationRequiredTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("ActivationRequiredTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -251,7 +251,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("ActivationBlockedTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("ActivationBlockedTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -270,7 +270,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("SourceRequiredTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("SourceRequiredTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -289,7 +289,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("SourceBlockedTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("SourceBlockedTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -308,7 +308,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("TargetRequiredTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("TargetRequiredTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -327,7 +327,7 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("TargetBlockedTags")
+		Context.AddTag(FAssetRegistryTag(TEXT("TargetBlockedTags")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
@@ -345,18 +345,11 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Ou
 				Tags += ",";
 			}
 		}
-		OutTags.Add(FAssetRegistryTag(TEXT("AbilityTriggers")
+		Context.AddTag(FAssetRegistryTag(TEXT("AbilityTriggers")
 			, Tags
 			, FAssetRegistryTag::TT_Hidden));
 	}
 }
-
-#if WITH_EDITOR
-EDataValidationResult UArcCoreGameplayAbility::IsDataValid(class FDataValidationContext& Context)
-{
-	return EDataValidationResult::NotValidated;
-}
-#endif // #if WITH_EDITOR
 
 void UArcCoreGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo
 											, const FGameplayAbilitySpec& Spec)

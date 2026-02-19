@@ -19,7 +19,7 @@ struct FArcMassActorSetFocusTaskInstanceData
 	TObjectPtr<AActor> FocusTarget;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Mass Actor Set Focus"))
+USTRUCT(meta = (DisplayName = "Arc Mass Actor Set Focus", Category = "Arc|Common"))
 struct FArcMassActorSetFocusTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -39,5 +39,6 @@ protected:
 	}
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 };

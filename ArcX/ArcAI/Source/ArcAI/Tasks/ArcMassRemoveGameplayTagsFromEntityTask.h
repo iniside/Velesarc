@@ -18,7 +18,7 @@ struct FArcMassRemoveGameplayTagsFromEntityTaskInstanceData
 /**
  * Stop, and stand on current navmesh location
  */
-USTRUCT(meta = (DisplayName = "Arc Mass Remove Gameplay Tags From Entity"))
+USTRUCT(meta = (DisplayName = "Arc Mass Remove Gameplay Tags From Entity", Category = "Arc|Common"))
 struct FArcMassRemoveGameplayTagsFromEntityTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

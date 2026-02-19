@@ -2,13 +2,17 @@
 
 #include "ArcMassEQSResultStore.h"
 #include "ArcMassEQSTypes.h"
+#include "EnvQueryItemType_SmartObject.h"
 #include "MassActorSubsystem.h"
 #include "MassEntitySubsystem.h"
 #include "MassEQSBlueprintLibrary.h"
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
+#include "SmartObjectSubsystem.h"
 #include "EnvironmentQuery/EnvQueryManager.h"
 #include "Items/EnvQueryItemType_MassEntityHandle.h"
+#include "SmartObjects/ArcEnvQueryItemType_EntitySmartObject.h"
+#include "SmartObjects/ArcMassSmartObjectTypes.h"
 
 FArcMassStateTreeRunEnvQueryTask::FArcMassStateTreeRunEnvQueryTask()
 {
@@ -87,7 +91,9 @@ EStateTreeRunStatus FArcMassStateTreeRunEnvQueryTask::EnterState(FStateTreeExecu
 		}));
 	}
 	
-	auto QueryLambda = FQueryFinishedSignature::CreateLambda([this, WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity = MassCtx.GetEntity(), ResultStoreSubsystem](TSharedPtr<FEnvQueryResult> QueryResult) mutable
+	auto QueryLambda = FQueryFinishedSignature::CreateLambda(
+		[this, WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity = MassCtx.GetEntity(), ResultStoreSubsystem, World = Context.GetWorld()]
+		(TSharedPtr<FEnvQueryResult> QueryResult) mutable
 		{
 			const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 			if (FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>())
@@ -97,7 +103,7 @@ EStateTreeRunStatus FArcMassStateTreeRunEnvQueryTask::EnterState(FStateTreeExecu
 				bool bSuccess = false;
 				if (QueryResult && QueryResult->IsSuccessful())
 				{
-					auto [VectorPtr, ActorPtr, ArrayOfVector, ArrayOfActor, EntityPtr, EntityArrayPtr] = InstanceDataPtr->Result.GetPtrTupleFromStrongExecutionContext<FVector,AActor*, TArray<FVector>, TArray<AActor*>, FMassEnvQueryEntityInfoBlueprintWrapper, TArray<FMassEnvQueryEntityInfoBlueprintWrapper>>(StrongContext);
+					auto [VectorPtr, ActorPtr, ArrayOfVector, ArrayOfActor, EntityPtr, EntityArrayPtr, SmartObjectSlotEQSItemPtr] = InstanceDataPtr->Result.GetPtrTupleFromStrongExecutionContext<FVector,AActor*, TArray<FVector>, TArray<AActor*>, FMassEnvQueryEntityInfoBlueprintWrapper, TArray<FMassEnvQueryEntityInfoBlueprintWrapper>, FArcMassSmartObjectItem>(StrongContext);
 
 					if (VectorPtr)
 					{
@@ -167,12 +173,43 @@ EStateTreeRunStatus FArcMassStateTreeRunEnvQueryTask::EnterState(FStateTreeExecu
 							ResultStoreSubsystem->EQSResults.FindOrAdd(Entity).Results.FindOrAdd(InstanceDataPtr->StoreName).EntityArrayResult = *EntityArrayPtr;
 						}
 					}
+					else if (SmartObjectSlotEQSItemPtr)
+					{
+						UArcEnvQueryItemType_EntitySmartObject* DefTypeOb = QueryResult->ItemType->GetDefaultObject<UArcEnvQueryItemType_EntitySmartObject>();
+						check(DefTypeOb != nullptr);
+						
+						USmartObjectSubsystem* SmartObjectSubsystem = World->GetSubsystem<USmartObjectSubsystem>();
+						for (const FEnvQueryItem& Item : QueryResult->Items)
+						{
+							FArcMassSmartObjectItem SmartObjectItem = DefTypeOb->GetValue(QueryResult->RawData.GetData() + Item.DataOffset);
+							*SmartObjectSlotEQSItemPtr = SmartObjectItem;
+							//FConstStructView OwnerData = SmartObjectSubsystem->GetOwnerData(SmartObjectItem.SmartObjectHandle);
+							//if (OwnerData.GetScriptStruct() == TBaseStructure<FMassEntityHandle>::Get())
+							//{
+							//	FMassEntityHandle OwnerEntity = OwnerData.Get<FMassEntityHandle>();
+							//	FArcMassSmartObjectItem ArcItem(SmartObjectItem.Location, SmartObjectItem.SmartObjectHandle, SmartObjectItem.SlotHandle, OwnerEntity);
+							//	*SmartObjectSlotEQSItemPtr = ArcItem;
+							//}
+							//else
+							//{
+							//	FArcMassSmartObjectItem ArcItem(SmartObjectItem.Location, SmartObjectItem.SmartObjectHandle, SmartObjectItem.SlotHandle);
+							//	*SmartObjectSlotEQSItemPtr = ArcItem;	
+							//}
+							
+							break;
+						}
+
+						if (ResultStoreSubsystem && InstanceDataPtr->bStoreInEQSStore)
+						{
+							ResultStoreSubsystem->EQSResults.FindOrAdd(Entity).Results.FindOrAdd(InstanceDataPtr->StoreName).EntityResult = *EntityPtr;
+						}
+					}
 					bSuccess = true;
 				}
 
 				if (!bSuccess)
 				{
-					auto [VectorPtr, ActorPtr, ArrayOfVector, ArrayOfActor, EntityPtr, EntityArrayPtr] = InstanceDataPtr->Result.GetPtrTupleFromStrongExecutionContext<FVector,AActor*, TArray<FVector>, TArray<AActor*>, FMassEnvQueryEntityInfoBlueprintWrapper, TArray<FMassEnvQueryEntityInfoBlueprintWrapper>>(StrongContext);
+					auto [VectorPtr, ActorPtr, ArrayOfVector, ArrayOfActor, EntityPtr, EntityArrayPtr, SmartObjectSlotEQSItemPtr] = InstanceDataPtr->Result.GetPtrTupleFromStrongExecutionContext<FVector,AActor*, TArray<FVector>, TArray<AActor*>, FMassEnvQueryEntityInfoBlueprintWrapper, TArray<FMassEnvQueryEntityInfoBlueprintWrapper>, FArcMassSmartObjectItem>(StrongContext);
 					
 					if (VectorPtr)
 					{
@@ -221,6 +258,10 @@ EStateTreeRunStatus FArcMassStateTreeRunEnvQueryTask::EnterState(FStateTreeExecu
                         {
                         	ResultStoreSubsystem->EQSResults.FindOrAdd(Entity).Results.FindOrAdd(InstanceDataPtr->StoreName).EntityArrayResult.Empty();
                         }
+					}
+					else if (SmartObjectSlotEQSItemPtr)
+					{
+						*SmartObjectSlotEQSItemPtr = FArcMassSmartObjectItem();
 					}
 				}
 

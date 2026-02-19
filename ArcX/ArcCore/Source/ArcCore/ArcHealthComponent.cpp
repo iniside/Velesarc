@@ -24,6 +24,8 @@
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "ArcEventTags.h"
 #include "ArcWorldDelegates.h"
+#include "AsyncMessageSystemBase.h"
+#include "AsyncMessageWorldSubsystem.h"
 #include "GameplayTagsManager.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
@@ -88,6 +90,44 @@ bool UArcAttributeHandlingComponent::IsPawnComponentReadyToInitialize()
 	bHealthInitialized = true;
 
 	return bHealthInitialized;
+}
+
+void UArcAttributeHandlingComponent::OnPawnReady()
+{
+	if (bHealthInitialized == true)
+	{
+		return;
+	}
+
+	if (GetOwner() == nullptr)
+	{
+		return;
+	}
+
+	ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+	if (ArcASC.IsValid() == false)
+	{
+		if (APawn* P = GetPawn<APawn>())
+		{
+			APlayerState* ArcPS = P->GetPlayerState();
+			if (ArcPS != nullptr)
+			{
+				ArcASC = ArcPS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+			}
+		}
+	}
+
+	if (ArcASC.IsValid() == false)
+	{
+		bHealthInitialized = false;
+		return;
+	}
+
+	FOnGameplayAttributeValueChange& HealthAttributeDelegate = ArcASC->GetGameplayAttributeValueChangeDelegate(
+		TrackedAttribute);
+	AttributeChangedHandle = HealthAttributeDelegate.AddUObject(this
+		, &UArcAttributeHandlingComponent::HandleAttributeChangedDelegate);
+	bHealthInitialized = true;
 }
 
 DEFINE_LOG_CATEGORY(LogArcDeath);
@@ -165,6 +205,11 @@ void UArcHealthComponent::OnRep_DeathState(EArcDeathState OldDeathState)
 		, *GetNameSafe(GetOwner()));
 }
 
+void UArcHealthComponent::SetDeathState(EArcDeathState InNewState)
+{
+	DeathState = InNewState;
+}
+
 UArcHealthComponent::UArcHealthComponent()
 {
 }
@@ -188,11 +233,10 @@ void UArcHealthComponent::StartDeath()
 
 	if (P && P->GetLocalRole() == ROLE_Authority)
 	{
-		P->DetachFromControllerPendingDestroy();
+		//P->DetachFromControllerPendingDestroy();
 		if (UArcPawnExtensionComponent* PawnExt = UArcPawnExtensionComponent::Get(GetOwner()))
 		{
-			if (PawnExt->GetArcAbilitySystemComponent() && PawnExt->GetArcAbilitySystemComponent()->GetAvatarActor() ==
-				GetOwner())
+			if (PawnExt->GetArcAbilitySystemComponent() && PawnExt->GetArcAbilitySystemComponent()->GetAvatarActor() == GetOwner())
 			{
 				PawnExt->UninitializeAbilitySystem();
 			}
@@ -242,6 +286,11 @@ void UArcHealthComponent::FinishDeath()
 		{
 			GetOwner()->Destroy(true);
 		}
+		else
+		{
+			//GetOwner()->SetActorHiddenInGame(true);
+			//GetOwner()->SetActorEnableCollision(false);
+		}
 	}
 	GetOwner()->ForceNetUpdate();
 }
@@ -252,17 +301,13 @@ void UArcHealthComponent::HandleAttributeChanged(const FOnAttributeChangeData& I
 	{
 		// StartDeath();
 
-		UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(GetWorld());
-
-		FArcDeathMessage Message;
-		MessageSystem.BroadcastMessage(Arcx::EventTags::GameplayEvent_Death
-			, Message);
-
-		GetOwner()->OnEndPlay.AddDynamic(this
-			, &UArcHealthComponent::HandleOwnerEndPlay);
-		FOnGameplayAttributeValueChange& HealthAttributeDelegate = ArcASC->GetGameplayAttributeValueChangeDelegate(
-			TrackedAttribute);
-		HealthAttributeDelegate.Remove(AttributeChangedHandle);
+		TSharedPtr<FAsyncMessageSystemBase> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem(GetWorld());
+		FArcDeathMessage DeathMessage;
+		MessageSystem->QueueMessageForBroadcast(Arcx::EventTags::GameplayEvent_Death, FConstStructView::Make(DeathMessage));
+		
+		//GetOwner()->OnEndPlay.AddDynamic(this, &UArcHealthComponent::HandleOwnerEndPlay);
+		//FOnGameplayAttributeValueChange& HealthAttributeDelegate = ArcASC->GetGameplayAttributeValueChangeDelegate(TrackedAttribute);
+		//HealthAttributeDelegate.Remove(AttributeChangedHandle);
 		StartDeath();
 
 		if (ArcASC.IsValid())

@@ -4,10 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityFragments.h"
 #include "Subsystems/WorldSubsystem.h"
-#include "UObject/Object.h"
-#include "MassEntityTypes.h"
 #include "MassProcessor.h"
 #include "MassObserverProcessor.h"
 
@@ -15,20 +12,12 @@
 
 #include "ArcMassPerception.generated.h"
 
-class UMassEntitySubsystem;
-/**
- * 
- */
-UCLASS()
-class ARCAI_API UArcMassPerception : public UObject
-{
-	GENERATED_BODY()
-};
+ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Sense_Sight);
+ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Sense_Hearing);
+ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Stimuli_Sight);
+ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Stimuli_Hearing);
 
-#pragma once
-
-
-class UArcMassSpatialHashSubsystem;
+ARCAI_API extern TAutoConsoleVariable<bool> CVarArcDebugDrawPerception;
 
 // Perception shape type
 UENUM(BlueprintType)
@@ -44,12 +33,6 @@ struct ARCAI_API FArcPerceptionSenseConfigFragment : public FMassConstSharedFrag
 {
     GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
-	FGameplayTag SenseTag;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
-	FGameplayTagContainer RequiredStimuliTags;
-	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float EyeOffset = 100.0f;
 	
@@ -71,6 +54,9 @@ struct ARCAI_API FArcPerceptionSenseConfigFragment : public FMassConstSharedFrag
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
     float UpdateInterval = 0.1f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	float ForgetTime = 10.f;
+	
     // Optional tag filter - only perceive entities with these tags
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FGameplayTagContainer RequiredTags;
@@ -79,15 +65,20 @@ struct ARCAI_API FArcPerceptionSenseConfigFragment : public FMassConstSharedFrag
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FGameplayTagContainer IgnoredTags;
 	
-	// Debug drawing
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")
-	bool bEnableDebugDraw = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug", meta = (EditCondition = "bEnableDebugDraw"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")//, meta = (EditCondition = "bEnableDebugDraw"))
 	FColor DebugShapeColor = FColor::Green;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug", meta = (EditCondition = "bEnableDebugDraw"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")//, meta = (EditCondition = "bEnableDebugDraw"))
 	FColor DebugPerceivedLineColor = FColor::Red;
+};
+
+template<>
+struct TMassFragmentTraits<FArcPerceptionSenseConfigFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
 };
 
 // Single perceived entity data
@@ -109,38 +100,32 @@ struct ARCAI_API FArcPerceivedEntity
 	float Strength = 0.0f;
 	
     UPROPERTY(BlueprintReadOnly)
-    float TimeSinceLastSeen = 0.0f;
+    float TimeSinceLastPerceived = 0.0f;
 
 	UPROPERTY(BlueprintReadOnly)
-	FGameplayTag DetectedBySense;
+	double TimeFirstPerceived = 0.0f;
 	
+	UPROPERTY(BlueprintReadOnly)
+	float TimePerceived = 0.0f;
+	
+	UPROPERTY(BlueprintReadOnly)
+	double LastTimeSeen = 0.0f;
+		
     bool operator==(const FArcPerceivedEntity& Other) const
     {
         return Entity == Other.Entity;
     }
+	
+	bool operator==(const FMassEntityHandle& Other) const
+    {
+    	return Entity == Other;
+    }
+	
+	friend uint32 GetTypeHash(const FArcPerceivedEntity& Other)
+	{
+		return GetTypeHash(Other.Entity);
+	}
 };
-
-// Native delegate types
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityAddedNative, FMassEntityHandle /*PerceiverEntity*/, FMassEntityHandle /*PerceivedEntity*/, FGameplayTag /*SenseTag*/);
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityRemovedNative, FMassEntityHandle /*PerceiverEntity*/, FMassEntityHandle /*PerceivedEntity*/, FGameplayTag /*SenseTag*/);
-
-USTRUCT(BlueprintType)
-struct ARCAI_API FArcPerceptionSenseResult
-{
-	GENERATED_BODY()
-
-	// The sense this result belongs to
-	UPROPERTY(BlueprintReadOnly)
-	FGameplayTag SenseTag;
-
-	// Currently perceived entities by this sense
-	UPROPERTY(BlueprintReadOnly)
-	TArray<FArcPerceivedEntity> PerceivedEntities;
-
-	// Time accumulator for update interval
-	float TimeSinceLastUpdate = 0.0f;
-};
-
 
 // Fragment storing perceived entities per entity
 USTRUCT()
@@ -149,10 +134,10 @@ struct ARCAI_API FArcMassPerceptionResultFragmentBase : public FMassFragment
     GENERATED_BODY()
 	
 public:
-    //UPROPERTY(EditAnywhere)
-    //FArcPerceptionSenseConfig Config;
-    
+	UPROPERTY(VisibleAnywhere)
 	TArray<FArcPerceivedEntity> PerceivedEntities;
+	
+	UPROPERTY(VisibleAnywhere)
 	float TimeSinceLastUpdate = 0.0f;
 
 	void RemoveEntity(FMassEntityHandle EntityHandle)
@@ -212,238 +197,11 @@ struct TMassFragmentTraits<FArcMassPerceptionResultFragmentBase> final
 	};
 };
 
-//----------------------------------------------------------------------
-// Concrete sense fragments - add one for each sense type you need
-//----------------------------------------------------------------------
+// Native delegate types
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityAddedNative, FMassEntityHandle /*PerceiverEntity*/, FMassEntityHandle /*PerceivedEntity*/, FGameplayTag /*SenseTag*/);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityRemovedNative, FMassEntityHandle /*PerceiverEntity*/, FMassEntityHandle /*PerceivedEntity*/, FGameplayTag /*SenseTag*/);
 
-// Sight perception result
-USTRUCT()
-struct ARCAI_API FArcMassSightPerceptionResult : public FArcMassPerceptionResultFragmentBase
-{
-	GENERATED_BODY()
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassSightPerceptionResult> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-// Hearing perception result
-USTRUCT()
-struct ARCAI_API FArcMassHearingPerceptionResult : public FArcMassPerceptionResultFragmentBase
-{
-	GENERATED_BODY()
-	
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassHearingPerceptionResult> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-// Generic/custom perception result (for user-defined senses)
-USTRUCT()
-struct ARCAI_API FArcMassGenericPerceptionResult : public FArcMassPerceptionResultFragmentBase
-{
-	GENERATED_BODY()
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassGenericPerceptionResult> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-// Tag to mark entities as perceivable (they will be found by perception queries)
-USTRUCT()
-struct ARCAI_API FArcMassPerceivableTag : public FMassTag
-{
-    GENERATED_BODY()
-};
-
-// Fragment for perceivable entities - defines what stimuli they emit
-USTRUCT()
-struct ARCAI_API FArcMassPerceivableStimuliFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-	// What stimuli this entity emits (e.g., "Perception.Stimuli.Visual", "Perception.Stimuli.Audio")
-	UPROPERTY(EditAnywhere)
-	FGameplayTagContainer StimuliTags;
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassPerceivableStimuliFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-USTRUCT()
-struct ARCAI_API FArcMassPerceivableStimuliSightFragment : public FArcMassPerceivableStimuliFragment
-{
-	GENERATED_BODY()
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassPerceivableStimuliSightFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-USTRUCT()
-struct ARCAI_API FArcMassPerceivableStimuliHearingFragment : public FArcMassPerceivableStimuliFragment
-{
-	GENERATED_BODY()
-	
-public:
-	UPROPERTY(EditAnywhere)
-	bool bEmittedSound = false;
-	
-	UPROPERTY(EditAnywhere)
-	float EmissionStrength = 0;
-	
-	UPROPERTY(EditAnywhere)
-	double EmissionTime = 0;
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassPerceivableStimuliHearingFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-/**
- * Subsystem managing perception events and queries
- */
-UCLASS()
-class ARCAI_API UArcMassPerceptionSubsystem : public UWorldSubsystem
-{
-    GENERATED_BODY()
-
-public:
-    virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-    virtual void Deinitialize() override;
-	
-	TMap<FMassEntityHandle, FArcPerceptionEntityAddedNative> OnEntityPerceived;
-	TMap<FMassEntityHandle, FArcPerceptionEntityAddedNative> OnEntityLostFromPerception;
-	
-    // Internal - called by processor to broadcast events
-    void BroadcastEntityPerceived(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
-    void BroadcastEntityLostFromPerception(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
-
-private:
-    TWeakObjectPtr<UMassEntitySubsystem> CachedEntitySubsystem;
-    UMassEntitySubsystem* GetEntitySubsystem() const;
-};
-
-/**
- * Processor that updates perception for all entities with perception components
- */
-UCLASS(Abstract)
-class ARCAI_API UArcMassPerceptionProcessorBase : public UMassProcessor
-{
-    GENERATED_BODY()
-
-public:
-    UArcMassPerceptionProcessorBase();
-
-protected:
-    // Only processor-level config: which sense tag this processor handles
-    UPROPERTY(EditDefaultsOnly, Category = "Perception")
-    FGameplayTag SenseTag;
-
-    FMassEntityQuery PerceptionQuery;
-
-    static bool PassesFilters(
-        const FMassEntityManager& EntityManager,
-        FMassEntityHandle Entity,
-        const FArcPerceptionSenseConfigFragment& Config);
-
-#if WITH_GAMEPLAY_DEBUGGER
-    static void DrawDebugPerception(
-        UWorld* World,
-        const FVector& Location,
-        const FQuat& Rotation,
-        const FArcPerceptionSenseConfigFragment& Config,
-        const FArcMassPerceptionResultFragmentBase& Result);
-#endif
-};
-
-//----------------------------------------------------------------------
-// Sight Processor
-//----------------------------------------------------------------------
-UCLASS()
-class ARCAI_API UArcMassSightPerceptionProcessor : public UArcMassPerceptionProcessorBase
-{
-    GENERATED_BODY()
-
-public:
-    UArcMassSightPerceptionProcessor();
-
-protected:
-    virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-    virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-	
-	// Core processing - reads config from each entity's fragment
-	void ProcessPerceptionChunk(
-		FMassEntityManager& EntityManager,
-		FMassExecutionContext& Context,
-		UArcMassSpatialHashSubsystem* SpatialHash,
-		UArcMassPerceptionSubsystem* PerceptionSubsystem,
-		float DeltaTime,
-		const TConstArrayView<FTransformFragment>& TransformList,
-		const FArcPerceptionSenseConfigFragment& Config,
-		TArrayView<FArcMassPerceptionResultFragmentBase> ResultList);
-};
-
-//----------------------------------------------------------------------
-// Hearing Processor
-//----------------------------------------------------------------------
-UCLASS()
-class ARCAI_API UArcMassHearingPerceptionProcessor : public UArcMassPerceptionProcessorBase
-{
-    GENERATED_BODY()
-
-public:
-    UArcMassHearingPerceptionProcessor();
-
-protected:
-    virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-    virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-	
-	// Core processing - reads config from each entity's fragment
-	void ProcessPerceptionChunk(
-		FMassEntityManager& EntityManager,
-		FMassExecutionContext& Context,
-		UArcMassSpatialHashSubsystem* SpatialHash,
-		UArcMassPerceptionSubsystem* PerceptionSubsystem,
-		float DeltaTime,
-		const TConstArrayView<FTransformFragment>& TransformList,
-		const FArcPerceptionSenseConfigFragment& Config,
-		TArrayView<FArcMassPerceptionResultFragmentBase> ResultList);
-	
-	FMassEntityQuery HearingQuery;
-};
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityList, FMassEntityHandle /*PerceiverEntity*/, const TArray<FArcPerceivedEntity>& /* PerceivedEntities */, FGameplayTag /*SenseTag*/);
 
 //----------------------------------------------------------------------
 // Observer processor for cleanup

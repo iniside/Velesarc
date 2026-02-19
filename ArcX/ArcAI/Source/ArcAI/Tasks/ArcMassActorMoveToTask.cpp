@@ -290,6 +290,19 @@ EStateTreeRunStatus FArcMassActorMoveToTask::PerformMoveTask(FStateTreeExecution
 	return EStateTreeRunStatus::Failed;
 }
 
+FArcMassDrawDebugSphereTask::FArcMassDrawDebugSphereTask()
+{
+	bShouldCallTick = false;
+}
+
+EStateTreeRunStatus FArcMassDrawDebugSphereTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	DrawDebugSphere(Context.GetWorld(), InstanceData.Location, InstanceData.Radius, 12, FColor::Red, false, InstanceData.Duration);
+	
+	return EStateTreeRunStatus::Running;
+}
+
 UArcMassActorMoveToProcessor::UArcMassActorMoveToProcessor()
 	: EntityQuery_Conditional(*this)
 {

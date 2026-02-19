@@ -120,11 +120,6 @@ void FArcMassActorListenSightPerceptionTask::GetDependencies(UE::MassBehavior::F
 EStateTreeRunStatus FArcMassActorListenSightPerceptionTask::EnterState(FStateTreeExecutionContext& Context
 	, const FStateTreeTransitionResult& Transition) const
 {
-	return EStateTreeRunStatus::Running;
-}
-
-EStateTreeRunStatus FArcMassActorListenSightPerceptionTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
-{
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	FMassActorFragment* ActorFragment = MassCtx.GetExternalDataPtr(MassActorFragment);
 
@@ -163,7 +158,7 @@ EStateTreeRunStatus FArcMassActorListenSightPerceptionTask::Tick(FStateTreeExecu
 			TArray<AActor*> OutActors;
 			AIPerception->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), OutActors);
 
-			
+			if (InstanceDataPtr->Output.Num() != OutActors.Num())
 			{
 				InstanceDataPtr->Output = OutActors;
 				
@@ -171,6 +166,11 @@ EStateTreeRunStatus FArcMassActorListenSightPerceptionTask::Tick(FStateTreeExecu
 				SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
 			}
 	});
+	return EStateTreeRunStatus::Running;
+}
+
+EStateTreeRunStatus FArcMassActorListenSightPerceptionTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
 	return EStateTreeRunStatus::Running;
 }
 

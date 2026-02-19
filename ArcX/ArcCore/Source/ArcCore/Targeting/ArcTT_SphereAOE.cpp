@@ -42,7 +42,7 @@ void UArcTT_SphereAOE::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
 
-	FVector SourceLocation;
+	FVector SourceLocation = FVector::ZeroVector;
 	if (GlobalTargetingSource.IsValid())
 	{
 		UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(Ctx->SourceAbility->GetAbilitySystemComponentFromActorInfo());

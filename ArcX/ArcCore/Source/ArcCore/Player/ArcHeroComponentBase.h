@@ -28,13 +28,15 @@
 #include "ArcMacroDefines.h"
 #include "GameplayAbilitySpec.h"
 #include "GameplayTagContainer.h"
+#include "MassAgentComponent.h"
+#include "MassCommonFragments.h"
 #include "MoverSimulationTypes.h"
 #include "NativeGameplayTags.h"
 #include "Mover/ArcMoverTypes.h"
 
 #include "ArcHeroComponentBase.generated.h"
 
-
+class UArcCoreAbilitySystemComponent;
 class AArcCorePlayerState;
 class UInputComponent;
 struct FInputActionValue;
@@ -59,6 +61,23 @@ struct FArcCameraModeItem
 	UObject* Source = nullptr;
 };
 
+USTRUCT()
+struct ARCCORE_API FArcCoreAbilitySystemFragment : public FObjectWrapperFragment
+{
+	GENERATED_BODY()
+	
+	TWeakObjectPtr<UArcCoreAbilitySystemComponent> AbilitySystem;
+};
+
+template<>
+struct TMassFragmentTraits<FArcCoreAbilitySystemFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
 namespace Arcx::Input
 {
 	ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Move);
@@ -69,6 +88,19 @@ namespace Arcx::Input
 }
 
 class UCurveFloat;
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+class UArcCoreMassAgentComponent : public UMassAgentComponent
+{
+	GENERATED_BODY()
+
+public:
+	// Sets default values for this component's properties
+	UArcCoreMassAgentComponent();
+
+	virtual void SetEntityHandle(const FMassEntityHandle NewHandle) override;
+};
+
 
 UCLASS(ClassGroup = (Arc), meta = (BlueprintSpawnableComponent))
 class ARCCORE_API UArcHeroComponentBase
@@ -197,6 +229,8 @@ public:
 	float BR;
 };
 
+class UNavMoverComponent;
+
 UCLASS(ClassGroup = (Arc), meta = (BlueprintSpawnableComponent))
 class ARCCORE_API UArcMoverInputProducerComponent
 	: public UArcPawnComponent
@@ -208,17 +242,29 @@ public:
 	
 	TOptional<bool> bStopImmidietly = false;
 	TOptional<FVector> OverrideInput;
+	
+	UPROPERTY(EditAnywhere)
 	TOptional<EArcMoverGaitType> GaitOverride;
+	
+	UPROPERTY(EditAnywhere)
+	TOptional<EArcMoverAimModeType> AimModeOverride;
+	
 	float ControlRotationRate = 0;
 	FRotator LastControlRotation = FRotator::ZeroRotator;
 	FVector DirectionOfMovement = FVector::ZeroVector;
 	float MovementDirectionAngle = 0;
+	
+	FVector CachedMoveInputIntent = FVector::ZeroVector;
+	FVector CachedMoveInputVelocity = FVector::ZeroVector;
 	
 	UPROPERTY(EditAnywhere)
 	int32 RotationModeType = 0;
 	
 	UPROPERTY()
 	mutable TObjectPtr<UArcHeroComponentBase> HeroComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category="Nav Movement")
+	mutable TObjectPtr<UNavMoverComponent> NavMoverComponent;
 	
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UCurveFloat> RotationOffsetF;
@@ -247,6 +293,7 @@ public:
 	virtual void ProduceInput_Implementation(int32 SimTimeMs, FMoverInputCmdContext& InputCmdResult) override;
 	
 	UArcHeroComponentBase* GetHeroComponent() const;
+	UNavMoverComponent* GetNavMoverComponent() const;
 	
 	FArcMoverRotationThresholds GetRotationThresholds(EArcMoverDirectionType Type) const
 	{

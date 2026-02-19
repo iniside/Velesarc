@@ -8,6 +8,12 @@
 #include "GameFramework/Actor.h"
 #include "Player/ArcHeroComponentBase.h"
 
+UE_DEFINE_GAMEPLAY_TAG(TAG_Mover_Gait_Walk, "Mover.Gait.Walk");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Mover_Gait_Run, "Mover.Gait.Run");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Mover_Gait_Sprint, "Mover.Gait.Sprint");
+
+UE_DEFINE_GAMEPLAY_TAG(TAG_Mover_BlockAllInput, "Mover.BlockAllInput");
+
 FArcMovementModifier_MaxVelocity::FArcMovementModifier_MaxVelocity()
 {
 	DurationMs = -1.0f;

@@ -103,13 +103,13 @@ namespace Arcx::Net::Private
 														 , SIZE_T Size
 														 , SIZE_T Alignment)
 	{
-		return GMalloc->Malloc(Size, Alignment);
+		return FMemory::Malloc(Size, Alignment);
 	}
 
 	void FPolymorphicStructNetSerializerInternal::Free(FNetSerializationContext& Context
 													   , void* Ptr)
 	{
-		return GMalloc->Free(Ptr);
+		return FMemory::Free(Ptr);
 	}
 
 	void FPolymorphicStructNetSerializerInternal::CollectReferences(FNetSerializationContext& Context

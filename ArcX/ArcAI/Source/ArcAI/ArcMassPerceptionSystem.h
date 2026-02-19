@@ -7,6 +7,8 @@
 #include "MassCommonTypes.h"
 #include "MassEntityHandle.h"
 #include "MassProcessor.h"
+#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "ArcMassPerceptionSystem.generated.h"
 
 USTRUCT(BlueprintType)
@@ -71,6 +73,12 @@ struct FMassPerceivedTarget
     UPROPERTY()
     float PerceptionStrength = 1.0f;
 
+	// Calculate how likelyt are we to remember this entity. the longer it is in memory and not perceived the less likely we are to remember it and call it.
+	float ChanceToRemember() const
+	{
+		return 1.f;
+	}
+	
     FMassPerceivedTarget() = default;
 
     FMassPerceivedTarget(FMassEntityHandle InTarget, const FVector& InPosition, float InTime)
@@ -178,7 +186,7 @@ protected:
 	void ProcessNearbyEntitiesInBatches(
 			FMassEntityManager& EntityManager,
 			FMassExecutionContext& Context,
-			const TArray<FMassEntityHandle>& NearbyEntities,
+			const TArray<FArcMassEntityInfo>& NearbyEntities,
 			const FVector& ObserverPos,
 			const FVector& ObserverForward,
 			const FMassSightPerceptionFragment& SightPerception,

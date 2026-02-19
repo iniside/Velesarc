@@ -141,6 +141,36 @@ public:
 	TStateTreeExternalDataHandle<FArcMassActorMoveToFragment> MassActorMoveToFragment;
 };
 
+USTRUCT()
+struct FArcMassDrawDebugSphereTaskInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = Input)
+	FVector Location;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float Radius = 20.f;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float Duration = 20.f;
+};
+
+USTRUCT(meta = (DisplayName = "Arc Mass Draw Debug Sphere", Category = "AI|Action"))
+struct FArcMassDrawDebugSphereTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+	
+public:
+	using FInstanceDataType = FArcMassDrawDebugSphereTaskInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+
+	FArcMassDrawDebugSphereTask();
+
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+};
+
 
 USTRUCT()
 struct FArcMassActorMoveToTag : public FMassTag

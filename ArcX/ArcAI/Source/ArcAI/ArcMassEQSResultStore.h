@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "GameplayTagContainer.h"
 #include "MassEQSBlueprintLibrary.h"
 #include "Subsystems/WorldSubsystem.h"
 
@@ -49,4 +50,28 @@ public:
 
 	UPROPERTY()
 	TMap<FMassEntityHandle, FArcMassEQSResultTypeMap> EQSResults;
+};
+
+USTRUCT()
+struct FArcMassDataStoreTypeMap
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TMap<FGameplayTag, FArcMassEQSResults> Results;
+};
+
+UCLASS()
+class UArcMassGlobalDataStore : public UWorldSubsystem
+{
+	GENERATED_BODY()
+
+public:
+	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override
+	{
+		return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
+	}
+
+	UPROPERTY()
+	TMap<FMassEntityHandle, FArcMassDataStoreTypeMap> DataStore;
 };

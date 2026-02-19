@@ -62,6 +62,8 @@ public class ArcAI : ModuleRules
 				, "GameplayBehaviorsModule"
 				, "GameplayInteractionsModule"
 				, "AsyncMessageSystem"
+				, "Mover"
+				, "SlateIM"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

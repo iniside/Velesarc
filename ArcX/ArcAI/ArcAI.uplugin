@@ -67,6 +67,42 @@
 		{
 			"Name": "GameplayInteractions",
 			"Enabled": true
+		},
+		{
+			"Name": "MassAI",
+			"Enabled": true
+		},
+		{
+			"Name": "Mover",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMass",
+			"Enabled": true
+		},
+		{
+			"Name": "SlateIM",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcGameplayInteraction",
+			"Enabled": true
+		},
+		{
+			"Name": "MoverIntegrations",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcGameSettings",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcEditorTools",
+			"Enabled": true
 		}
 	]
 }

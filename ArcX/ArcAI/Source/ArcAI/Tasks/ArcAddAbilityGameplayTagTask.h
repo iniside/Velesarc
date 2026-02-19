@@ -23,7 +23,7 @@ public:
 /**
  * 
  */
-USTRUCT(meta = (DisplayName = "Arc Add AbilityGameplay Tag", Category = "AI|Action"))
+USTRUCT(meta = (DisplayName = "Arc Add AbilityGameplay Tag", Category = "Arc|Action"))
 struct ARCAI_API FArcAddAbilityGameplayTagTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

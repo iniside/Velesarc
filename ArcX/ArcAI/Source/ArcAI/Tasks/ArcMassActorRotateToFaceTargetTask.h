@@ -21,7 +21,7 @@ struct FArcMassActorRotateToFaceTargetTaskInstanceData
 	TObjectPtr<AActor> Target;
 };
 
-USTRUCT(DisplayName="Arc Mass Actor Rotate To Face Target Task")
+USTRUCT(DisplayName="Arc Mass Actor Rotate To Face Target Task", meta = (Category = "Arc|Common"))
 struct FArcMassActorRotateToFaceTargetTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

@@ -84,7 +84,7 @@ void UMassSightPerceptionProcessor::Execute(FMassEntityManager& EntityManager, F
                 }
 
                 // Query nearby entities using spatial hash
-                TArray<FMassEntityHandle> NearbyEntityIndices = SpatialHashSubsystem->QueryEntitiesInRadius(
+                TArray<FArcMassEntityInfo> NearbyEntityIndices = SpatialHashSubsystem->QueryEntitiesInRadius(
                     ObserverPos, SightPerception.SightRange);
 
                 // Process nearby entities in batches using Mass collections
@@ -111,7 +111,7 @@ void UMassSightPerceptionProcessor::Execute(FMassEntityManager& EntityManager, F
 void UMassSightPerceptionProcessor::ProcessNearbyEntitiesInBatches(
     FMassEntityManager& EntityManager,
     FMassExecutionContext& Context,
-    const TArray<FMassEntityHandle>& NearbyEntities,
+    const TArray<FArcMassEntityInfo>& NearbyEntities,
     const FVector& ObserverPos,
     const FVector& ObserverForward,
     const FMassSightPerceptionFragment& SightPerception,
@@ -121,7 +121,14 @@ void UMassSightPerceptionProcessor::ProcessNearbyEntitiesInBatches(
 {
     // Create entity collections for efficient batch processing
     TArray<FMassArchetypeEntityCollection> EntityCollections;
-    UE::Mass::Utils::CreateEntityCollections(EntityManager, NearbyEntities, 
+	TArray<FMassEntityHandle> EntityHandles;
+	EntityHandles.Reserve(NearbyEntities.Num());
+	for (int32 i = 0; i < NearbyEntities.Num(); i++)
+	{
+		EntityHandles.Add(NearbyEntities[i].Entity);
+	}
+	
+    UE::Mass::Utils::CreateEntityCollections(EntityManager, EntityHandles, 
         FMassArchetypeEntityCollection::NoDuplicates, EntityCollections);
 
     const float SightAngleRadians = FMath::DegreesToRadians(SightPerception.SightAngleDegrees * 0.5f);

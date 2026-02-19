@@ -152,6 +152,8 @@ protected:
 	
 public:
 	virtual void BeginPlay() override;
+	virtual void OnProduceInput(float DeltaMs, FMoverInputCmdContext& InputCmdResult) override;
+	
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	
 	virtual void GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const override;

@@ -21,6 +21,9 @@
 
 #include "ArcAIModule.h"
 
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "Misc/CoreDelegates.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 
 #if WITH_GAMEPLAY_DEBUGGER
@@ -42,6 +45,19 @@ void FArcAIModule::StartupModule()
 	GameplayDebuggerModule.NotifyCategoriesChanged();
 #endif
 	
+	//AIDebuggerWindow 
+	
+#if WITH_EDITOR
+	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstace)
+		{
+			AIDebuggerWindow.DebuggerWidget.World = GameInstace->GetWorld();
+		});
+	
+	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstace)
+		{
+			AIDebuggerWindow.DebuggerWidget.OnPieEnd();
+		});
+#endif
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 }
 

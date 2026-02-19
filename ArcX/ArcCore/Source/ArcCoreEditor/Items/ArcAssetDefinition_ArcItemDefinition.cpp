@@ -349,7 +349,7 @@ namespace Arcx
 		TArray<uint8> Result;
 		FObjectWriter ObjectWriter(Result);
 		ObjectWriter.SetIsPersistent(true);
-		Default = Default ? ToRawPtr(Default) : ToRawPtr(Object->GetClass()->ClassDefaultObject);
+		Default = Default ? ToRawPtr(Default) : ToRawPtr(Object->GetClass()->GetDefaultObject());
 		Object->GetClass()->SerializeTaggedProperties( ObjectWriter, reinterpret_cast<uint8*>(Object), Default->GetClass(), reinterpret_cast<uint8*>(Default));
 		return Result;
 	};
@@ -358,7 +358,7 @@ namespace Arcx
 	{
 		FObjectReader ObjectReader(Data);
 		ObjectReader.SetIsPersistent(true);
-		Default = Default ? ToRawPtr(Default) : ToRawPtr(Object->GetClass()->ClassDefaultObject);
+		Default = Default ? ToRawPtr(Default) : ToRawPtr(Object->GetClass()->GetDefaultObject());
 		Object->GetClass()->SerializeTaggedProperties(ObjectReader, reinterpret_cast<uint8*>(Object), Default->GetClass(), reinterpret_cast<uint8*>(Default));
 	};
 }

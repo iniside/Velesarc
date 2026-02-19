@@ -10,10 +10,10 @@
 #include "Engine/TimerHandle.h"
 #include "Perception/ArcAISense_GameplayAbility.h"
 
-#include "ArcMassActorListenPerceptionGameplayAbilityTask.generated.h"
+#include "ArcMassActorListenToAsyncMessageTask.generated.h"
 
 USTRUCT()
-struct FArcMassActorListenPerceptionGameplayAbilityTaskInstanceData
+struct FArcMassActorListenToAsyncMessageTaskInstanceData
 {
 	GENERATED_BODY()
 
@@ -38,15 +38,15 @@ struct FArcMassActorListenPerceptionGameplayAbilityTaskInstanceData
 	FAsyncMessageHandle BoundListenerHandle = FAsyncMessageHandle::Invalid;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen Perception Gameplay Ability Task "))
-struct FArcMassActorListenPerceptionGameplayAbilityTask : public FMassStateTreeTaskBase
+USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen To Async Message Task", Category = "Arc|Events"))
+struct FArcMassActorListenToAsyncMessageTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
 	
-	using FInstanceDataType = FArcMassActorListenPerceptionGameplayAbilityTaskInstanceData;
+	using FInstanceDataType = FArcMassActorListenToAsyncMessageTaskInstanceData;
 
 public:
-	FArcMassActorListenPerceptionGameplayAbilityTask();
+	FArcMassActorListenToAsyncMessageTask();
 	
 protected:
 	virtual bool Link(FStateTreeLinker& Linker) override;

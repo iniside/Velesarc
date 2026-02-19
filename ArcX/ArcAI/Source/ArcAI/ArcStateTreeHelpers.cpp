@@ -75,11 +75,11 @@ void UArcStateTreeHelpers::SendGameplayAbilityEventInRadius(FGameplayTag Message
 	const FMassEntityManager& EM = MES->GetEntityManager();
 	
 	
-	TArray<FMassEntityHandle> Entities = SpatialHash->QueryEntitiesInRadius(Location, Radius);
+	TArray<FArcMassEntityInfo> Entities = SpatialHash->QueryEntitiesInRadius(Location, Radius);
 	
-	for (const FMassEntityHandle& Entity : Entities)
+	for (const FArcMassEntityInfo& Entity : Entities)
 	{
-		FMassActorFragment* ActorFragment = EM.GetFragmentDataPtr<FMassActorFragment>(Entity);
+		FMassActorFragment* ActorFragment = EM.GetFragmentDataPtr<FMassActorFragment>(Entity.Entity);
 		if (ActorFragment && ActorFragment->Get())
 		{
 			IAsyncMessageBindingEndpointInterface* Interface = Cast<IAsyncMessageBindingEndpointInterface>(ActorFragment->GetMutable());

@@ -13,7 +13,6 @@ public class ArcCore : ModuleRules
 		// Now get the base of UE4's modules dir (could also be Developer, Editor, ThirdParty)
 		var pluginPath = enginePath + "Plugins/Runtime/";
 		PublicIncludePaths.Add(pluginPath + "GameplayInteractions/Source/GameplayInteractionsModule/Private");
-		PublicIncludePaths.Add(enginePath + "Source/Runtime/Experimental/Iris/Core/Private");
 		SetupIrisSupport(Target);
 				
 		PublicDefinitions.Add("BOOST_ALL_NO_LIB");

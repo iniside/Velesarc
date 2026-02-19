@@ -21,6 +21,7 @@
 
 #include "ArcHeroComponentBase.h"
 #include "AbilitySystemInterface.h"
+#include "AIController.h"
 #include "Components/GameFrameworkComponentManager.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/GameUserSettings.h"
@@ -42,9 +43,11 @@
 #include "Pawn/ArcPawnExtensionComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "KismetAnimationLibrary.h"
+#include "MassEntitySubsystem.h"
 #include "MoverComponent.h"
 
 #include "PlayerMappableInputConfig.h"
+#include "DefaultMovementSet/NavMoverComponent.h"
 #include "Engine/World.h"
 
 #include "GameMode/ArcExperienceData.h"
@@ -57,7 +60,21 @@
 #include "UI/ArcHUDBase.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 
-DEFINE_LOG_CATEGORY(LogArcHero);
+DEFINE_LOG_CATEGORY(LogArcHero)
+
+UArcCoreMassAgentComponent::UArcCoreMassAgentComponent()
+{
+}
+
+void UArcCoreMassAgentComponent::SetEntityHandle(const FMassEntityHandle NewHandle)
+{
+	Super::SetEntityHandle(NewHandle);
+	
+	if (UArcPawnExtensionComponent* PawnExtensionComponent = GetOwner()->FindComponentByClass<UArcPawnExtensionComponent>())
+	{
+		PawnExtensionComponent->HandleMassEntityCreated();
+	}
+};
 
 namespace ArcxHero
 {
@@ -112,6 +129,15 @@ bool UArcHeroComponentBase::CanChangeInitState(UGameFrameworkComponentManager* M
 	}
 	else if (CurrentState == InitTags.InitState_Spawned && DesiredState == InitTags.InitState_DataAvailable)
 	{
+		if (UArcCoreMassAgentComponent* MassAgentComponent = Pawn->FindComponentByClass<UArcCoreMassAgentComponent>())
+		{
+			UMassEntitySubsystem* MassEntitySubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(Pawn->GetWorld());
+			FMassEntityManager& EntityManager = MassEntitySubsystem->GetMutableEntityManager();
+			if (!EntityManager.IsEntityValid(MassAgentComponent->GetEntityHandle()))
+			{
+				return false;
+			}
+		}
 		// The player state is required.
 		AArcCorePlayerState* ArcPS = GetPlayerState<AArcCorePlayerState>();
 		if (ArcPS == nullptr)
@@ -273,6 +299,16 @@ void UArcHeroComponentBase::HandleChangeInitState(UGameFrameworkComponentManager
 			}
 		}
 	
+		if (UArcCoreMassAgentComponent* MassAgentComponent = Pawn->FindComponentByClass<UArcCoreMassAgentComponent>())
+		{
+			UMassEntitySubsystem* MassEntitySubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(Pawn->GetWorld());
+			FMassEntityManager& EntityManager = MassEntitySubsystem->GetMutableEntityManager();
+			if (FArcCoreAbilitySystemFragment* AbilitySystemFragment = EntityManager.GetFragmentDataPtr<FArcCoreAbilitySystemFragment>(MassAgentComponent->GetEntityHandle()))
+			{
+				AbilitySystemFragment->AbilitySystem = ArcPS->GetArcAbilitySystemComponent();
+			}
+		}
+		
 		bPawnHasInitialized = true;
 		if (UArcPlayerStateExtensionComponent* PSExt = UArcPlayerStateExtensionComponent::Get(ArcPS))
 		{
@@ -287,6 +323,13 @@ void UArcHeroComponentBase::HandleChangeInitState(UGameFrameworkComponentManager
 			 */
 			PSExt->PlayerStateInitialized();
 			PSExt->PlayerPawnInitialized(Pawn);
+		}
+
+		TArray<UArcPawnComponent*> PawnComponents;
+		GetOwner()->GetComponents<UArcPawnComponent>(PawnComponents);
+		for (UArcPawnComponent* PawnComponent : PawnComponents)
+		{
+			PawnComponent->OnPawnReady();
 		}
 
 		APlayerController* PC = GetController<APlayerController>();
@@ -683,6 +726,16 @@ void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeM
 	FArcMoverCustomInputs& CustomInputs = InputCmdResult.InputCollection.FindOrAddMutableDataByType<FArcMoverCustomInputs>();
 	UArcHeroComponentBase* HeroComp = GetHeroComponent();
 	APawn* Pawn = GetPawnChecked<APawn>();
+	IGameplayTagAssetInterface* GTAI = Cast<IGameplayTagAssetInterface>(Pawn);
+	if (GTAI && GTAI->HasMatchingGameplayTag(TAG_Mover_BlockAllInput))
+	{
+		CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, FVector::ZeroVector);
+		return;
+	}
+	
+	CustomInputs.bHaveFocusTarget = false;
+	
+	if (HeroComp)
 	{
 		FVector Swizzled;
 		Swizzled.X = HeroComp->MoveInputVector.Y;
@@ -702,8 +755,40 @@ void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeM
 		FVector RotatedVector = UKismetMathLibrary::GreaterGreater_VectorRotator(Swizzled, ControlRotation);
 		RotatedVector.Normalize();
 		
-		CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, RotatedVector);	
+		CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, RotatedVector);
+		
 	}
+	
+	bool bRequestedNavMovement = false;
+	if (GetNavMoverComponent())
+	{
+		bRequestedNavMovement = NavMoverComponent->ConsumeNavMovementData(CachedMoveInputIntent, CachedMoveInputVelocity);
+		// Favor velocity input 
+		bool bUsingInputIntentForMove = CachedMoveInputVelocity.IsZero();
+
+		if (bUsingInputIntentForMove)
+		{
+			const FVector FinalDirectionalIntent = CharacterInputs.ControlRotation.RotateVector(CachedMoveInputIntent);
+			CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, FinalDirectionalIntent);
+		}
+		else
+		{
+			//CharacterInputs.SetMoveInput(EMoveInputType::Velocity, CachedMoveInputVelocity);
+			const FVector FinalDirectionalIntent = CharacterInputs.ControlRotation.RotateVector(CachedMoveInputIntent);
+			CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, CachedMoveInputVelocity.GetSafeNormal());
+			//CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, CachedMoveInputVelocity.GetSafeNormal());
+		}
+
+	
+		// Normally cached input is cleared by OnMoveCompleted input event but that won't be called if movement came from nav movement
+		if (bRequestedNavMovement)
+		{
+			CachedMoveInputIntent = FVector::ZeroVector;
+			CachedMoveInputVelocity = FVector::ZeroVector;
+		}
+	}
+	
+
 	
 	{
 		CharacterInputs.ControlRotation = Pawn->GetControlRotation();	
@@ -715,6 +800,25 @@ void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeM
 	
 	{
 		CustomInputs.RotationMode = EArcMoverAimModeType::Strafe;
+		if (AimModeOverride.IsSet())
+		{
+			CustomInputs.RotationMode = AimModeOverride.GetValue();
+		}
+	}
+	
+	if (AAIController* AI = Cast<AAIController>(Pawn->GetController()))
+	{
+		if (AI->GetFocusActor())
+		{
+			const FVector FocalPoint = AI->GetFocalPoint();
+			const FVector Dir = (FocalPoint - Pawn->GetActorLocation()).GetSafeNormal();
+			//CharacterInputs.OrientationIntent = Dir;
+			CharacterInputs.ControlRotation.Pitch = 0;
+			CharacterInputs.ControlRotation.Roll = 0;
+			CharacterInputs.ControlRotation.Yaw = Dir.Rotation().Yaw;
+			CustomInputs.bHaveFocusTarget = true;
+			CustomInputs.RotationMode = EArcMoverAimModeType::Aim;
+		}
 	}
 	
 	{
@@ -771,6 +875,23 @@ void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeM
 		}
 		CustomInputs.ControlRotationRate = ControlRotationRate;
 		CustomInputs.WantsToCrouch = false;
+		
+		if (GTAI)
+		{
+			if (GTAI->HasMatchingGameplayTag(TAG_Mover_Gait_Walk))
+			{
+				CustomInputs.Gait = EArcMoverGaitType::Walk;
+			}
+			else if (GTAI->HasMatchingGameplayTag(TAG_Mover_Gait_Run))
+			{
+				CustomInputs.Gait = EArcMoverGaitType::Run;
+			}
+			else if (GTAI->HasMatchingGameplayTag(TAG_Mover_Gait_Sprint))
+			{
+				CustomInputs.Gait = EArcMoverGaitType::Sprint;
+			}	
+		}
+		
 	}
 	
 	{
@@ -783,8 +904,11 @@ void UArcMoverInputProducerComponent::ProduceInput_Implementation(int32 SimTimeM
 			Velocity.Normalize();
 			
 			// MovementMode
+			FVector Forward = Pawn->GetActorForwardVector();
 			
 			DirectionOfMovement = CharacterInputs.GetMoveInput();
+			float Dot = FVector::DotProduct(Forward, DirectionOfMovement);
+			CustomInputs.MaxVelocityMultiplier = FMath::GetMappedRangeValueClamped(FVector2f{1.f, -1.f}, {1.f, 0.5f}, Dot);
 			if (DirectionOfMovement.Size() <= 0)
 			{
 				CustomInputs.MovementDirection = EArcMoverDirectionType::F;
@@ -910,4 +1034,15 @@ UArcHeroComponentBase* UArcMoverInputProducerComponent::GetHeroComponent() const
 	
 	HeroComponent = GetOwner()->FindComponentByClass<UArcHeroComponentBase>();
 	return HeroComponent;
+}
+
+UNavMoverComponent* UArcMoverInputProducerComponent::GetNavMoverComponent() const
+{
+	if (NavMoverComponent)
+	{
+		return NavMoverComponent;
+	}
+	
+	NavMoverComponent = GetOwner()->FindComponentByClass<UNavMoverComponent>();
+	return NavMoverComponent;
 }

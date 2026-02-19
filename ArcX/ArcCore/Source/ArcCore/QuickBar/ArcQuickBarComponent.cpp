@@ -269,7 +269,7 @@ EDataValidationResult UArcQuickBarComponent::IsDataValid(FDataValidationContext&
 						Counter++;
 						if (Counter > 1)
 						{
-							FString Msg = FString::Printf(TEXT("QuickBar %s Is set to Cyclable but there is more than one slot with bAutoSelect set to true. "), *QuickBar.BarId.ToString(), *Slot.QuickBarSlotId.ToString());
+							FString Msg = FString::Printf(TEXT("QuickBar %s slot %s Is set to Cyclable but there is more than one slot with bAutoSelect set to true. "), *QuickBar.BarId.ToString(), *Slot.QuickBarSlotId.ToString());
 							Context.AddError(FText::FromString(Msg));
 							ErrorCount++;
 							break;
@@ -1418,6 +1418,26 @@ FArcItemId UArcQuickBarComponent::GetItemId(const FGameplayTag& InBarId
 											, const FGameplayTag& InQuickSlotId) const
 {
 	return ReplicatedSelectedSlots.FindItemId(InBarId, InQuickSlotId);
+}
+
+const UArcItemDefinition* UArcQuickBarComponent::GetItemDefinition(const FGameplayTag& InBarId, const FGameplayTag& InQuickSlotId) const
+{
+	FArcItemId ItemId = ReplicatedSelectedSlots.FindItemId(InBarId, InQuickSlotId);
+	
+	UArcItemsStoreComponent* ItemsStore = GetItemStoreComponent(InBarId);
+	if (!ItemsStore)
+	{
+		return nullptr;
+	}
+	
+	FArcItemData* ItemData = ItemsStore->GetItemPtr(ItemId);
+	
+	if (!ItemData)
+	{
+		return nullptr;
+	}
+	
+	return ItemData->GetItemDefinition();
 }
 
 UArcItemsStoreComponent* UArcQuickBarComponent::BP_GetItemStoreComponent(const FGameplayTag& InQuickBarId) const

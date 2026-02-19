@@ -21,6 +21,7 @@
 
 #pragma once
 #include "GameplayTagContainer.h"
+#include "NativeGameplayTags.h"
 
 namespace Arcx
 {
@@ -33,8 +34,6 @@ namespace Arcx
 
 	namespace Tags
 	{
-		void InitializeNativeTags();
-
-		inline FGameplayTag GameplayEffect_Death_Persistent;
+		ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayEffect_Death_Persistent);
 	} // namespace Tags
 }

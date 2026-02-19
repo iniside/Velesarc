@@ -7,10 +7,13 @@
 #include "MassCommonTypes.h"
 #include "MassExecutionContext.h"
 
+TAutoConsoleVariable<bool> CVarArcDebugDrawSpatialHash(
+	TEXT("arc.mass.DebugDrawSpatialHash"),
+	false,
+	TEXT("Toggles debug drawing for the Mass spatial hash grid (0 = off, 1 = on)"));
+
 void FMassSpatialHashGrid::UpdateEntity(FMassEntityHandle EntityHandle, const FIntVector& OldGridCoords, const FVector& NewPosition)
 {
-	FIntVector NewGridCoords = WorldToGrid(NewPosition);
-    
 	//if (OldGridCoords == NewGridCoords)
 	{
 		// Same cell, just update position
@@ -34,7 +37,7 @@ void FMassSpatialHashGrid::UpdateEntity(FMassEntityHandle EntityHandle, const FI
 	//}
 }
 
-void FMassSpatialHashGrid::QueryEntitiesInRadius(const FVector& Center, float Radius, TArray<FMassEntityHandle>& OutEntityHandles) const
+void FMassSpatialHashGrid::QueryEntitiesInRadius(const FVector& Center, float Radius, TArray<FArcMassEntityInfo>& OutEntityHandles) const
 {
 	OutEntityHandles.Reset();
         
@@ -63,7 +66,7 @@ void FMassSpatialHashGrid::QueryEntitiesInRadius(const FVector& Center, float Ra
 						// Precise distance check
 						if (FVector::DistSquared(Center, Entry.Position) <= RadiusSq)
 						{
-							OutEntityHandles.Add(Entry.Entity);
+							OutEntityHandles.Add({Entry.Entity, Entry.Position, 0});
 						}
 					}
 				}
@@ -73,9 +76,9 @@ void FMassSpatialHashGrid::QueryEntitiesInRadius(const FVector& Center, float Ra
 }
 
 void FMassSpatialHashGrid::QueryEntitiesInRadiusWithDistance(const FVector& Center, float Radius
-															 , TArray<TPair<FMassEntityHandle, float>>& OutEntitiesWithDistance) const
+															 , TArray<FArcMassEntityInfo>& OutEntities) const
 {
-	OutEntitiesWithDistance.Reset();
+	OutEntities.Reset(32);
         
 	const float RadiusSq = Radius * Radius;
         
@@ -100,7 +103,7 @@ void FMassSpatialHashGrid::QueryEntitiesInRadiusWithDistance(const FVector& Cent
 						float DistSq = FVector::DistSquared(Center, Entry.Position);
 						if (DistSq <= RadiusSq)
 						{
-							OutEntitiesWithDistance.Add({Entry.Entity, FMath::Sqrt(DistSq)});
+							OutEntities.Add({Entry.Entity, Entry.Position, FMath::Sqrt(DistSq)});
 						}
 					}
 				}
@@ -118,7 +121,7 @@ void FMassSpatialHashGrid::QueryEntitiesInCone(const FVector& Origin, const FVec
 	const float CosHalfAngle = FMath::Cos(HalfAngleRadians);
         
 	// Calculate bounding box for the cone
-	// The cone's max radius at its base
+	// 's max radius at its base
 	const float MaxRadius = Length * FMath::Tan(HalfAngleRadians);
         
 	// Build an oriented bounding box around the cone
@@ -171,9 +174,9 @@ void FMassSpatialHashGrid::QueryEntitiesInCone(const FVector& Origin, const FVec
 }
 
 void FMassSpatialHashGrid::QueryEntitiesInConeWithDistance(const FVector& Origin, const FVector& Direction, float Length, float HalfAngleRadians
-														   , TArray<TTuple<FMassEntityHandle, float>>& OutEntitiesWithDistance) const
+														   , TArray<FArcMassEntityInfo>& OutEntities) const
 {
-	OutEntitiesWithDistance.Reset();
+	OutEntities.Reset(32);
 		
 	const float LengthSq = Length * Length;
 	const float CosHalfAngle = FMath::Cos(HalfAngleRadians);
@@ -197,7 +200,7 @@ void FMassSpatialHashGrid::QueryEntitiesInConeWithDistance(const FVector& Origin
 	FIntVector MaxGrid = WorldToGrid(MaxBounds);
 		
 	constexpr float MinDistanceThreshold = 1.0f;
-	const float MinDistSqThreshold = MinDistanceThreshold * MinDistanceThreshold;
+	constexpr float MinDistSqThreshold = MinDistanceThreshold * MinDistanceThreshold;
 		
 	for (int32 X = MinGrid.X; X <= MaxGrid.X; X++)
 	{
@@ -221,7 +224,7 @@ void FMassSpatialHashGrid::QueryEntitiesInConeWithDistance(const FVector& Origin
 		
 						if (DistSq < MinDistSqThreshold)
 						{
-							OutEntitiesWithDistance.Add(MakeTuple(Entry.Entity, FMath::Sqrt(DistSq)));
+							OutEntities.Add({Entry.Entity, Entry.Position, FMath::Sqrt(DistSq)});
 							continue;
 						}
 		
@@ -232,7 +235,7 @@ void FMassSpatialHashGrid::QueryEntitiesInConeWithDistance(const FVector& Origin
 		
 						if (DotProduct >= CosHalfAngle)
 						{
-							OutEntitiesWithDistance.Add(MakeTuple(Entry.Entity, Dist));
+							OutEntities.Add( {Entry.Entity, Entry.Position, Dist});
 						}
 					}
 				}
@@ -263,9 +266,9 @@ void UArcMassSpatialHashSubsystem::SetSpatialHashSettings(const FMassSpatialHash
 	SpatialHashGrid.Clear();
 }
 
-TArray<FMassEntityHandle> UArcMassSpatialHashSubsystem::QueryEntitiesInRadius(const FVector& Center, float Radius) const
+TArray<FArcMassEntityInfo> UArcMassSpatialHashSubsystem::QueryEntitiesInRadius(const FVector& Center, float Radius) const
 {
-	TArray<FMassEntityHandle> Results;
+	TArray<FArcMassEntityInfo> Results;
 	SpatialHashGrid.QueryEntitiesInRadius(Center, Radius, Results);
 	return Results;
 }
@@ -275,7 +278,7 @@ UArcMassSpatialHashUpdateProcessor::UArcMassSpatialHashUpdateProcessor()
 {
 	//bAutoRegisterWithProcessingPhases = true;
     ProcessingPhase = EMassProcessingPhase::PrePhysics;
-    ExecutionFlags = (int32)EProcessorExecutionFlags::All;
+    ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 	//bRequiresGameThreadExecution = true;
 	
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::SyncWorldToMass);
@@ -301,8 +304,9 @@ void UArcMassSpatialHashUpdateProcessor::Execute(FMassEntityManager& EntityManag
     FMassSpatialHashGrid& SpatialHashGrid = SpatialHashSubsystem->GetSpatialHashGrid();
     
 #if WITH_GAMEPLAY_DEBUGGER
+	
 	// Debug draw occupied grid cells and entities
-	//if (CVarDebugDrawSpatialHash.GetValueOnGameThread())
+	if (CVarArcDebugDrawSpatialHash.GetValueOnAnyThread())
 	{
 		const float CellSize = SpatialHashGrid.Settings.CellSize;
         
@@ -322,7 +326,7 @@ void UArcMassSpatialHashUpdateProcessor::Execute(FMassEntityManager& EntityManag
 			for (const FMassSpatialHashGrid::FEntityWithPosition& Entry : Entities)
 			{
 				// Draw entity position
-				DrawDebugSphere(World, Entry.Position, 64.0f, 8, FColor::Yellow, false, -1.0f, 0, 1.0f);
+				DrawDebugSphere(World, Entry.Position, 32.0f, 8, FColor::Yellow, false, -1.0f, 0, 1.0f);
                 
 				// Draw line from entity to cell center
 				DrawDebugLine(World, Entry.Position, CellCenter, FColor::Cyan, false, -1.0f, 0, 0.5f);
@@ -333,7 +337,7 @@ void UArcMassSpatialHashUpdateProcessor::Execute(FMassEntityManager& EntityManag
 		}
 	}
 #endif
-    EntityQuery.ForEachEntityChunk(EntityManager, Context, 
+    EntityQuery.ForEachEntityChunk(Context, 
         [&SpatialHashGrid](FMassExecutionContext& Ctx)
         {
             const TConstArrayView<FTransformFragment> TransformList = Ctx.GetFragmentView<FTransformFragment>();

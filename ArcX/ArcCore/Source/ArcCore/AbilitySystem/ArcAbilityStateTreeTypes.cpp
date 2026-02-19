@@ -480,12 +480,12 @@ EStateTreeRunStatus FArcGameplayAbilityComboStepTask::EnterState(FStateTreeExecu
 		UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 		check(Subsystem);
 		
-		FModifyContextOptions Context;
-		Context.bForceImmediately = true;
-		Context.bIgnoreAllPressedKeysUntilRelease = false;
+		FModifyContextOptions IMCContext;
+		IMCContext.bForceImmediately = true;
+		IMCContext.bIgnoreAllPressedKeysUntilRelease = false;
 		Subsystem->AddMappingContext(InstanceData.InputMappingContext
 			, 999
-			, Context);	
+			, IMCContext);	
 	}
 	
 		
@@ -506,37 +506,6 @@ EStateTreeRunStatus FArcGameplayAbilityComboStepTask::EnterState(FStateTreeExecu
 				StrongContext.BroadcastDelegate(InstanceData->OnComboTriggered);
 			}
 		}).GetHandle();
-	
-	InstanceData.ReleasedHandle = ArcIC->BindActionValueLambda(InstanceData.InputAction
-		, ETriggerEvent::Completed
-		, [WeakContext = Context.MakeWeakExecutionContext()](const FInputActionValue& Val)
-		{
-			//FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-			//FInstanceDataType* InstanceData = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
-			//if (InstanceData)
-			//{
-			//	FGameplayEventData Payload;
-			//	InstanceData->AbilitySystemComponent->HandleGameplayEvent(InstanceData->ComboMissed, &Payload);
-			//	
-			//	StrongContext.FinishTask(EStateTreeFinishTaskType::Succeeded);
-			//}
-				
-			//if (InstanceData && InstanceData->bIsComboWindowActive)
-			//{
-			//	FGameplayEventData Payload;
-			//	
-			//	InstanceData->AbilitySystemComponent->HandleGameplayEvent(InstanceData->ComboTag, &Payload);
-			//	
-			//	StrongContext.BroadcastDelegate(InstanceData->OnComboTriggered);
-			//}
-		}).GetHandle();
-	
-	UAnimInstance* AnimInstance = ArcASC->AbilityActorInfo.IsValid() ? ArcASC->AbilityActorInfo->GetAnimInstance() : nullptr;
-	
-	float Duration = AnimInstance->Montage_Play(InstanceData.MontageToPlay
-	, 1
-	, EMontagePlayReturnType::MontageLength
-	, 0);
 	
 	FAnimNotifyContext AnimContext;
 	InstanceData.MontageToPlay->GetAnimNotifies(0, 30, AnimContext);
@@ -691,12 +660,12 @@ EStateTreeRunStatus FArcGameplayAbilityWaitInputTask::EnterState(FStateTreeExecu
 		UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 		check(Subsystem);
 		
-		FModifyContextOptions Context;
-		Context.bForceImmediately = true;
-		Context.bIgnoreAllPressedKeysUntilRelease = false;
+		FModifyContextOptions IMVContext;
+		IMVContext.bForceImmediately = true;
+		IMVContext.bIgnoreAllPressedKeysUntilRelease = false;
 		Subsystem->AddMappingContext(InstanceData.InputMappingContext
 			, 999
-			, Context);	
+			, IMVContext);	
 	}
 	
 		

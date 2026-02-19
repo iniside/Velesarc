@@ -27,6 +27,9 @@ protected:
 	UPROPERTY(EditAnywhere)
 	FGameplayTagContainer HasTags;
 
+	UPROPERTY(EditAnywhere)
+	FGameplayTagContainer MustNotHaveTags;
+	
 public:
 	UArcMassEnvQueryTest_MassEntityGameplayTags(const FObjectInitializer& ObjectInitializer);
 	
@@ -39,12 +42,14 @@ public:
 
 struct FMassEQSRequestData_MassEntityGameplayTags : public FMassEQSRequestData
 {
-	FMassEQSRequestData_MassEntityGameplayTags(const FGameplayTagContainer& InHasTags)
+	FMassEQSRequestData_MassEntityGameplayTags(const FGameplayTagContainer& InHasTags, const FGameplayTagContainer& InMustNotHaveTags)
 		: HasTags(InHasTags)
+		, MustNotHaveTags(InMustNotHaveTags)
 	{
 	}
 	
 	FGameplayTagContainer HasTags;
+	FGameplayTagContainer MustNotHaveTags;
 };
 
 

@@ -272,9 +272,9 @@ void AArcCorePlayerState::PostNetInit()
 	Super::PostNetInit();
 }
 
-void AArcCorePlayerState::BeginReplication()
+void AArcCorePlayerState::OnReplicationStartedForIris(const FOnReplicationStartedParams& Params)
 {
-	Super::BeginReplication();
+	Super::OnReplicationStartedForIris(Params);
 }
 
 void AArcCorePlayerState::ClientInitialize(AController* C)

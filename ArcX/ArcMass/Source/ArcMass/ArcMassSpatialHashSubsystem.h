@@ -32,6 +32,13 @@ struct ARCMASS_API FMassSpatialHashSettings
     float MaxQueryRadius = 5000.0f;
 };
 
+struct FArcMassEntityInfo
+{
+	FMassEntityHandle Entity;
+	FVector Location = FVector::ZeroVector;
+	float Distance = 0.0f;
+};
+
 // Simple hash map using TMap for sparse storage
 struct ARCMASS_API FMassSpatialHashGrid
 {
@@ -83,10 +90,10 @@ struct ARCMASS_API FMassSpatialHashGrid
     void UpdateEntity(FMassEntityHandle EntityHandle, const FIntVector& OldGridCoords, const FVector& NewPosition);
 
 	// Query entities within radius with precise distance filtering
-    void QueryEntitiesInRadius(const FVector& Center, float Radius, TArray<FMassEntityHandle>& OutEntityHandles) const;
+    void QueryEntitiesInRadius(const FVector& Center, float Radius, TArray<FArcMassEntityInfo>& OutEntityHandles) const;
 
 	// Query with distance information if needed
-    void QueryEntitiesInRadiusWithDistance(const FVector& Center, float Radius, TArray<TPair<FMassEntityHandle, float>>& OutEntitiesWithDistance) const;
+    void QueryEntitiesInRadiusWithDistance(const FVector& Center, float Radius, TArray<FArcMassEntityInfo>& OutEntities) const;
 
 	// Query entities within a cone
     // Origin: cone apex position
@@ -96,7 +103,7 @@ struct ARCMASS_API FMassSpatialHashGrid
     void QueryEntitiesInCone(const FVector& Origin, const FVector& Direction, float Length, float HalfAngleRadians, TArray<FMassEntityHandle>& OutEntityHandles) const;
 
 	// Query entities in cone with distance information
-    void QueryEntitiesInConeWithDistance(const FVector& Origin, const FVector& Direction, float Length, float HalfAngleRadians, TArray<TTuple<FMassEntityHandle, float>>& OutEntitiesWithDistance) const;
+    void QueryEntitiesInConeWithDistance(const FVector& Origin, const FVector& Direction, float Length, float HalfAngleRadians, TArray<FArcMassEntityInfo>& OutEntities) const;
 
 	// Clear all entities
     void Clear()
@@ -126,7 +133,7 @@ public:
 	void SetSpatialHashSettings(const FMassSpatialHashSettings& NewSettings);
     
 	// Query entities near a position
-	TArray<FMassEntityHandle> QueryEntitiesInRadius(const FVector& Center, float Radius) const;
+	TArray<FArcMassEntityInfo> QueryEntitiesInRadius(const FVector& Center, float Radius) const;
 
 private:
 	FMassSpatialHashGrid SpatialHashGrid;

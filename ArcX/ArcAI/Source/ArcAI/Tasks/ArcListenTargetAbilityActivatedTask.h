@@ -19,7 +19,7 @@ struct FArcListenTargetAbilityActivatedTaskInstanceData
 	FDelegateHandle OnAbilityActivatedHandle;
 };
 
-USTRUCT(DisplayName="Arc Listen Target Ability Activated")
+USTRUCT(DisplayName="Arc Listen Target Ability Activated", meta = (Category = "Arc|Events" ))
 struct FArcListenTargetAbilityActivatedTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

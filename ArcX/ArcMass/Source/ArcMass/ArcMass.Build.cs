@@ -34,8 +34,12 @@ public class ArcMass : ModuleRules
 				, "MassSimulation"
 				, "MassSpawner"
 				, "MassRepresentation"
+				, "MassSignals"
 				, "MassLOD"
 				, "GameplayTags"
+				, "StructUtils"
+				, "DeveloperSettings"
+				, "InstancedActors"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

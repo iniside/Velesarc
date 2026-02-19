@@ -36,7 +36,7 @@ struct FArcMassWaitTaskInstanceData
 /**
  * Stop, and stand on current navmesh location
  */
-USTRUCT(meta = (DisplayName = "Arc Mass Wait"))
+USTRUCT(meta = (DisplayName = "Arc Mass Wait", Category = "Arc|Common"))
 struct FArcMassWaitTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

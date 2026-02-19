@@ -46,3 +46,91 @@ void UArcEnvQueryContext_FromResultStore::ProvideContext(FEnvQueryInstance& Quer
 		}
 	}
 }
+
+void UArcEnvQueryContext_FromGlobalStore::ProvideContext(FEnvQueryInstance& QueryInstance, FEnvQueryContextData& ContextData) const
+{
+	AActor* QueryOwner = Cast<AActor>(QueryInstance.Owner.Get());
+	
+	UArcMassGlobalDataStore* ResultStore = QueryOwner->GetWorld()->GetSubsystem<UArcMassGlobalDataStore>();
+	if (!ResultStore && QueryOwner)
+	{
+		switch (StoreItemType)
+		{
+			case EArcStoreItemType::Entity:
+			case EArcStoreItemType::Actor:
+			{
+				UEnvQueryItemType_Actor::SetContextHelper(ContextData, QueryOwner);
+				break;
+			}
+			case  EArcStoreItemType::ActorLocation:
+			{	
+				UEnvQueryItemType_Point::SetContextHelper(ContextData, QueryOwner->GetActorLocation());
+				break;
+			}
+			case EArcStoreItemType::ActorArray:
+			{
+				UEnvQueryItemType_Actor::SetContextHelper(ContextData, QueryOwner);
+				break;
+			}
+			case EArcStoreItemType::Location:
+			{
+				UEnvQueryItemType_Point::SetContextHelper(ContextData, QueryOwner->GetActorLocation());
+				break;
+			}
+			case EArcStoreItemType::LocationArray:
+			{
+				UEnvQueryItemType_Point::SetContextHelper(ContextData, QueryOwner->GetActorLocation());
+				break;
+			}
+		}
+		
+		return;
+	};
+	
+	if (const FArcMassDataStoreTypeMap* ResultMap = ResultStore->DataStore.Find(QueryInstance.OwningEntity))
+	{
+		if (const FArcMassEQSResults* Result = ResultMap->Results.Find(TagKey))
+		{
+			switch (StoreItemType)
+			{
+				case EArcStoreItemType::Entity:
+				{
+					if (Result->EntityResult.GetEntityHandle().IsValid())
+					{
+						ContextData.ValueType = UEnvQueryItemType_MassEntityHandle::StaticClass();
+						ContextData.NumValues = 1;
+						ContextData.RawData.SetNumUninitialized(sizeof(FMassEnvQueryEntityInfo));
+						UEnvQueryItemType_MassEntityHandle::SetValue(ContextData.RawData.GetData(), Result->EntityResult.GetEntityInfo());
+					}
+					break;
+				}
+				case EArcStoreItemType::Actor:
+				{
+					UEnvQueryItemType_Actor::SetContextHelper(ContextData, Result->ActorResult);
+					break;
+				}
+				case  EArcStoreItemType::ActorLocation:
+				{	
+					UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->ActorResult->GetActorLocation());
+					break;
+				}
+				case EArcStoreItemType::ActorArray:
+				{
+					UEnvQueryItemType_Actor::SetContextHelper(ContextData, Result->ActorArrayResult);
+					break;
+				}
+				case EArcStoreItemType::Location:
+				{
+					UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->VectorResult);
+					break;
+				}
+				case EArcStoreItemType::LocationArray:
+				{
+					UEnvQueryItemType_Point::SetContextHelper(ContextData, Result->VectorArrayResult);
+					break;
+				}
+			}
+			
+		}
+	}
+}

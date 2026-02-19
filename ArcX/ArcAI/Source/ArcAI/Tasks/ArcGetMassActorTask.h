@@ -17,7 +17,7 @@ struct FArcGetMassActorTaskInstanceData
 	FStateTreePropertyRef Result;
 };
 
-USTRUCT(DisplayName="Get Mass Actor")
+USTRUCT(DisplayName="Get Mass Actor", meta = (Category = "Arc|Common"))
 struct FArcGetMassActorTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

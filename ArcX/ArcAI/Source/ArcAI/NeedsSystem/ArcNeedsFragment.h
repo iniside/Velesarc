@@ -80,7 +80,16 @@ struct TMassFragmentTraits<FArcNeedsFragment> final
 	};
 };
 
-USTRUCT()
+USTRUCT(BlueprintType)
+struct ARCAI_API FArcResourceFragment : public FMassFragment
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float CurrentResourceAmount = 0;
+};
+
+USTRUCT(BlueprintType)
 struct ARCAI_API FArcNeedFragment : public FMassFragment
 {
 	GENERATED_BODY()
@@ -88,15 +97,18 @@ struct ARCAI_API FArcNeedFragment : public FMassFragment
 	UPROPERTY(EditAnywhere)
 	uint8 NeedType = 0;
 	
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float Resistance = 0;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float ChangeRate = 0;
 	
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float CurrentValue = 0;
 };
 
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct ARCAI_API FArcHungerNeedFragment : public FArcNeedFragment
 {
 	GENERATED_BODY()
@@ -112,6 +124,50 @@ private:
 	
 public:
 	UArcHungerNeedProcessor();
+
+protected:
+	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
+	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
+};
+
+USTRUCT()
+struct ARCAI_API FArcThirstNeedFragment : public FArcNeedFragment
+{
+	GENERATED_BODY()
+};
+
+UCLASS(meta = (DisplayName = "Arc Thirst Need Processor"))
+class ARCAI_API UArcThirstNeedProcessor : public UMassProcessor
+{
+	GENERATED_BODY()
+	
+private:
+	FMassEntityQuery NeedsQuery;
+	
+public:
+	UArcThirstNeedProcessor();
+
+protected:
+	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
+	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
+};
+
+USTRUCT()
+struct ARCAI_API FArcFatigueNeedFragment : public FArcNeedFragment
+{
+	GENERATED_BODY()
+};
+
+UCLASS(meta = (DisplayName = "Arc Fatigue Need Processor"))
+class ARCAI_API UArcFatigueNeedProcessor : public UMassProcessor
+{
+	GENERATED_BODY()
+	
+private:
+	FMassEntityQuery NeedsQuery;
+	
+public:
+	UArcFatigueNeedProcessor();
 
 protected:
 	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
@@ -211,6 +267,314 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
+USTRUCT()
+struct FArcMassHungerNeedConsiderationInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, Category = "Parameter")
+	float NeedValue = 0.f;
+};
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Arc Mass Hunger Need Consideration")
+struct FArcMassHungerNeedConsideration : public FStateTreeConsiderationCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassHungerNeedConsiderationInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	//~ Begin FStateTreeConsiderationBase Interface
+	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
+	//~ End FStateTreeConsiderationBase Interface
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Default")
+	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
+USTRUCT()
+struct FArcMassHungerNeedConditionInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Parameter")
+	float NeedValue = 0.f;
+};
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Arc Mass Hunger Need Condition")
+struct FArcMassHungerNeedCondition : public FMassStateTreeConditionBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassHungerNeedConditionInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	virtual bool Link(FStateTreeLinker& Linker) override;
+	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
+	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
+	
+	TStateTreeExternalDataHandle<FArcHungerNeedFragment> HungerNeedHandle;
+	
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (InvalidEnumValues = "IsTrue"))
+	UE::StateTree::EComparisonOperator Operator = UE::StateTree::EComparisonOperator::Equal;
+	
+};
+
+USTRUCT()
+struct FArcMassThirstNeedConsiderationInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, Category = "Parameter")
+	float NeedValue = 0.f;
+};
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Arc Mass Thirst Need Consideration")
+struct FArcMassThirstNeedConsideration : public FStateTreeConsiderationCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassThirstNeedConsiderationInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	//~ Begin FStateTreeConsiderationBase Interface
+	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
+	//~ End FStateTreeConsiderationBase Interface
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Default")
+	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
+USTRUCT()
+struct FArcMassFatigueNeedConsiderationInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, Category = "Parameter")
+	float NeedValue = 0.f;
+};
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Arc Mass Fatigue Need Consideration")
+struct FArcMassFatigueNeedConsideration : public FStateTreeConsiderationCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassFatigueNeedConsiderationInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	//~ Begin FStateTreeConsiderationBase Interface
+	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
+	//~ End FStateTreeConsiderationBase Interface
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Default")
+	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
+USTRUCT()
+struct FArcMassModifyHungerNeedTaskInstanceData
+{
+	GENERATED_BODY()
+
+	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float AddValue = 0.f;
+};
+
+
+USTRUCT(meta = (DisplayName = "Arc Modify Hunger Need", Category = "Arc|Needs"))
+struct FArcMassModifyHungerNeedTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassModifyHungerNeedTaskInstanceData;
+	
+public:
+	FArcMassModifyHungerNeedTask();
+
+	virtual const UStruct* GetInstanceDataType() const override
+	{
+		return FInstanceDataType::StaticStruct();
+	}
+	
+	virtual bool Link(FStateTreeLinker& Linker) override;
+	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	
+	TStateTreeExternalDataHandle<FArcHungerNeedFragment> HungerNeedHandle;
+};
+
+USTRUCT()
+struct FArcMassModifyThirstNeedTaskInstanceData
+{
+	GENERATED_BODY()
+
+	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float AddValue = 0.f;
+};
+
+
+USTRUCT(meta = (DisplayName = "Arc Modify Thirst Need", Category = "Arc|Needs"))
+struct FArcMassModifyThirstNeedTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassModifyThirstNeedTaskInstanceData;
+	
+public:
+	FArcMassModifyThirstNeedTask();
+
+	virtual const UStruct* GetInstanceDataType() const override
+	{
+		return FInstanceDataType::StaticStruct();
+	}
+	
+	virtual bool Link(FStateTreeLinker& Linker) override;
+	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	
+	TStateTreeExternalDataHandle<FArcThirstNeedFragment> ThirstNeedHandle;
+};
+
+USTRUCT()
+struct FArcMassModifyFatigueNeedTaskInstanceData
+{
+	GENERATED_BODY()
+
+	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float AddValue = 0.f;
+};
+
+
+USTRUCT(meta = (DisplayName = "Arc Modify Fatigue Need", Category = "Arc|Needs"))
+struct FArcMassModifyFatigueNeedTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassModifyFatigueNeedTaskInstanceData;
+	
+public:
+	FArcMassModifyFatigueNeedTask();
+
+	virtual const UStruct* GetInstanceDataType() const override
+	{
+		return FInstanceDataType::StaticStruct();
+	}
+	
+	virtual bool Link(FStateTreeLinker& Linker) override;
+	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	TStateTreeExternalDataHandle<FArcFatigueNeedFragment> FatigueNeedHandle;
+};
+
+UENUM()
+enum class EArcNeedOperation : uint8
+{
+	Add,
+	Subtract,
+	Override
+};
+
+UENUM()
+enum class EArcNeedFillType : uint8
+{
+	Fixed,
+	FixedTicks,
+	UntilValue
+};
+
+USTRUCT()
+struct FArcMassModifyNeedTaskInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	EArcNeedOperation Operation = EArcNeedOperation::Add;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	EArcNeedFillType FillType = EArcNeedFillType::Fixed;
+	
+	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float ModifyValue = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	uint8 NumberOfTicks = 0;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float ModifyPeriod = 0.f;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	UE::StateTree::EComparisonOperator TargetCompareOp = UE::StateTree::EComparisonOperator::Less;
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	float ThresholdCompareValue = 0.f;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	EArcNeedOperation TargetOperation = EArcNeedOperation::Subtract;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (MetaStruct = "/Script/ArcAI.ArcNeedFragment"))
+	TObjectPtr<UScriptStruct> NeedType;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FMassEntityHandle TargetEntity;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (MetaStruct = "/Script/ArcAI.ArcResourceFragment"))
+	TObjectPtr<UScriptStruct> ResourceType = FArcResourceFragment::StaticStruct();
+	
+	UPROPERTY()
+	uint8 CurrentTicks = 0;
+	
+	UPROPERTY()
+	float CurrentPeriodTime = 0.f;
+};
+
+USTRUCT(meta = (DisplayName = "Arc Modify Need", Category = "Arc|Needs"))
+struct FArcMassModifyNeedTask : public FMassStateTreeTaskBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassModifyNeedTaskInstanceData;
+	
+public:
+	FArcMassModifyNeedTask();
+
+	virtual const UStruct* GetInstanceDataType() const override
+	{
+		return FInstanceDataType::StaticStruct();
+	}
+	
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()

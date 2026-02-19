@@ -26,9 +26,29 @@ struct FArcStateTreeMassEntityVectorLocationPropertyFunction : public FStateTree
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 
 	virtual void Execute(FStateTreeExecutionContext& Context) const override;
-
-#if WITH_EDITOR
-	//virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const;
-#endif
 };
 
+
+USTRUCT()
+struct FArcStateTreeMassEntityCurrentLocationPropertyFunctionInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FMassEnvQueryEntityInfoBlueprintWrapper Input;
+
+	UPROPERTY(EditAnywhere, Category = Output)
+	FVector Output = FVector::ZeroVector;
+};
+
+USTRUCT(DisplayName = "Get Mass Entity Current Location")
+struct FArcStateTreeMassEntityCurrentLocationPropertyFunction : public FStateTreePropertyFunctionCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcStateTreeMassEntityCurrentLocationPropertyFunctionInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+
+	virtual void Execute(FStateTreeExecutionContext& Context) const override;
+};
