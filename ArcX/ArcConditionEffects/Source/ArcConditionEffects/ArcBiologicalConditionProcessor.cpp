@@ -189,7 +189,7 @@ void UArcBiologicalConditionProcessor::SignalEntities(FMassEntityManager& Entity
 				TArray<FArcConditionApplicationRequest*>* Requests = EntityRequestMap.Find(Entity);
 				if (!Requests) { continue; }
 
-				const int32 Idx = EntityIt.GetIndex();
+				const int32 Idx = *EntityIt;
 
 				FArcConditionState* Bleeding = !BleedingFrags.IsEmpty() ? &BleedingFrags[Idx].State : nullptr;
 				FArcConditionState* Poisoned = !PoisonedFrags.IsEmpty() ? &PoisonedFrags[Idx].State : nullptr;

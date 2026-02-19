@@ -386,7 +386,7 @@ void UArcThermalConditionProcessor::SignalEntities(FMassEntityManager& EntityMan
 				TArray<FArcConditionApplicationRequest*>* Requests = EntityRequestMap.Find(Entity);
 				if (!Requests) { continue; }
 
-				const int32 Idx = EntityIt.GetIndex();
+				const int32 Idx = *EntityIt;
 
 				FArcConditionState* Burning  = !BurningFrags.IsEmpty()  ? &BurningFrags[Idx].State  : nullptr;
 				FArcConditionState* Chilled  = !ChilledFrags.IsEmpty()  ? &ChilledFrags[Idx].State  : nullptr;

@@ -121,7 +121,7 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 				TArray<FArcConditionApplicationRequest*>* Requests = EntityRequestMap.Find(Entity);
 				if (!Requests) { continue; }
 
-				const int32 Idx = EntityIt.GetIndex();
+				const int32 Idx = *EntityIt;
 
 				FArcConditionState* Blinded     = !BlindedFrags.IsEmpty()     ? &BlindedFrags[Idx].State     : nullptr;
 				FArcConditionState* Suffocating = !SuffocatingFrags.IsEmpty() ? &SuffocatingFrags[Idx].State : nullptr;
