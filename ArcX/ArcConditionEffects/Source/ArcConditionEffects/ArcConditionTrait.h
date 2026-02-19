@@ -18,7 +18,7 @@
 // ===== MACRO: Declares a per-condition trait ================================
 
 #define ARC_DECLARE_CONDITION_TRAIT(Name) \
-	UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = #Name " Condition")) \
+	UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = Name##Condition)) \
 	class ARCCONDITIONEFFECTS_API UArc##Name##ConditionTrait : public UMassEntityTraitBase \
 	{ \
 		GENERATED_BODY() \
@@ -30,23 +30,163 @@
 	};
 
 // Group A: Hysteresis
-ARC_DECLARE_CONDITION_TRAIT(Burning)
-ARC_DECLARE_CONDITION_TRAIT(Bleeding)
-ARC_DECLARE_CONDITION_TRAIT(Chilled)
-ARC_DECLARE_CONDITION_TRAIT(Shocked)
-ARC_DECLARE_CONDITION_TRAIT(Poisoned)
-ARC_DECLARE_CONDITION_TRAIT(Diseased)
-ARC_DECLARE_CONDITION_TRAIT(Weakened)
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Burning Condition"))
+class ARCCONDITIONEFFECTS_API UArcBurningConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcBurningConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = BleedingCondition))
+class ARCCONDITIONEFFECTS_API UArcBleedingConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcBleedingConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = ChilledCondition))
+class ARCCONDITIONEFFECTS_API UArcChilledConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcChilledConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = ShockedCondition))
+class ARCCONDITIONEFFECTS_API UArcShockedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcShockedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = PoisonedCondition))
+class ARCCONDITIONEFFECTS_API UArcPoisonedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcPoisonedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = DiseasedCondition))
+class ARCCONDITIONEFFECTS_API UArcDiseasedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcDiseasedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = WeakenedCondition))
+class ARCCONDITIONEFFECTS_API UArcWeakenedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcWeakenedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
 
 // Group B: Linear
-ARC_DECLARE_CONDITION_TRAIT(Oiled)
-ARC_DECLARE_CONDITION_TRAIT(Wet)
-ARC_DECLARE_CONDITION_TRAIT(Corroded)
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = OiledCondition))
+class ARCCONDITIONEFFECTS_API UArcOiledConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcOiledConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = WetCondition))
+class ARCCONDITIONEFFECTS_API UArcWetConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcWetConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = CorrodedCondition))
+class ARCCONDITIONEFFECTS_API UArcCorrodedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcCorrodedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
 
 // Group C: Environmental
-ARC_DECLARE_CONDITION_TRAIT(Blinded)
-ARC_DECLARE_CONDITION_TRAIT(Suffocating)
-ARC_DECLARE_CONDITION_TRAIT(Exhausted)
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = BlindedCondition))
+class ARCCONDITIONEFFECTS_API UArcBlindedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcBlindedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = SuffocatingCondition))
+class ARCCONDITIONEFFECTS_API UArcSuffocatingConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcSuffocatingConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = ExhaustedCondition))
+class ARCCONDITIONEFFECTS_API UArcExhaustedConditionTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition")
+	FArcExhaustedConditionConfig ConditionConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
 
 #undef ARC_DECLARE_CONDITION_TRAIT
 
