@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassEntityHandle.h"
 #include "MassEntityTypes.h"
+#include "SmartObjectTypes.h"
 #include "ArcTQSTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -14,7 +15,8 @@ enum class EArcTQSTargetType : uint8
 	MassEntity,
 	Actor,
 	Location,
-	Object
+	Object,
+	SmartObject
 };
 
 UENUM(BlueprintType)
@@ -57,6 +59,10 @@ struct ARCAI_API FArcTQSTargetItem
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector Location = FVector::ZeroVector;
+
+	// Smart object handles (valid when TargetType == SmartObject)
+	FSmartObjectHandle SmartObjectHandle;
+	FSmartObjectSlotHandle SlotHandle;
 
 	// Running score — starts at 1.0 for multiplicative model
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)

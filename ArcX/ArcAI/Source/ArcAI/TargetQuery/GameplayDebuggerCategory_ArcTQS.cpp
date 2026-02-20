@@ -288,10 +288,11 @@ void FGameplayDebuggerCategory_ArcTQS::CollectData(APlayerController* OwnerPC, A
 			const TCHAR* TypeStr = TEXT("?");
 			switch (Result.TargetType)
 			{
-			case EArcTQSTargetType::MassEntity:	TypeStr = TEXT("Entity"); break;
-			case EArcTQSTargetType::Actor:		TypeStr = TEXT("Actor"); break;
-			case EArcTQSTargetType::Location:	TypeStr = TEXT("Location"); break;
-			case EArcTQSTargetType::Object:		TypeStr = TEXT("Object"); break;
+			case EArcTQSTargetType::MassEntity:		TypeStr = TEXT("Entity"); break;
+			case EArcTQSTargetType::Actor:			TypeStr = TEXT("Actor"); break;
+			case EArcTQSTargetType::Location:		TypeStr = TEXT("Location"); break;
+			case EArcTQSTargetType::Object:			TypeStr = TEXT("Object"); break;
+			case EArcTQSTargetType::SmartObject:	TypeStr = TEXT("SmartObject"); break;
 			default: break;
 			}
 
