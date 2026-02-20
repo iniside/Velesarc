@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Lukasz Baran. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -34,6 +34,7 @@ public class ArcWeather : ModuleRules
 				"MassSignals",
 				"MassSpawner",
 				"ArcMass",
+				"ArcConditionEffects",
 				"GameplayTags"
 			}
 			);

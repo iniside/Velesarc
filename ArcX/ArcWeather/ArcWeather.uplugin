@@ -28,6 +28,10 @@
 		{
 			"Name": "ArcMass",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcConditionEffects",
+			"Enabled": true
 		}
 	]
 }

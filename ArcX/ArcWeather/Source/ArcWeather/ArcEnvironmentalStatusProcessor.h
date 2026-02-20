@@ -8,6 +8,10 @@
 #include "MassEntityTraitBase.h"
 #include "ArcEnvironmentalStatusProcessor.generated.h"
 
+/**
+ * Reads weather at each entity's location and applies Wet/Chilled conditions
+ * via the ArcConditionEffects subsystem.
+ */
 UCLASS(meta = (DisplayName = "Arc Environmental Status Processor"))
 class ARCWEATHER_API UArcEnvironmentalStatusProcessor : public UMassProcessor
 {
@@ -22,7 +26,6 @@ protected:
 
 private:
 	FMassEntityQuery EntityQuery;
-	float SignalTimer = 0.f;
 };
 
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Environmental Status Trait"))
