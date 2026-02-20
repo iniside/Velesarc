@@ -4,6 +4,7 @@
 
 #include "ArcMassEntityVisualization.h"
 #include "ArcVisEntityComponent.h"
+#include "ArcVisLifecycle.h"
 #include "DrawDebugHelpers.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
@@ -254,6 +255,8 @@ void UArcVisActivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityMana
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
+	EntityQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
+	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::Optional);
 }
 
 void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
@@ -278,6 +281,11 @@ void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager,
 			const TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
 
+			// Optional lifecycle fragments
+			const TConstArrayView<FArcVisLifecycleFragment> LCFragments = Ctx.GetFragmentView<FArcVisLifecycleFragment>();
+			const FArcVisLifecycleConfigFragment* LCConfig = Ctx.GetConstSharedFragmentPtr<FArcVisLifecycleConfigFragment>();
+			const bool bHasLifecycle = !LCFragments.IsEmpty() && LCConfig;
+
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
@@ -289,24 +297,30 @@ void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager,
 
 				const FTransform& EntityTransform = TransformFragments[EntityIt].GetTransform();
 
-				// Remove ISM instance
-				if (Config.StaticMesh)
+				// Remove ISM instance using tracked mesh
+				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
+				if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
 				{
-					if (Rep.ISMInstanceId != INDEX_NONE)
-					{
-						Subsystem->RemoveISMInstance(Rep.GridCoords, Config.ISMManagerClass, Config.StaticMesh, Rep.ISMInstanceId, EntityManager);
-						Rep.ISMInstanceId = INDEX_NONE;
-					}
+					Subsystem->RemoveISMInstance(Rep.GridCoords, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
+					Rep.ISMInstanceId = INDEX_NONE;
+				}
+				Rep.CurrentISMMesh = nullptr;
+
+				// Resolve actor class (lifecycle-aware)
+				TSubclassOf<AActor> ActorClassToSpawn = Config.ActorClass;
+				if (bHasLifecycle)
+				{
+					ActorClassToSpawn = LCConfig->ResolveActorClass(LCFragments[EntityIt].CurrentPhase, Config);
 				}
 
 				// Spawn actor
-				if (Config.ActorClass)
+				if (ActorClassToSpawn)
 				{
 					FActorSpawnParameters SpawnParams;
 					SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 					SpawnParams.bDeferConstruction = true;
 
-					AActor* NewActor = World->SpawnActor<AActor>(Config.ActorClass, EntityTransform, SpawnParams);
+					AActor* NewActor = World->SpawnActor<AActor>(ActorClassToSpawn, EntityTransform, SpawnParams);
 
 					const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 					MassActorFragment.SetAndUpdateHandleMap(Entity, NewActor, true);
@@ -349,6 +363,8 @@ void UArcVisDeactivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityMa
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
+	EntityQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
+	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::Optional);
 }
 
 void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
@@ -373,6 +389,11 @@ void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManage
 			const TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
 
+			// Optional lifecycle fragments
+			const TConstArrayView<FArcVisLifecycleFragment> LCFragments = Ctx.GetFragmentView<FArcVisLifecycleFragment>();
+			const FArcVisLifecycleConfigFragment* LCConfig = Ctx.GetConstSharedFragmentPtr<FArcVisLifecycleConfigFragment>();
+			const bool bHasLifecycle = !LCFragments.IsEmpty() && LCConfig;
+
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
@@ -393,22 +414,32 @@ void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManage
 				}
 				MassActorFragment.ResetAndUpdateHandleMap();
 
+				// Resolve ISM mesh (lifecycle-aware)
+				UStaticMesh* MeshToUse = Config.StaticMesh;
+				const TArray<TObjectPtr<UMaterialInterface>>* MaterialsToUse = &Config.MaterialOverrides;
+				if (bHasLifecycle)
+				{
+					MeshToUse = LCConfig->ResolveISMMesh(LCFragments[EntityIt].CurrentPhase, Config);
+					MaterialsToUse = &LCConfig->ResolveISMMaterials(LCFragments[EntityIt].CurrentPhase, Config);
+				}
+
 				// Add ISM instance
-				if (Config.StaticMesh)
+				if (MeshToUse)
 				{
 					const FTransform& EntityTransform = TransformFragments[EntityIt].GetTransform();
-				
+
 					const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 					Rep.ISMInstanceId = Subsystem->AddISMInstance(
 						Rep.GridCoords,
 						Config.ISMManagerClass,
-						Config.StaticMesh,
-						Config.MaterialOverrides,
+						MeshToUse,
+						*MaterialsToUse,
 						Config.bCastShadows,
 						EntityTransform,
 						Entity);
 				}
 
+				Rep.CurrentISMMesh = MeshToUse;
 				Rep.bIsActorRepresentation = false;
 			}
 		});
@@ -433,6 +464,8 @@ void UArcVisEntityInitObserver::ConfigureQueries(const TSharedRef<FMassEntityMan
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
+	ObserverQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
+	ObserverQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::Optional);
 }
 
 void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -457,12 +490,24 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 			const TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
 
+			// Optional lifecycle fragments
+			const TConstArrayView<FArcVisLifecycleFragment> LCFragments = Ctx.GetFragmentView<FArcVisLifecycleFragment>();
+			const FArcVisLifecycleConfigFragment* LCConfig = Ctx.GetConstSharedFragmentPtr<FArcVisLifecycleConfigFragment>();
+			const bool bHasLifecycle = !LCFragments.IsEmpty() && LCConfig;
+
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
 				FMassActorFragment& MassActorFragment = MassActorFragments[EntityIt];
 				const FTransform& EntityTransform = TransformFragments[EntityIt].GetTransform();
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
+
+				// Resolve lifecycle phase (if available)
+				EArcLifecyclePhase CurrentPhase = EArcLifecyclePhase::Start;
+				if (bHasLifecycle)
+				{
+					CurrentPhase = LCFragments[EntityIt].CurrentPhase;
+				}
 
 				// Compute and store grid coords
 				const FVector Position = EntityTransform.GetLocation();
@@ -474,14 +519,21 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 				// Check if this entity's cell is already active (player is nearby)
 				if (Subsystem->IsActiveCellCoord(Rep.GridCoords))
 				{
+					// Resolve actor class (lifecycle-aware)
+					TSubclassOf<AActor> ActorClassToSpawn = Config.ActorClass;
+					if (bHasLifecycle)
+					{
+						ActorClassToSpawn = LCConfig->ResolveActorClass(CurrentPhase, Config);
+					}
+
 					// Start in actor mode if player is nearby
-					if (Config.ActorClass)
+					if (ActorClassToSpawn)
 					{
 						UWorld* World = Ctx.GetWorld();
 						FActorSpawnParameters SpawnParams;
 						SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 						SpawnParams.bDeferConstruction = true;
-						AActor* NewActor = World->SpawnActor<AActor>(Config.ActorClass, EntityTransform, SpawnParams);
+						AActor* NewActor = World->SpawnActor<AActor>(ActorClassToSpawn, EntityTransform, SpawnParams);
 						MassActorFragment.SetAndUpdateHandleMap(Entity, NewActor, true);
 
 						if (UArcVisEntityComponent* VisComp = NewActor ? NewActor->FindComponentByClass<UArcVisEntityComponent>() : nullptr)
@@ -492,22 +544,32 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 						NewActor->FinishSpawning(EntityTransform);
 					}
 					Rep.bIsActorRepresentation = true;
+					Rep.CurrentISMMesh = nullptr;
 				}
 				else
 				{
+					// Resolve ISM mesh (lifecycle-aware)
+					UStaticMesh* MeshToUse = Config.StaticMesh;
+					const TArray<TObjectPtr<UMaterialInterface>>* MaterialsToUse = &Config.MaterialOverrides;
+					if (bHasLifecycle)
+					{
+						MeshToUse = LCConfig->ResolveISMMesh(CurrentPhase, Config);
+						MaterialsToUse = &LCConfig->ResolveISMMaterials(CurrentPhase, Config);
+					}
+
 					// Start in ISM mode
-					if (Config.StaticMesh)
+					if (MeshToUse)
 					{
 						Rep.ISMInstanceId = Subsystem->AddISMInstance(
 							Rep.GridCoords,
 							Config.ISMManagerClass,
-							Config.StaticMesh,
-							Config.MaterialOverrides,
+							MeshToUse,
+							*MaterialsToUse,
 							Config.bCastShadows,
 							EntityTransform,
 							Entity);
-						
 					}
+					Rep.CurrentISMMesh = MeshToUse;
 					Rep.bIsActorRepresentation = false;
 				}
 			}
@@ -575,11 +637,12 @@ void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMa
 					}
 					MassActorFragment.ResetAndUpdateHandleMap();
 				}
-				else if (Config.StaticMesh)
+				else
 				{
-					if (Rep.ISMInstanceId != INDEX_NONE)
+					UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
+					if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
 					{
-						Subsystem->RemoveISMInstance(Rep.GridCoords, Config.ISMManagerClass, Config.StaticMesh, Rep.ISMInstanceId, EntityManager);
+						Subsystem->RemoveISMInstance(Rep.GridCoords, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
 						Rep.ISMInstanceId = INDEX_NONE;
 					}
 				}

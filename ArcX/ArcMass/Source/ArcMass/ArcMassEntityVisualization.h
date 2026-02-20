@@ -47,6 +47,19 @@ struct ARCMASS_API FArcVisRepresentationFragment : public FMassFragment
 
 	/** Current representation state. */
 	bool bIsActorRepresentation = false;
+
+	/** Mesh currently used for ISM representation. Used by lifecycle mesh switching
+	  * to know which mesh to remove. nullptr means using base config mesh. */
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> CurrentISMMesh = nullptr;
+};
+template<>
+struct TMassFragmentTraits<FArcVisRepresentationFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
 };
 
 /** Shared config per entity type — mesh, materials, actor class. */

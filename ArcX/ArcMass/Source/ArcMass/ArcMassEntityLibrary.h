@@ -41,4 +41,7 @@ private:
 public:
 	UFUNCTION(BlueprintCallable, Category = "ArcMass")
 	static ARCMASS_API FMassEntityHandle GetEntityFromComponent(const UMassAgentComponent* Component);
+	
+	UFUNCTION(BlueprintCallable, Category = "ArcMass", meta = (WorldContext = "WorldContextObject", DefaultToSelf = "WorldContextObject"))
+	static ARCMASS_API void DestroyEntity(const UObject* WorldContextObject, const FMassEntityHandle& InEntity);
 };

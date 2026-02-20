@@ -103,4 +103,31 @@ FMassEntityHandle UArcMassEntityLibrary::GetEntityFromComponent(const UMassAgent
 	return Component->GetEntityHandle();
 }
 
+void UArcMassEntityLibrary::DestroyEntity(const UObject* WorldContextObject, const FMassEntityHandle& InEntity)
+{
+	if (!WorldContextObject)
+	{
+		return;
+	}
+
+	UWorld* World = WorldContextObject->GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UMassEntitySubsystem* EntitySubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!EntitySubsystem)
+	{
+		return;
+	}
+
+	FMassEntityManager& EntityManager = EntitySubsystem->GetMutableEntityManager();
+
+	if (EntityManager.IsEntityValid(InEntity))
+	{
+		EntityManager.Defer().DestroyEntity(InEntity);
+	}
+}
+
 #undef LOCTEXT_NAMESPACE

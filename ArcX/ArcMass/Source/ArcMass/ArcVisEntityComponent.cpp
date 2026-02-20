@@ -120,11 +120,12 @@ void UArcVisEntityComponent::RegisterPrePlacedActor()
 		{
 			// Observer created ISM instance — remove it
 			const FArcVisConfigFragment* Config = EntityManager.GetConstSharedFragmentDataPtr<FArcVisConfigFragment>(EntityHandle);
-			if (Config && Config->StaticMesh)
+			if (Config)
 			{
-				if (Rep->ISMInstanceId != INDEX_NONE)
+				UStaticMesh* MeshToRemove = Rep->CurrentISMMesh ? Rep->CurrentISMMesh.Get() : Config->StaticMesh.Get();
+				if (MeshToRemove && Rep->ISMInstanceId != INDEX_NONE)
 				{
-					VisSubsystem->RemoveISMInstance(Rep->GridCoords, Config->ISMManagerClass, Config->StaticMesh, Rep->ISMInstanceId, EntityManager);
+					VisSubsystem->RemoveISMInstance(Rep->GridCoords, Config->ISMManagerClass, MeshToRemove, Rep->ISMInstanceId, EntityManager);
 					Rep->ISMInstanceId = INDEX_NONE;
 				}
 			}
@@ -132,6 +133,7 @@ void UArcVisEntityComponent::RegisterPrePlacedActor()
 
 		// Set to actor representation using the pre-placed actor
 		Rep->bIsActorRepresentation = true;
+		Rep->CurrentISMMesh = nullptr;
 	}
 
 	// Bind this actor to the entity via FMassActorFragment
