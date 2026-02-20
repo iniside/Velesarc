@@ -14,12 +14,46 @@ class UArcTQSQueryDefinition;
 DECLARE_DELEGATE_OneParam(FArcTQSQueryFinished, FArcTQSQueryInstance& /*CompletedQuery*/);
 
 /**
+ * Debug snapshot of a completed TQS query.
+ * Stored per-entity in the subsystem so the Gameplay Debugger can visualize results.
+ */
+struct FArcTQSDebugQueryData
+{
+	// All items generated (including filtered-out ones, with bValid = false)
+	TArray<FArcTQSTargetItem> AllItems;
+
+	// Final selected results
+	TArray<FArcTQSTargetItem> Results;
+
+	// Query origin
+	FVector QuerierLocation = FVector::ZeroVector;
+
+	// Timing
+	double ExecutionTimeMs = 0.0;
+
+	// Query status
+	EArcTQSQueryStatus Status = EArcTQSQueryStatus::Pending;
+
+	// Selection mode used
+	EArcTQSSelectionMode SelectionMode = EArcTQSSelectionMode::HighestScore;
+
+	// Number of items generated / passed filters
+	int32 TotalGenerated = 0;
+	int32 TotalValid = 0;
+
+	// Timestamp for auto-expiry
+	double Timestamp = 0.0;
+};
+
+/**
  * Manages all running TQS queries, distributing frame time budget across them.
  * Queries are time-sliced: each gets a portion of the per-frame budget, with higher
  * priority queries processed first.
  *
  * Results are delivered via callback (FArcTQSQueryFinished) — the subsystem does not
  * store completed queries. Callers must consume results in the callback.
+ *
+ * Debug data from completed queries is stored per-entity for the Gameplay Debugger.
  */
 UCLASS()
 class ARCAI_API UArcTQSQuerySubsystem : public UTickableWorldSubsystem
@@ -68,13 +102,36 @@ public:
 	// Check if a query is still running
 	bool IsQueryRunning(int32 QueryId) const;
 
+	// --- Debug API ---
+
+	// Get debug data for a specific entity's last completed query
+	const FArcTQSDebugQueryData* GetDebugData(FMassEntityHandle Entity) const;
+
+#if !UE_BUILD_SHIPPING
+	// Get all stored debug data (for overview display)
+	const TMap<FMassEntityHandle, FArcTQSDebugQueryData>& GetAllDebugData() const { return DebugQueryData; }
+#endif
+
 	// Max time per frame for all TQS queries (seconds)
 	UPROPERTY(EditAnywhere, Category = "ArcTQS")
 	float MaxAllowedTestingTime = 0.005f; // 5ms budget
+
+	// How long to keep debug data before auto-expiry (seconds)
+	static constexpr double DebugDataExpiryTime = 10.0;
 
 private:
 	int32 SubmitInstance(TSharedPtr<FArcTQSQueryInstance> Instance, FArcTQSQueryFinished OnFinished);
 
 	TArray<TSharedPtr<FArcTQSQueryInstance>> RunningQueries;
 	int32 NextQueryId = 1;
+
+#if !UE_BUILD_SHIPPING
+	// Store debug snapshot from a completed query
+	void StoreDebugData(const FArcTQSQueryInstance& CompletedQuery);
+
+	// Remove expired debug entries
+	void CleanupDebugData();
+
+	TMap<FMassEntityHandle, FArcTQSDebugQueryData> DebugQueryData;
+#endif
 };

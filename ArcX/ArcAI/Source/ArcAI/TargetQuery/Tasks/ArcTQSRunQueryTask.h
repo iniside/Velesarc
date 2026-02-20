@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MassStateTreeExecutionContext.h"
 #include "MassStateTreeTypes.h"
 #include "StateTreeAsyncExecutionContext.h"
 #include "TargetQuery/ArcTQSTypes.h"

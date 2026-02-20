@@ -37,6 +37,10 @@ void UArcTQSQuerySubsystem::Tick(float DeltaTime)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ArcTQSTick);
 
+#if !UE_BUILD_SHIPPING
+	CleanupDebugData();
+#endif
+
 	if (RunningQueries.IsEmpty())
 	{
 		return;
@@ -64,6 +68,10 @@ void UArcTQSQuerySubsystem::Tick(float DeltaTime)
 
 		if (bCompleted)
 		{
+#if !UE_BUILD_SHIPPING
+			StoreDebugData(*Query);
+#endif
+
 			// Fire callback — caller consumes results here
 			if (Query->OnCompleted)
 			{
@@ -191,3 +199,54 @@ bool UArcTQSQuerySubsystem::IsQueryRunning(int32 QueryId) const
 	}
 	return false;
 }
+
+const FArcTQSDebugQueryData* UArcTQSQuerySubsystem::GetDebugData(FMassEntityHandle Entity) const
+{
+#if !UE_BUILD_SHIPPING
+	return DebugQueryData.Find(Entity);
+#else
+	return nullptr;
+#endif
+}
+
+#if !UE_BUILD_SHIPPING
+void UArcTQSQuerySubsystem::StoreDebugData(const FArcTQSQueryInstance& CompletedQuery)
+{
+	if (!CompletedQuery.RequestingEntity.IsSet())
+	{
+		return;
+	}
+
+	FArcTQSDebugQueryData& Data = DebugQueryData.FindOrAdd(CompletedQuery.RequestingEntity);
+	Data.AllItems = CompletedQuery.Items;
+	Data.Results = CompletedQuery.Results;
+	Data.QuerierLocation = CompletedQuery.QueryContext.QuerierLocation;
+	Data.ExecutionTimeMs = CompletedQuery.TotalExecutionTime * 1000.0;
+	Data.Status = CompletedQuery.Status;
+	Data.SelectionMode = CompletedQuery.SelectionMode;
+	Data.TotalGenerated = CompletedQuery.Items.Num();
+	Data.Timestamp = FPlatformTime::Seconds();
+
+	int32 ValidCount = 0;
+	for (const FArcTQSTargetItem& Item : CompletedQuery.Items)
+	{
+		if (Item.bValid)
+		{
+			++ValidCount;
+		}
+	}
+	Data.TotalValid = ValidCount;
+}
+
+void UArcTQSQuerySubsystem::CleanupDebugData()
+{
+	const double Now = FPlatformTime::Seconds();
+	for (auto It = DebugQueryData.CreateIterator(); It; ++It)
+	{
+		if (Now - It->Value.Timestamp > DebugDataExpiryTime)
+		{
+			It.RemoveCurrent();
+		}
+	}
+}
+#endif
