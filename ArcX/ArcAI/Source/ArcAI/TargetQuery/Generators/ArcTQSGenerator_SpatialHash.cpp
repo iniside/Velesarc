@@ -4,7 +4,9 @@
 #include "ArcMass/ArcMassSpatialHashSubsystem.h"
 #include "Engine/World.h"
 
-void FArcTQSGenerator_SpatialHash::GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const
+void FArcTQSGenerator_SpatialHash::GenerateItems(
+	const FArcTQSQueryContext& QueryContext,
+	TArray<FArcTQSTargetItem>& OutItems) const
 {
 	UWorld* World = QueryContext.World.Get();
 	if (!World)
@@ -18,21 +20,35 @@ void FArcTQSGenerator_SpatialHash::GenerateItems(const FArcTQSQueryContext& Quer
 		return;
 	}
 
-	TArray<FArcMassEntityInfo> Entities = SpatialHash->QueryEntitiesInRadius(QueryContext.QuerierLocation, Radius);
+	// Deduplicate entities across multiple context location queries
+	TSet<FMassEntityHandle> SeenEntities;
 
-	OutItems.Reserve(Entities.Num());
-	for (const FArcMassEntityInfo& Info : Entities)
+	for (const FVector& CenterLocation : QueryContext.ContextLocations)
 	{
-		// Skip querier
-		if (Info.Entity == QueryContext.QuerierEntity)
-		{
-			continue;
-		}
+		TArray<FArcMassEntityInfo> Entities = SpatialHash->QueryEntitiesInRadius(CenterLocation, Radius);
 
-		FArcTQSTargetItem Item;
-		Item.TargetType = EArcTQSTargetType::MassEntity;
-		Item.EntityHandle = Info.Entity;
-		Item.Location = Info.Location;
-		OutItems.Add(MoveTemp(Item));
+		OutItems.Reserve(OutItems.Num() + Entities.Num());
+		for (const FArcMassEntityInfo& Info : Entities)
+		{
+			// Skip querier
+			if (Info.Entity == QueryContext.QuerierEntity)
+			{
+				continue;
+			}
+
+			// Skip already-added entities (from overlapping context radii)
+			bool bAlreadyInSet = false;
+			SeenEntities.Add(Info.Entity, &bAlreadyInSet);
+			if (bAlreadyInSet)
+			{
+				continue;
+			}
+
+			FArcTQSTargetItem Item;
+			Item.TargetType = EArcTQSTargetType::MassEntity;
+			Item.EntityHandle = Info.Entity;
+			Item.Location = Info.Location;
+			OutItems.Add(MoveTemp(Item));
+		}
 	}
 }

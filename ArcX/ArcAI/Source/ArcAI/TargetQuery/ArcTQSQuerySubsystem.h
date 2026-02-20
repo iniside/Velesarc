@@ -28,6 +28,9 @@ struct FArcTQSDebugQueryData
 	// Query origin
 	FVector QuerierLocation = FVector::ZeroVector;
 
+	// Context locations the generator ran around
+	TArray<FVector> ContextLocations;
+
 	// Timing
 	double ExecutionTimeMs = 0.0;
 
@@ -87,6 +90,7 @@ public:
 	 * Takes ownership of the provided data via move.
 	 */
 	int32 RunQuery(
+		FInstancedStruct&& InContextProvider,
 		FInstancedStruct&& InGenerator,
 		TArray<FInstancedStruct>&& InSteps,
 		EArcTQSSelectionMode InSelectionMode,

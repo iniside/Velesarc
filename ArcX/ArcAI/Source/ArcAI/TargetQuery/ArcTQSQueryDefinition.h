@@ -10,7 +10,8 @@
 #include "ArcTQSQueryDefinition.generated.h"
 
 /**
- * Data asset that defines a target query. Contains a generator and an ordered pipeline of steps.
+ * Data asset that defines a target query.
+ * Contains an optional context provider, a generator, and an ordered pipeline of steps.
  * Can be shared across State Tree tasks or used inline.
  */
 UCLASS(BlueprintType, Blueprintable, DefaultToInstanced, EditInlineNew)
@@ -19,6 +20,14 @@ class ARCAI_API UArcTQSQueryDefinition : public UDataAsset
 	GENERATED_BODY()
 
 public:
+	/**
+	 * Optional context provider that dynamically generates the ContextLocations array.
+	 * Runs before the generator. If not set, the query uses explicit ContextLocations
+	 * from the query context (or defaults to querier location).
+	 */
+	UPROPERTY(EditAnywhere, Category = "Context", meta = (BaseStruct = "/Script/ArcAI.ArcTQSContextProvider"))
+	FInstancedStruct ContextProvider;
+
 	// The generator that produces the initial target pool
 	UPROPERTY(EditAnywhere, Category = "Generator", meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator"))
 	FInstancedStruct Generator;

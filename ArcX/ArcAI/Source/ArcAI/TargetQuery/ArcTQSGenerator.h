@@ -10,8 +10,12 @@
  * Base struct for TQS generators. Generators produce the initial pool of target items.
  * Stored as FInstancedStruct in the query definition.
  *
- * Override GenerateItems() to populate OutItems with targets from spatial queries,
- * perception data, explicit lists, grid patterns, etc.
+ * The query context contains an array of ContextLocations. Generators run once per
+ * context location, accumulating items from all of them. Override GenerateItemsAroundLocation()
+ * to produce items around a single center point.
+ *
+ * For generators that don't operate around a center point (e.g. explicit lists),
+ * override GenerateItems() directly instead.
  */
 USTRUCT(BlueprintType)
 struct ARCAI_API FArcTQSGenerator
@@ -21,9 +25,24 @@ struct ARCAI_API FArcTQSGenerator
 	virtual ~FArcTQSGenerator() = default;
 
 	/**
-	 * Generate initial target items. Called once at query start.
-	 * @param QueryContext - provides querier entity, location, world, entity manager
-	 * @param OutItems - array to populate with target items
+	 * Generate items for all context locations. Default implementation calls
+	 * GenerateItemsAroundLocation() once per context location.
+	 *
+	 * Override this directly for generators that don't use context locations
+	 * (e.g. explicit lists, perception-based).
 	 */
-	virtual void GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const {}
+	virtual void GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const;
+
+	/**
+	 * Generate items around a single center location.
+	 * Called once per context location by the default GenerateItems() implementation.
+	 *
+	 * @param CenterLocation - the context location to generate around
+	 * @param QueryContext - full query context (querier info, world, entity manager)
+	 * @param OutItems - array to append generated items to
+	 */
+	virtual void GenerateItemsAroundLocation(
+		const FVector& CenterLocation,
+		const FArcTQSQueryContext& QueryContext,
+		TArray<FArcTQSTargetItem>& OutItems) const {}
 };

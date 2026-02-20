@@ -273,8 +273,9 @@ void FGameplayDebuggerCategory_ArcTQS::CollectData(APlayerController* OwnerPC, A
 		DebugData->TotalGenerated - DebugData->TotalValid,
 		DebugData->Results.Num()));
 
-	AddTextLine(FString::Printf(TEXT("{white}Execution: {yellow}%.3f ms"),
-		DebugData->ExecutionTimeMs));
+	AddTextLine(FString::Printf(TEXT("{white}Execution: {yellow}%.3f ms{white}  |  Context Locations: {yellow}%d"),
+		DebugData->ExecutionTimeMs,
+		DebugData->ContextLocations.Num()));
 
 	// Draw result details
 	if (DebugData->Results.Num() > 0)
@@ -329,6 +330,20 @@ void FGameplayDebuggerCategory_ArcTQS::CollectDebugShapes(const FArcTQSDebugQuer
 	// Draw querier position
 	AddShape(FGameplayDebuggerShape::MakeCylinder(
 		DebugData.QuerierLocation, 30.0f, 200.0f, FColor::White, TEXT("Querier")));
+
+	// Draw context locations (the centers generators ran around)
+	for (int32 i = 0; i < DebugData.ContextLocations.Num(); ++i)
+	{
+		const FVector& CtxLoc = DebugData.ContextLocations[i];
+
+		// Skip drawing if context location is at querier (already drawn above)
+		if (!CtxLoc.Equals(DebugData.QuerierLocation, 10.0f))
+		{
+			AddShape(FGameplayDebuggerShape::MakeCylinder(
+				CtxLoc, 25.0f, 180.0f, FColor::Orange,
+				FString::Printf(TEXT("Ctx %d"), i)));
+		}
+	}
 
 	// Draw all generated items
 	for (int32 i = 0; i < DebugData.AllItems.Num(); ++i)

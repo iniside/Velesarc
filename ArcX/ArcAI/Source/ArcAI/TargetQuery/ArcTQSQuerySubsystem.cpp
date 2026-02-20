@@ -112,6 +112,7 @@ int32 UArcTQSQuerySubsystem::RunQuery(
 	TSharedPtr<FArcTQSQueryInstance> Instance = MakeShared<FArcTQSQueryInstance>();
 
 	// Copy data from the definition into the instance
+	Instance->ContextProvider = Definition->ContextProvider;
 	Instance->Generator = Definition->Generator;
 	Instance->Steps = Definition->Steps;
 	Instance->SelectionMode = Definition->SelectionMode;
@@ -127,6 +128,7 @@ int32 UArcTQSQuerySubsystem::RunQuery(
 }
 
 int32 UArcTQSQuerySubsystem::RunQuery(
+	FInstancedStruct&& InContextProvider,
 	FInstancedStruct&& InGenerator,
 	TArray<FInstancedStruct>&& InSteps,
 	EArcTQSSelectionMode InSelectionMode,
@@ -143,6 +145,7 @@ int32 UArcTQSQuerySubsystem::RunQuery(
 
 	TSharedPtr<FArcTQSQueryInstance> Instance = MakeShared<FArcTQSQueryInstance>();
 
+	Instance->ContextProvider = MoveTemp(InContextProvider);
 	Instance->Generator = MoveTemp(InGenerator);
 	Instance->Steps = MoveTemp(InSteps);
 	Instance->SelectionMode = InSelectionMode;
@@ -221,6 +224,7 @@ void UArcTQSQuerySubsystem::StoreDebugData(const FArcTQSQueryInstance& Completed
 	Data.AllItems = CompletedQuery.Items;
 	Data.Results = CompletedQuery.Results;
 	Data.QuerierLocation = CompletedQuery.QueryContext.QuerierLocation;
+	Data.ContextLocations = CompletedQuery.QueryContext.ContextLocations;
 	Data.ExecutionTimeMs = CompletedQuery.TotalExecutionTime * 1000.0;
 	Data.Status = CompletedQuery.Status;
 	Data.SelectionMode = CompletedQuery.SelectionMode;

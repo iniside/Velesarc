@@ -31,26 +31,41 @@ struct FArcTQSRunQueryTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "!bUseInlineDefinition"))
 	TObjectPtr<UArcTQSQueryDefinition> QueryDefinition;
 
+	/**
+	 * Context locations for the generator to run around.
+	 * E.g. smart object locations, waypoints, or any set of points.
+	 * Generators will produce items around EACH location in this array.
+	 *
+	 * If empty, the querier's own location is used as the sole context location.
+	 * If populated, the querier location is NOT automatically included — add it explicitly if needed.
+	 */
+	UPROPERTY(EditAnywhere, Category = Input, meta = (Optional))
+	TArray<FVector> ContextLocations;
+	
 	// --- Inline definition (when bUseInlineDefinition = true) ---
 
+	// Optional context provider that produces ContextLocations dynamically
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSContextProvider", EditCondition = "bUseInlineDefinition"))
+	FInstancedStruct InlineContextProvider;
+
 	// Generator that produces the initial target pool
-	UPROPERTY(EditAnywhere, Category = "Inline Definition", meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator", EditCondition = "bUseInlineDefinition"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator", EditCondition = "bUseInlineDefinition"))
 	FInstancedStruct InlineGenerator;
 
 	// Ordered pipeline of filter/score steps
-	UPROPERTY(EditAnywhere, Category = "Inline Definition", meta = (BaseStruct = "/Script/ArcAI.ArcTQSStep", EditCondition = "bUseInlineDefinition"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSStep", EditCondition = "bUseInlineDefinition"))
 	TArray<FInstancedStruct> InlineSteps;
 
 	// How to select from the final scored pool
-	UPROPERTY(EditAnywhere, Category = "Inline Definition", meta = (EditCondition = "bUseInlineDefinition"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition"))
 	EArcTQSSelectionMode InlineSelectionMode = EArcTQSSelectionMode::HighestScore;
 
 	// For TopN mode
-	UPROPERTY(EditAnywhere, Category = "Inline Definition", meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::TopN", ClampMin = 1))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::TopN", ClampMin = 1))
 	int32 InlineTopN = 5;
 
 	// For AllPassing mode
-	UPROPERTY(EditAnywhere, Category = "Inline Definition", meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::AllPassing"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::AllPassing"))
 	float InlineMinPassingScore = 0.0f;
 
 	// --- Outputs ---
@@ -72,6 +87,7 @@ struct FArcTQSRunQueryTaskInstanceData
 	// Explicit items to feed to ExplicitList generator
 	UPROPERTY(EditAnywhere, Category = Input, meta = (Optional))
 	TArray<FArcTQSTargetItem> ExplicitInput;
+
 
 	// Override search radius at runtime (if generator supports it)
 	UPROPERTY(EditAnywhere, Category = Parameter, meta = (Optional))

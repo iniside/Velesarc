@@ -101,4 +101,15 @@ struct ARCAI_API FArcTQSQueryContext
 
 	// Optional querier actor (if entity has actor fragment)
 	TWeakObjectPtr<AActor> QuerierActor;
+
+	/**
+	 * Context locations that generators run around.
+	 * For example: smart object locations, patrol waypoints, or any array of points.
+	 * Generators produce items around EACH context location.
+	 *
+	 * If empty when the query starts, QuerierLocation is automatically added as the sole context location.
+	 * If populated, QuerierLocation is NOT automatically added — add it explicitly if desired.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<FVector> ContextLocations;
 };

@@ -163,6 +163,7 @@ void FArcTQSRunQueryTask::OnQueryCompleted(
 					QueryContext.World = LocalWorld;
 					QueryContext.EntityManager = &EntityManager;
 					QueryContext.ExplicitItems = InstData->ExplicitInput;
+					QueryContext.ContextLocations = InstData->ContextLocations;
 
 					if (const FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity))
 					{
@@ -211,6 +212,7 @@ FArcTQSQueryContext FArcTQSRunQueryTask::BuildQueryContext(
 	QueryContext.World = World;
 	QueryContext.EntityManager = &EntityManager;
 	QueryContext.ExplicitItems = InstanceData.ExplicitInput;
+	QueryContext.ContextLocations = InstanceData.ContextLocations;
 
 	if (const FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(MassCtx.GetEntity()))
 	{
@@ -235,10 +237,12 @@ int32 FArcTQSRunQueryTask::SubmitQuery(
 	if (InstanceData.bUseInlineDefinition)
 	{
 		// Copy inline data — the subsystem takes ownership via move
+		FInstancedStruct ContextProviderCopy = InstanceData.InlineContextProvider;
 		FInstancedStruct GeneratorCopy = InstanceData.InlineGenerator;
 		TArray<FInstancedStruct> StepsCopy = InstanceData.InlineSteps;
 
 		return TQSSubsystem->RunQuery(
+			MoveTemp(ContextProviderCopy),
 			MoveTemp(GeneratorCopy),
 			MoveTemp(StepsCopy),
 			InstanceData.InlineSelectionMode,

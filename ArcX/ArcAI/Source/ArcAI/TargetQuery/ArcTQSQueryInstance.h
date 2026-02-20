@@ -21,6 +21,9 @@ struct ARCAI_API FArcTQSQueryInstance
 
 	// --- Query configuration (owned copies) ---
 
+	// Optional context provider (must be FArcTQSContextProvider-derived, or empty)
+	FInstancedStruct ContextProvider;
+
 	// Generator instanced struct (must be FArcTQSGenerator-derived)
 	FInstancedStruct Generator;
 

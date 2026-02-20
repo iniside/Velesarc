@@ -3,13 +3,15 @@
 #include "ArcTQSGenerator_Grid.h"
 #include "NavigationSystem.h"
 
-void FArcTQSGenerator_Grid::GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const
+void FArcTQSGenerator_Grid::GenerateItemsAroundLocation(
+	const FVector& CenterLocation,
+	const FArcTQSQueryContext& QueryContext,
+	TArray<FArcTQSTargetItem>& OutItems) const
 {
-	const FVector Center = QueryContext.QuerierLocation;
 	const int32 HalfCount = FMath::FloorToInt(GridHalfExtent / GridSpacing);
 	const int32 TotalPoints = (2 * HalfCount + 1) * (2 * HalfCount + 1);
 
-	OutItems.Reserve(TotalPoints);
+	OutItems.Reserve(OutItems.Num() + TotalPoints);
 
 	UNavigationSystemV1* NavSys = bProjectToNavMesh ? FNavigationSystem::GetCurrent<UNavigationSystemV1>(QueryContext.World.Get()) : nullptr;
 
@@ -17,7 +19,7 @@ void FArcTQSGenerator_Grid::GenerateItems(const FArcTQSQueryContext& QueryContex
 	{
 		for (int32 Y = -HalfCount; Y <= HalfCount; ++Y)
 		{
-			FVector PointLocation = Center + FVector(X * GridSpacing, Y * GridSpacing, 0.0f);
+			FVector PointLocation = CenterLocation + FVector(X * GridSpacing, Y * GridSpacing, 0.0f);
 
 			if (NavSys)
 			{

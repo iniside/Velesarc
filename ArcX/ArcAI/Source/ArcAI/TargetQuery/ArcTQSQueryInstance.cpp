@@ -1,6 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSQueryInstance.h"
+#include "ArcTQSContextProvider.h"
 #include "ArcTQSStep.h"
 #include "ArcTQSGenerator.h"
 #include "HAL/PlatformTime.h"
@@ -75,6 +76,19 @@ void FArcTQSQueryInstance::RunGenerator()
 	{
 		Status = EArcTQSQueryStatus::Failed;
 		return;
+	}
+
+	// Run context provider to dynamically generate context locations (if configured)
+	if (const FArcTQSContextProvider* Provider = ContextProvider.GetPtr<FArcTQSContextProvider>())
+	{
+		Provider->GenerateContextLocations(QueryContext, QueryContext.ContextLocations);
+	}
+
+	// Default: if no context locations were provided (neither explicit nor from provider),
+	// use querier location as the sole center
+	if (QueryContext.ContextLocations.IsEmpty())
+	{
+		QueryContext.ContextLocations.Add(QueryContext.QuerierLocation);
 	}
 
 	Gen->GenerateItems(QueryContext, Items);
