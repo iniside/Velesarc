@@ -24,6 +24,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Misc/CoreDelegates.h"
+#include "NeedsSystem/GameplayDebuggerCategory_ArcNeeds.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 #include "TargetQuery/GameplayDebuggerCategory_ArcTQS.h"
 
@@ -37,8 +38,6 @@ void FArcAIModule::StartupModule()
 {
 #if WITH_GAMEPLAY_DEBUGGER
 	IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
-	//GameplayDebuggerModule.RegisterCategory("Arc AI", IGameplayDebugger::FOnGetCategory::CreateStatic(&FArcGameplayDebuggerCategory_ArcAI::MakeInstance), EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
-	//GameplayDebuggerModule.NotifyCategoriesChanged();
 	
 	GameplayDebuggerModule.RegisterCategory("Arc Planner"
 		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_SmartObjectPlanner::MakeInstance)
@@ -46,6 +45,10 @@ void FArcAIModule::StartupModule()
 
 	GameplayDebuggerModule.RegisterCategory("Arc TQS"
 		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcTQS::MakeInstance)
+		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
+
+	GameplayDebuggerModule.RegisterCategory("Arc Needs"
+		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcNeeds::MakeInstance)
 		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
 
 	GameplayDebuggerModule.NotifyCategoriesChanged();
@@ -75,6 +78,7 @@ void FArcAIModule::ShutdownModule()
 		IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
 		GameplayDebuggerModule.UnregisterCategory("Arc Planner");
 		GameplayDebuggerModule.UnregisterCategory("Arc TQS");
+		GameplayDebuggerModule.UnregisterCategory("Arc Needs");
 		GameplayDebuggerModule.NotifyCategoriesChanged();
 	}
 #endif
