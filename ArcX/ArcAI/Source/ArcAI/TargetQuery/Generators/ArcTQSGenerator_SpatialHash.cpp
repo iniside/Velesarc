@@ -23,9 +23,9 @@ void FArcTQSGenerator_SpatialHash::GenerateItems(
 	// Deduplicate entities across multiple context location queries
 	TSet<FMassEntityHandle> SeenEntities;
 
-	for (const FVector& CenterLocation : QueryContext.ContextLocations)
+	for (int32 ContextIdx = 0; ContextIdx < QueryContext.ContextLocations.Num(); ++ContextIdx)
 	{
-		TArray<FArcMassEntityInfo> Entities = SpatialHash->QueryEntitiesInRadius(CenterLocation, Radius);
+		TArray<FArcMassEntityInfo> Entities = SpatialHash->QueryEntitiesInRadius(QueryContext.ContextLocations[ContextIdx], Radius);
 
 		OutItems.Reserve(OutItems.Num() + Entities.Num());
 		for (const FArcMassEntityInfo& Info : Entities)
@@ -37,6 +37,7 @@ void FArcTQSGenerator_SpatialHash::GenerateItems(
 			}
 
 			// Skip already-added entities (from overlapping context radii)
+			// First context to find the entity "owns" it
 			bool bAlreadyInSet = false;
 			SeenEntities.Add(Info.Entity, &bAlreadyInSet);
 			if (bAlreadyInSet)
@@ -48,6 +49,7 @@ void FArcTQSGenerator_SpatialHash::GenerateItems(
 			Item.TargetType = EArcTQSTargetType::MassEntity;
 			Item.EntityHandle = Info.Entity;
 			Item.Location = Info.Location;
+			Item.ContextIndex = ContextIdx;
 			OutItems.Add(MoveTemp(Item));
 		}
 	}

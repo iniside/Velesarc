@@ -66,6 +66,10 @@ struct ARCAI_API FArcTQSTargetItem
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	bool bValid = true;
 
+	// Index into QueryContext.ContextLocations identifying which context generated this item.
+	// Set automatically by the generator. INDEX_NONE if not associated with a specific context.
+	int32 ContextIndex = INDEX_NONE;
+
 	// Resolve the world location regardless of target type
 	FVector GetLocation(const FMassEntityManager* EntityManager = nullptr) const;
 
