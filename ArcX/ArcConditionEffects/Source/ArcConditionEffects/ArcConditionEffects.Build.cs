@@ -18,6 +18,11 @@ public class ArcConditionEffects : ModuleRules
 				, "MassSimulation"
 				, "MassSpawner"
 				, "StructUtils"
+				, "GameplayAbilities"
+				, "GameplayTags"
+				, "GameplayTasks"
+				, "ArcCore"
+				, "MassActors"
 			}
 			);
 

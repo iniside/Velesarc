@@ -51,10 +51,12 @@
 // ===========================================================================
 
 //                          Name        Group                                  Thresh  Decay  Overload  BurnoutDur  BurnoutMult  BurnoutTarget
-USTRUCT()
+USTRUCT(BlueprintType)
 struct ARCCONDITIONEFFECTS_API FArcBurningConditionFragment : public FMassFragment
 {
 	GENERATED_BODY()
+	
+	UPROPERTY(BlueprintReadOnly)
 	FArcConditionState State;
 };
 
@@ -62,7 +64,7 @@ USTRUCT(BlueprintType)
 struct ARCCONDITIONEFFECTS_API FArcBurningConditionConfig : public FMassConstSharedFragment
 {
 	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, Category = "Condition")
+	UPROPERTY(EditAnywhere, Category = "Condition", meta = (ShowOnlyInnerProperties))
 	FArcConditionConfig Config = {EArcConditionGroup::GroupA_Hysteresis, 20.f, 3.f, 6.f, 2.f, 5.f, 0.f};
 };
 
@@ -89,7 +91,7 @@ USTRUCT(BlueprintType)
 struct ARCCONDITIONEFFECTS_API FArcBleedingConditionConfig : public FMassConstSharedFragment
 {
 	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, Category = "Condition")
+	UPROPERTY(EditAnywhere, Category = "Condition", meta = (ShowOnlyInnerProperties))
 	FArcConditionConfig Config = {EArcConditionGroup::GroupA_Hysteresis, 25.f, 2.f, 8.f, 2.f, 5.f, 0.f};
 };
 

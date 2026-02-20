@@ -74,25 +74,25 @@ enum class EArcConditionOverloadPhase : uint8
 // Per-Condition Runtime State (embedded in each condition fragment)
 // ---------------------------------------------------------------------------
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FArcConditionState
 {
 	GENERATED_BODY()
 
 	/** Current saturation value [0, 100]. */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	float Saturation = 0.f;
 
 	/** Whether the condition is "active" (past activation threshold). For Group A: hysteresis flag. */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	bool bActive = false;
 
 	/** Current overload phase. */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	EArcConditionOverloadPhase OverloadPhase = EArcConditionOverloadPhase::None;
 
 	/** Time remaining in the current overload phase (seconds). */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	float OverloadTimeRemaining = 0.f;
 
 	/** Resistance to this condition [0, 1]. Reduces applied saturation. 0 = no resistance. */
