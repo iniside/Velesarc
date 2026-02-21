@@ -12,32 +12,29 @@ float FArcTQSStep_Trace::ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQ
 		return 0.0f;
 	}
 
-	// Resolve trace origin
-	FVector Origin;
+	// Resolve trace origins
+	TArray<FVector> Origins;
 	if (bUseLocationProvider)
 	{
 		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
 		{
-			Origin = Provider->GetLocation(Item, QueryContext);
+			Provider->GetLocations(Item, QueryContext, Origins);
 		}
 		else
 		{
-			// Default: use item's context location if available, otherwise querier
-			Origin = QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
+			Origins.Add(QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
 				? QueryContext.ContextLocations[Item.ContextIndex]
-				: QueryContext.QuerierLocation;
+				: QueryContext.QuerierLocation);
 		}
 	}
 	else
 	{
-		Origin = TraceOrigin;
+		Origins.Add(TraceOrigin);
 	}
 
 	const FVector HeightOffsetVec(0.0f, 0.0f, TraceHeightOffset);
-	const FVector TraceStart = Origin + HeightOffsetVec;
 	const FVector TraceEnd = Item.GetLocation(QueryContext.EntityManager) + HeightOffsetVec;
 
-	FHitResult HitResult;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ArcTQSTrace), true);
 
 	// Ignore querier actor
@@ -52,9 +49,26 @@ float FArcTQSStep_Trace::ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQ
 		Params.AddIgnoredActor(Item.Actor.Get());
 	}
 
-	const bool bHit = World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, TraceChannel, Params);
+	// Score against all origins, pick the best (highest score).
+	// For filters: pass if visible from ANY origin.
+	float BestScore = 0.0f;
+	for (const FVector& Origin : Origins)
+	{
+		const FVector TraceStart = Origin + HeightOffsetVec;
 
-	// No hit = clear line of sight = pass
-	const float RawScore = bHit ? 0.0f : 1.0f;
-	return ResponseCurve.Evaluate(RawScore);
+		FHitResult HitResult;
+		const bool bHit = World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, TraceChannel, Params);
+
+		const float RawScore = bHit ? 0.0f : 1.0f;
+		const float Score = ResponseCurve.Evaluate(RawScore);
+		BestScore = FMath::Max(BestScore, Score);
+
+		// Early out: if clear line of sight from any origin, no need to check more
+		if (BestScore >= 1.0f)
+		{
+			return BestScore;
+		}
+	}
+
+	return BestScore;
 }

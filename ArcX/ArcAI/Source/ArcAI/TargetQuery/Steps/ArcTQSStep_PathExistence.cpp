@@ -12,37 +12,45 @@ float FArcTQSStep_PathExistence::ExecuteStep(const FArcTQSTargetItem& Item, cons
 		return 0.0f;
 	}
 
-	// Resolve start location
-	FVector StartLocation;
-	if (bUseLocationProvider)
-	{
-		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
-		{
-			StartLocation = Provider->GetLocation(Item, QueryContext);
-		}
-		else
-		{
-			StartLocation = QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
-				? QueryContext.ContextLocations[Item.ContextIndex]
-				: QueryContext.QuerierLocation;
-		}
-	}
-	else
-	{
-		StartLocation = PathStart;
-	}
-
-	const FVector EndLocation = Item.GetLocation(QueryContext.EntityManager);
-
 	const ANavigationData* NavData = NavSys->GetDefaultNavDataInstance();
 	if (!NavData)
 	{
 		return 0.0f;
 	}
 
-	FPathFindingQuery Query(nullptr, *NavData, StartLocation, EndLocation);
-	Query.bAllowPartialPaths = false;
+	// Resolve start locations
+	TArray<FVector> StartLocations;
+	if (bUseLocationProvider)
+	{
+		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
+		{
+			Provider->GetLocations(Item, QueryContext, StartLocations);
+		}
+		else
+		{
+			StartLocations.Add(QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
+				? QueryContext.ContextLocations[Item.ContextIndex]
+				: QueryContext.QuerierLocation);
+		}
+	}
+	else
+	{
+		StartLocations.Add(PathStart);
+	}
 
-	const bool bPathExists = NavSys->TestPathSync(Query);
-	return bPathExists ? 1.0f : 0.0f;
+	const FVector EndLocation = Item.GetLocation(QueryContext.EntityManager);
+
+	// Pass if path exists from ANY start location
+	for (const FVector& StartLoc : StartLocations)
+	{
+		FPathFindingQuery Query(nullptr, *NavData, StartLoc, EndLocation);
+		Query.bAllowPartialPaths = false;
+
+		if (NavSys->TestPathSync(Query))
+		{
+			return 1.0f;
+		}
+	}
+
+	return 0.0f;
 }

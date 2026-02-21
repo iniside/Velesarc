@@ -7,13 +7,15 @@
 #include "ArcTQSLocationProvider.generated.h"
 
 /**
- * Base struct that resolves a reference location from the query context at runtime.
+ * Base struct that resolves reference locations from the query context at runtime.
  *
  * Used by scoring/filter steps that need a configurable reference point (e.g. direction tests).
  * In State Tree inline definitions, you can property-bind a FVector directly instead of using a provider.
  * In DataAsset definitions, use a provider to resolve the location dynamically.
  *
- * The provider can return either a single location or a per-item location (e.g. nearest context).
+ * Providers can return a single location via GetLocation(), or multiple locations via GetLocations().
+ * Steps iterate over all returned locations and pick the best result (highest score for scorers,
+ * any-pass for filters). By default GetLocations() wraps GetLocation() in a single-element array.
  */
 USTRUCT(BlueprintType)
 struct ARCAI_API FArcTQSLocationProvider
@@ -23,7 +25,7 @@ struct ARCAI_API FArcTQSLocationProvider
 	virtual ~FArcTQSLocationProvider() = default;
 
 	/**
-	 * Resolve a reference location. Default implementation returns querier location.
+	 * Resolve a single reference location. Default implementation returns querier location.
 	 *
 	 * @param Item - the item being evaluated (for per-item providers like NearestContext)
 	 * @param QueryContext - full query context
@@ -34,6 +36,21 @@ struct ARCAI_API FArcTQSLocationProvider
 		const FArcTQSQueryContext& QueryContext) const
 	{
 		return QueryContext.QuerierLocation;
+	}
+
+	/**
+	 * Resolve all reference locations. Steps iterate over these and pick the best result.
+	 * Default implementation wraps GetLocation() in a single-element array.
+	 *
+	 * Override this for providers that naturally produce multiple locations (e.g. all context locations).
+	 */
+	virtual void GetLocations(
+		const FArcTQSTargetItem& Item,
+		const FArcTQSQueryContext& QueryContext,
+		TArray<FVector>& OutLocations) const
+	{
+		OutLocations.Reset();
+		OutLocations.Add(GetLocation(Item, QueryContext));
 	}
 };
 
@@ -83,4 +100,46 @@ struct ARCAI_API FArcTQSLocationProvider_ContextByIndex : public FArcTQSLocation
 	virtual FVector GetLocation(
 		const FArcTQSTargetItem& Item,
 		const FArcTQSQueryContext& QueryContext) const override;
+};
+
+/**
+ * Returns ALL context locations. Steps will evaluate the item against each
+ * context location and pick the best result (highest score for scorers, any-pass for filters).
+ */
+USTRUCT(DisplayName = "All Context Locations")
+struct ARCAI_API FArcTQSLocationProvider_AllContexts : public FArcTQSLocationProvider
+{
+	GENERATED_BODY()
+
+	virtual FVector GetLocation(
+		const FArcTQSTargetItem& Item,
+		const FArcTQSQueryContext& QueryContext) const override
+	{
+		// Single-location fallback: return nearest context
+		if (QueryContext.ContextLocations.IsEmpty())
+		{
+			return QueryContext.QuerierLocation;
+		}
+		if (QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex))
+		{
+			return QueryContext.ContextLocations[Item.ContextIndex];
+		}
+		return QueryContext.ContextLocations[0];
+	}
+
+	virtual void GetLocations(
+		const FArcTQSTargetItem& Item,
+		const FArcTQSQueryContext& QueryContext,
+		TArray<FVector>& OutLocations) const override
+	{
+		OutLocations.Reset();
+		if (QueryContext.ContextLocations.IsEmpty())
+		{
+			OutLocations.Add(QueryContext.QuerierLocation);
+		}
+		else
+		{
+			OutLocations = QueryContext.ContextLocations;
+		}
+	}
 };

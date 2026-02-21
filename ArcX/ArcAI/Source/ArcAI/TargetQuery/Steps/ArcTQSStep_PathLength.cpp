@@ -13,45 +13,52 @@ float FArcTQSStep_PathLength::ExecuteStep(const FArcTQSTargetItem& Item, const F
 		return 0.0f;
 	}
 
-	// Resolve start location
-	FVector StartLocation;
-	if (bUseLocationProvider)
-	{
-		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
-		{
-			StartLocation = Provider->GetLocation(Item, QueryContext);
-		}
-		else
-		{
-			StartLocation = QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
-				? QueryContext.ContextLocations[Item.ContextIndex]
-				: QueryContext.QuerierLocation;
-		}
-	}
-	else
-	{
-		StartLocation = PathStart;
-	}
-
-	const FVector EndLocation = Item.GetLocation(QueryContext.EntityManager);
-
 	const ANavigationData* NavData = NavSys->GetDefaultNavDataInstance();
 	if (!NavData)
 	{
 		return 0.0f;
 	}
 
-	FPathFindingQuery Query(nullptr, *NavData, StartLocation, EndLocation);
-	Query.bAllowPartialPaths = false;
-
-	FPathFindingResult Result = NavSys->FindPathSync(Query);
-	if (!Result.IsSuccessful() || !Result.Path.IsValid())
+	// Resolve start locations
+	TArray<FVector> StartLocations;
+	if (bUseLocationProvider)
 	{
-		return 0.0f;
+		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
+		{
+			Provider->GetLocations(Item, QueryContext, StartLocations);
+		}
+		else
+		{
+			StartLocations.Add(QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
+				? QueryContext.ContextLocations[Item.ContextIndex]
+				: QueryContext.QuerierLocation);
+		}
+	}
+	else
+	{
+		StartLocations.Add(PathStart);
 	}
 
-	const float PathLength = static_cast<float>(Result.Path->GetLength());
-	const float NormalizedLength = FMath::Clamp(PathLength / MaxPathLength, 0.0f, 1.0f);
+	const FVector EndLocation = Item.GetLocation(QueryContext.EntityManager);
 
-	return ResponseCurve.Evaluate(NormalizedLength);
+	// Score against all start locations, pick the best (highest score)
+	float BestScore = 0.0f;
+	for (const FVector& StartLoc : StartLocations)
+	{
+		FPathFindingQuery Query(nullptr, *NavData, StartLoc, EndLocation);
+		Query.bAllowPartialPaths = false;
+
+		FPathFindingResult Result = NavSys->FindPathSync(Query);
+		if (!Result.IsSuccessful() || !Result.Path.IsValid())
+		{
+			continue;
+		}
+
+		const float PathLength = static_cast<float>(Result.Path->GetLength());
+		const float NormalizedLength = FMath::Clamp(PathLength / MaxPathLength, 0.0f, 1.0f);
+		const float Score = ResponseCurve.Evaluate(NormalizedLength);
+		BestScore = FMath::Max(BestScore, Score);
+	}
+
+	return BestScore;
 }
