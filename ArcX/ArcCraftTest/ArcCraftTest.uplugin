@@ -1,0 +1,43 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Arc Craft Test",
+	"Description": "",
+	"Category": "ArcX",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcCraftTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [
+				"Editor",
+				"Program"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcCraft",
+			"Enabled": true
+		},
+		{
+			"Name": "CQTest",
+			"Enabled": true
+		}
+	]
+}
