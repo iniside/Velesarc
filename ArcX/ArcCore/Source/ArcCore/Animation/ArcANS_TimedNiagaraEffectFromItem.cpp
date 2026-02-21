@@ -110,7 +110,7 @@ UFXSystemComponent* UArcANS_TimedNiagaraEffectFromItem::SpawnEffect(USkeletalMes
 	FName SocketFromFragment = NAME_None;
 	if (NiagaraSystemTag.IsValid())
 	{
-		const FArcItemFragment_NiagaraSystemMap* Fragment = ArcItems::FindFragment<FArcItemFragment_NiagaraSystemMap>(ItemData);
+		const FArcItemFragment_NiagaraSystemMap* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_NiagaraSystemMap>(ItemData);
 		if (!Fragment)
 		{
 			return nullptr;
@@ -123,7 +123,7 @@ UFXSystemComponent* UArcANS_TimedNiagaraEffectFromItem::SpawnEffect(USkeletalMes
 	}
 	else
 	{
-		const FArcItemFragment_NiagaraSystem* Fragment = ArcItems::FindFragment<FArcItemFragment_NiagaraSystem>(ItemData);
+		const FArcItemFragment_NiagaraSystem* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_NiagaraSystem>(ItemData);
 		if (!Fragment)
 		{
 			return nullptr;

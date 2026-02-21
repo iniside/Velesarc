@@ -45,12 +45,8 @@ public:
 	
 	virtual TSharedPtr<FArcItemInstance> Duplicate() const override
 	{
-		void* Allocated = FMemory::Malloc(GetScriptStruct()->GetCppStructOps()->GetSize(), GetScriptStruct()->GetCppStructOps()->GetAlignment());
-		GetScriptStruct()->GetCppStructOps()->Construct(Allocated);
-		TSharedPtr<FArcItemInstance_ItemVisualAttachment> SharedPtr = MakeShareable(static_cast<FArcItemInstance_ItemVisualAttachment*>(Allocated));
-
+		TSharedPtr<FArcItemInstance_ItemVisualAttachment> SharedPtr = ArcItems::AllocateInstance<FArcItemInstance_ItemVisualAttachment>();
 		SharedPtr->VisualItem = VisualItem;
-
 		return SharedPtr;
 	}
 

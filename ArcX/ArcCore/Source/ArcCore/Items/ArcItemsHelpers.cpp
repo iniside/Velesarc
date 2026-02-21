@@ -23,7 +23,7 @@
 
 #include "ArcItemsSubsystem.h"
 
-void ArcItems::BroadcastItemChanged(const FArcItemData* InItem)
+void ArcItemsHelper::BroadcastItemChanged(const FArcItemData* InItem)
 {
 	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(InItem->GetItemsStoreComponent());
 	if (ItemsSubsystem)

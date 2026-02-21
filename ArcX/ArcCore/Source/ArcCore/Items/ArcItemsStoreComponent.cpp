@@ -194,7 +194,7 @@ const FArcItemData* UArcItemsStoreComponent::GetItemByTags(const FGameplayTagCon
 			continue;
 		}
 
-		const FArcItemFragment_Tags* Tags = ArcItems::GetFragment<FArcItemFragment_Tags>(ItemData);
+		const FArcItemFragment_Tags* Tags = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(ItemData);
 		if (!Tags)
 		{
 			continue;
@@ -349,7 +349,7 @@ FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem, const FA
 
 	Entry->SetStacks(StacksToSet);
 	
-	const FArcItemFragment_SocketSlots* ES = ArcItems::GetFragment<FArcItemFragment_SocketSlots>(Entry);
+	const FArcItemFragment_SocketSlots* ES = ArcItemsHelper::GetFragment<FArcItemFragment_SocketSlots>(Entry);
 	if (ES != nullptr)
 	{
 		for (const FArcSocketSlot& SS : ES->GetSocketSlots())
@@ -448,7 +448,7 @@ void UArcItemsStoreComponent::RemoveItem(const FArcItemId& Item, int32 Stacks, b
 	
 	FArcItemData* ItemData = GetItemPtr(Item);
 
-	//FArcItemInstance_Stacks* StacksInstance = ArcItems::FindMutableInstance<FArcItemInstance_Stacks>(ItemData);
+	//FArcItemInstance_Stacks* StacksInstance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_Stacks>(ItemData);
 	//if (StacksInstance != nullptr)
 	{
 		const int32 StackNum = ItemData->GetStacks();
@@ -721,7 +721,7 @@ FArcItemId UArcItemsStoreComponent::InternalAttachToItem(const FArcItemId& Owner
 
 	if (InAttachSlot.IsValid())
 	{
-		const FArcItemFragment_SocketSlots* AttachSlots = ArcItems::FindFragment<FArcItemFragment_SocketSlots>(OwnerData);
+		const FArcItemFragment_SocketSlots* AttachSlots = ArcItemsHelper::FindFragment<FArcItemFragment_SocketSlots>(OwnerData);
 		if (AttachSlots == nullptr)
 		{
 			return FArcItemId::InvalidId;

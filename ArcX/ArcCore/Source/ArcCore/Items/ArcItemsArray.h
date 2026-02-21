@@ -331,7 +331,7 @@ struct FArcItemsArray
 
 	friend class UArcItemsStoreComponent;
 	friend struct FArcMoveItemBetweenStoresCommand;
-	friend struct ArcItems;
+	friend struct ArcItemsHelper;
 	friend struct FArcItemCopyContainerHelper;
 	
 protected:

@@ -27,7 +27,7 @@
 
 void FArcItemFragment_Stacks::OnItemAdded(const FArcItemData* InItem) const
 {
-	FArcItemInstance_Stacks* Instance = ArcItems::FindMutableInstance<FArcItemInstance_Stacks>(InItem);
+	FArcItemInstance_Stacks* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_Stacks>(InItem);
 
 	Instance->Stacks = InitialStacks;
 }

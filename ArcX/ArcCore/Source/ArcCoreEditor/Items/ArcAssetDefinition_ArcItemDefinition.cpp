@@ -36,6 +36,7 @@
 #include "ToolMenus.h"
 #include "ToolMenuSection.h"
 #include "Core/ArcCoreAssetManager.h"
+#include "HAL/PlatformFileManager.h"
 #include "Serialization/ObjectReader.h"
 #include "Serialization/ObjectWriter.h"
 
@@ -403,15 +404,11 @@ void UArcUndoableResolveHandler::MarkResolved()
 
 void UArcUndoableResolveHandler::PostEditUndo()
 {
-	if (bShouldBeResolved) // undo resolution
-	{
-		MarkResolved();
-	}
-	else // redo resolution
+	if (bShouldBeResolved) // undo resolution — revert to pre-resolved state
 	{
 		UPackage* Package = ManagedObject->GetPackage();
 		const FString Filepath = FPaths::ConvertRelativePathToFull(Package->GetLoadedPath().GetLocalFullPath());
-		
+
 		// to force the file to revert to it's pre-resolved state, we must revert, sync back to base revision,
 		// apply the conflicting changes, then sync forward again.
 		ISourceControlProvider& Provider = ISourceControlModule::Get().GetProvider();
@@ -420,7 +417,7 @@ void UArcUndoableResolveHandler::PostEditUndo()
 			SyncOperation->SetRevision(BaseRevisionNumber);
 			Provider.Execute(SyncOperation, Filepath, EConcurrency::Synchronous);
 		}
-		
+
 		ResetLoaders(Package);
 		Provider.Execute( ISourceControlOperation::Create<FRevert>(), Filepath, EConcurrency::Synchronous);
 
@@ -430,7 +427,7 @@ void UArcUndoableResolveHandler::PostEditUndo()
 		}
 
 		ensure(FPlatformFileManager::Get().GetPlatformFile().CopyFile(*Filepath, *BackupFilepath));
-		
+
 		{
 			const TSharedRef<FSync> SyncOperation = ISourceControlOperation::Create<FSync>();
 			SyncOperation->SetRevision(CurrentRevisionNumber);
@@ -438,6 +435,11 @@ void UArcUndoableResolveHandler::PostEditUndo()
 		}
 
 		Provider.Execute(ISourceControlOperation::Create<FUpdateStatus>(), {Filepath}, EConcurrency::Asynchronous);
+		bShouldBeResolved = false;
+	}
+	else // redo resolution — resolve again
+	{
+		MarkResolved();
 	}
 	UObject::PostEditUndo();
 }

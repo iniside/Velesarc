@@ -129,9 +129,9 @@ FName FArcAttachmentHandlerCommon::FindFinalAttachSocket(const FArcItemAttachmen
 
 UArcItemDefinition* FArcAttachmentHandlerCommon::GetVisualItem(const FArcItemData* InItem) const
 {
-	const FArcItemFragment_ItemVisualAttachment* VisualItemData = ArcItems::GetFragment<FArcItemFragment_ItemVisualAttachment>(InItem);
+	const FArcItemFragment_ItemVisualAttachment* VisualItemData = ArcItemsHelper::GetFragment<FArcItemFragment_ItemVisualAttachment>(InItem);
 
-	const FArcItemInstance_ItemVisualAttachment* VisualInstance = ArcItems::FindInstance<FArcItemInstance_ItemVisualAttachment>(InItem);
+	const FArcItemInstance_ItemVisualAttachment* VisualInstance = ArcItemsHelper::FindInstance<FArcItemInstance_ItemVisualAttachment>(InItem);
 	UArcItemDefinition* VisualItemDefinition = nullptr;
 	
 	if (VisualInstance != nullptr)
@@ -160,7 +160,7 @@ const FArcAttachmentHandlerCommon* FArcAttachmentHandlerCommon::FindAttachmentHa
 		return nullptr;
 	}
 
-	const FArcItemFragment_ItemAttachmentSlots* Fragment = ArcItems::FindFragment<FArcItemFragment_ItemAttachmentSlots>(InOwnerItem);
+	const FArcItemFragment_ItemAttachmentSlots* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_ItemAttachmentSlots>(InOwnerItem);
 
 	if (Fragment == nullptr)
 	{

@@ -80,9 +80,14 @@ public:
 		{
 			return;
 		}
-		void* OutData = FMemory::Malloc(TFactory::StaticStruct()->GetCppStructOps()->GetSize());
-		TFactory::StaticStruct()->GetCppStructOps()->Construct(OutData);
-		Factories.Add(TFactory::StaticStruct()
-			, MakeShareable(static_cast<FArcItemFactoryBase*>(OutData)));
+		UScriptStruct* StructType = TFactory::StaticStruct();
+		void* OutData = FMemory::Malloc(StructType->GetCppStructOps()->GetSize());
+		StructType->GetCppStructOps()->Construct(OutData);
+		Factories.Add(StructType
+			, TSharedPtr<FArcItemFactoryBase>(static_cast<FArcItemFactoryBase*>(OutData), [StructType](FArcItemFactoryBase* Ptr)
+			{
+				StructType->GetCppStructOps()->Destruct(Ptr);
+				FMemory::Free(Ptr);
+			}));
 	}
 };

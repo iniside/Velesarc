@@ -86,7 +86,10 @@ private:
 	FString BaseRevisionNumber;
 	FString CurrentRevisionNumber;
 	FString BackupFilepath;
-	UObject* ManagedObject;
+	
+	UPROPERTY()
+	TObjectPtr<UObject> ManagedObject;
+	
 	TSharedPtr<class ISourceControlChangelist> CheckinIdentifier;
 	
 	UPROPERTY()

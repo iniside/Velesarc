@@ -389,7 +389,7 @@ void UArcQuickBarComponent::AddAndActivateQuickSlot(const FGameplayTag& BarId, c
 
 	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
 	
-	if (const FArcItemFragment_QuickBarItems* Fragment = ArcItems::FindFragment<FArcItemFragment_QuickBarItems>(ItemData))
+	if (const FArcItemFragment_QuickBarItems* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_QuickBarItems>(ItemData))
 	{
 		int32 ChildBarIdx = QuickBars.IndexOfByPredicate([QuickSlotId](const FArcQuickBar& QuickBar)
 			{

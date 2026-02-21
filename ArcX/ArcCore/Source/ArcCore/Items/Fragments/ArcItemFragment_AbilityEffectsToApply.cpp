@@ -26,7 +26,7 @@
 
 void FArcItemFragment_AbilityEffectsToApply::OnItemInitialize(const FArcItemData* InItem) const
 {
-	FArcItemInstance_EffectToApply* Instance = ArcItems::FindMutableInstance<FArcItemInstance_EffectToApply>(InItem);
+	FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_EffectToApply>(InItem);
 	if (Instance == nullptr)
 	{
 		return;
@@ -65,19 +65,19 @@ void FArcItemFragment_AbilityEffectsToApply::OnItemChanged(const FArcItemData* I
 	FArcItemInstance_EffectToApply* Instance = nullptr;
 	if (OwnerItemPtr)
 	{
-		Instance = ArcItems::FindMutableInstance<FArcItemInstance_EffectToApply>(OwnerItemPtr);
+		Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_EffectToApply>(OwnerItemPtr);
 	}
 	else
 	{
-		Instance = ArcItems::FindMutableInstance<FArcItemInstance_EffectToApply>(InItem);	
+		Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_EffectToApply>(InItem);	
 	}
 	
 	if (Instance == nullptr)
 	{
 		if (InItem->GetItemsStoreComponent()->GetOwnerRole() == ENetRole::ROLE_Authority)
 		{
-			ArcItems::AddInstance<FArcItemInstance_EffectToApply>(OwnerItemPtr);
-			Instance = ArcItems::FindMutableInstance<FArcItemInstance_EffectToApply>(OwnerItemPtr);
+			ArcItemsHelper::AddInstance<FArcItemInstance_EffectToApply>(OwnerItemPtr);
+			Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_EffectToApply>(OwnerItemPtr);
 			if (Instance == nullptr)
 			{
 				return;

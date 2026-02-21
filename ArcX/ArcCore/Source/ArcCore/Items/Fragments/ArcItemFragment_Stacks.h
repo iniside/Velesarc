@@ -62,12 +62,8 @@ public:
 	
 	virtual TSharedPtr<FArcItemInstance> Duplicate() const override
 	{
-		void* Allocated = FMemory::Malloc(GetScriptStruct()->GetCppStructOps()->GetSize(), GetScriptStruct()->GetCppStructOps()->GetAlignment());
-		GetScriptStruct()->GetCppStructOps()->Construct(Allocated);
-		TSharedPtr<FArcItemInstance_Stacks> SharedPtr = MakeShareable(static_cast<FArcItemInstance_Stacks*>(Allocated));
-
+		TSharedPtr<FArcItemInstance_Stacks> SharedPtr = ArcItems::AllocateInstance<FArcItemInstance_Stacks>();
 		SharedPtr->Stacks = Stacks;
-
 		return SharedPtr;
 	}
 
@@ -99,8 +95,8 @@ public:
 
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
-		return FArcItemInstance_Stacks::StaticStruct();
+		return FArcItemFragment_Stacks::StaticStruct();
 	}
-	
+
 	virtual void OnItemAdded(const FArcItemData* InItem) const override;
 };

@@ -123,7 +123,7 @@ public:
 	
 	void RemoveAt(int32 Index)
 	{
-		if (Index > 0 && Index < Num())
+		if (Index >= 0 && Index < Num())
 		{
 			Data.RemoveAt(Index);
 		}

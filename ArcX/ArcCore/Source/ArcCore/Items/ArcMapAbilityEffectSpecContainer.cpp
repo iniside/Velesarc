@@ -46,6 +46,10 @@ void FArcMapAbilityEffectSpecContainer::AddAbilityEffectSpecs(const FArcItemFrag
 	
 	
 	UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent());
+	if (!ASC)
+	{
+		return;
+	}
 	// By default use the owner and avatar as the instigator and causer
 	FArcGameplayEffectContext* CtxPtr = static_cast<FArcGameplayEffectContext*>(Context.Get());
 
@@ -81,9 +85,11 @@ void FArcMapAbilityEffectSpecContainer::AddAbilityEffectSpecs(const FArcItemFrag
 void FArcMapAbilityEffectSpecContainer::RemoveAbilityEffectSpecs(FArcItemId ItemHandle
 											 , FArcMapAbilityEffectSpecContainer& InOutContainer)
 {
-	int32 Idx = InOutContainer.SpecsArray.IndexOfByKey(ItemHandle);
-	if (Idx != INDEX_NONE)
+	for (int32 Idx = InOutContainer.SpecsArray.Num() - 1; Idx >= 0; --Idx)
 	{
-		InOutContainer.SpecsArray.RemoveAt(Idx);
+		if (InOutContainer.SpecsArray[Idx] == ItemHandle)
+		{
+			InOutContainer.SpecsArray.RemoveAt(Idx);
+		}
 	}
 }

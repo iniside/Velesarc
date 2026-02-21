@@ -24,6 +24,7 @@
 #include "Net/Serialization/FastArraySerializer.h"
 
 #include "ArcItemId.h"
+#include "HAL/UnrealMemory.h"
 
 #include "ArcItemInstance.generated.h"
 
@@ -35,6 +36,37 @@ class UArcItemsStoreComponent;
 DECLARE_LOG_CATEGORY_EXTERN(LogItemInstance
 	, Log
 	, Log);
+
+struct FArcItemInstance;
+
+namespace ArcItems
+{
+	/** Allocate and construct a polymorphic FArcItemInstance with a custom deleter that correctly calls Destruct + FMemory::Free. */
+	template<typename T>
+	TSharedPtr<T> AllocateInstance()
+	{
+		UScriptStruct* StructType = T::StaticStruct();
+		void* Mem = FMemory::Malloc(StructType->GetCppStructOps()->GetSize(), StructType->GetCppStructOps()->GetAlignment());
+		StructType->GetCppStructOps()->Construct(Mem);
+		return TSharedPtr<T>(static_cast<T*>(Mem), [StructType](T* Ptr)
+		{
+			StructType->GetCppStructOps()->Destruct(Ptr);
+			FMemory::Free(Ptr);
+		});
+	}
+
+	/** Non-template version for runtime UScriptStruct*. */
+	inline TSharedPtr<FArcItemInstance> AllocateInstance(UScriptStruct* InstanceType)
+	{
+		void* Mem = FMemory::Malloc(InstanceType->GetCppStructOps()->GetSize(), InstanceType->GetCppStructOps()->GetAlignment());
+		InstanceType->GetCppStructOps()->Construct(Mem);
+		return TSharedPtr<FArcItemInstance>(static_cast<FArcItemInstance*>(Mem), [InstanceType](FArcItemInstance* Ptr)
+		{
+			InstanceType->GetCppStructOps()->Destruct(Ptr);
+			FMemory::Free(Ptr);
+		});
+	}
+}
 /**
  * Base struct for mutable Item/Slot data.
  *
@@ -85,9 +117,7 @@ public:
 	
 	virtual TSharedPtr<FArcItemInstance> Duplicate() const
 	{
-		void* Allocated = FMemory::Malloc(GetScriptStruct()->GetCppStructOps()->GetSize(), GetScriptStruct()->GetCppStructOps()->GetAlignment());
-		GetScriptStruct()->GetCppStructOps()->Construct(Allocated);
-		TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
+		TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(GetScriptStruct());
 		*SharedPtr = *this;
 		return SharedPtr;
 	}
@@ -169,10 +199,8 @@ public:
 					else
 					{
 						UE_LOG(LogItemInstance, Log, TEXT("FArcItemInstanceInternal operator= Allocation %s"), *GetNameSafe(SrcPolymorphicStruct->GetScriptStruct()))
-						FArcItemInstance* NewPolymorphicStruct = static_cast<FArcItemInstance*>(FMemory::Malloc(SrcScriptStruct->GetStructureSize(), SrcScriptStruct->GetMinAlignment()));
-						SrcScriptStruct->InitializeStruct(NewPolymorphicStruct);
-						SrcScriptStruct->CopyScriptStruct(NewPolymorphicStruct, SrcPolymorphicStruct);
-						Data = MakeShareable(NewPolymorphicStruct);	
+						Data = ArcItems::AllocateInstance(const_cast<UScriptStruct*>(SrcScriptStruct));
+						SrcScriptStruct->CopyScriptStruct(Data.Get(), SrcPolymorphicStruct);	
 					}
 													
 				}				

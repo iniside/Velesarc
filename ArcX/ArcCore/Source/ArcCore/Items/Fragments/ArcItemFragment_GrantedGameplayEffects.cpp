@@ -27,10 +27,11 @@
 
 void FArcItemFragment_GrantedGameplayEffects::OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const
 {
-	FArcItemInstance_GrantedGameplayEffects* GrantedGameplayEffects = ArcItems::FindMutableInstance<FArcItemInstance_GrantedGameplayEffects>(InItem);
+	FArcItemInstance_GrantedGameplayEffects* GrantedGameplayEffects = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedGameplayEffects>(InItem);
 	UArcCoreAbilitySystemComponent* ArcASC = InItem->GetItemsStoreComponent()->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 
 	FGameplayEffectContextHandle ContextHandle = ArcASC->MakeEffectContext();
+	check(ContextHandle.Get()->GetScriptStruct() == FArcGameplayEffectContext::StaticStruct());
 	FArcGameplayEffectContext* ArcContext = static_cast<FArcGameplayEffectContext*>(ContextHandle.Get());
 
 	ArcContext->SetSourceItemDef(InItem->GetItemDefinition());
@@ -50,7 +51,7 @@ void FArcItemFragment_GrantedGameplayEffects::OnItemAddedToSlot(const FArcItemDa
 
 void FArcItemFragment_GrantedGameplayEffects::OnItemRemovedFromSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const
 {
-	FArcItemInstance_GrantedGameplayEffects* GrantedGameplayEffects = ArcItems::FindMutableInstance<FArcItemInstance_GrantedGameplayEffects>(InItem);
+	FArcItemInstance_GrantedGameplayEffects* GrantedGameplayEffects = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedGameplayEffects>(InItem);
 	UArcCoreAbilitySystemComponent* ArcASC = InItem->GetItemsStoreComponent()->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 
 	for (FActiveGameplayEffectHandle Handle : GrantedGameplayEffects->GrantedEffects)

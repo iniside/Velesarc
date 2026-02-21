@@ -48,16 +48,13 @@ void UArcItemsStoreSubsystem::SetupItem(FArcItemData* ItemPtr, const FArcItemSpe
     		
     		int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
     		{
-    			void* Allocated = FMemory::Malloc(InstanceType->GetCppStructOps()->GetSize(), InstanceType->GetCppStructOps()->GetAlignment());
-    			InstanceType->GetCppStructOps()->Construct(Allocated);
-    
+    			TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
+
     			if (InitialDataIdx != INDEX_NONE)
     			{
-    				InstanceType->GetCppStructOps()->Copy(Allocated, InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);	
+    				InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
     			}
-    			
-    			TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
-    
+
     			ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
     		}
     	}
@@ -78,15 +75,12 @@ void UArcItemsStoreSubsystem::SetupItem(FArcItemData* ItemPtr, const FArcItemSpe
     			return Other->GetScriptStruct() == InstanceType;
     		});
     		
-    		void* Allocated = FMemory::Malloc(InstanceType->GetCppStructOps()->GetSize(), InstanceType->GetCppStructOps()->GetAlignment());
-    		InstanceType->GetCppStructOps()->Construct(Allocated);
+    		TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
     		if (InitialDataIdx != INDEX_NONE)
     		{
-    			InstanceType->GetCppStructOps()->Copy(Allocated, InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);	
+    			InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
     		}
-    		
-    		TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
-    
+
     		int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
     		ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
     	}

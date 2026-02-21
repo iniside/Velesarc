@@ -1830,7 +1830,7 @@ DEFINE_FUNCTION(UArcAbilityActorComponent::execFindItemFragment)
 	if (ItemData)
 	{
 		P_NATIVE_BEGIN;
-		const uint8* Fragment = ArcItems::FindFragment(ItemData, InFragmentType);
+		const uint8* Fragment = ArcItemsHelper::FindFragment(ItemData, InFragmentType);
 		//ItemData->FindFragment(InFragmentType);
 		UScriptStruct* OutputStruct = OutItemProp->Struct;
 		// Make sure the type we are trying to get through the blueprint node matches the

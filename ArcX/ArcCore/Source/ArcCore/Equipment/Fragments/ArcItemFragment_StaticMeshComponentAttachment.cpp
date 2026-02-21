@@ -40,7 +40,7 @@ bool FArcAttachmentHandler_ComponentStaticMesh::HandleItemAddedToSlot(UArcItemAt
 															 , const FArcItemData* InItem
 															 , const FArcItemData* InOwnerItem) const
 {
-	const FArcItemFragment_StaticMeshComponentAttachment* StaticFragment = ArcItems::GetFragment<FArcItemFragment_StaticMeshComponentAttachment>(InItem);
+	const FArcItemFragment_StaticMeshComponentAttachment* StaticFragment = ArcItemsHelper::GetFragment<FArcItemFragment_StaticMeshComponentAttachment>(InItem);
 	if (StaticFragment == nullptr)
 	{
 		return false;

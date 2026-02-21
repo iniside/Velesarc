@@ -54,7 +54,7 @@ DEFINE_FUNCTION(UArcItemsBPF::execGetItemFragment)
 	FStructProperty* OutItemProp = CastField<FStructProperty>(Stack.MostRecentProperty);
 
 	P_FINISH;
-	bool bSuccess = true;
+	bool bSuccess = false;
 
 	{
 		P_NATIVE_BEGIN;
@@ -102,7 +102,7 @@ float UArcItemsBPF::FindItemScalableValue(const FArcItemDataHandle& Item
 bool UArcItemsBPF::ItemHasTag(const FArcItemDataHandle& InItem
 							  , FGameplayTag InTag, bool bExact)
 {
-	if (const FArcItemFragment_Tags* Tags = ArcItems::FindFragment<FArcItemFragment_Tags>(InItem.Get()))
+	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::FindFragment<FArcItemFragment_Tags>(InItem.Get()))
 	{
 		if (bExact)
 		{
@@ -120,7 +120,7 @@ bool UArcItemsBPF::ItemHasTag(const FArcItemDataHandle& InItem
 bool UArcItemsBPF::ItemHasAnyTag(const FArcItemDataHandle& InItem
 	, FGameplayTagContainer InTag, bool bExact)
 {
-	if (const FArcItemFragment_Tags* Tags = ArcItems::FindFragment<FArcItemFragment_Tags>(InItem.Get()))
+	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::FindFragment<FArcItemFragment_Tags>(InItem.Get()))
 	{
 		if (bExact)
 		{
@@ -138,7 +138,7 @@ bool UArcItemsBPF::ItemHasAnyTag(const FArcItemDataHandle& InItem
 bool UArcItemsBPF::ItemHasAllTags(const FArcItemDataHandle& InItem
 	, FGameplayTagContainer InTag, bool bExact)
 {
-	if (const FArcItemFragment_Tags* Tags = ArcItems::FindFragment<FArcItemFragment_Tags>(*InItem))
+	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::FindFragment<FArcItemFragment_Tags>(*InItem))
 	{
 		if (bExact)
 		{

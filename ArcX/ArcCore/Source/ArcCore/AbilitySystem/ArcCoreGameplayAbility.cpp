@@ -434,7 +434,7 @@ void UArcCoreGameplayAbility::OnAddedToItemSlot(const FGameplayAbilityActorInfo*
 		
 		CurrentItemSlot = InItemSlot;
 
-		const FArcItemFragment_AbilityTags* AbilityTagsFragment = ArcItems::FindFragment<FArcItemFragment_AbilityTags>(InItemData);
+		const FArcItemFragment_AbilityTags* AbilityTagsFragment = ArcItemsHelper::FindFragment<FArcItemFragment_AbilityTags>(InItemData);
 		if (AbilityTagsFragment)
 		{
 			AbilityTags.AppendTags(AbilityTagsFragment->AbilityTags);
@@ -716,7 +716,7 @@ FGameplayAbilitySpecHandle UArcCoreGameplayAbility::GetSpecHandle() const
 
 float UArcCoreGameplayAbility::GetItemStat(FGameplayAttribute Attribute) const
 {
-	const FArcItemInstance_ItemStats* ItemStats = ArcItems::FindInstance<FArcItemInstance_ItemStats>(GetSourceItemEntryPtr());
+	const FArcItemInstance_ItemStats* ItemStats = ArcItemsHelper::FindInstance<FArcItemInstance_ItemStats>(GetSourceItemEntryPtr());
 	return ItemStats->GetStatValue(Attribute);
 }
 
@@ -728,7 +728,7 @@ FArcItemId UArcCoreGameplayAbility::GetSourceItemHandle() const
 bool UArcCoreGameplayAbility::BP_GetSourceItem(FArcItemDataHandle& OutItem)
 {
 	OutItem = SourceItemsStore->GetWeakItemPtr(SourceItemId);
-	return OutItem.IsValiD();;
+	return OutItem.IsValid();
 }
 
 FArcItemData* UArcCoreGameplayAbility::GetSourceItemEntryPtr() const
@@ -778,7 +778,7 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindItemFragment)
 	if (ItemData)
 	{
 		P_NATIVE_BEGIN;
-		const uint8* Fragment = ArcItems::FindFragment(ItemData, InFragmentType);
+		const uint8* Fragment = ArcItemsHelper::FindFragment(ItemData, InFragmentType);
 		//ItemData->FindFragment(InFragmentType);
 		UScriptStruct* OutputStruct = OutItemProp->Struct;
 		// Make sure the type we are trying to get through the blueprint node matches the
@@ -811,7 +811,7 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindItemFragmentPure)
 	if (ItemData)
 	{
 		P_NATIVE_BEGIN;
-		const uint8* Fragment = ArcItems::FindFragment(ItemData, InFragmentType);
+		const uint8* Fragment = ArcItemsHelper::FindFragment(ItemData, InFragmentType);
 		//ItemData->FindFragment(InFragmentType);
 		UScriptStruct* OutputStruct = OutItemProp->Struct;
 		// Make sure the type we are trying to get through the blueprint node matches the
@@ -853,7 +853,7 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindScalableItemFragment)
 	if (ItemData)
 	{
 		P_NATIVE_BEGIN;
-		const uint8* Fragment = (uint8*)ArcItems::FindScalableItemFragment<FArcScalableFloatItemFragment>(ItemData);
+		const uint8* Fragment = (uint8*)ArcItemsHelper::FindScalableItemFragment<FArcScalableFloatItemFragment>(ItemData);
 		//ItemData->FindFragment(InFragmentType);
 		UScriptStruct* OutputStruct = OutItemProp->Struct;
 		// Make sure the type we are trying to get through the blueprint node matches the
@@ -955,7 +955,7 @@ void UArcCoreGameplayAbility::SetEffectMagnitude(const FGameplayTag& DataTag
 		, this
 		, GetCurrentActorInfo());
 
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 	
 	for (const FArcEffectSpecItem* E : Effects)
@@ -1080,7 +1080,7 @@ TArray<FActiveGameplayEffectHandle> UArcCoreGameplayAbility::ApplyEffectsFromIte
 {
 	TArray<FActiveGameplayEffectHandle> ReturnHandles;
 
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 	
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 
@@ -1148,7 +1148,7 @@ TArray<FActiveGameplayEffectHandle> UArcCoreGameplayAbility::ApplyAllEffectsFrom
 		return ReturnHandles;
 	}
 
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 	
 	const TArray<FArcEffectSpecItem>& Effects = Instance->GetAllEffectSpecHandles();
 
@@ -1210,7 +1210,7 @@ TArray<FGameplayEffectSpecHandle> UArcCoreGameplayAbility::GetEffectSpecFromItem
 {
 	TArray<FGameplayEffectSpecHandle> Specs;
 
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 	
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 	for (const FArcEffectSpecItem* E : Effects)
@@ -1246,7 +1246,7 @@ void UArcCoreGameplayAbility::SetByCallerMagnitude(const FGameplayTag& SetByCall
 												   , float Magnitude
 												   , const FGameplayTag& EffectTag)
 {
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 	
@@ -1264,7 +1264,7 @@ void UArcCoreGameplayAbility::SetByCallerMagnitude(const FGameplayTag& SetByCall
 void UArcCoreGameplayAbility::SetEffectDuration(float Duration
 												, const FGameplayTag& EffectTag)
 {
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 	for (const FArcEffectSpecItem* E : Effects)
 	{
@@ -1282,7 +1282,7 @@ void UArcCoreGameplayAbility::SetEffectDuration(float Duration
 void UArcCoreGameplayAbility::SetEffectPeriod(float Period
 											  , const FGameplayTag& EffectTag)
 {
-	const FArcItemInstance_EffectToApply* Instance = ArcItems::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
+	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 	for (const FArcEffectSpecItem* E : Effects)
 	{

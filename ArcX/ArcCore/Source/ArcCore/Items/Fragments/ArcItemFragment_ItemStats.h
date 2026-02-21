@@ -71,7 +71,7 @@ public:
 
 	int32 RemoveStat(const FArcItemId& InItemId)
 	{
-		for (int32 Idx = Stats.Num(); Idx > -1; Idx--)
+		for (int32 Idx = Stats.Num() - 1; Idx >= 0; Idx--)
 		{
 			if (Stats[Idx].ItemId == InItemId)
 			{

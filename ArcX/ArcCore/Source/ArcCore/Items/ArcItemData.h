@@ -62,7 +62,7 @@ struct ARCCORE_API FArcItemData
 	friend struct FArcItemDataInternalWrapper;
 	friend struct FArcItemDataInternal;
 	friend struct FArcItemsArray;
-	friend struct ArcItems;
+	friend struct ArcItemsHelper;
 
 public:
 	/** Merged Scalable Fragments from this item, and items attached to it. */
@@ -166,8 +166,10 @@ public:
 		AttachedToSlot = Other.AttachedToSlot;
 		OldAttachedToSlot = Other.OldAttachedToSlot;
 		Level = Other.Level;
+		Stacks = Other.Stacks;
 		ItemDefinition = Other.ItemDefinition;
 		ItemAggregatedTags = Other.ItemAggregatedTags;
+		DynamicTags = Other.DynamicTags;
 		ForceRep = Other.ForceRep;
 		ItemInstances = Other.ItemInstances;
 	
@@ -190,8 +192,11 @@ public:
 		AttachedToSlot = MoveTemp(Other.AttachedToSlot);
 		OldAttachedToSlot = MoveTemp(Other.OldAttachedToSlot);
 		Level = MoveTemp(Other.Level);
+		Stacks = Other.Stacks;
 		ItemDefinition = MoveTemp(Other.ItemDefinition);
 		ItemAggregatedTags = MoveTemp(Other.ItemAggregatedTags);
+		DynamicTags = MoveTemp(Other.DynamicTags);
+		ForceRep = Other.ForceRep;
 		ItemInstances = MoveTemp(Other.ItemInstances);
 	}
 	
@@ -312,7 +317,7 @@ public:
 	const uint8* FindFragment(UScriptStruct* InStructType) const;
 
 	template<typename T>
-	const T* FindScalableItemFramgnet() const
+	const T* FindScalableItemFragment() const
 	{
 		if (ScalableFloatFragments.Contains(T::StaticStruct()))
 		{
@@ -343,6 +348,14 @@ public:
 
 	/** Detach from item, which is current owner of this item. */
 	void DetachFromItem();
+
+	/** Remove scalable float fragments and this item's reference from an owner's AttachedItems. */
+	void CleanupOwnerOnDetach(FArcItemData* OwnerData);
+
+	/** Notify own fragments + attached items' fragments that this item was added to a slot. */
+	void NotifyFragmentsSlotAdded(const FGameplayTag& InSlotId);
+	/** Notify own fragments + attached items' fragments that this item was removed from a slot. */
+	void NotifyFragmentsSlotRemoved(const FGameplayTag& InSlotId);
 
 	void PreReplicatedRemove(const FArcItemsArray& InArraySerializer);
 
@@ -376,7 +389,7 @@ public:
 
 	void RemoveDynamicTag(const FGameplayTag& InTag)
 	{
-		DynamicTags.AddTag(InTag);
+		DynamicTags.RemoveTag(InTag);
 		OnItemChanged();
 	}
 	
@@ -469,7 +482,7 @@ public:
 		return *this;
 	}
 
-	bool IsValiD() const
+	bool IsValid() const
 	{
 		return ItemData.IsValid();
 	}
@@ -505,19 +518,6 @@ struct TStructOpsTypeTraits<FArcItemDataHandle>
 	};
 };
 
-
-/*
- * TODO Remove this when using Iris ?
- **/
-namespace Arcx::Net
-{
-	//struct FArcItemDataInternalNetSerializer;
-
-	struct FArcItemCache
-	{
-		static TMap<FArcItemId, TSharedPtr<FArcItemData>> Items;
-	};
-}
 
 namespace Arcx::Net
 {

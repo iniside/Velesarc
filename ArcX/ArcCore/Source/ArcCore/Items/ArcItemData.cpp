@@ -49,9 +49,6 @@
 #endif
 DEFINE_LOG_CATEGORY(LogItemEntry);
 
-// TMap<FArcItemId, TSharedPtr<FArcItemData>> Arcx::Net::FArcItemCache::Items =
-// TMap<FArcItemId, TSharedPtr<FArcItemData>>();
-
 FArcGenericItemIdDelegate FArcItemDataInternal::OnItemRemovedDelegate = FArcGenericItemIdDelegate();
 
 FArcItemData::FArcItemData()
@@ -192,7 +189,7 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 {
 	OwnerComponent = ItemsStoreComponent;
 
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
 				InFragment->OnItemInitialize(ItemData);
@@ -208,7 +205,7 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 		ScalableFloatFragments.FindOrAdd(I.GetScriptStruct()) = I.GetPtr<FArcScalableFloatItemFragment>();
 	}
 	
-	if (const FArcItemFragment_Tags* Tags = ArcItems::GetFragment<FArcItemFragment_Tags>(this))
+	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(this))
 	{
 		ItemAggregatedTags.Reset();
 		ItemAggregatedTags.AppendTags(Tags->ItemTags);
@@ -224,7 +221,7 @@ void FArcItemData::OnItemAdded()
 {
 	UArcCoreAssetManager::Get().AddLoadedAsset(GetItemDefinition());
 	
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
 				InFragment->OnItemAdded(ItemData);
@@ -233,10 +230,10 @@ void FArcItemData::OnItemAdded()
 
 void FArcItemData::OnItemChanged()
 {
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
-				FArcItemInstance* Instance = ArcItems::FindMutableInstance(ItemData, InFragment->GetItemInstanceType());
+				FArcItemInstance* Instance = ArcItemsHelper::FindMutableInstance(ItemData, InFragment->GetItemInstanceType());
 				InFragment->OnItemChanged(ItemData);
 			});
 	
@@ -251,7 +248,7 @@ void FArcItemData::OnItemChanged()
 
 void FArcItemData::OnPreRemove()
 {
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
 				InFragment->OnPreRemoveItem(ItemData);
@@ -292,27 +289,50 @@ void FArcItemData::SetItemInstances(const FArcItemInstanceArray& InInstances)
 	}
 }
 
+void FArcItemData::NotifyFragmentsSlotAdded(const FGameplayTag& InSlotId)
+{
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+		, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
+		{
+			InFragment->OnItemAddedToSlot(ItemData, InSlotId);
+		});
+
+	TArray<const FArcItemData*> LocalAttachedItems = GetItemsStoreComponent()->GetAttachedItems(GetItemId());
+	for (const FArcItemData* Item : LocalAttachedItems)
+	{
+		ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
+			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
+			{
+				InFragment->OnItemAddedToSlot(ItemData, ItemData->GetAttachSlot());
+			});
+	}
+}
+
+void FArcItemData::NotifyFragmentsSlotRemoved(const FGameplayTag& InSlotId)
+{
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+		, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
+		{
+			InFragment->OnItemRemovedFromSlot(ItemData, InSlotId);
+		});
+
+	TArray<const FArcItemData*> LocalAttachedItems = GetItemsStoreComponent()->GetAttachedItems(GetItemId());
+	for (const FArcItemData* Item : LocalAttachedItems)
+	{
+		ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
+			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
+			{
+				InFragment->OnItemRemovedFromSlot(ItemData, ItemData->GetAttachSlot());
+			});
+	}
+}
+
 void FArcItemData::AddToSlot(const FGameplayTag& InSlotId)
 {
 	if (GetItemsStoreComponent()->HasAuthority())
 	{
 		Slot = InSlotId;
-
-		ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
-			, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
-			{
-				InFragment->OnItemAddedToSlot(ItemData, InSlotId);
-			});
-
-		TArray<const FArcItemData*> LocalAttachedItems = GetItemsStoreComponent()->GetAttachedItems(GetItemId());
-		for (const FArcItemData* Item : LocalAttachedItems)
-		{
-			ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
-				, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
-				{
-					InFragment->OnItemAddedToSlot(ItemData, ItemData->GetAttachSlot());
-				});
-		}
+		NotifyFragmentsSlotAdded(InSlotId);
 	}
 	else
 	{
@@ -320,13 +340,13 @@ void FArcItemData::AddToSlot(const FGameplayTag& InSlotId)
 		{
 			bAddedToSlot = true;
 			bRemoveFromSlot = false;
-			ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+			ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 				, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 				{
 					InFragment->OnItemAddedToSlot(ItemData, InSlotId);
 				});
 		}
-		
+
 		TArray<const FArcItemData*> LocalAttachedItems = GetItemsStoreComponent()->GetAttachedItems(GetItemId());
 		for (const FArcItemData* Item : LocalAttachedItems)
 		{
@@ -334,13 +354,12 @@ void FArcItemData::AddToSlot(const FGameplayTag& InSlotId)
 			{
 				const_cast<FArcItemData*>(Item)->bAddedToSlot = true;
 				const_cast<FArcItemData*>(Item)->bRemoveFromSlot = false;
-				ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
+				ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
 					, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 					{
 						InFragment->OnItemAddedToSlot(ItemData, ItemData->GetAttachSlot());
-					});	
+					});
 			}
-			
 		}
 	}
 }
@@ -349,22 +368,8 @@ void FArcItemData::RemoveFromSlot(const FGameplayTag& InSlotId)
 {
 	if (GetItemsStoreComponent()->HasAuthority())
 	{
-		ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
-			, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
-			{
-				InFragment->OnItemRemovedFromSlot(ItemData, InSlotId);
-			});
+		NotifyFragmentsSlotRemoved(InSlotId);
 
-		TArray<const FArcItemData*> LocalAttachedItems = GetItemsStoreComponent()->GetAttachedItems(GetItemId());
-		for (const FArcItemData* Item : LocalAttachedItems)
-		{
-			ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
-				, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
-				{
-					InFragment->OnItemRemovedFromSlot(ItemData, ItemData->GetAttachSlot());
-				});
-		}
-		
 		OldSlot = Slot;
 		Slot = FGameplayTag::EmptyTag;
 	}
@@ -374,11 +379,11 @@ void FArcItemData::RemoveFromSlot(const FGameplayTag& InSlotId)
 		{
 			bAddedToSlot = false;
 			bRemoveFromSlot = true;
-			ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
-			, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
-			{
-				InFragment->OnItemRemovedFromSlot(ItemData, InSlotId);
-			});
+			ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+				, [InSlotId](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
+				{
+					InFragment->OnItemRemovedFromSlot(ItemData, InSlotId);
+				});
 		}
 
 		TArray<const FArcItemData*> LocalAttachedItems = GetItemsStoreComponent()->GetAttachedItems(GetItemId());
@@ -388,7 +393,7 @@ void FArcItemData::RemoveFromSlot(const FGameplayTag& InSlotId)
 			{
 				const_cast<FArcItemData*>(Item)->bAddedToSlot = false;
 				const_cast<FArcItemData*>(Item)->bRemoveFromSlot = true;
-				ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
+				ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(Item
 					, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 					{
 						InFragment->OnItemRemovedFromSlot(ItemData, ItemData->GetAttachSlot());
@@ -409,7 +414,7 @@ void FArcItemData::ChangeSlot(const FGameplayTag& InNewSlot)
 	//bAddedToSlot = false;
 	//bRemoveFromSlot = false;
 	
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [this](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
 				InFragment->OnItemChangedSlot(ItemData, Slot, OldSlot);
@@ -452,7 +457,7 @@ void FArcItemData::AttachToItem(const FArcItemId& InOwnerItem, const FGameplayTa
 	
 	OwnerItemData->AttachedItems.AddUnique(GetItemId());
 	
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 				, [OwnerItemData](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 				{
 					InFragment->OnItemAttachedTo(ItemData, OwnerItemData);
@@ -460,7 +465,7 @@ void FArcItemData::AttachToItem(const FArcItemId& InOwnerItem, const FGameplayTa
 
 	if (OwnerItemData->GetSlotId().IsValid() && Role == ROLE_Authority)
 	{
-		ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+		ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 				, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 				{
 					InFragment->OnItemAddedToSlot(ItemData, ItemData->GetAttachSlot());
@@ -472,7 +477,7 @@ void FArcItemData::AttachToItem(const FArcItemId& InOwnerItem, const FGameplayTa
 		{
 			bAddedToSlot = true;
 			bRemoveFromSlot = false;
-			ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+			ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 					, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 					{
 						InFragment->OnItemAddedToSlot(ItemData, ItemData->GetAttachSlot());
@@ -500,6 +505,25 @@ void FArcItemData::AttachToItem(const FArcItemId& InOwnerItem, const FGameplayTa
 	}
 }
 
+void FArcItemData::CleanupOwnerOnDetach(FArcItemData* OwnerData)
+{
+	const TSet<FArcInstancedStruct>& IS = GetItemDefinition()->GetScalableFloatFragments();
+	for (const FArcInstancedStruct& I : IS)
+	{
+		OwnerData->ScalableFloatFragments.Remove(I.GetScriptStruct());
+	}
+
+	int32 ItemIdx = OwnerData->AttachedItems.IndexOfByPredicate([this](const FArcItemId& InItemId)
+	{
+		return InItemId == GetItemId();
+	});
+
+	if (ItemIdx != INDEX_NONE)
+	{
+		OwnerData->AttachedItems.RemoveAt(ItemIdx);
+	}
+}
+
 void FArcItemData::DetachFromItem()
 {
 	ENetRole Role = OwnerComponent->GetOwnerRole();
@@ -510,25 +534,11 @@ void FArcItemData::DetachFromItem()
 		FArcItemData* OldOwnerData = OwnerComponent->GetItemPtr(OldOwnerId);
 		if (OldOwnerData)
 		{
-			const TSet<FArcInstancedStruct>& IS = GetItemDefinition()->GetScalableFloatFragments();
-			for (const FArcInstancedStruct& I : IS)
-			{
-				OldOwnerData->ScalableFloatFragments.Remove(I.GetScriptStruct());
-			}
-	
-			int32 ItemIdx = OldOwnerData->AttachedItems.IndexOfByPredicate([this](const FArcItemId& InItemId)
-			{
-				return InItemId == GetItemId();
-			});
-
-			if (ItemIdx != INDEX_NONE)
-			{
-				OldOwnerData->AttachedItems.RemoveAt(ItemIdx);
-			}
+			CleanupOwnerOnDetach(OldOwnerData);
 
 			OldAttachedToSlot = AttachedToSlot;
 			AttachedToSlot = FGameplayTag::EmptyTag;
-	
+
 			OwnerComponent->MarkItemDirtyById(OldOwnerData->GetItemId());
 			OwnerComponent->MarkItemDirtyById(GetItemId());
 
@@ -540,7 +550,7 @@ void FArcItemData::DetachFromItem()
 
 			if (OldOwnerData->GetSlotId().IsValid())
 			{
-				ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+				ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 					, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 					{
 						InFragment->OnItemRemovedFromSlot(ItemData, ItemData->GetAttachSlot());
@@ -548,7 +558,7 @@ void FArcItemData::DetachFromItem()
 			}
 		}
 	}
-	
+
 	FArcItemData* OwnerData = OwnerComponent->GetItemPtr(OwnerId);
 	if (OwnerData == nullptr)
 	{
@@ -557,33 +567,14 @@ void FArcItemData::DetachFromItem()
 			AttachedToSlot = FGameplayTag::EmptyTag;
 			// If owner doesn't exists anymore we don't care about cleaning it.
 			OwnerId.Reset();
-			
+
 			OldOwnerId = OwnerId;
-			if (OldOwnerId.IsValid())
-			{
-				OwnerComponent->MarkItemDirtyById(OwnerData->GetItemId());
-				OwnerComponent->MarkItemDirtyById(GetItemId());	
-			}
 		}
-		
+
 		return;
 	}
-	
-	const TSet<FArcInstancedStruct>& IS = GetItemDefinition()->GetScalableFloatFragments();
-	for (const FArcInstancedStruct& I : IS)
-	{
-		OwnerData->ScalableFloatFragments.Remove(I.GetScriptStruct());
-	}
-	
-	int32 ItemIdx = OwnerData->AttachedItems.IndexOfByPredicate([this](const FArcItemId& InItemId)
-	{
-		return InItemId == GetItemId();
-	});
 
-	if (ItemIdx != INDEX_NONE)
-	{
-		OwnerData->AttachedItems.RemoveAt(ItemIdx);
-	}
+	CleanupOwnerOnDetach(OwnerData);
 	
 	if (Role == ROLE_Authority)
 	{
@@ -601,7 +592,7 @@ void FArcItemData::DetachFromItem()
 
 	if (OwnerData->GetSlotId().IsValid() && Role == ROLE_Authority)
 	{
-		ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+		ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 				, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 				{
 					InFragment->OnItemRemovedFromSlot(ItemData, ItemData->GetAttachSlot());
@@ -613,7 +604,7 @@ void FArcItemData::DetachFromItem()
 		{
 			bAddedToSlot = false;
 			bRemoveFromSlot = true;
-			ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+			ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 				, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 				{
 					InFragment->OnItemRemovedFromSlot(ItemData, ItemData->GetAttachSlot());
@@ -621,7 +612,7 @@ void FArcItemData::DetachFromItem()
 		}
 	}
 	
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [OwnerData](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
 				InFragment->OnItemDetachedFrom(ItemData, OwnerData);
@@ -759,7 +750,7 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 	GetItemsStoreComponent()->UnlockSlot(Slot);
 	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
 	
-	ArcItems::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
 			{
 				InFragment->OnItemChanged(ItemData);

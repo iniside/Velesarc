@@ -232,7 +232,7 @@ void UArcItemAttachmentComponent::SetVisualItemAttachment(UArcItemDefinition* In
 	}
 
 	UArcCoreAssetManager& AM = UArcCoreAssetManager::Get();
-	FArcItemInstance_ItemVisualAttachment* VisualInstance = ArcItems::FindMutableInstance<FArcItemInstance_ItemVisualAttachment>(ItemData);
+	FArcItemInstance_ItemVisualAttachment* VisualInstance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_ItemVisualAttachment>(ItemData);
 	VisualInstance->VisualItem = AM.GetPrimaryAssetIdForObject(InItemDefinition);
 
 	int32 Idx = ReplicatedAttachments.IndexOfByKey(ForItem);
@@ -480,7 +480,7 @@ void UArcItemAttachmentComponent::LinkAnimLayer(const FGameplayTag& InSlot)
 		return;
 	}
 
-	const FArcItemFragment_AnimLayer* Fragment_AnimLayer = ArcItems::GetFragment<FArcItemFragment_AnimLayer>(ItemData);
+	const FArcItemFragment_AnimLayer* Fragment_AnimLayer = ArcItemsHelper::GetFragment<FArcItemFragment_AnimLayer>(ItemData);
 	if (Fragment_AnimLayer)
 	{
 		for (const TSoftClassPtr<class UAnimInstance>& AnimLayer : Fragment_AnimLayer->AnimLayerToLink)
@@ -527,7 +527,7 @@ void UArcItemAttachmentComponent::LinkAnimLayer(const FArcItemId& InItemId)
 		return;
 	}
 	
-	const FArcItemFragment_AnimLayer* Fragment_AnimLayer = ArcItems::GetFragment<FArcItemFragment_AnimLayer>(ItemData);
+	const FArcItemFragment_AnimLayer* Fragment_AnimLayer = ArcItemsHelper::GetFragment<FArcItemFragment_AnimLayer>(ItemData);
 	if (Fragment_AnimLayer)
 	{
 		for (const TSoftClassPtr<class UAnimInstance>& AnimLayer : Fragment_AnimLayer->AnimLayerToLink)
@@ -573,7 +573,7 @@ void UArcItemAttachmentComponent::UnlinkAnimLayer(const FGameplayTag& InSlot)
 		return;
 	}
 
-	const FArcItemFragment_AnimLayer* Fragment_AnimLayer = ArcItems::GetFragment<FArcItemFragment_AnimLayer>(ItemData);
+	const FArcItemFragment_AnimLayer* Fragment_AnimLayer = ArcItemsHelper::GetFragment<FArcItemFragment_AnimLayer>(ItemData);
 	if (Fragment_AnimLayer)
 	{
 		for (const TSoftClassPtr<class UAnimInstance>& AnimLayer : Fragment_AnimLayer->AnimLayerToLink)
@@ -922,7 +922,7 @@ void UArcItemAttachmentComponent::HandleItemAddedToSlot(UArcItemsStoreComponent*
 	{
 		const FArcItemData* OwnerItemData = InItemSlots->GetItemPtr(Item->GetOwnerId());
 		
-		const FArcItemFragment_ItemAttachmentSlots* Fragment = ArcItems::FindFragment<FArcItemFragment_ItemAttachmentSlots>(OwnerItemData);
+		const FArcItemFragment_ItemAttachmentSlots* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_ItemAttachmentSlots>(OwnerItemData);
 		if (Fragment)
 		{
 			for (const FArcItemAttachmentSlot& ItemAttachmentSlot : Fragment->AttachmentSlots)
@@ -985,7 +985,7 @@ void UArcItemAttachmentComponent::HandleOnItemAttachedToSocket(UArcItemsStoreCom
 	{
 		//const FArcItemData* OwnerItemData = ItemSlotComponent->GetItemPtr(SocketItemData->GetOwnerId());
 		
-		const FArcItemFragment_ItemAttachmentSlots* Fragment = ArcItems::FindFragment<FArcItemFragment_ItemAttachmentSlots>(OwnerItemData);
+		const FArcItemFragment_ItemAttachmentSlots* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_ItemAttachmentSlots>(OwnerItemData);
 		if (Fragment)
 		{
 			for (const FArcItemAttachmentSlot& ItemAttachmentSlot : Fragment->AttachmentSlots)

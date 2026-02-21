@@ -29,7 +29,7 @@
 void FArcItemInstance_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemData* InItem
 																 , const FGameplayTag& InSlotId)
 {
-	const FArcItemFragment_GrantedPassiveAbilities* PassiveAbilities = ArcItems::GetFragment<FArcItemFragment_GrantedPassiveAbilities>(InItem);
+	const FArcItemFragment_GrantedPassiveAbilities* PassiveAbilities = ArcItemsHelper::GetFragment<FArcItemFragment_GrantedPassiveAbilities>(InItem);
 	ItemsStore = InItem->GetItemsStoreComponent();
 	ArcASC = ItemsStore->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	Item = InItem;
@@ -166,7 +166,7 @@ void FArcItemInstance_GrantedPassiveAbilities::UpdatePendingAbility()
 void FArcItemFragment_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemData* InItem
 	, const FGameplayTag& InSlotId) const
 {
-	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItems::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
+	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
 	PassiveAbilities->ItemsStore = InItem->GetItemsStoreComponent();
 	PassiveAbilities->ArcASC = PassiveAbilities->ItemsStore->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	PassiveAbilities->Item = InItem;
@@ -206,14 +206,13 @@ void FArcItemFragment_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemD
 			}
 		
 			UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
-
-			ArcAbility->OnAddedToItemSlot(PassiveAbilities->ArcASC->AbilityActorInfo.Get(), Spec, InSlotId, InItem);
-
 			if (ArcAbility == nullptr)
 			{
 				PassiveAbilities->PendingAbilities.AddUnique(AbilityHandle);
 				continue;
 			}
+
+			ArcAbility->OnAddedToItemSlot(PassiveAbilities->ArcASC->AbilityActorInfo.Get(), Spec, InSlotId, InItem);
 		}
 	}
 }
@@ -226,7 +225,7 @@ void FArcItemFragment_GrantedPassiveAbilities::OnItemRemovedFromSlot(const FArcI
 		return;
 	}
 	
-	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItems::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
+	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
 	if (PassiveAbilities->ArcASC->GetOwnerRole() < ENetRole::ROLE_Authority)
 	{
 		return;
@@ -244,7 +243,7 @@ void FArcItemFragment_GrantedPassiveAbilities::OnItemRemovedFromSlot(const FArcI
 void FArcItemFragment_GrantedPassiveAbilities::HandleOnAbilityGiven(FGameplayAbilitySpec& AbilitySpec
 	, const FArcItemData* InItem) const
 {
-	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItems::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
+	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
 	if(PassiveAbilities->PendingAbilities.Contains(AbilitySpec.Handle) == false)
 	{
 		return;
@@ -255,7 +254,7 @@ void FArcItemFragment_GrantedPassiveAbilities::HandleOnAbilityGiven(FGameplayAbi
 
 void FArcItemFragment_GrantedPassiveAbilities::UpdatePendingAbility(const FArcItemData* InItem) const
 {
-	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItems::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
+	FArcItemInstance_GrantedPassiveAbilities* PassiveAbilities = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedPassiveAbilities>(InItem);
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : PassiveAbilities->GrantedPassiveAbilities)
 	{
 		FGameplayAbilitySpec* Spec = PassiveAbilities->ArcASC->FindAbilitySpecFromHandle(AbilityHandle);

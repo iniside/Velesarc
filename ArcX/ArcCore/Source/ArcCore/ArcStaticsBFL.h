@@ -52,11 +52,6 @@ class ARCCORE_API UArcStaticsBFL : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
-	static class UArcItemsComponent* GetItemsComponent(class AActor* InActor)
-	{
-		return nullptr;
-	};
-
 	UFUNCTION(BlueprintCallable
 		, meta = (WorldContext = "WorldContextObject", DisplayName ="Open Level (by Primary Asset Id)")
 		, Category = "Arc Core|Game")

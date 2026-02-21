@@ -27,7 +27,7 @@
 void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* InItem
 														  , const FGameplayTag& InSlotId) const
 {
-	FArcItemInstance_GrantedAbilities* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
+	FArcItemInstance_GrantedAbilities* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
 	Instance->ItemsStore = InItem->GetItemsStoreComponent();
 	Instance->ArcASC = Instance->ItemsStore->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	Instance->Item = InItem;
@@ -103,7 +103,7 @@ void FArcItemFragment_GrantedAbilities::OnItemRemovedFromSlot(const FArcItemData
 		return;
 	}
 	
-	FArcItemInstance_GrantedAbilities* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
+	FArcItemInstance_GrantedAbilities* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
 	for (const FGameplayAbilitySpecHandle& Handle : Instance->GrantedAbilities)
 	{
 		Instance->ArcASC->ClearAbility(Handle);
@@ -114,7 +114,7 @@ void FArcItemFragment_GrantedAbilities::OnItemRemovedFromSlot(const FArcItemData
 
 void FArcItemFragment_GrantedAbilities::HandleOnAbilityGiven(FGameplayAbilitySpec& AbilitySpec, const FArcItemData* InItem) const
 {
-	FArcItemInstance_GrantedAbilities* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
+	FArcItemInstance_GrantedAbilities* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
 	if(Instance->PendingAbilities.Contains(AbilitySpec.Handle) == false)
 	{
 		return;
@@ -125,7 +125,7 @@ void FArcItemFragment_GrantedAbilities::HandleOnAbilityGiven(FGameplayAbilitySpe
 
 void FArcItemFragment_GrantedAbilities::UpdatePendingAbility(const FArcItemData* InItem) const
 {
-	FArcItemInstance_GrantedAbilities* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
+	FArcItemInstance_GrantedAbilities* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedAbilities>(InItem);
 
 	TArray<FGameplayAbilitySpecHandle> Copy = Instance->PendingAbilities;
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : Copy)

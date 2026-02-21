@@ -92,7 +92,8 @@ FArcItemSpec FArcItemSpecGenerator_RandomItemStats::GenerateItemSpec(UArcItemSpe
 
 		FArcFactoryItemStatData StatData;
 		bool bFound = false;
-		while (bFound == false)
+		int32 MaxAttempts = StatNum * 2;
+		while (bFound == false && MaxAttempts-- > 0)
 		{
 			const int32 StatIdx = FMath::RandRange(0, StatNum - 1);
 			StatData = StatPoolSet.AttributePool[StatIdx];
@@ -106,17 +107,21 @@ FArcItemSpec FArcItemSpecGenerator_RandomItemStats::GenerateItemSpec(UArcItemSpe
 			{
 				return InStat.Attribute == StatData.Attribute;
 			});
-			
+
 			if (bContains == false)
 			{
 				bFound = true;
 				break;
 			}
 		}
-		
+
+		if (!bFound)
+		{
+			break;
+		}
+
 		const float StatValue = FMath::RandRange(StatData.Min.GetValue(), StatData.Max.GetValue());
 
-		
 		const int32 DefaultIdx = ItemStats->DefaultStats.AddDefaulted();
 		ItemStats->DefaultStats[DefaultIdx].Attribute = StatData.Attribute;
 		ItemStats->DefaultStats[DefaultIdx].Value.SetValue(StatValue);

@@ -67,7 +67,7 @@ class UArcItemSocketSlotsPreset : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "QuickSlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "SlotId"))
 	TArray<FArcSocketSlot> Slots;
 };
 
@@ -77,10 +77,10 @@ struct ARCCORE_API FArcItemFragment_SocketSlots : public FArcItemFragment
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "QuickSlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "SlotId"))
 	TArray<FArcSocketSlot> Slots;
 
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (ForceInlineRow, ShowOnlyInnerProperties, TitleProperty = "QuickSlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data")
 	TObjectPtr<UArcItemSocketSlotsPreset> Preset;
 	
 public:

@@ -55,7 +55,7 @@ void FArcQuickSlotHandler_OverrideInputMappingContext::OnSlotSelected(UArcCoreAb
 
 	UInputMappingContext* MappingContext = InputMappingContext;
 
-	const FArcItemFragment_InputMappingContext* Fragment = ArcItems::GetFragment<FArcItemFragment_InputMappingContext>(InSlot);
+	const FArcItemFragment_InputMappingContext* Fragment = ArcItemsHelper::GetFragment<FArcItemFragment_InputMappingContext>(InSlot);
 	if (Fragment)
 	{
 		MappingContext = Fragment->InputMappingContext;
@@ -92,7 +92,7 @@ void FArcQuickSlotHandler_OverrideInputMappingContext::OnSlotDeselected(UArcCore
 
 	UInputMappingContext* MappingContext = InputMappingContext;
 
-	const FArcItemFragment_InputMappingContext* Fragment = ArcItems::GetFragment<
+	const FArcItemFragment_InputMappingContext* Fragment = ArcItemsHelper::GetFragment<
 		FArcItemFragment_InputMappingContext>(InSlot);
 	if (Fragment)
 	{

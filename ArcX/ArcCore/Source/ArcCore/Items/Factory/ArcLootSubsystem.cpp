@@ -47,6 +47,11 @@ FArcSelectedItemSpecContainer FArcGetItemsFromTable_Random::GenerateItems(UArcIt
 {
 	FArcSelectedItemSpecContainer Values;
 
+	if (!InLootTable)
+	{
+		return Values;
+	}
+
 	const int32 NumEntries = InLootTable->ItemSpawnDataRows.Num();
 	if (NumEntries == 0)
 	{
@@ -67,6 +72,10 @@ FArcSelectedItemSpecContainer FArcGetItemsFromTable_Random::GenerateItems(UArcIt
 	{
 		const FArcItemSpawnDataRow& ItemRow = InLootTable->ItemSpawnDataRows[EntryIdx];
 		
+		if (!ItemRow.ItemGenerator)
+		{
+			continue;
+		}
 		TArray<FArcItemSpec> ItemSpecs;
 		ItemRow.ItemGenerator->GetItems(ItemSpecs, From, For);
 		Values.SelectedItems.Append(MoveTemp(ItemSpecs));

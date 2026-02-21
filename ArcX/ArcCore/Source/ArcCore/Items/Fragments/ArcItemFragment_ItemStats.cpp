@@ -37,7 +37,7 @@ void FArcItemFragment_ItemStats::OnItemChanged(const FArcItemData* InItem) const
 
 void FArcItemFragment_ItemStats::UpdateStats(const FArcItemData* InItem) const
 {
-	FArcItemInstance_ItemStats* MyInstance = ArcItems::FindMutableInstance<FArcItemInstance_ItemStats>(InItem);
+	FArcItemInstance_ItemStats* MyInstance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_ItemStats>(InItem);
 	if (InItem->GetItemsStoreComponent()->GetOwner()->HasAuthority())
 	{
 		const TArray<const FArcItemData*>& ItemsInSockets = InItem->GetItemsInSockets();
@@ -65,7 +65,7 @@ void FArcItemFragment_ItemStats::UpdateStats(const FArcItemData* InItem) const
 		
 		for (const FArcItemData* SocketItem : ItemsInSockets)
 		{
-			const FArcItemFragment_ItemStats* SocketItemStats = ArcItems::FindFragment<FArcItemFragment_ItemStats>(SocketItem);
+			const FArcItemFragment_ItemStats* SocketItemStats = ArcItemsHelper::FindFragment<FArcItemFragment_ItemStats>(SocketItem);
 			if (SocketItemStats == nullptr)
 			{
 				continue;
@@ -110,6 +110,7 @@ void FArcItemFragment_ItemStats::UpdateStatsInstance(FArcItemInstance_ItemStats*
 	const TArray<const FArcItemData*>& ItemsInSockets = InItem->GetItemsInSockets();
 
 	Instance->ReplicatedItemStats.Empty();
+	Instance->Stats.Empty();
 	for (const FArcItemAttributeStat& S : DefaultStats)
 	{
 		int32 Idx = Instance->ReplicatedItemStats.IndexOfByKey(S.Attribute);
@@ -127,7 +128,6 @@ void FArcItemFragment_ItemStats::UpdateStatsInstance(FArcItemInstance_ItemStats*
 
 		Instance->ReplicatedItemStats[Idx].Stats.Add(US);
 		Instance->ReplicatedItemStats[Idx].Recalculate();
-		Instance->Stats.Empty();
 	}
 	
 	for (const FArcItemStatReplicated& Rep : Instance->ReplicatedItemStats)

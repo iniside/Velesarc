@@ -44,23 +44,23 @@ public:
 	FGameplayTagContainer AssetTags;
 
 	/*
-	 * Tags applied to owner of this item. When Item is equiped (not when it is mererly in
-	 * inventory). Applied at the same as attribute trough default effect.
+	 * Tags applied to owner of this item. When Item is equipped (not when it is merely in
+	 * inventory). Applied at the same as attribute through default effect.
 	 *
-	 * Indexed by asset registy.
+	 * Indexed by asset registry.
 	 */
 	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Item")
 	FGameplayTagContainer GrantedTags;
 
 	/**
-	 * Abstract list of tags, required by this item. Does not assume, where the tags, come fram, or what the item is using them for.
+	 * Abstract list of tags, required by this item. Does not assume, where the tags come from, or what the item is using them for.
 	 * Examples, can be checked when equipping item, or check if player is in correct state to see item.
 	 */
 	UPROPERTY(EditAnywhere, Config, BlueprintReadOnly, Category = "Item")
 	FGameplayTagContainer RequiredTags;
 
 	/**
-	* Abstract list of tags, required by this item. to not be present. Does not assume, where the tags, come fram, or what the item is using them for.
+	* Abstract list of tags, required by this item to not be present. Does not assume, where the tags come from, or what the item is using them for.
 	 * Examples, can be checked when equipping item, or check if player is in correct state to see item.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")

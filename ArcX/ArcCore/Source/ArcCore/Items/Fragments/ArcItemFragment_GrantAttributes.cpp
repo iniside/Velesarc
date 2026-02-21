@@ -56,7 +56,7 @@ void FArcItemFragment_GrantAttributes::OnItemAddedToSlot(const FArcItemData* InI
 		return;
 	}
 
-	FArcItemInstance_GrantAttributes* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantAttributes>(InItem);
+	FArcItemInstance_GrantAttributes* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantAttributes>(InItem);
 	
 	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
  	FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(BackingGameplayEffect, 1, ContextHandle);
@@ -99,6 +99,6 @@ void FArcItemFragment_GrantAttributes::OnItemRemovedFromSlot(const FArcItemData*
 		return;
 	}
 
-	FArcItemInstance_GrantAttributes* Instance = ArcItems::FindMutableInstance<FArcItemInstance_GrantAttributes>(InItem);
+	FArcItemInstance_GrantAttributes* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantAttributes>(InItem);
 	ASC->RemoveActiveGameplayEffect(Instance->AppliedEffectHandle);
 }

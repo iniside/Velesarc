@@ -106,15 +106,12 @@ void FArcItemDataInternal::SetItemData(TSharedPtr<FArcItemData>& InItem
 			
 			int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
 			{
-				void* Allocated = FMemory::Malloc(InstanceType->GetCppStructOps()->GetSize(), InstanceType->GetCppStructOps()->GetAlignment());
-				InstanceType->GetCppStructOps()->Construct(Allocated);
+				TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
 
 				if (InitialDataIdx != INDEX_NONE)
 				{
-					InstanceType->GetCppStructOps()->Copy(Allocated, InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);	
+					InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
 				}
-				
-				TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
 
 				ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
 			}
@@ -137,14 +134,11 @@ void FArcItemDataInternal::SetItemData(TSharedPtr<FArcItemData>& InItem
 				return Other->GetScriptStruct() == InstanceType;
 			});
 			
-			void* Allocated = FMemory::Malloc(InstanceType->GetCppStructOps()->GetSize(), InstanceType->GetCppStructOps()->GetAlignment());
-			InstanceType->GetCppStructOps()->Construct(Allocated);
+			TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
 			if (InitialDataIdx != INDEX_NONE)
 			{
-				InstanceType->GetCppStructOps()->Copy(Allocated, InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);	
+				InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
 			}
-			
-			TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
 
 			int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
 			ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
@@ -655,9 +649,7 @@ void FArcItemsArray::AddItemInstance(const FArcItemData* ToItem, UScriptStruct* 
 	{
 		if (Wrapper.Item.GetItem()->GetItemId() == ToItem->GetItemId())
 		{
-			void* Allocated = FMemory::Malloc(InInstanceType->GetCppStructOps()->GetSize(), InInstanceType->GetCppStructOps()->GetAlignment());
-			InInstanceType->GetCppStructOps()->Construct(Allocated);
-			TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
+			TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InInstanceType);
 			
 			int32 Idx = Wrapper.Item.GetItem()->ItemInstances.Data.AddDefaulted();
 			

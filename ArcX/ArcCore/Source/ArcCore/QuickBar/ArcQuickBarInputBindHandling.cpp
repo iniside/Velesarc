@@ -34,8 +34,8 @@ bool FArcQuickBarInputBindHandling::OnAddedToQuickBar(UArcCoreAbilitySystemCompo
 	bool bHandled = true;
 	for (const FArcItemData* SDE : InSlots)
 	{
-		const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItems::FindInstance<FArcItemInstance_GrantedAbilities>(SDE);
-		const FArcItemFragment_GrantedAbilities* GrantedAbilitiesFragment = ArcItems::FindFragment<FArcItemFragment_GrantedAbilities>(SDE);
+		const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItemsHelper::FindInstance<FArcItemInstance_GrantedAbilities>(SDE);
+		const FArcItemFragment_GrantedAbilities* GrantedAbilitiesFragment = ArcItemsHelper::FindFragment<FArcItemFragment_GrantedAbilities>(SDE);
 		
 		if (GrantedAbilities && GrantedAbilities->GetGrantedAbilities().Num() > 0)
 		{
@@ -90,8 +90,8 @@ bool FArcQuickBarInputBindHandling::OnRemovedFromQuickBar(UArcCoreAbilitySystemC
 	bool bHandled = true;
 	for (const FArcItemData* SDE : InSlots)
 	{
-		const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItems::FindInstance<FArcItemInstance_GrantedAbilities>(SDE);
-		const FArcItemFragment_GrantedAbilities* GrantedAbilitiesFragment = ArcItems::FindFragment<FArcItemFragment_GrantedAbilities>(SDE);
+		const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItemsHelper::FindInstance<FArcItemInstance_GrantedAbilities>(SDE);
+		const FArcItemFragment_GrantedAbilities* GrantedAbilitiesFragment = ArcItemsHelper::FindFragment<FArcItemFragment_GrantedAbilities>(SDE);
 		
 		if (GrantedAbilities && GrantedAbilities->GetGrantedAbilities().Num() > 0)
 		{

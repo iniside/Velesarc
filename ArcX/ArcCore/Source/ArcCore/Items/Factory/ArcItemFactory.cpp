@@ -49,5 +49,9 @@ void FArcItemFactory::RegisterFactory(UScriptStruct* FactoryType) const
 	void* OutData = FMemory::Malloc(FactoryType->GetCppStructOps()->GetSize());
 	FactoryType->GetCppStructOps()->Construct(OutData);
 	Factories.Add(FactoryType
-		, MakeShareable(static_cast<FArcItemFactoryBase*>(OutData)));
+		, TSharedPtr<FArcItemFactoryBase>(static_cast<FArcItemFactoryBase*>(OutData), [FactoryType](FArcItemFactoryBase* Ptr)
+		{
+			FactoryType->GetCppStructOps()->Destruct(Ptr);
+			FMemory::Free(Ptr);
+		}));
 }

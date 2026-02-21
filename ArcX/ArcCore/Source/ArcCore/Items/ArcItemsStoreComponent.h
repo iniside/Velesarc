@@ -63,7 +63,7 @@ class ARCCORE_API UArcItemsStoreComponent : public UGameFrameworkComponent, publ
 
 	friend struct FArcItemsArray;
 	friend struct FArcItemData;
-	friend struct ArcItems;
+	friend struct ArcItemsHelper;
 
 	friend struct FArcMoveItemBetweenStoresCommand;
 	

@@ -67,11 +67,7 @@ protected:
 public:
 	virtual TSharedPtr<FArcItemInstance> Duplicate() const override
 	{
-		void* Allocated = FMemory::Malloc(GetScriptStruct()->GetCppStructOps()->GetSize(), GetScriptStruct()->GetCppStructOps()->GetAlignment());
-		GetScriptStruct()->GetCppStructOps()->Construct(Allocated);
-		TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
-		
-		return SharedPtr;
+		return ArcItems::AllocateInstance<FArcItemInstance_GrantedAbilities>();
 	}
 
 	virtual UScriptStruct* GetScriptStruct() const override

@@ -115,7 +115,7 @@ bool FArcAddItemToQuickBarCommand::Execute()
 	
 	QuickBarComponent->AddAndActivateQuickSlot(QuickBar, QuickSlot, ItemId);
 	
-	//if (const FArcItemFragment_QuickBarItems* Fragment = ArcItems::FindFragment<FArcItemFragment_QuickBarItems>(ItemToSlot))
+	//if (const FArcItemFragment_QuickBarItems* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_QuickBarItems>(ItemToSlot))
 	//{
 	//	int32 ChildBarIdx = OutQuickBar.Slots.IndexOfByPredicate([this](const FArcQuickBar& QuickBar)
 	//		{

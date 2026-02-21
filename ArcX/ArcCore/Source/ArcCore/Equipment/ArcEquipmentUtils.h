@@ -32,12 +32,12 @@ public:
 	template<typename T>
 	static const T* GetAttachmentFragment(const FArcItemData* InItem, UArcItemDefinition*& VisualItemDefinition)
 	{
-		const T* AttachmentData = ArcItems::GetFragment<T>(InItem);
+		const T* AttachmentData = ArcItemsHelper::GetFragment<T>(InItem);
 		if (AttachmentData == nullptr)
 		{
-			const FArcItemFragment_ItemVisualAttachment* VisualItemData = ArcItems::GetFragment<FArcItemFragment_ItemVisualAttachment>(InItem);
+			const FArcItemFragment_ItemVisualAttachment* VisualItemData = ArcItemsHelper::GetFragment<FArcItemFragment_ItemVisualAttachment>(InItem);
 
-			const FArcItemInstance_ItemVisualAttachment* VisualInstance = ArcItems::FindInstance<FArcItemInstance_ItemVisualAttachment>(InItem);
+			const FArcItemInstance_ItemVisualAttachment* VisualInstance = ArcItemsHelper::FindInstance<FArcItemInstance_ItemVisualAttachment>(InItem);
 			
 			if (VisualInstance != nullptr)
 			{
