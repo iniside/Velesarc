@@ -667,6 +667,32 @@ FText FArcMassModifyNeedTask::GetDescription(const FGuid& ID, FStateTreeDataView
 	return FText::GetEmpty();
 }
 
+float FArcMassNeedConsideration::GetScore(FStateTreeExecutionContext& Context) const
+{
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	
+	UMassEntitySubsystem* MES = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	FMassEntityManager& MEM = MES->GetMutableEntityManager();
+
+	FConstStructView Data = MEM.GetFragmentDataStruct(MassCtx.GetEntity(), InstanceData.NeedType);
+	if (!Data.IsValid())
+	{
+		return 1.f;
+	}
+	
+	const FArcNeedFragment* DataPtr = Data.GetPtr<FArcNeedFragment>();
+	
+	InstanceData.NeedValue = DataPtr->CurrentValue;
+	
+	float Score = 0.f;
+	
+	const float Normalized = DataPtr->CurrentValue / 100.f;
+	Score = ResponseCurve.Evaluate(Normalized);
+	UE_VLOG_UELOG(Context.GetOwner(), LogArcConsiderationScore, VeryVerbose, TEXT("State %s Need %s: %.3f Normalized: %.3f"), *Context.GetActiveStateName(), *Name.ToString(), Score, Normalized);
+	return Score;
+}
+
 FArcProvideNextStateTreeTask::FArcProvideNextStateTreeTask()
 {
 	bShouldCallTick = false;

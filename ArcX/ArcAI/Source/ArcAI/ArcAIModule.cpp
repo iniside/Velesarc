@@ -25,6 +25,7 @@
 #include "Engine/World.h"
 #include "Misc/CoreDelegates.h"
 #include "NeedsSystem/GameplayDebuggerCategory_ArcNeeds.h"
+#include "Perception/GameplayDebuggerCategory_ArcPerception.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 #include "TargetQuery/GameplayDebuggerCategory_ArcTQS.h"
 
@@ -49,6 +50,10 @@ void FArcAIModule::StartupModule()
 
 	GameplayDebuggerModule.RegisterCategory("Arc Needs"
 		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcNeeds::MakeInstance)
+		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
+
+	GameplayDebuggerModule.RegisterCategory("Arc Perception"
+		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcPerception::MakeInstance)
 		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
 
 	GameplayDebuggerModule.NotifyCategoriesChanged();
@@ -79,6 +84,7 @@ void FArcAIModule::ShutdownModule()
 		GameplayDebuggerModule.UnregisterCategory("Arc Planner");
 		GameplayDebuggerModule.UnregisterCategory("Arc TQS");
 		GameplayDebuggerModule.UnregisterCategory("Arc Needs");
+		GameplayDebuggerModule.UnregisterCategory("Arc Perception");
 		GameplayDebuggerModule.NotifyCategoriesChanged();
 	}
 #endif

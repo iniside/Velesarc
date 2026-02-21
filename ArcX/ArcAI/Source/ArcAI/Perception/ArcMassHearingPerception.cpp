@@ -1,17 +1,40 @@
-﻿// Copyright Lukasz Baran. All Rights Reserved.
+// Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMassHearingPerception.h"
 
-#include "DrawDebugHelpers.h"
+#include "MassEntityTemplateRegistry.h"
 #include "MassExecutionContext.h"
 #include "Engine/World.h"
-#include "MassEntityFragments.h"
 
 #include "MassEntitySubsystem.h"
 
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
 #include "ArcMass/ArcMassSpatialHashSubsystem.h"
 
+//----------------------------------------------------------------------
+// Traits
+//----------------------------------------------------------------------
+
+void UArcPerceptionHearingPerceiverTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+{
+	BuildContext.RequireFragment<FTransformFragment>();
+	BuildContext.AddFragment<FArcMassHearingPerceptionResult>();
+
+	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(World);
+	const FConstSharedStruct ConfigFragment = EntityManager.GetOrCreateConstSharedFragment(HearingConfig);
+	BuildContext.AddConstSharedFragment(ConfigFragment);
+}
+
+void UArcPerceptionHearingPerceivableTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+{
+	BuildContext.RequireFragment<FTransformFragment>();
+	BuildContext.RequireFragment<FArcMassSpatialHashFragment>();
+	BuildContext.AddTag<FArcMassHearingPerceivableTag>();
+	BuildContext.AddFragment<FArcMassPerceivableStimuliHearingFragment>();
+}
+
+//----------------------------------------------------------------------
+// Subsystem
+//----------------------------------------------------------------------
 
 void UArcMassHearingPerceptionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -23,7 +46,8 @@ void UArcMassHearingPerceptionSubsystem::Deinitialize()
 {
 	OnEntityPerceived.Empty();
 	OnEntityLostFromPerception.Empty();
-	
+	OnPerceptionUpdated.Empty();
+
 	Super::Deinitialize();
 }
 
@@ -33,7 +57,7 @@ UMassEntitySubsystem* UArcMassHearingPerceptionSubsystem::GetEntitySubsystem() c
 	{
 		return CachedEntitySubsystem.Get();
 	}
-    
+
 	UWorld* World = GetWorld();
 	if (World)
 	{
@@ -45,12 +69,18 @@ UMassEntitySubsystem* UArcMassHearingPerceptionSubsystem::GetEntitySubsystem() c
 
 void UArcMassHearingPerceptionSubsystem::BroadcastEntityPerceived(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag)
 {
-	OnEntityPerceived.FindOrAdd(Perceiver).Broadcast(Perceiver, Perceived, SenseTag);
+	if (FArcPerceptionEntityAddedNative* Delegate = OnEntityPerceived.Find(Perceiver))
+	{
+		Delegate->Broadcast(Perceiver, Perceived, SenseTag);
+	}
 }
 
 void UArcMassHearingPerceptionSubsystem::BroadcastEntityLostFromPerception(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag)
 {
-	OnEntityLostFromPerception.FindOrAdd(Perceiver).Broadcast(Perceiver, Perceived, SenseTag);
+	if (FArcPerceptionEntityAddedNative* Delegate = OnEntityLostFromPerception.Find(Perceiver))
+	{
+		Delegate->Broadcast(Perceiver, Perceived, SenseTag);
+	}
 }
 
 UArcMassHearingPerceptionProcessor::UArcMassHearingPerceptionProcessor()
@@ -61,8 +91,6 @@ UArcMassHearingPerceptionProcessor::UArcMassHearingPerceptionProcessor()
     ExecutionOrder.ExecuteAfter.Add(TEXT("ArcMassSpatialHashUpdateProcessor"));
 }
 
-
-
 //----------------------------------------------------------------------
 // UArcMassHearingPerceptionProcessor
 //----------------------------------------------------------------------
@@ -72,8 +100,6 @@ void UArcMassHearingPerceptionProcessor::ConfigureQueries(const TSharedRef<FMass
     HearingQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
     HearingQuery.AddRequirement<FArcMassHearingPerceptionResult>(EMassFragmentAccess::ReadWrite);
 	HearingQuery.AddConstSharedRequirement<FArcPerceptionHearingSenseConfigFragment>(EMassFragmentPresence::All);
-	
-	HearingQuery.AddRequirement<FArcMassPerceivableStimuliHearingFragment>(EMassFragmentAccess::ReadWrite);
 }
 
 void UArcMassHearingPerceptionProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -94,22 +120,17 @@ void UArcMassHearingPerceptionProcessor::Execute(FMassEntityManager& EntityManag
 
     const float DeltaTime = Context.GetDeltaTimeSeconds();
 
-	
     HearingQuery.ForEachEntityChunk(Context,
-        [this, &EntityManager, SpatialHash, PerceptionSubsystem, DeltaTime, World](FMassExecutionContext& Ctx)
+        [this, &EntityManager, SpatialHash, PerceptionSubsystem, DeltaTime](FMassExecutionContext& Ctx)
         {
         	const FArcPerceptionHearingSenseConfigFragment& Config = Ctx.GetConstSharedFragment<FArcPerceptionHearingSenseConfigFragment>();
-        		
+
             const TConstArrayView<FTransformFragment> TransformList = Ctx.GetFragmentView<FTransformFragment>();
             TArrayView<FArcMassHearingPerceptionResult> ResultList = Ctx.GetMutableFragmentView<FArcMassHearingPerceptionResult>();
 
-            TArrayView<FArcMassPerceptionResultFragmentBase> BaseResultList(
-                reinterpret_cast<FArcMassPerceptionResultFragmentBase*>(ResultList.GetData()),
-                ResultList.Num());
-
             ProcessPerceptionChunk(EntityManager, Ctx, SpatialHash
             	, PerceptionSubsystem, DeltaTime, TransformList
-            	, Config, BaseResultList);
+            	, Config, ResultList);
         });
 }
 
@@ -121,37 +142,23 @@ void UArcMassHearingPerceptionProcessor::ProcessPerceptionChunk(
     float DeltaTime,
     const TConstArrayView<FTransformFragment>& TransformList,
     const FArcPerceptionHearingSenseConfigFragment& Config,
-    TArrayView<FArcMassPerceptionResultFragmentBase> ResultList)
+    TArrayView<FArcMassHearingPerceptionResult> ResultList)
 {
     const FMassSpatialHashGrid& Grid = SpatialHash->GetSpatialHashGrid();
 
 	const double CurrentWorldTime = EntityManager.GetWorld()->GetTimeSeconds();
-	
+
     for (FMassExecutionContext::FEntityIterator EntityIt = Context.CreateEntityIterator(); EntityIt; ++EntityIt)
     {
         const FTransformFragment& Transform = TransformList[EntityIt];
-        FArcMassPerceptionResultFragmentBase& Result = ResultList[EntityIt];
-        
-        const FMassEntityHandle Entity = Context.GetEntity(EntityIt);
+        FArcMassHearingPerceptionResult& Result = ResultList[EntityIt];
 
-        // Update time since last seen
-        for (FArcPerceivedEntity& PE : Result.PerceivedEntities)
-        {
-            PE.TimeSinceLastPerceived += DeltaTime;
-        }
+        const FMassEntityHandle Entity = Context.GetEntity(EntityIt);
 
         // Check update interval
         Result.TimeSinceLastUpdate += DeltaTime;
         if (Config.UpdateInterval > 0.0f && Result.TimeSinceLastUpdate < Config.UpdateInterval)
         {
-#if WITH_GAMEPLAY_DEBUGGER
-            if (CVarArcDebugDrawPerception.GetValueOnAnyThread())
-            {
-                FVector Location = Transform.GetTransform().GetLocation();
-                Location.Z += Config.EyeOffset;
-                DrawDebugPerception(EntityManager.GetWorld(), Location, Transform.GetTransform().GetRotation(), Config, Result);
-            }
-#endif
             continue;
         }
         Result.TimeSinceLastUpdate = 0.0f;
@@ -165,7 +172,6 @@ void UArcMassHearingPerceptionProcessor::ProcessPerceptionChunk(
 
         if (Config.ShapeType == EArcPerceptionShapeType::Radius)
         {
-            TArray<FArcMassEntityInfo> RadiusResults;
             Grid.QueryEntitiesInRadiusWithDistance(Location, Config.Radius, QueriedEntities);
         }
         else
@@ -174,14 +180,32 @@ void UArcMassHearingPerceptionProcessor::ProcessPerceptionChunk(
             Grid.QueryEntitiesInConeWithDistance(Location, Forward, Config.ConeLength, HalfAngleRadians, QueriedEntities);
         }
 
-        // Build new perceived list
+        // Remove entities past ForgetTime
         TSet<FMassEntityHandle> NewlyPerceivedSet;
         TArray<FArcPerceivedEntity> NewPerceivedList;
+    	TMap<FMassEntityHandle, int32> CurrentEntities;
+    	TArray<FMassEntityHandle> RemovedEntities;
+
+    	CurrentEntities.Reserve(Result.PerceivedEntities.Num());
+    	for (int32 Idx = Result.PerceivedEntities.Num() - 1; Idx >= 0; --Idx)
+    	{
+    		const float TimeSinceLastSeen = CurrentWorldTime - Result.PerceivedEntities[Idx].LastTimeSeen;
+    		if (TimeSinceLastSeen > Config.ForgetTime)
+    		{
+    			RemovedEntities.Add(Result.PerceivedEntities[Idx].Entity);
+    			Result.PerceivedEntities.RemoveAt(Idx);
+    		}
+    	}
+
+    	for (int32 Idx = Result.PerceivedEntities.Num() - 1; Idx >= 0; --Idx)
+    	{
+    		CurrentEntities.Add(Result.PerceivedEntities[Idx].Entity, Idx);
+    	}
 
         for (const FArcMassEntityInfo& QueriedEntityInfo : QueriedEntities)
         {
             const FMassEntityHandle QueriedEntity = QueriedEntityInfo.Entity;
-            float Distance = QueriedEntityInfo.Distance;
+            const float Distance = QueriedEntityInfo.Distance;
 
             if (QueriedEntity == Entity)
             {
@@ -202,7 +226,8 @@ void UArcMassHearingPerceptionProcessor::ProcessPerceptionChunk(
         	{
         		continue;
         	}
-            if (!PassesFilters(EntityManager, QueriedEntity, Config))
+
+            if (!ArcPerception::PassesFilters(EntityManager, QueriedEntity, Config))
             {
                 continue;
             }
@@ -241,14 +266,6 @@ void UArcMassHearingPerceptionProcessor::ProcessPerceptionChunk(
         		continue;
         	}
 
-            NewlyPerceivedSet.Add(QueriedEntity);
-
-            FArcPerceivedEntity PerceivedData;
-            PerceivedData.Entity = QueriedEntity;
-            PerceivedData.Distance = Distance;
-            PerceivedData.TimeSinceLastPerceived = 0.0f;
-        	PerceivedData.Strength = FinalStrength;
-
         	FVector PerceivedLocation = TargetLocation;
         	if (Config.bApproximateSoundLocation)
         	{
@@ -267,129 +284,135 @@ void UArcMassHearingPerceptionProcessor::ProcessPerceptionChunk(
         		}
         	}
 
+        	// Update existing or add new
+        	if (int32* ExistingIdx = CurrentEntities.Find(QueriedEntity))
+        	{
+        		Result.PerceivedEntities[*ExistingIdx].LastTimeSeen = CurrentWorldTime;
+        		Result.PerceivedEntities[*ExistingIdx].TimeSinceLastPerceived = 0.0f;
+        		Result.PerceivedEntities[*ExistingIdx].Distance = Distance;
+        		Result.PerceivedEntities[*ExistingIdx].Strength = FinalStrength;
+        		Result.PerceivedEntities[*ExistingIdx].TimePerceived += DeltaTime;
+        		Result.PerceivedEntities[*ExistingIdx].LastKnownLocation = PerceivedLocation;
+        		continue;
+        	}
+
+            NewlyPerceivedSet.Add(QueriedEntity);
+
+            FArcPerceivedEntity PerceivedData;
+            PerceivedData.Entity = QueriedEntity;
+            PerceivedData.Distance = Distance;
+            PerceivedData.TimeSinceLastPerceived = 0.0f;
+        	PerceivedData.Strength = FinalStrength;
+        	PerceivedData.LastTimeSeen = CurrentWorldTime;
+        	PerceivedData.TimeFirstPerceived = CurrentWorldTime;
+        	PerceivedData.TimePerceived = 0.f;
             PerceivedData.LastKnownLocation = PerceivedLocation;
             NewPerceivedList.Add(PerceivedData);
         }
 
-        // Determine added/removed
-        TSet<FMassEntityHandle> PreviouslyPerceivedSet;
-        for (const FArcPerceivedEntity& PE : Result.PerceivedEntities)
-        {
-            PreviouslyPerceivedSet.Add(PE.Entity);
-        }
+    	// Broadcast events
+    	for (const FMassEntityHandle& NewEntity : NewlyPerceivedSet)
+    	{
+    		PerceptionSubsystem->BroadcastEntityPerceived(Entity, NewEntity, TAG_AI_Perception_Sense_Hearing);
+    	}
 
-        for (FMassEntityHandle NewEntity : NewlyPerceivedSet)
-        {
-            if (!PreviouslyPerceivedSet.Contains(NewEntity))
-            {
-                PerceptionSubsystem->BroadcastEntityPerceived(Entity, NewEntity, TAG_AI_Perception_Sense_Hearing);
-            }
-        }
+    	for (const FMassEntityHandle& OldEntity : RemovedEntities)
+    	{
+    		if (!NewlyPerceivedSet.Contains(OldEntity))
+    		{
+    			PerceptionSubsystem->BroadcastEntityLostFromPerception(Entity, OldEntity, TAG_AI_Perception_Sense_Hearing);
+    		}
+    	}
 
-        for (FMassEntityHandle OldEntity : PreviouslyPerceivedSet)
-        {
-            if (!NewlyPerceivedSet.Contains(OldEntity))
-            {
-                PerceptionSubsystem->BroadcastEntityLostFromPerception(Entity, OldEntity, TAG_AI_Perception_Sense_Hearing);
-            }
-        }
+    	// Append newly perceived entities to the result
+    	Result.PerceivedEntities.Append(NewPerceivedList);
 
-        Result.PerceivedEntities = MoveTemp(NewPerceivedList);
-    	
-    	if (FArcPerceptionEntityList* Delegate = PerceptionSubsystem->OnPerceptionUpdated.Find(Entity))
-		{
-			Delegate->Broadcast(Entity, Result.PerceivedEntities, TAG_AI_Perception_Sense_Hearing);
-		}
-    	
-#if WITH_GAMEPLAY_DEBUGGER
-        if (CVarArcDebugDrawPerception.GetValueOnAnyThread())
-        {
-            DrawDebugPerception(EntityManager.GetWorld(), Location, Transform.GetTransform().GetRotation(), Config, Result);
-        }
-#endif
+    	const bool bChanged = NewPerceivedList.Num() > 0 || RemovedEntities.Num() > 0;
+    	if (bChanged)
+    	{
+    		if (FArcPerceptionEntityList* Delegate = PerceptionSubsystem->OnPerceptionUpdated.Find(Entity))
+    		{
+    			Delegate->Broadcast(Entity, Result.PerceivedEntities, TAG_AI_Perception_Sense_Hearing);
+    		}
+    	}
     }
 }
 
+//----------------------------------------------------------------------
+// UArcMassHearingPerceptionObserver
+//----------------------------------------------------------------------
 
-bool UArcMassHearingPerceptionProcessor::PassesFilters(
-    const FMassEntityManager& EntityManager,
-    FMassEntityHandle Entity,
-    const FArcPerceptionSenseConfigFragment& Config)
+UArcMassHearingPerceptionObserver::UArcMassHearingPerceptionObserver()
+    : ObserverQuery(*this)
 {
-    // Check general tags
-    if (!Config.RequiredTags.IsEmpty() || !Config.IgnoredTags.IsEmpty())
-    {
-        const FArcMassGameplayTagContainerFragment* TagFragment = EntityManager.GetFragmentDataPtr<FArcMassGameplayTagContainerFragment>(Entity);
-
-        if (!TagFragment)
-        {
-            return Config.RequiredTags.IsEmpty();
-        }
-
-        const FGameplayTagContainer& EntityTags = TagFragment->Tags;
-
-        if (!Config.IgnoredTags.IsEmpty() && EntityTags.HasAny(Config.IgnoredTags))
-        {
-            return false;
-        }
-
-        if (!Config.RequiredTags.IsEmpty() && !EntityTags.HasAll(Config.RequiredTags))
-        {
-            return false;
-        }
-    }
-
-    return true;
+    ObservedType = FArcMassHearingPerceivableTag::StaticStruct();
+    ObservedOperations = EMassObservedOperationFlags::Remove;
+    ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }
 
-#if WITH_GAMEPLAY_DEBUGGER
-void UArcMassHearingPerceptionProcessor::DrawDebugPerception(
-    UWorld* World,
-    const FVector& Location,
-    const FQuat& Rotation,
-    const FArcPerceptionSenseConfigFragment& Config,
-    const FArcMassPerceptionResultFragmentBase& Result)
+void UArcMassHearingPerceptionObserver::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-    if (!World)
+    ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+}
+
+void UArcMassHearingPerceptionObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
+{
+   	UWorld* World = EntityManager.GetWorld();
+   	if (!World)
+   	{
+   	    return;
+   	}
+
+    UArcMassHearingPerceptionSubsystem* PerceptionSubsystem = World->GetSubsystem<UArcMassHearingPerceptionSubsystem>();
+    if (!PerceptionSubsystem)
     {
         return;
     }
 
-    constexpr float DebugLifetime = -1.0f;
-    constexpr uint8 DepthPriority = 0;
-    constexpr float Thickness = 2.0f;
+    TArray<FMassEntityHandle> DestroyedEntities;
 
-    const FVector Forward = Rotation.GetForwardVector();
+    ObserverQuery.ForEachEntityChunk(Context,
+        [&DestroyedEntities](FMassExecutionContext& Ctx)
+        {
+            for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+            {
+                DestroyedEntities.Add(Ctx.GetEntity(EntityIt));
+            }
+        });
 
-    if (Config.ShapeType == EArcPerceptionShapeType::Radius)
+    if (DestroyedEntities.IsEmpty())
     {
-        DrawDebugSphere(World, Location, Config.Radius, 16, Config.DebugShapeColor, false, DebugLifetime, DepthPriority, Thickness);
-    }
-    else
-    {
-    	const float HalfAngleRadians = FMath::DegreesToRadians(Config.ConeHalfAngleDegrees);
-        
-    	DrawDebugCone(
-			World,
-			Location,
-			Forward,
-			Config.ConeLength,
-			HalfAngleRadians,
-			HalfAngleRadians,
-			16,
-			Config.DebugShapeColor,
-			false,
-			DebugLifetime,
-			DepthPriority,
-			Thickness);
+        return;
     }
 
-    for (const FArcPerceivedEntity& PE : Result.PerceivedEntities)
+    // Clean up hearing results
     {
-        DrawDebugLine(World, Location, PE.LastKnownLocation, Config.DebugPerceivedLineColor, false, DebugLifetime, DepthPriority, Thickness);
-        DrawDebugSphere(World, PE.LastKnownLocation, 60.0f, 16, Config.DebugPerceivedLineColor, false, DebugLifetime, DepthPriority);
-    }
+        FMassEntityQuery CleanupQuery;
+        CleanupQuery.AddRequirement<FArcMassHearingPerceptionResult>(EMassFragmentAccess::ReadWrite);
 
-    //DrawDebugString(World, Location + FVector(0, 0, 50), FString::Printf(TEXT("Perceived: %d"), Result.PerceivedEntities.Num()), nullptr, Config.DebugShapeColor, DebugLifetime, false, 1.0f);
+        CleanupQuery.ForEachEntityChunk(Context,
+            [&DestroyedEntities, PerceptionSubsystem](FMassExecutionContext& Ctx)
+            {
+                TArrayView<FArcMassHearingPerceptionResult> ResultList = Ctx.GetMutableFragmentView<FArcMassHearingPerceptionResult>();
+
+                for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+                {
+                    FArcMassHearingPerceptionResult& Result = ResultList[EntityIt];
+                    FMassEntityHandle PerceiverEntity = Ctx.GetEntity(EntityIt);
+
+                    for (int32 i = Result.PerceivedEntities.Num() - 1; i >= 0; --i)
+                    {
+                        if (DestroyedEntities.Contains(Result.PerceivedEntities[i].Entity))
+                        {
+                            PerceptionSubsystem->BroadcastEntityLostFromPerception(
+                                PerceiverEntity,
+                                Result.PerceivedEntities[i].Entity,
+                                TAG_AI_Perception_Sense_Hearing);
+
+                            Result.PerceivedEntities.RemoveAtSwap(i);
+                        }
+                    }
+                }
+            });
+    }
 }
-#endif

@@ -6,6 +6,8 @@
 #include "ArcMassPerception.h"
 #include "MassEntityFragments.h"
 #include "MassProcessor.h"
+#include "MassObserverProcessor.h"
+#include "MassEntityTraitBase.h"
 #include "UObject/Object.h"
 #include "ArcMassHearingPerception.generated.h"
 
@@ -121,6 +123,26 @@ struct ARCAI_API FArcMassHearingPerceivableTag : public FMassTag
 	GENERATED_BODY()
 };
 
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Hearing Perceiver"))
+class ARCAI_API UArcPerceptionHearingPerceiverTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FArcPerceptionHearingSenseConfigFragment HearingConfig;
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Hearing Perceivable"))
+class ARCAI_API UArcPerceptionHearingPerceivableTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
 
 /**
  * Subsystem managing perception events and queries
@@ -143,6 +165,13 @@ public:
 	void BroadcastEntityPerceived(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
 	void BroadcastEntityLostFromPerception(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
 
+	void CleanupEntity(FMassEntityHandle Entity)
+	{
+		OnEntityPerceived.Remove(Entity);
+		OnEntityLostFromPerception.Remove(Entity);
+		OnPerceptionUpdated.Remove(Entity);
+	}
+
 private:
 	TWeakObjectPtr<UMassEntitySubsystem> CachedEntitySubsystem;
 	UMassEntitySubsystem* GetEntitySubsystem() const;
@@ -163,7 +192,6 @@ protected:
 	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
 	
-	// Core processing - reads config from each entity's fragment
 	void ProcessPerceptionChunk(
 		FMassEntityManager& EntityManager,
 		FMassExecutionContext& Context,
@@ -172,21 +200,26 @@ protected:
 		float DeltaTime,
 		const TConstArrayView<FTransformFragment>& TransformList,
 		const FArcPerceptionHearingSenseConfigFragment& Config,
-		TArrayView<FArcMassPerceptionResultFragmentBase> ResultList);
-	
-	FMassEntityQuery HearingQuery;
-	
-	static bool PassesFilters(
-		const FMassEntityManager& EntityManager,
-		FMassEntityHandle Entity,
-		const FArcPerceptionSenseConfigFragment& Config);
+		TArrayView<FArcMassHearingPerceptionResult> ResultList);
 
-#if WITH_GAMEPLAY_DEBUGGER
-	static void DrawDebugPerception(
-		UWorld* World,
-		const FVector& Location,
-		const FQuat& Rotation,
-		const FArcPerceptionSenseConfigFragment& Config,
-		const FArcMassPerceptionResultFragmentBase& Result);
-#endif
+	FMassEntityQuery HearingQuery;
+};
+
+//----------------------------------------------------------------------
+// Hearing Observer - cleans up perception results when perceivable entities are destroyed
+//----------------------------------------------------------------------
+UCLASS()
+class ARCAI_API UArcMassHearingPerceptionObserver : public UMassObserverProcessor
+{
+	GENERATED_BODY()
+
+public:
+	UArcMassHearingPerceptionObserver();
+
+protected:
+	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
+	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
+
+private:
+	FMassEntityQuery ObserverQuery;
 };

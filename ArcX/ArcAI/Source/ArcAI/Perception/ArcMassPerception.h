@@ -6,7 +6,6 @@
 #include "GameplayTagContainer.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "MassProcessor.h"
-#include "MassObserverProcessor.h"
 
 #include "NativeGameplayTags.h"
 
@@ -16,8 +15,6 @@ ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Sense_Sight);
 ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Sense_Hearing);
 ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Stimuli_Sight);
 ARCAI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_AI_Perception_Stimuli_Hearing);
-
-ARCAI_API extern TAutoConsoleVariable<bool> CVarArcDebugDrawPerception;
 
 // Perception shape type
 UENUM(BlueprintType)
@@ -65,11 +62,6 @@ struct ARCAI_API FArcPerceptionSenseConfigFragment : public FMassConstSharedFrag
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FGameplayTagContainer IgnoredTags;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")//, meta = (EditCondition = "bEnableDebugDraw"))
-	FColor DebugShapeColor = FColor::Green;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Debug")//, meta = (EditCondition = "bEnableDebugDraw"))
-	FColor DebugPerceivedLineColor = FColor::Red;
 };
 
 template<>
@@ -203,21 +195,11 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityRemovedNative, FMassE
 
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcPerceptionEntityList, FMassEntityHandle /*PerceiverEntity*/, const TArray<FArcPerceivedEntity>& /* PerceivedEntities */, FGameplayTag /*SenseTag*/);
 
-//----------------------------------------------------------------------
-// Observer processor for cleanup
-//----------------------------------------------------------------------
-UCLASS()
-class ARCAI_API UArcMassPerceptionObserver : public UMassObserverProcessor
+namespace ArcPerception
 {
-    GENERATED_BODY()
+	ARCAI_API bool PassesFilters(
+		const FMassEntityManager& EntityManager,
+		FMassEntityHandle Entity,
+		const FArcPerceptionSenseConfigFragment& Config);
+}
 
-public:
-    UArcMassPerceptionObserver();
-
-protected:
-    virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-    virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-
-private:
-    FMassEntityQuery ObserverQuery;
-};

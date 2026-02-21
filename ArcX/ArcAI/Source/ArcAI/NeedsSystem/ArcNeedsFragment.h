@@ -578,16 +578,39 @@ public:
 };
 
 USTRUCT()
-struct ARCAI_API FArcScoreEntity
+struct FArcMassNeedConsiderationInstanceData
 {
 	GENERATED_BODY()
 
-public:
-	virtual void Check(FMassEntityManager& EntityManager, FMassEntityHandle OwningEntity, FMassEntityHandle InteractingEntity) {}
-
-	virtual ~FArcScoreEntity() = default;
+	UPROPERTY(VisibleAnywhere, Category = "Parameter")
+	float NeedValue = 0.f;
+	
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (MetaStruct = "/Script/ArcAI.ArcNeedFragment"))
+	TObjectPtr<UScriptStruct> NeedType;
 };
-// shared fragment ?
+
+/**
+ * Consideration using a Float as input to the response curve.
+ */
+USTRUCT(DisplayName = "Arc Mass Thirst Need Consideration")
+struct FArcMassNeedConsideration : public FStateTreeConsiderationCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FArcMassNeedConsiderationInstanceData;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+protected:
+	//~ Begin FStateTreeConsiderationBase Interface
+	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
+	//~ End FStateTreeConsiderationBase Interface
+
+public:
+	UPROPERTY(EditAnywhere, Category = "Default")
+	FStateTreeConsiderationResponseCurve ResponseCurve;
+};
+
 
 USTRUCT()
 struct ARCAI_API FArcNeedStateTreeFragment : public FMassFragment

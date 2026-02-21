@@ -1,7 +1,10 @@
-﻿#pragma once
+﻿// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
 #include "ArcMassPerception.h"
 #include "MassEntityFragments.h"
 #include "MassEntityTraitBase.h"
+#include "MassObserverProcessor.h"
 #include "MassProcessor.h"
 
 #include "ArcMassSightPerception.generated.h"
@@ -41,7 +44,7 @@ struct TMassFragmentTraits<FArcMassSightPerceptionResult> final
 
 
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
-class ARCAI_API UArcPerceptionSightTraitBase : public UMassEntityTraitBase
+class ARCAI_API UArcPerceptionSightPerceiverTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
 
@@ -50,6 +53,15 @@ public:
 	FArcPerceptionSightSenseConfigFragment SightConfig;
 	
 	/** Appends items into the entity template required for the trait. */
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+};
+
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Sight Perceivable"))
+class ARCAI_API UArcPerceptionSightPerceivableTrait : public UMassEntityTraitBase
+{
+	GENERATED_BODY()
+
+public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
@@ -80,6 +92,13 @@ public:
 	void BroadcastEntityPerceived(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
 	void BroadcastEntityLostFromPerception(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
 
+	void CleanupEntity(FMassEntityHandle Entity)
+	{
+		OnEntityPerceived.Remove(Entity);
+		OnEntityLostFromPerception.Remove(Entity);
+		OnPerceptionUpdated.Remove(Entity);
+	}
+
 private:
 	TWeakObjectPtr<UMassEntitySubsystem> CachedEntitySubsystem;
 	UMassEntitySubsystem* GetEntitySubsystem() const;
@@ -100,7 +119,6 @@ protected:
 	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
 	
-	// Core processing - reads config from each entity's fragment
 	void ProcessPerceptionChunk(
 		FMassEntityManager& EntityManager,
 		FMassExecutionContext& Context,
@@ -109,24 +127,10 @@ protected:
 		float DeltaTime,
 		const TConstArrayView<FTransformFragment>& TransformList,
 		const FArcPerceptionSightSenseConfigFragment& Config,
-		TArrayView<FArcMassPerceptionResultFragmentBase> ResultList);
-	
+		TArrayView<FArcMassSightPerceptionResult> ResultList);
+
 protected:
 	FMassEntityQuery PerceptionQuery;
-
-	bool PassesFilters(
-		const FMassEntityManager& EntityManager,
-		FMassEntityHandle Entity,
-		const FArcPerceptionSightSenseConfigFragment& Config);
-
-#if WITH_GAMEPLAY_DEBUGGER
-	void DrawDebugPerception(
-		UWorld* World,
-		const FVector& Location,
-		const FQuat& Rotation,
-		const FArcPerceptionSightSenseConfigFragment& Config,
-		const FArcMassPerceptionResultFragmentBase& Result);
-#endif
 };
 
 UCLASS()
