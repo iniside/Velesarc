@@ -22,11 +22,13 @@
 #include "ArcCraftComponent.h"
 
 #include "ArcCoreUtils.h"
+#include "ArcCraftExecution_Recipe.h"
 #include "Core/ArcCoreAssetManager.h"
 #include "Items/ArcItemsStoreComponent.h"
 #include "Items/Factory/ArcItemSpecGeneratorDefinition.h"
 #include "Items/Fragments/ArcItemFragment_RequiredItems.h"
 #include "Net/UnrealNetwork.h"
+#include "Recipe/ArcRecipeDefinition.h"
 
 bool FArcCraftRequirement_InstigatorItemsStore::CheckAndConsumeItems(const UArcCraftComponent* InCraftComponent, const UArcItemDefinition* InCraftData
 	, const UObject* InInstigator, bool bConsume) const
@@ -227,6 +229,34 @@ bool UArcCraftComponent::CheckRequirements(const UArcItemDefinition* InCraftData
 	return true;
 }
 
+bool UArcCraftComponent::CheckRecipeRequirements(const UArcRecipeDefinition* InRecipe, const UObject* Instigator) const
+{
+	if (!InRecipe || InRecipe->CraftTime <= 0.0f)
+	{
+		return false;
+	}
+
+	// Check station tag requirements
+	if (InRecipe->RequiredStationTags.Num() > 0 && !ItemTags.HasAll(InRecipe->RequiredStationTags))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Crafting station does not have required tags for recipe %s"), *InRecipe->GetName());
+		return false;
+	}
+
+	// Check ingredient availability via the recipe execution
+	const FArcCraftExecution_Recipe* RecipeExecution = CraftExecution.GetPtr<FArcCraftExecution_Recipe>();
+	if (RecipeExecution)
+	{
+		if (!RecipeExecution->CheckAndConsumeRecipeItems(this, InRecipe, Instigator, false))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Recipe ingredient requirements not met for %s"), *InRecipe->GetName());
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void UArcCraftComponent::CraftItem(const UArcItemDefinition* InCraftData, UObject* Instigator, int32 Amount, int32 Priority)
 {
 	const bool bMeetsRequirements = CheckRequirements(InCraftData, Instigator);
@@ -290,11 +320,85 @@ void UArcCraftComponent::CraftItem(const UArcItemDefinition* InCraftData, UObjec
 	}
 }
 
+void UArcCraftComponent::CraftRecipe(const UArcRecipeDefinition* InRecipe, UObject* Instigator, int32 Amount, int32 Priority)
+{
+	if (!CheckRecipeRequirements(InRecipe, Instigator))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Recipe requirements not met for %s"), *InRecipe->GetName());
+		return;
+	}
+
+	CurrentInstigator = Instigator;
+
+	const bool bIsDisabled = CraftedItemList.Items.IsEmpty();
+
+	const FDateTime Time = FDateTime::UtcNow();
+	const int64 CurrentTimeStamp = Time.ToUnixTimestamp();
+
+	const int32 EndTime = static_cast<int32>(InRecipe->CraftTime * Amount) + CurrentTimeStamp;
+	FArcCraftItem CraftedItem;
+
+	CraftedItem.Id = FGuid::NewGuid();
+	CraftedItem.Recipe = nullptr; // Recipe-based path doesn't use legacy Recipe field
+	CraftedItem.RecipeDefinition = InRecipe;
+	CraftedItem.Instigator = Instigator;
+
+	CraftedItem.StartTime = CurrentTimeStamp;
+	CraftedItem.UnpausedEndTime = EndTime;
+	CraftedItem.CurrentTime = 0;
+	CraftedItem.MaxAmount = Amount;
+	CraftedItem.Priority = Priority;
+
+	bool bPriorityExists = false;
+	int32 LowestPriority = -1;
+	for (const FArcCraftItem& Item : CraftedItemList.Items)
+	{
+		if (Item.Priority == Priority)
+		{
+			bPriorityExists = true;
+		}
+		if (Item.Priority > LowestPriority)
+		{
+			LowestPriority = Item.Priority;
+		}
+	}
+
+	if (bPriorityExists)
+	{
+		CraftedItem.Priority = LowestPriority + 1;
+	}
+
+	if (bIsDisabled)
+	{
+		int32 Idx = CraftedItemList.Items.Add(CraftedItem);
+		PrimaryComponentTick.SetTickFunctionEnable(true);
+		OnCraftItemAdded.Broadcast(this, CraftedItemList.Items[Idx]);
+	}
+	else
+	{
+		PendingAdds.Add(CraftedItem);
+	}
+}
+
 void UArcCraftComponent::OnCraftFinished(const FArcCraftItem& CraftedItem)
 {
-	FArcItemSpec NewItemSpec = CraftExecution.GetPtr<FArcCraftExecution>()->OnCraftFinished(this, CraftedItem.Recipe, CraftedItem.Instigator);
-	
-	OnCraftFinishedDelegate.Broadcast(this, CraftedItem.Recipe, NewItemSpec);
+	if (CraftedItem.RecipeDefinition)
+	{
+		// Recipe-based path
+		const FArcCraftExecution_Recipe* RecipeExecution = CraftExecution.GetPtr<FArcCraftExecution_Recipe>();
+		FArcItemSpec NewItemSpec;
+		if (RecipeExecution)
+		{
+			NewItemSpec = RecipeExecution->OnRecipeCraftFinished(this, CraftedItem.RecipeDefinition, CraftedItem.Instigator);
+		}
+		OnCraftFinishedDelegate.Broadcast(this, nullptr, NewItemSpec);
+	}
+	else
+	{
+		// Legacy item-fragment path
+		FArcItemSpec NewItemSpec = CraftExecution.GetPtr<FArcCraftExecution>()->OnCraftFinished(this, CraftedItem.Recipe, CraftedItem.Instigator);
+		OnCraftFinishedDelegate.Broadcast(this, CraftedItem.Recipe, NewItemSpec);
+	}
 }
 
 bool UArcCraftComponent::DoesHaveItemsToCraft(const UArcItemDefinition* InRecipe, UObject* InOwner) const
@@ -362,13 +466,26 @@ void UArcCraftComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		for (int32 Idx = 0; Idx < CraftedItemList.Items.Num(); Idx++)
 		{
 			FArcCraftItem& Item = CraftedItemList.Items[Idx];
-			const bool bMeetsRequirements = CheckRequirements(Item.Recipe, Item.Instigator);
+
+			bool bMeetsRequirements = false;
+			if (Item.RecipeDefinition)
+			{
+				bMeetsRequirements = CheckRecipeRequirements(Item.RecipeDefinition, Item.Instigator);
+			}
+			else if (Item.Recipe)
+			{
+				bMeetsRequirements = CheckRequirements(Item.Recipe, Item.Instigator);
+			}
+
 			if (!bMeetsRequirements)
 			{
-				UE_LOG(LogTemp, Log, TEXT("Selecting Highest Priority item. Crafting requirements not met for %s"), *Item.Recipe->GetName());
+				const FString ItemName = Item.RecipeDefinition
+					? Item.RecipeDefinition->GetName()
+					: (Item.Recipe ? Item.Recipe->GetName() : TEXT("Unknown"));
+				UE_LOG(LogTemp, Log, TEXT("Selecting Highest Priority item. Crafting requirements not met for %s"), *ItemName);
 				continue;
 			}
-		
+
 			if (Item.Priority < HighestPriority)
 			{
 				HighestPriority = Item.Priority;
@@ -378,31 +495,55 @@ void UArcCraftComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
 		if (HighestPriorityIndex != INDEX_NONE && HighestPriorityIndex != OldHighestPriority)
 		{
-			const FArcItemFragment_CraftData* CraftData = CraftedItemList.Items[HighestPriorityIndex].Recipe->FindFragment<FArcItemFragment_CraftData>();
-			
-			CraftExecution.GetPtr<FArcCraftExecution>()->CheckAndConsumeItems(this, CraftedItemList.Items[HighestPriorityIndex].Recipe
-				, CraftedItemList.Items[HighestPriorityIndex].Instigator, true);
+			FArcCraftItem& SelectedItem = CraftedItemList.Items[HighestPriorityIndex];
 
-			OnCraftStarted.Broadcast(this, CraftedItemList.Items[HighestPriorityIndex]);
+			if (SelectedItem.RecipeDefinition)
+			{
+				// Recipe path: consume ingredients via recipe execution
+				const FArcCraftExecution_Recipe* RecipeExecution = CraftExecution.GetPtr<FArcCraftExecution_Recipe>();
+				if (RecipeExecution)
+				{
+					RecipeExecution->CheckAndConsumeRecipeItems(this, SelectedItem.RecipeDefinition,
+						SelectedItem.Instigator, true);
+				}
+			}
+			else
+			{
+				// Legacy path
+				CraftExecution.GetPtr<FArcCraftExecution>()->CheckAndConsumeItems(this, SelectedItem.Recipe,
+					SelectedItem.Instigator, true);
+			}
+
+			OnCraftStarted.Broadcast(this, SelectedItem);
 		}
 	}
-	
+
 	if (HighestPriorityIndex == -1)
 	{
 		// No valid items to craft
-		// TODO:: Dosable ticking ? Or let it keep trying to find something ?
 		return;
 	}
-	
+
 	TArray<int32> PendingRemoves;
-	//for (int32 Idx = 0; Idx < CraftedItemList.Items.Num(); Idx++)
 	if (CraftedItemList.Items.IsValidIndex(HighestPriorityIndex))
 	{
 		FArcCraftItem& Item = CraftedItemList.Items[HighestPriorityIndex];
 
-		const FArcItemFragment_CraftData* CraftData = Item.Recipe->FindFragment<FArcItemFragment_CraftData>();
-		
-		const float SingleItemCraftTime = CraftData->CraftTime;
+		// Get craft time from recipe or legacy craft data
+		float SingleItemCraftTime = 0.0f;
+		if (Item.RecipeDefinition)
+		{
+			SingleItemCraftTime = Item.RecipeDefinition->CraftTime;
+		}
+		else if (Item.Recipe)
+		{
+			const FArcItemFragment_CraftData* CraftData = Item.Recipe->FindFragment<FArcItemFragment_CraftData>();
+			if (CraftData)
+			{
+				SingleItemCraftTime = CraftData->CraftTime;
+			}
+		}
+
 		Item.CurrentTime += DeltaTime;
 
 		if (Item.CurrentTime >= SingleItemCraftTime)

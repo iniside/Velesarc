@@ -19,5 +19,23 @@
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		}
+	],
+	"Plugins": [
+		{
+			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "InteractionInterface",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "Iris",
+			"Enabled": true
+		}
 	]
 }

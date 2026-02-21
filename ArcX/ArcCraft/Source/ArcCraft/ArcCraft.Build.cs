@@ -10,7 +10,6 @@ public class ArcCraft : ModuleRules
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
 		var enginePath = Path.GetFullPath(Target.RelativeEnginePath);
-		PublicIncludePaths.Add(enginePath + "Source/Runtime/Experimental/Iris/Core/Private");
 		PrivateIncludePaths.AddRange(
 			new string[]
 			{
@@ -48,7 +47,10 @@ public class ArcCraft : ModuleRules
 				"Slate",
 				"SlateCore",
 				"IrisCore",
-				"Iris"
+				"Iris",
+				"StructUtils",
+				"Chooser",
+				"XmlParser"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

@@ -21,11 +21,25 @@
 
 #include "ArcCraftModule.h"
 
+#include "Engine/AssetManager.h"
+#include "Recipe/ArcRecipeDefinition.h"
+
 #define LOCTEXT_NAMESPACE "FArcCraftModule"
 
 void FArcCraftModule::StartupModule()
 {
-	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+	// Register UArcRecipeDefinition as a primary asset type so it can be discovered by the asset manager.
+	if (UAssetManager::IsInitialized())
+	{
+		UAssetManager& AssetManager = UAssetManager::Get();
+		AssetManager.ScanPathForPrimaryAssets(
+			FPrimaryAssetType(TEXT("ArcRecipe")),
+			TEXT("/Game/"),
+			UArcRecipeDefinition::StaticClass(),
+			true /* bHasBlueprintClasses */,
+			false /* bIsEditorOnly */,
+			false /* bForceSynchronousScan */);
+	}
 }
 
 void FArcCraftModule::ShutdownModule()

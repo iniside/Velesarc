@@ -37,6 +37,7 @@
 class UArcCraftComponent;
 class UArcItemsStoreComponent;
 class UArcItemDefinition;
+class UArcRecipeDefinition;
 
 USTRUCT(BlueprintType)
 struct ARCCRAFT_API FArcCraftItemAmount
@@ -144,6 +145,10 @@ struct ARCCRAFT_API FArcCraftItem : public FFastArraySerializerItem
 	// The lower the number the higher priority
 	UPROPERTY(BlueprintReadOnly)
 	int32 Priority = 0;
+
+	/** If set, this craft uses the recipe-based path instead of the legacy item-fragment path. */
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<const UArcRecipeDefinition> RecipeDefinition;
 };
 
 USTRUCT()
@@ -278,10 +283,15 @@ protected:
 
 	virtual bool CheckRequirements(const UArcItemDefinition* InCraftData, const UObject* Instigator) const;
 
+	bool CheckRecipeRequirements(const UArcRecipeDefinition* InRecipe, const UObject* Instigator) const;
+
 	virtual void ConsumeRequiredItems(const UArcItemDefinition* InCraftData, const UObject* Instigator) {};
-	
+
 public:
 	void CraftItem(const UArcItemDefinition* InCraftData, UObject* Instigator, int32 Amount = 1, int32 Priority = 0);
+
+	/** Queue a recipe-based craft. */
+	void CraftRecipe(const UArcRecipeDefinition* InRecipe, UObject* Instigator, int32 Amount = 1, int32 Priority = 0);
 
 	void OnCraftFinished(const FArcCraftItem& CraftedItem);
 
