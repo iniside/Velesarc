@@ -21,18 +21,75 @@
 
 #pragma once
 
-
-#include "ArcLootSubsystem.h"
 #include "ArcNamedPrimaryAssetId.h"
 #include "Engine/DataAsset.h"
 #include "StructUtils/InstancedStruct.h"
 #include "Items/ArcItemSpec.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "ArcItemSpecGeneratorDefinition.generated.h"
 
 class UArcItemSpecGeneratorDefinition;
+class UArcItemGeneratorDefinition;
 class AActor;
 class APlayerController;
 struct FArcItemSpecGeneratorRowEntry;
+
+// ---------------------------------------------------------------------------
+// Item Generator (moved from old ArcLootSubsystem.h)
+// ---------------------------------------------------------------------------
+
+USTRUCT()
+struct ARCCORE_API FArcItemGenerator
+{
+	GENERATED_BODY()
+
+public:
+	virtual void GenerateItems(TArray<FArcItemSpec>& OutItems, const UArcItemGeneratorDefinition* InDef, AActor* From, class APlayerController* For) const
+	{
+	}
+
+	virtual ~FArcItemGenerator() = default;
+};
+
+USTRUCT()
+struct ARCCORE_API FArcItemGenerator_SingleItem : public FArcItemGenerator
+{
+	GENERATED_BODY()
+
+public:
+	virtual void GenerateItems(TArray<FArcItemSpec>& OutItems, const UArcItemGeneratorDefinition* InDef, AActor* From, class APlayerController* For) const override;
+
+	virtual ~FArcItemGenerator_SingleItem() override = default;
+};
+
+/**
+ * @brief Contains list of specific item generators as InstancedStruct.
+ * Each Row can implement it's own way of proving FArcItemSpec, which is final spec of item, used to create instance.
+ */
+UCLASS()
+class ARCCORE_API UArcItemGeneratorDefinition : public UPrimaryDataAsset
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * List of item definitions that can be used to generate item.
+	 */
+	UPROPERTY(EditAnywhere, meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false))
+	TArray<FArcNamedPrimaryAssetId> ItemDefinitions;
+
+	/**
+	 * Item generator which can generator item specs based on list of Item Definitions.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (BaseStruct = "/Script/ArcCore.ArcItemGenerator", ExcludeBaseStruct))
+	FInstancedStruct ItemGenerator;
+
+	void GetItems(TArray<FArcItemSpec>& OutItems, AActor* From, APlayerController* For) const;
+};
+
+// ---------------------------------------------------------------------------
+// Item Spec Generator
+// ---------------------------------------------------------------------------
 
 USTRUCT()
 struct ARCCORE_API FArcItemSpecGenerator
@@ -56,7 +113,7 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Data", meta = (BaseStruct = "/Script/ArcCore.ArcItemSpecGenerator", ExcludeBaseStruct))
 	FInstancedStruct ItemGenerator;
-	
+
 public:
 	virtual void GenerateItems(TArray<FArcItemSpec>& OutItems, const UArcItemGeneratorDefinition* InDef, AActor* From, class APlayerController* For) const override;
 
@@ -103,7 +160,7 @@ struct ARCCORE_API FArcItemSpecGenerator_RandomItemStats : public FArcItemSpecGe
 
 	UPROPERTY(EditAnywhere)
 	int32 MaxStats = 1;
-	
+
 public:
 	virtual FArcItemSpec GenerateItemSpec(UArcItemSpecGeneratorDefinition* FactoryData
 		, const FArcNamedPrimaryAssetId& Row

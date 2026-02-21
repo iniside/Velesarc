@@ -22,8 +22,39 @@
 #include "Items/Factory/ArcItemSpecGeneratorDefinition.h"
 
 #include "ArcItemFactoryStats.h"
-#include "ArcLootSubsystem.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
+
+// --- FArcItemGenerator_SingleItem (moved from ArcLootSubsystem.cpp) ---
+
+void FArcItemGenerator_SingleItem::GenerateItems(TArray<FArcItemSpec>& OutItems
+	, const UArcItemGeneratorDefinition* InDef
+	, AActor* From
+	, APlayerController* For) const
+{
+	const int32 NumDef = InDef->ItemDefinitions.Num();
+	if (NumDef == 0)
+	{
+		return;
+	}
+	const int32 DefIdx = FMath::RandRange(0, NumDef - 1);
+	OutItems.Reset(1);
+
+	FArcItemSpec Spec;
+	Spec.SetItemDefinition(InDef->ItemDefinitions[DefIdx]);
+
+	OutItems.Add(MoveTemp(Spec));
+}
+
+// --- UArcItemGeneratorDefinition (moved from ArcLootSubsystem.cpp) ---
+
+void UArcItemGeneratorDefinition::GetItems(TArray<FArcItemSpec>& OutItems
+										   , AActor* From
+										   , APlayerController* For) const
+{
+	ItemGenerator.Get<FArcItemGenerator>().GenerateItems(OutItems, this, From, For);
+}
+
+// --- FArcItemSpecGenerator ---
 
 FArcItemSpec FArcItemSpecGenerator::GenerateItemSpec(UArcItemSpecGeneratorDefinition* FactoryData
 													 , const FArcNamedPrimaryAssetId& Row
@@ -48,7 +79,7 @@ void FArcItemGenerator_SpecDefinitionSingleItem::GenerateItems(TArray<FArcItemSp
 	const int32 DefIdx = FMath::RandRange(0, NumDef - 1);
 	OutItems.Reset(1);
 
-	
+
 	FArcItemSpec Spec = ItemGenerator.Get<FArcItemSpecGenerator>().GenerateItemSpec(SpecDefinition, InDef->ItemDefinitions[DefIdx], From, For);
 	OutItems.Add(MoveTemp(Spec));
 }
@@ -70,7 +101,7 @@ FArcItemSpec FArcItemSpecGenerator_RandomItemStats::GenerateItemSpec(UArcItemSpe
 		return Spec;
 	}
 
-	
+
 
 	FArcItemFragment_ItemStats* ItemStats = new FArcItemFragment_ItemStats;
 
@@ -125,9 +156,9 @@ FArcItemSpec FArcItemSpecGenerator_RandomItemStats::GenerateItemSpec(UArcItemSpe
 		const int32 DefaultIdx = ItemStats->DefaultStats.AddDefaulted();
 		ItemStats->DefaultStats[DefaultIdx].Attribute = StatData.Attribute;
 		ItemStats->DefaultStats[DefaultIdx].Value.SetValue(StatValue);
-		
+
 	}
-	
+
 	Spec.AddInstanceData(ItemStats);
 
 	return Spec;
