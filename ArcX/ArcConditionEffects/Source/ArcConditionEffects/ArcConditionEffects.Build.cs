@@ -31,6 +31,7 @@ public class ArcConditionEffects : ModuleRules
 			{
 				"CoreUObject"
 				, "Engine"
+				, "GameplayDebugger"
 			}
 			);
 	}
