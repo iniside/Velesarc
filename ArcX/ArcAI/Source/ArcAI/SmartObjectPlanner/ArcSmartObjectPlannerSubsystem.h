@@ -1,4 +1,4 @@
-﻿// Copyright Lukasz Baran. All Rights Reserved.
+// Copyright Lukasz Baran. All Rights Reserved.
 
 #pragma once
 
@@ -7,71 +7,69 @@
 #include "ArcSmartObjectPlanContainer.h"
 #include "ArcSmartObjectPlanRequest.h"
 #include "GameplayDebuggerCategory.h"
-#include "MassSubsystemBase.h"
+#include "Subsystems/WorldSubsystem.h"
 #include "ArcSmartObjectPlannerSubsystem.generated.h"
 
 /**
- * 
+ * World subsystem that processes SmartObject planning requests with time-sliced ticking.
+ * Replaces the previous Mass processor approach — the planner is inherently serial/recursive
+ * and gains nothing from Mass's chunk-based iteration.
  */
 UCLASS()
-class ARCAI_API UArcSmartObjectPlannerSubsystem : public UMassSubsystemBase
+class ARCAI_API UArcSmartObjectPlannerSubsystem : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
 
 public:
-	TArray<FArcSmartObjectPlanRequest> Requests;
-
 	FArcSmartObjectPlanRequestHandle AddRequest(FArcSmartObjectPlanRequest& Request)
 	{
 		Request.Handle = FArcSmartObjectPlanRequestHandle::Make();
-		Requests.Add(Request);
+		RequestQueue.Add(Request);
 		return Request.Handle;
 	}
 
 	TMap<FMassEntityHandle, FArcSmartObjectPlanContainer> DebugPlans;
+
 	void SetDebugPlan(FMassEntityHandle EntityHandle, const FArcSmartObjectPlanContainer& Plan)
 	{
 		DebugPlans.Add(EntityHandle, Plan);
 	}
-	
+
 	const FArcSmartObjectPlanContainer* GetDebugPlan(FMassEntityHandle EntityHandle) const
 	{
 		return DebugPlans.Find(EntityHandle);
 	}
-	
-	
+
+	// UTickableWorldSubsystem
+	virtual void Tick(float DeltaTime) override;
+	virtual TStatId GetStatId() const override;
+	virtual bool IsTickable() const override { return !RequestQueue.IsEmpty(); }
+	virtual bool IsTickableInEditor() const override { return false; }
+
+	/** Time budget per tick in milliseconds. Default 1ms. */
+	float TimeBudgetMs = 1.0f;
+
+private:
+	TArray<FArcSmartObjectPlanRequest> RequestQueue;
+
+	void GatherCandidates(
+		const FArcSmartObjectPlanRequest& Request,
+		TArray<FArcPotentialEntity>& OutCandidates);
+
 	void BuildAllPlans(
-		FArcSmartObjectPlanRequest Request,
+		const FArcSmartObjectPlanRequest& Request,
 		TArray<FArcPotentialEntity>& AvailableEntities);
 
 	bool BuildPlanRecursive(
 		FMassEntityManager& EntityManager,
 		TArray<FArcPotentialEntity>& AvailableEntities,
 		const FGameplayTagContainer& NeededTags,
-		FGameplayTagContainer CurrentTags,
-		TArray<FArcSmartObjectPlanStep> CurrentPlan,
+		FGameplayTagContainer& CurrentTags,
+		FGameplayTagContainer& AlreadyProvided,
+		TArray<FArcSmartObjectPlanStep>& CurrentPlan,
 		TArray<FArcSmartObjectPlanContainer>& OutPlans,
 		TArray<bool>& UsedEntities,
 		int32 MaxPlans);
-
-	bool ArePlansIdentical(
-	const FArcSmartObjectPlanContainer& PlanA, 
-	const FArcSmartObjectPlanContainer& PlanB);
-
-	bool HasCircularDependency(
-		const TArray<FArcPotentialEntity>& AvailableEntities,
-		const FArcPotentialEntity& StartEntity,
-		const TArray<bool>& UsedEntities,
-		int32 MaxDepth = 10);
-		
-	bool HasCircularDependencyRecursive(
-		const TArray<FArcPotentialEntity>& AvailableEntities,
-		const FArcPotentialEntity& CurrentEntity,
-		TSet<FMassEntityHandle>& VisitedEntities,
-		TSet<FMassEntityHandle>& CurrentPath,
-		const TArray<bool>& UsedEntities,
-		int32 CurrentDepth,
-		int32 MaxDepth);
 
 	bool EvaluateCustomConditions(const FArcPotentialEntity& Entity,
 								FMassEntityManager& EntityManager) const;
@@ -80,7 +78,7 @@ public:
 class FGameplayDebuggerCategory_SmartObjectPlanner : public FGameplayDebuggerCategory
 {
 	using Super = FGameplayDebuggerCategory;
-	
+
 public:
 	FGameplayDebuggerCategory_SmartObjectPlanner();
 	virtual ~FGameplayDebuggerCategory_SmartObjectPlanner() override;
@@ -88,7 +86,7 @@ public:
 	void OnEntitySelected(const FMassEntityManager& EntityManager, FMassEntityHandle EntityHandle);
 
 	static TSharedRef<FGameplayDebuggerCategory> MakeInstance();
-	
+
 	void SetCachedEntity(const FMassEntityHandle Entity, const FMassEntityManager& EntityManager);
 
 	void PickEntity(const FVector& ViewLocation, const FVector& ViewDirection, const UWorld& World, FMassEntityManager& EntityManager
@@ -96,12 +94,12 @@ public:
 
 	virtual void CollectData(APlayerController* OwnerPC, AActor* DebugActor) override;
 	virtual void DrawData(APlayerController* OwnerPC, FGameplayDebuggerCanvasContext& CanvasContext) override;
-	
+
 	void OnPickEntity()
 	{
 		bPickEntity = true;
 	}
-	
+
 	FDelegateHandle OnEntitySelectedHandle;
 	bool bPickEntity = false;
 	TWeakObjectPtr<AActor> CachedDebugActor;

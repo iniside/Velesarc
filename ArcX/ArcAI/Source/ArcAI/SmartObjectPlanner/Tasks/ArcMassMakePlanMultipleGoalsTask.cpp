@@ -1,4 +1,6 @@
-﻿#include "ArcMassMakePlanMultipleGoalsTask.h"
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#include "ArcMassMakePlanMultipleGoalsTask.h"
 
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanRequest.h"
@@ -14,8 +16,12 @@ FArcMassMakePlanMultipleGoalsTask::FArcMassMakePlanMultipleGoalsTask()
 EStateTreeRunStatus FArcMassMakePlanMultipleGoalsTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.PendingHandles.Reset();
 
-	TArray<FArcSmartObjectPlanRequestHandle> Handles;
+	UArcSmartObjectPlannerSubsystem* PlannerSubsystem = Context.GetWorld()->GetSubsystem<UArcSmartObjectPlannerSubsystem>();
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
+
 	for (const FGameplayTagContainer& GoalTags : InstanceData.GoalRequiredTags)
 	{
 		FArcSmartObjectPlanRequest Request;
@@ -24,32 +30,38 @@ EStateTreeRunStatus FArcMassMakePlanMultipleGoalsTask::EnterState(FStateTreeExec
 		Request.SearchOrigin = InstanceData.SearchOrigin;
 		Request.SearchRadius = InstanceData.SearchRadius;
 
-		UArcSmartObjectPlannerSubsystem* PreconSubsystem = Context.GetWorld()->GetSubsystem<UArcSmartObjectPlannerSubsystem>();
-
-		FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-		UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-		UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	
-		Request.FinishedDelegate.BindWeakLambda(PreconSubsystem, [&Handles, WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity = MassCtx.GetEntity()](const FArcSmartObjectPlanResponse& Response)
+		Request.FinishedDelegate.BindWeakLambda(PlannerSubsystem,
+			[WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity = MassCtx.GetEntity()]
+			(const FArcSmartObjectPlanResponse& Response)
 		{
 			const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-		
-			FInstanceDataType* DataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
 
-			FArcSmartObjectPlanResponse* Plan = DataPtr->PlanResponse.GetInternalPropertyRef().GetPtrFromStrongExecutionContext<FArcSmartObjectPlanResponse>(StrongContext);
-			*Plan = Response;
-			Handles.Remove(Response.Handle);
-			if (Handles.IsEmpty())
+			FInstanceDataType* DataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
+			if (!DataPtr)
+			{
+				return;
+			}
+
+			FArcSmartObjectPlanResponse* Plan = DataPtr->PlanResponse.GetInternalPropertyRef()
+				.GetPtrFromStrongExecutionContext<FArcSmartObjectPlanResponse>(StrongContext);
+
+			// Accumulate plans from all goals instead of overwriting
+			Plan->Plans.Append(Response.Plans);
+			Plan->AccumulatedTags.AppendTags(Response.AccumulatedTags);
+
+			// Track completion via instance data (not a dangling stack reference)
+			DataPtr->PendingHandles.Remove(Response.Handle);
+
+			if (DataPtr->PendingHandles.IsEmpty())
 			{
 				StrongContext.FinishTask(EStateTreeFinishTaskType::Succeeded);
 				SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
 			}
 		});
-	
-		FArcSmartObjectPlanRequestHandle Handle = PreconSubsystem->AddRequest(Request);
-		Handles.Add(Handle);
+
+		FArcSmartObjectPlanRequestHandle Handle = PlannerSubsystem->AddRequest(Request);
+		InstanceData.PendingHandles.Add(Handle);
 	}
 
-	
 	return EStateTreeRunStatus::Running;
 }

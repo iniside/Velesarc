@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "SmartObjectPlanner/ArcSmartObjectPlanContainer.h"
+#include "SmartObjectPlanner/ArcSmartObjectPlanRequestHandle.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
 #include "GameplayTagContainer.h"
 #include "StateTreePropertyRef.h"
@@ -12,11 +13,9 @@ struct FArcMassMakePlanMultipleGoalsTaskInstanceData
 {
 	GENERATED_BODY()
 
-	// Result of the query. If an array is binded, it will output all the created values otherwise it will output the best one.
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TArray<FGameplayTagContainer> GoalRequiredTags;
 
-	// The query template to run
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer InitialTags;
 
@@ -25,15 +24,18 @@ struct FArcMassMakePlanMultipleGoalsTaskInstanceData
 
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	int32 MaxPlans = 5;
-	
+
 	UPROPERTY(EditAnywhere, Category = Input)
 	FVector SearchOrigin = FVector::ZeroVector;
-	
+
 	UPROPERTY(EditAnywhere, Category = Output)
 	FArcSmartObjectPlanResponse PlanResponseOut;
 
 	UPROPERTY(EditAnywhere, Category = Out)
 	TStateTreePropertyRef<FArcSmartObjectPlanResponse> PlanResponse;
+
+	/** Tracks pending request handles — stored in instance data to avoid dangling references in delegates. */
+	TArray<FArcSmartObjectPlanRequestHandle> PendingHandles;
 };
 
 /**

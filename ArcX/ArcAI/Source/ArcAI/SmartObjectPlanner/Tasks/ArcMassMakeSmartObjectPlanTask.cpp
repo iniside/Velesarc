@@ -64,7 +64,7 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 		
 	});
 	
-	PreconSubsystem->Requests.Push(Request);
+	PreconSubsystem->AddRequest(Request);
 	
 	return EStateTreeRunStatus::Running;
 }

@@ -12,11 +12,9 @@ struct FArcPotentialEntity
 
 	FMassEntityHandle RequestingEntity;
 	FMassEntityHandle EntityHandle;
-	bool bUsedInPlan = false;
 	FVector Location;
 	FGameplayTagContainer Provides;
 	FGameplayTagContainer Requires;
-	bool bProcessed = false;
 	TArray<FConstStructView> CustomConditions;
 	FMassSmartObjectCandidateSlots FoundCandidateSlots;
 };
