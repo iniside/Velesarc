@@ -4,7 +4,86 @@
 #include "ArcTQSContextProvider.h"
 #include "ArcTQSStep.h"
 #include "ArcTQSGenerator.h"
+#include "ArcAILogs.h"
 #include "HAL/PlatformTime.h"
+#include "VisualLogger/VisualLogger.h"
+#include "MassActorSubsystem.h"
+#include "MassEntityManager.h"
+#include "GameFramework/Actor.h"
+
+#if ENABLE_VISUAL_LOG
+
+// Get a readable name for a target item (entity index, actor name, or location)
+static FString GetItemDescription(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext)
+{
+	switch (Item.TargetType)
+	{
+	case EArcTQSTargetType::MassEntity:
+		{
+			FString Desc = FString::Printf(TEXT("Entity[%d:%d]"), Item.EntityHandle.Index, Item.EntityHandle.SerialNumber);
+			if (QueryContext.EntityManager && QueryContext.EntityManager->IsEntityValid(Item.EntityHandle))
+			{
+				if (const FMassActorFragment* ActorFrag = QueryContext.EntityManager->GetFragmentDataPtr<FMassActorFragment>(Item.EntityHandle))
+				{
+					if (const AActor* Actor = ActorFrag->Get())
+					{
+						Desc += FString::Printf(TEXT(" (%s)"), *Actor->GetName());
+					}
+				}
+			}
+			return Desc;
+		}
+
+	case EArcTQSTargetType::Actor:
+		if (const AActor* Actor = Item.Actor.Get())
+		{
+			return FString::Printf(TEXT("Actor(%s)"), *Actor->GetName());
+		}
+		return TEXT("Actor(null)");
+
+	case EArcTQSTargetType::SmartObject:
+		return FString::Printf(TEXT("SmartObject(%.0f, %.0f, %.0f)"), Item.Location.X, Item.Location.Y, Item.Location.Z);
+
+	case EArcTQSTargetType::Location:
+		return FString::Printf(TEXT("Location(%.0f, %.0f, %.0f)"), Item.Location.X, Item.Location.Y, Item.Location.Z);
+
+	default:
+		return FString::Printf(TEXT("Item(%.0f, %.0f, %.0f)"), Item.Location.X, Item.Location.Y, Item.Location.Z);
+	}
+}
+
+// Get the display name for a step from its instanced struct
+static FString GetStepName(const FInstancedStruct& StepStruct)
+{
+	if (const UScriptStruct* ScriptStruct = StepStruct.GetScriptStruct())
+	{
+		// Try DisplayName metadata first (what's set in USTRUCT(DisplayName = "..."))
+		const FString DisplayName = ScriptStruct->GetMetaData(TEXT("DisplayName"));
+		if (!DisplayName.IsEmpty())
+		{
+			return DisplayName;
+		}
+		return ScriptStruct->GetName();
+	}
+	return TEXT("Unknown");
+}
+
+void FArcTQSQueryInstance::FlushDebugLog()
+{
+	if (DebugLog.IsEmpty())
+	{
+		return;
+	}
+
+	if (const AActor* LogOwner = QueryContext.QuerierActor.Get())
+	{
+		UE_VLOG(LogOwner, LogArcTQS, Log, TEXT("%s"), *DebugLog);
+	}
+
+	DebugLog.Reset();
+}
+
+#endif // ENABLE_VISUAL_LOG
 
 bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 {
@@ -25,8 +104,27 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 		{
 			Status = EArcTQSQueryStatus::Failed;
 			TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
+
+#if ENABLE_VISUAL_LOG
+			DebugLog += FString::Printf(TEXT("TQS Query %d: Generator produced 0 items — query failed.\n"), QueryId);
+			FlushDebugLog();
+#endif
 			return true;
 		}
+
+#if ENABLE_VISUAL_LOG
+		{
+			FString GeneratorName = TEXT("Unknown");
+			if (const UScriptStruct* GenStruct = Generator.GetScriptStruct())
+			{
+				const FString DisplayName = GenStruct->GetMetaData(TEXT("DisplayName"));
+				GeneratorName = DisplayName.IsEmpty() ? GenStruct->GetName() : DisplayName;
+			}
+
+			DebugLog += FString::Printf(TEXT("TQS Query %d: Generator [%s] produced %d items (%d context locations)\n"),
+				QueryId, *GeneratorName, Items.Num(), QueryContext.ContextLocations.Num());
+		}
+#endif
 
 		Status = EArcTQSQueryStatus::Processing;
 		TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
@@ -56,6 +154,21 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 		RunSelection();
 		Status = EArcTQSQueryStatus::Completed;
 		TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
+
+#if ENABLE_VISUAL_LOG
+		DebugLog += FString::Printf(TEXT("Completed in %.3fms — %d results selected (mode: %s)\n"),
+			TotalExecutionTime * 1000.0,
+			Results.Num(),
+			*UEnum::GetValueAsString(SelectionMode));
+
+		for (int32 i = 0; i < Results.Num(); ++i)
+		{
+			DebugLog += FString::Printf(TEXT("  Result[%d]: %s  FinalScore=%.4f\n"),
+				i, *GetItemDescription(Results[i], QueryContext), Results[i].Score);
+		}
+
+		FlushDebugLog();
+#endif
 		return true;
 	}
 
@@ -67,6 +180,10 @@ void FArcTQSQueryInstance::Abort()
 	Status = EArcTQSQueryStatus::Aborted;
 	Items.Empty();
 	Results.Empty();
+
+#if ENABLE_VISUAL_LOG
+	DebugLog.Reset();
+#endif
 }
 
 void FArcTQSQueryInstance::RunGenerator()
@@ -106,6 +223,11 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 			continue;
 		}
 
+#if ENABLE_VISUAL_LOG
+		const FString StepName = GetStepName(Steps[CurrentStepIndex]);
+		int32 FilteredCount = 0;
+#endif
+
 		// Process items from CurrentItemIndex to end, or until deadline
 		while (CurrentItemIndex < Items.Num())
 		{
@@ -125,6 +247,13 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 					if (RawScore <= 0.0f)
 					{
 						Item.bValid = false;
+
+#if ENABLE_VISUAL_LOG
+						++FilteredCount;
+						DebugLog += FString::Printf(TEXT("  [%d] %s | Step %d [%s] FILTERED OUT (raw=%.4f)\n"),
+							CurrentItemIndex, *GetItemDescription(Item, QueryContext),
+							CurrentStepIndex, *StepName, RawScore);
+#endif
 					}
 				}
 				else
@@ -133,10 +262,30 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 					const float ClampedScore = FMath::Clamp(RawScore, 0.0f, 1.0f);
 					const float CompensatedScore = FMath::Pow(ClampedScore, Step->Weight);
 					Item.Score *= CompensatedScore;
+
+#if ENABLE_VISUAL_LOG
+					DebugLog += FString::Printf(TEXT("  [%d] %s | Step %d [%s] raw=%.4f comp=%.4f (w=%.2f) => cumulative=%.4f\n"),
+						CurrentItemIndex, *GetItemDescription(Item, QueryContext),
+						CurrentStepIndex, *StepName,
+						RawScore, CompensatedScore, Step->Weight, Item.Score);
+#endif
 				}
 			}
 			++CurrentItemIndex;
 		}
+
+#if ENABLE_VISUAL_LOG
+		if (Step->StepType == EArcTQSStepType::Filter)
+		{
+			DebugLog += FString::Printf(TEXT("Step %d [%s] (Filter) — %d items filtered out\n"),
+				CurrentStepIndex, *StepName, FilteredCount);
+		}
+		else
+		{
+			DebugLog += FString::Printf(TEXT("Step %d [%s] (Score, weight=%.2f) — processed %d items\n"),
+				CurrentStepIndex, *StepName, Step->Weight, Items.Num());
+		}
+#endif
 
 		// Step completed, move to next
 		++CurrentStepIndex;
@@ -161,6 +310,9 @@ void FArcTQSQueryInstance::RunSelection()
 
 	if (ValidItems.IsEmpty())
 	{
+#if ENABLE_VISUAL_LOG
+		DebugLog += FString::Printf(TEXT("No valid items remaining after scoring — 0 results.\n"));
+#endif
 		return;
 	}
 

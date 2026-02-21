@@ -66,6 +66,12 @@ struct ARCAI_API FArcTQSQueryInstance
 	double StartTime = 0.0;
 	double TotalExecutionTime = 0.0;
 
+#if ENABLE_VISUAL_LOG
+	// Accumulated log text — built up during execution, flushed as a single
+	// UE_VLOG call when the query completes (or fails).
+	FString DebugLog;
+#endif
+
 	/**
 	 * Execute one incremental chunk of work within the given deadline.
 	 * @return true if the query is now complete (Completed, Failed, or Aborted).
@@ -79,4 +85,8 @@ private:
 	void RunGenerator();
 	bool RunProcessingSteps(double Deadline);
 	void RunSelection();
+
+#if ENABLE_VISUAL_LOG
+	void FlushDebugLog();
+#endif
 };
