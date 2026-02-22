@@ -18,6 +18,11 @@
 			"Name": "ArcCraft",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcCraftEditor",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
@@ -35,6 +40,10 @@
 		},
 		{
 			"Name": "Iris",
+			"Enabled": true
+		},
+		{
+			"Name": "EngineAssetDefinitions",
 			"Enabled": true
 		}
 	]

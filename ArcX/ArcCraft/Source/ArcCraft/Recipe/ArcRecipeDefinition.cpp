@@ -21,9 +21,231 @@
 
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 
+#include "ArcCraft/Recipe/ArcRecipeIngredient.h"
+#include "EditorFramework/AssetImportData.h"
+
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
 #endif
+
+// -------------------------------------------------------------------
+// Asset registry tag key names
+// -------------------------------------------------------------------
+
+const FName UArcRecipeDefinition::RecipeTagsName = TEXT("RecipeTags");
+const FName UArcRecipeDefinition::RequiredStationTagsName = TEXT("RequiredStationTags");
+const FName UArcRecipeDefinition::IngredientTagsName = TEXT("IngredientTags");
+const FName UArcRecipeDefinition::IngredientItemDefsName = TEXT("IngredientItemDefs");
+const FName UArcRecipeDefinition::OutputItemDefName = TEXT("OutputItemDef");
+const FName UArcRecipeDefinition::IngredientCountName = TEXT("IngredientCount");
+
+// -------------------------------------------------------------------
+// Helper: serialize FGameplayTagContainer → comma-separated string
+// -------------------------------------------------------------------
+
+static FString SerializeTagContainer(const FGameplayTagContainer& Tags)
+{
+	FString Result;
+	int32 Num = Tags.Num();
+	int32 Idx = 0;
+	for (const FGameplayTag& Tag : Tags)
+	{
+		Result += Tag.ToString();
+		Idx++;
+		if (Num > Idx)
+		{
+			Result += TEXT(",");
+		}
+	}
+	return Result;
+}
+
+static FGameplayTagContainer DeserializeTagContainer(const FString& Str)
+{
+	FGameplayTagContainer Container;
+	if (Str.IsEmpty())
+	{
+		return Container;
+	}
+
+	TArray<FString> TagStrings;
+	Str.ParseIntoArray(TagStrings, TEXT(","), true);
+
+	for (const FString& TagStr : TagStrings)
+	{
+		FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
+		if (Tag.IsValid())
+		{
+			Container.AddTag(Tag);
+		}
+	}
+
+	return Container;
+}
+
+// -------------------------------------------------------------------
+// PostInitProperties — create AssetImportData subobject
+// -------------------------------------------------------------------
+
+void UArcRecipeDefinition::PostInitProperties()
+{
+	Super::PostInitProperties();
+
+#if WITH_EDITORONLY_DATA
+	if (!HasAnyFlags(RF_ClassDefaultObject | RF_NeedLoad))
+	{
+		if (!AssetImportData)
+		{
+			AssetImportData = NewObject<UAssetImportData>(this, TEXT("AssetImportData"));
+		}
+	}
+#endif
+}
+
+UAssetImportData* UArcRecipeDefinition::GetAssetImportData() const
+{
+#if WITH_EDITORONLY_DATA
+	return AssetImportData;
+#else
+	return nullptr;
+#endif
+}
+
+// -------------------------------------------------------------------
+// Asset registry tags
+// -------------------------------------------------------------------
+
+void UArcRecipeDefinition::GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
+{
+	Super::GetAssetRegistryTags(Context);
+
+	// Recipe tags
+	Context.AddTag(UObject::FAssetRegistryTag(
+		RecipeTagsName,
+		SerializeTagContainer(RecipeTags),
+		UObject::FAssetRegistryTag::TT_Hidden));
+
+	// Required station tags
+	Context.AddTag(UObject::FAssetRegistryTag(
+		RequiredStationTagsName,
+		SerializeTagContainer(RequiredStationTags),
+		UObject::FAssetRegistryTag::TT_Hidden));
+
+	// Ingredient tags — union of all tag-based ingredient RequiredTags
+	FGameplayTagContainer AllIngredientTags;
+	FString AllItemDefs;
+	for (int32 Idx = 0; Idx < Ingredients.Num(); ++Idx)
+	{
+		const FArcRecipeIngredient_Tags* TagIngredient = Ingredients[Idx].GetPtr<FArcRecipeIngredient_Tags>();
+		if (TagIngredient)
+		{
+			AllIngredientTags.AppendTags(TagIngredient->RequiredTags);
+		}
+
+		const FArcRecipeIngredient_ItemDef* ItemDefIngredient = Ingredients[Idx].GetPtr<FArcRecipeIngredient_ItemDef>();
+		if (ItemDefIngredient && ItemDefIngredient->ItemDefinitionId.IsValid())
+		{
+			if (!AllItemDefs.IsEmpty())
+			{
+				AllItemDefs += TEXT(",");
+			}
+			AllItemDefs += ItemDefIngredient->ItemDefinitionId.ToString();
+		}
+	}
+
+	Context.AddTag(UObject::FAssetRegistryTag(
+		IngredientTagsName,
+		SerializeTagContainer(AllIngredientTags),
+		UObject::FAssetRegistryTag::TT_Hidden));
+
+	// Ingredient item definitions
+	Context.AddTag(UObject::FAssetRegistryTag(
+		IngredientItemDefsName,
+		AllItemDefs,
+		UObject::FAssetRegistryTag::TT_Hidden));
+
+	// Output item definition
+	Context.AddTag(UObject::FAssetRegistryTag(
+		OutputItemDefName,
+		OutputItemDefinition.IsValid() ? OutputItemDefinition.ToString() : FString(),
+		UObject::FAssetRegistryTag::TT_Hidden));
+
+	// Ingredient count
+	Context.AddTag(UObject::FAssetRegistryTag(
+		IngredientCountName,
+		FString::FromInt(Ingredients.Num()),
+		UObject::FAssetRegistryTag::TT_Hidden));
+
+#if WITH_EDITORONLY_DATA
+	if (AssetImportData)
+	{
+		Context.AddTag(UObject::FAssetRegistryTag(
+			UObject::SourceFileTagName(),
+			AssetImportData->GetSourceData().ToJson(),
+			UObject::FAssetRegistryTag::TT_Hidden));
+	}
+#endif
+}
+
+// -------------------------------------------------------------------
+// Static query helpers
+// -------------------------------------------------------------------
+
+FGameplayTagContainer UArcRecipeDefinition::GetTagsFromAssetData(const FAssetData& AssetData, FName TagKey)
+{
+	FString TagString;
+	if (AssetData.GetTagValue(TagKey, TagString))
+	{
+		return DeserializeTagContainer(TagString);
+	}
+	return FGameplayTagContainer();
+}
+
+FGameplayTagContainer UArcRecipeDefinition::GetRecipeTagsFromAssetData(const FAssetData& AssetData)
+{
+	return GetTagsFromAssetData(AssetData, RecipeTagsName);
+}
+
+FGameplayTagContainer UArcRecipeDefinition::GetRequiredStationTagsFromAssetData(const FAssetData& AssetData)
+{
+	return GetTagsFromAssetData(AssetData, RequiredStationTagsName);
+}
+
+FGameplayTagContainer UArcRecipeDefinition::GetIngredientTagsFromAssetData(const FAssetData& AssetData)
+{
+	return GetTagsFromAssetData(AssetData, IngredientTagsName);
+}
+
+int32 UArcRecipeDefinition::GetIngredientCountFromAssetData(const FAssetData& AssetData)
+{
+	FString CountStr;
+	if (AssetData.GetTagValue(IngredientCountName, CountStr))
+	{
+		return FCString::Atoi(*CountStr);
+	}
+	return 0;
+}
+
+TArray<FAssetData> UArcRecipeDefinition::FilterByStationTags(
+	const TArray<FAssetData>& Recipes,
+	const FGameplayTagContainer& StationTags)
+{
+	TArray<FAssetData> Filtered;
+	for (const FAssetData& Data : Recipes)
+	{
+		FGameplayTagContainer RequiredTags = GetRequiredStationTagsFromAssetData(Data);
+		// Recipe with no station requirements matches any station
+		if (RequiredTags.Num() == 0 || StationTags.HasAll(RequiredTags))
+		{
+			Filtered.Add(Data);
+		}
+	}
+	return Filtered;
+}
+
+// -------------------------------------------------------------------
+// Primary asset ID
+// -------------------------------------------------------------------
 
 FPrimaryAssetId UArcRecipeDefinition::GetPrimaryAssetId() const
 {

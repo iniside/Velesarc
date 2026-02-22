@@ -23,6 +23,7 @@
 
 #include "CoreMinimal.h"
 #include "ArcNamedPrimaryAssetId.h"
+#include "AssetRegistry/AssetData.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
@@ -33,6 +34,7 @@
 #include "ArcRecipeDefinition.generated.h"
 
 class UArcQualityTierTable;
+class UAssetImportData;
 
 /**
  * Data asset defining a crafting recipe.
@@ -116,10 +118,21 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Recipe")
 	FPrimaryAssetType RecipeType;
 
+#if WITH_EDITORONLY_DATA
+	/** Import data storing the source XML file path for reimport. */
+	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
+	TObjectPtr<UAssetImportData> AssetImportData;
+#endif
+
 public:
+	virtual void PostInitProperties() override;
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 	virtual void PreSave(FObjectPreSaveContext SaveContext) override;
 	virtual void PostDuplicate(EDuplicateMode::Type DuplicateMode) override;
+	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const override;
+
+	/** Get the asset import data for reimport support. */
+	UAssetImportData* GetAssetImportData() const;
 
 	/** Regenerate the unique recipe identifier. */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Recipe")
@@ -128,6 +141,36 @@ public:
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
 #endif
+
+	// ---- Asset Registry Query Helpers ----
+
+	/** Asset registry tag key names. */
+	static const FName RecipeTagsName;
+	static const FName RequiredStationTagsName;
+	static const FName IngredientTagsName;
+	static const FName IngredientItemDefsName;
+	static const FName OutputItemDefName;
+	static const FName IngredientCountName;
+
+	/** Parse a tag container from comma-separated string in asset data. */
+	static FGameplayTagContainer GetTagsFromAssetData(const FAssetData& AssetData, FName TagKey);
+
+	/** Get recipe tags from asset registry data (without loading the asset). */
+	static FGameplayTagContainer GetRecipeTagsFromAssetData(const FAssetData& AssetData);
+
+	/** Get required station tags from asset registry data. */
+	static FGameplayTagContainer GetRequiredStationTagsFromAssetData(const FAssetData& AssetData);
+
+	/** Get ingredient tags (union of all tag-based ingredient RequiredTags). */
+	static FGameplayTagContainer GetIngredientTagsFromAssetData(const FAssetData& AssetData);
+
+	/** Get ingredient count from asset registry data. */
+	static int32 GetIngredientCountFromAssetData(const FAssetData& AssetData);
+
+	/** Filter asset data array: keep only recipes whose RequiredStationTags are all in StationTags. */
+	static TArray<FAssetData> FilterByStationTags(
+		const TArray<FAssetData>& Recipes,
+		const FGameplayTagContainer& StationTags);
 
 	/** Get a typed ingredient by index. Returns nullptr if out of range or wrong type. */
 	template<typename T>
