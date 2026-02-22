@@ -198,6 +198,10 @@
 		{
 			"Name": "InstancedActors",
 			"Enabled": true
+		},
+		{
+			"Name": "SlateIM",
+			"Enabled": true
 		}
 	]
 }
