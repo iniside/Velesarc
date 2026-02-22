@@ -16,6 +16,9 @@
 #include "Items/ArcItemSpec.h"
 #include "Kismet/GameplayStatics.h"
 #include "Styling/AppStyle.h"
+#include "QuickBar/ArcQuickBarComponent.h"
+#include "Commands/ArcReplicatedCommandHelpers.h"
+#include "Commands/ArcAddItemToQuickBarCommand.h"
 
 ;
 
@@ -37,11 +40,11 @@ TArray<UArcItemsStoreComponent*> FArcItemsDebugWindow::GetLocalPlayerStores() co
 		World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
 		if (!World.IsValid())
 		{
-			return Result;	
+			return Result;
 		}
-		
+
 	}
-	
+
 	APlayerController* PC = World->GetFirstPlayerController();
 	if (!PC)
 	{
@@ -80,6 +83,56 @@ TArray<UArcItemsStoreComponent*> FArcItemsDebugWindow::GetLocalPlayerStores() co
 	return Result;
 }
 
+TArray<UArcQuickBarComponent*> FArcItemsDebugWindow::GetLocalPlayerQuickBars() const
+{
+	TArray<UArcQuickBarComponent*> Result;
+
+	if (!World.IsValid())
+	{
+		World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
+		if (!World.IsValid())
+		{
+			return Result;
+		}
+	}
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (!PC)
+	{
+		return Result;
+	}
+
+	APawn* Pawn = PC->GetPawn();
+
+	TArray<AActor*> ActorsToSearch;
+	if (Pawn)
+	{
+		ActorsToSearch.Add(Pawn);
+	}
+	ActorsToSearch.Add(PC);
+	if (PC->GetPlayerState<APlayerState>())
+	{
+		ActorsToSearch.Add(PC->GetPlayerState<APlayerState>());
+	}
+
+	for (AActor* Actor : ActorsToSearch)
+	{
+		if (!Actor)
+		{
+			continue;
+		}
+
+		TArray<UArcQuickBarComponent*> Components;
+		Actor->GetComponents<UArcQuickBarComponent>(Components);
+		for (UArcQuickBarComponent* Comp : Components)
+		{
+			Result.AddUnique(Comp);
+		}
+	}
+
+	return Result;
+}
+
 void FArcItemsDebugWindow::RefreshItemDefinitions()
 {
 	CachedItemDefinitions.Reset();
@@ -98,58 +151,83 @@ void FArcItemsDebugWindow::RefreshItemDefinitions()
 
 void FArcItemsDebugWindow::DrawWindow(float DeltaTime)
 {
-	SlateIM::BeginBorder(FAppStyle::GetBrush("ToolPanel.GroupBorder"));
 	SlateIM::Fill();
 	SlateIM::HAlign(HAlign_Fill);
 	SlateIM::VAlign(VAlign_Fill);
-	SlateIM::BeginVerticalStack();
+	SlateIM::BeginTabGroup(TEXT("ArcItemsDebugTabs"));
+	SlateIM::BeginTabStack();
+
+	if (SlateIM::BeginTab(TEXT("Items")))
 	{
-		DrawStoreSelector();
-
-		if (SelectedStore.IsValid())
+		SlateIM::BeginBorder(FAppStyle::GetBrush("ToolPanel.GroupBorder"));
+		SlateIM::Fill();
+		SlateIM::HAlign(HAlign_Fill);
+		SlateIM::VAlign(VAlign_Fill);
+		SlateIM::BeginVerticalStack();
 		{
-			SlateIM::Padding(FMargin(4.f));
-			SlateIM::Fill();
-			SlateIM::BeginHorizontalStack();
+			DrawStoreSelector();
+
+			if (SelectedStore.IsValid())
 			{
-				// Left panel: items list
+				SlateIM::Padding(FMargin(4.f));
 				SlateIM::Fill();
-				SlateIM::HAlign(HAlign_Fill);
-				SlateIM::VAlign(VAlign_Fill);
-				SlateIM::BeginVerticalStack();
+				SlateIM::BeginHorizontalStack();
 				{
-					DrawItemsList();
-				}
-				SlateIM::EndVerticalStack();
+					// Left panel: items list
+					SlateIM::Fill();
+					SlateIM::HAlign(HAlign_Fill);
+					SlateIM::VAlign(VAlign_Fill);
+					SlateIM::BeginVerticalStack();
+					{
+						DrawItemsList();
+					}
+					SlateIM::EndVerticalStack();
 
-				// Right panel: item detail
-				SlateIM::Fill();
-				SlateIM::HAlign(HAlign_Fill);
-				SlateIM::VAlign(VAlign_Fill);
-				SlateIM::BeginVerticalStack();
-				{
-					TArray<const FArcItemData*> Items = SelectedStore->GetItems();
-					if (SelectedItemIndex >= 0 && SelectedItemIndex < Items.Num())
+					// Right panel: item detail
+					SlateIM::Fill();
+					SlateIM::HAlign(HAlign_Fill);
+					SlateIM::VAlign(VAlign_Fill);
+					SlateIM::BeginVerticalStack();
 					{
-						DrawItemDetail(Items[SelectedItemIndex]);
+						TArray<const FArcItemData*> Items = SelectedStore->GetItems();
+						if (SelectedItemIndex >= 0 && SelectedItemIndex < Items.Num())
+						{
+							DrawItemDetail(Items[SelectedItemIndex]);
+						}
+						else
+						{
+							SlateIM::Padding(FMargin(8.f));
+							SlateIM::Text(TEXT("Select an item to view details"));
+						}
 					}
-					else
-					{
-						SlateIM::Padding(FMargin(8.f));
-						SlateIM::Text(TEXT("Select an item to view details"));
-					}
+					SlateIM::EndVerticalStack();
 				}
-				SlateIM::EndVerticalStack();
+				SlateIM::EndHorizontalStack();
 			}
-			SlateIM::EndHorizontalStack();
+			else
+			{
+				SlateIM::Padding(FMargin(8.f));
+				SlateIM::Text(TEXT("No ItemsStoreComponent selected"));
+			}
 		}
-		else
-		{
-			SlateIM::Padding(FMargin(8.f));
-			SlateIM::Text(TEXT("No ItemsStoreComponent selected"));
-		}
+		SlateIM::EndVerticalStack();
+		SlateIM::EndBorder();
 	}
-	SlateIM::EndVerticalStack();
+	SlateIM::EndTab();
+
+	if (SlateIM::BeginTab(TEXT("QuickBar")))
+	{
+		SlateIM::BeginBorder(FAppStyle::GetBrush("ToolPanel.GroupBorder"));
+		SlateIM::Fill();
+		SlateIM::HAlign(HAlign_Fill);
+		SlateIM::VAlign(VAlign_Fill);
+		DrawQuickBarPanel();
+		SlateIM::EndBorder();
+	}
+	SlateIM::EndTab();
+
+	SlateIM::EndTabStack();
+	SlateIM::EndTabGroup();
 }
 
 void FArcItemsDebugWindow::DrawStoreSelector()
@@ -690,4 +768,354 @@ void FArcItemsDebugWindow::DrawInstancedDataTree(const FArcItemData* Item)
 		SlateIM::EndTableBody();
 	}
 	SlateIM::EndTable();
+}
+
+void FArcItemsDebugWindow::DrawQuickBarPanel()
+{
+	SlateIM::BeginVerticalStack();
+	{
+		TArray<UArcQuickBarComponent*> QuickBars = GetLocalPlayerQuickBars();
+
+		SlateIM::Padding(FMargin(4.f));
+		SlateIM::BeginHorizontalStack();
+		{
+			SlateIM::Text(TEXT("QuickBar Component: "));
+
+			if (QuickBars.Num() == 0)
+			{
+				SlateIM::Text(TEXT("No QuickBar components found on local player"));
+			}
+			else
+			{
+				TArray<FString> CompNames;
+				for (UArcQuickBarComponent* QB : QuickBars)
+				{
+					FString Name = FString::Printf(TEXT("%s (%s)"),
+						*QB->GetName(),
+						*GetNameSafe(QB->GetOwner()));
+					CompNames.Add(Name);
+				}
+
+				bool bForceRefresh = false;
+				if (!SelectedQuickBar.IsValid() && QuickBars.Num() > 0)
+				{
+					SelectedQuickBarCompIndex = 0;
+					SelectedQuickBar = QuickBars[0];
+					bForceRefresh = true;
+				}
+
+				SlateIM::MinWidth(300.f);
+				if (SlateIM::ComboBox(CompNames, SelectedQuickBarCompIndex, bForceRefresh))
+				{
+					if (SelectedQuickBarCompIndex >= 0 && SelectedQuickBarCompIndex < QuickBars.Num())
+					{
+						SelectedQuickBar = QuickBars[SelectedQuickBarCompIndex];
+						SelectedBarIndex = 0;
+					}
+				}
+			}
+		}
+		SlateIM::EndHorizontalStack();
+
+		if (SelectedQuickBar.IsValid())
+		{
+			const TArray<FArcQuickBar>& Bars = SelectedQuickBar->GetQuickBars();
+
+			// Bar selector
+			SlateIM::Padding(FMargin(4.f));
+			SlateIM::BeginHorizontalStack();
+			{
+				SlateIM::Text(TEXT("Bar: "));
+
+				if (Bars.Num() == 0)
+				{
+					SlateIM::Text(TEXT("No bars defined"));
+				}
+				else
+				{
+					TArray<FString> BarNames;
+					for (const FArcQuickBar& Bar : Bars)
+					{
+						BarNames.Add(Bar.BarId.ToString());
+					}
+
+					SlateIM::MinWidth(250.f);
+					SlateIM::ComboBox(BarNames, SelectedBarIndex);
+				}
+			}
+			SlateIM::EndHorizontalStack();
+
+			// Draw slots for the selected bar
+			if (SelectedBarIndex >= 0 && SelectedBarIndex < Bars.Num())
+			{
+				const FArcQuickBar& Bar = Bars[SelectedBarIndex];
+
+				// Bar info
+				SlateIM::Padding(FMargin(4.f));
+				FString ModeStr;
+				switch (Bar.QuickSlotsMode)
+				{
+				case EArcQuickSlotsMode::Cyclable: ModeStr = TEXT("Cyclable"); break;
+				case EArcQuickSlotsMode::AutoActivateOnly: ModeStr = TEXT("AutoActivateOnly"); break;
+				case EArcQuickSlotsMode::ManualActivationOnly: ModeStr = TEXT("ManualActivationOnly"); break;
+				}
+				SlateIM::Text(*FString::Printf(TEXT("Mode: %s | Slots: %d | ItemsStoreClass: %s"),
+					*ModeStr,
+					Bar.Slots.Num(),
+					*GetNameSafe(Bar.ItemsStoreClass)));
+
+				SlateIM::Padding(FMargin(4.f));
+				SlateIM::Fill();
+				DrawQuickBarSlots(SelectedQuickBar.Get(), SelectedBarIndex);
+			}
+		}
+	}
+	SlateIM::EndVerticalStack();
+}
+
+void FArcItemsDebugWindow::DrawQuickBarSlots(UArcQuickBarComponent* QuickBarComp, int32 BarIndex)
+{
+	if (!QuickBarComp)
+	{
+		return;
+	}
+
+	const TArray<FArcQuickBar>& Bars = QuickBarComp->GetQuickBars();
+	if (!Bars.IsValidIndex(BarIndex))
+	{
+		return;
+	}
+
+	const FArcQuickBar& Bar = Bars[BarIndex];
+	const FArcSelectedQuickBarSlotList& ReplicatedSlots = QuickBarComp->GetReplicatedSelectedSlots();
+	UArcItemsStoreComponent* BarItemStore = QuickBarComp->GetItemStoreComponent(Bar.BarId);
+
+	// Slots table
+	SlateIM::FTableParams TableParams;
+	TableParams.SelectionMode = ESelectionMode::Single;
+	SlateIM::BeginTable(TableParams);
+	{
+		SlateIM::BeginTableHeader();
+		{
+			SlateIM::InitialTableColumnWidth(150.f);
+			SlateIM::AddTableColumn(TEXT("Slot"), TEXT("Slot"));
+			SlateIM::InitialTableColumnWidth(120.f);
+			SlateIM::AddTableColumn(TEXT("ItemSlotId"), TEXT("ItemSlotId"));
+			SlateIM::InitialTableColumnWidth(150.f);
+			SlateIM::AddTableColumn(TEXT("Assigned Item"), TEXT("Assigned Item"));
+			SlateIM::InitialTableColumnWidth(60.f);
+			SlateIM::AddTableColumn(TEXT("Active"), TEXT("Active"));
+			SlateIM::InitialTableColumnWidth(60.f);
+			SlateIM::AddTableColumn(TEXT("Locked"), TEXT("Locked"));
+			SlateIM::FixedTableColumnWidth(200.f);
+			SlateIM::AddTableColumn(TEXT("Actions"), TEXT("Actions"));
+		}
+		SlateIM::EndTableHeader();
+
+		SlateIM::BeginTableBody();
+		{
+			for (int32 SlotIdx = 0; SlotIdx < Bar.Slots.Num(); ++SlotIdx)
+			{
+				const FArcQuickBarSlot& Slot = Bar.Slots[SlotIdx];
+				const FGameplayTag& BarId = Bar.BarId;
+				const FGameplayTag& SlotId = Slot.QuickBarSlotId;
+
+				bool bRowSelected = false;
+
+				// Slot ID column
+				if (SlateIM::NextTableCell(&bRowSelected))
+				{
+					SlateIM::Text(*SlotId.ToString());
+				}
+
+				if (bRowSelected)
+				{
+					SelectedQuickBarItemIndex = SlotIdx;
+				}
+
+				// ItemSlotId column
+				if (SlateIM::NextTableCell())
+				{
+					FString SlotStr = Slot.ItemSlotId.IsValid() ? Slot.ItemSlotId.ToString() : TEXT("-");
+					SlateIM::Text(*SlotStr);
+				}
+
+				// Assigned Item column
+				if (SlateIM::NextTableCell())
+				{
+					FArcItemId ItemId = ReplicatedSlots.FindItemId(BarId, SlotId);
+					if (ItemId.IsValid())
+					{
+						const FArcItemData* ItemData = QuickBarComp->FindQuickSlotItem(BarId, SlotId);
+						if (ItemData)
+						{
+							const UArcItemDefinition* Def = ItemData->GetItemDefinition();
+							SlateIM::Text(*FString::Printf(TEXT("%s"), *GetNameSafe(Def)));
+						}
+						else
+						{
+							SlateIM::Text(*FString::Printf(TEXT("ID: %s"), *ItemId.ToString()));
+						}
+					}
+					else
+					{
+						SlateIM::Text(TEXT("(empty)"));
+					}
+				}
+
+				// Active column
+				if (SlateIM::NextTableCell())
+				{
+					bool bActive = QuickBarComp->IsQuickSlotActive(BarId, SlotId);
+					SlateIM::Text(bActive ? TEXT("Yes") : TEXT("No"));
+				}
+
+				// Locked column
+				if (SlateIM::NextTableCell())
+				{
+					bool bLocked = QuickBarComp->IsQuickSlotLocked(BarId, SlotId);
+					SlateIM::Text(bLocked ? TEXT("Yes") : TEXT("No"));
+				}
+
+				// Actions column
+				if (SlateIM::NextTableCell())
+				{
+					SlateIM::BeginHorizontalStack();
+					{
+						FArcItemId CurrentItemId = ReplicatedSlots.FindItemId(BarId, SlotId);
+
+						if (CurrentItemId.IsValid())
+						{
+							// Remove from quick slot via command
+							if (SlateIM::Button(TEXT("Remove")))
+							{
+								if (World.IsValid())
+								{
+									Arcx::SendServerCommand<FArcRemoveItemFromQuickSlotCommand>(
+										World.Get(),
+										QuickBarComp,
+										BarId,
+										SlotId,
+										false);
+								}
+							}
+						}
+						else
+						{
+							// Assign item — clicking opens the assignment panel below
+							if (BarItemStore)
+							{
+								if (SlateIM::Button(TEXT("Assign...")))
+								{
+									SelectedQuickBarItemIndex = SlotIdx;
+								}
+							}
+						}
+					}
+					SlateIM::EndHorizontalStack();
+				}
+			}
+		}
+		SlateIM::EndTableBody();
+	}
+	SlateIM::EndTable();
+
+	// Item assignment panel (shown below table when a slot is selected and has no item)
+	if (SelectedQuickBarItemIndex >= 0 && SelectedQuickBarItemIndex < Bar.Slots.Num())
+	{
+		const FArcQuickBarSlot& AssignSlot = Bar.Slots[SelectedQuickBarItemIndex];
+		FArcItemId ExistingItemId = ReplicatedSlots.FindItemId(Bar.BarId, AssignSlot.QuickBarSlotId);
+
+		if (!ExistingItemId.IsValid() && BarItemStore)
+		{
+			SlateIM::Padding(FMargin(4.f));
+			SlateIM::BeginBorder(TEXT("ToolPanel.GroupBorder"));
+			{
+				SlateIM::Text(*FString::Printf(TEXT("Assign item to slot: %s"), *AssignSlot.QuickBarSlotId.ToString()));
+
+				TArray<const FArcItemData*> StoreItems = BarItemStore->GetItems();
+
+				if (StoreItems.Num() == 0)
+				{
+					SlateIM::Padding(FMargin(4.f));
+					SlateIM::Text(TEXT("No items in the bar's item store"));
+				}
+				else
+				{
+					// Filter
+					SlateIM::Padding(FMargin(2.f));
+					SlateIM::BeginHorizontalStack();
+					{
+						SlateIM::Text(TEXT("Filter: "));
+						SlateIM::MinWidth(200.f);
+						SlateIM::EditableText(QuickBarAssignItemFilter, TEXT("Search items..."));
+					}
+					SlateIM::EndHorizontalStack();
+
+					// List items from the store that could be assigned
+					SlateIM::Padding(FMargin(2.f));
+					SlateIM::MaxHeight(200.f);
+					SlateIM::BeginScrollBox();
+					{
+						FString LowerFilter = QuickBarAssignItemFilter.ToLower();
+
+						for (int32 i = 0; i < StoreItems.Num(); ++i)
+						{
+							const FArcItemData* Item = StoreItems[i];
+							if (!Item)
+							{
+								continue;
+							}
+
+							const UArcItemDefinition* Def = Item->GetItemDefinition();
+							FString DefName = GetNameSafe(Def);
+
+							if (!QuickBarAssignItemFilter.IsEmpty() && !DefName.ToLower().Contains(LowerFilter))
+							{
+								continue;
+							}
+
+							// Check if item is already on another quick slot
+							bool bAlreadyOnSlot = QuickBarComp->IsItemOnAnyQuickSlot(Item->GetItemId());
+
+							SlateIM::Padding(FMargin(2.f));
+							SlateIM::BeginHorizontalStack();
+							{
+								SlateIM::Text(*FString::Printf(TEXT("%s (L%d x%d)%s"),
+									*DefName,
+									Item->GetLevel(),
+									Item->GetStacks(),
+									bAlreadyOnSlot ? TEXT(" [on slot]") : TEXT("")));
+
+								SlateIM::Padding(FMargin(4.f, 0.f));
+								if (SlateIM::Button(*FString::Printf(TEXT("Assign##%d"), i)))
+								{
+									if (World.IsValid())
+									{
+										Arcx::SendServerCommand<FArcAddItemToQuickBarCommand>(
+											World.Get(),
+											QuickBarComp,
+											BarItemStore,
+											Item->GetItemId(),
+											Bar.BarId,
+											AssignSlot.QuickBarSlotId);
+									}
+									SelectedQuickBarItemIndex = -1;
+								}
+							}
+							SlateIM::EndHorizontalStack();
+						}
+					}
+					SlateIM::EndScrollBox();
+				}
+
+				SlateIM::Padding(FMargin(2.f));
+				if (SlateIM::Button(TEXT("Close")))
+				{
+					SelectedQuickBarItemIndex = -1;
+				}
+			}
+			SlateIM::EndBorder();
+		}
+	}
 }

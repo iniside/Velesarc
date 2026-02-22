@@ -7,6 +7,7 @@
 
 class UArcItemsStoreComponent;
 class UArcItemDefinition;
+class UArcQuickBarComponent;
 struct FArcItemData;
 struct FArcItemId;
 
@@ -26,8 +27,11 @@ private:
 	void DrawAddItemPanel();
 	void DrawItemDetail(const FArcItemData* Item);
 	void DrawInstancedDataTree(const FArcItemData* Item);
+	void DrawQuickBarPanel();
+	void DrawQuickBarSlots(UArcQuickBarComponent* QuickBar, int32 BarIndex);
 
 	TArray<UArcItemsStoreComponent*> GetLocalPlayerStores() const;
+	TArray<UArcQuickBarComponent*> GetLocalPlayerQuickBars() const;
 	void RefreshItemDefinitions();
 
 
@@ -47,4 +51,11 @@ private:
 
 	// Slot assignment
 	FString SlotTagText;
+
+	// Quick Bar panel
+	TWeakObjectPtr<UArcQuickBarComponent> SelectedQuickBar;
+	int32 SelectedQuickBarCompIndex = 0;
+	int32 SelectedBarIndex = 0;
+	int32 SelectedQuickBarItemIndex = -1;
+	FString QuickBarAssignItemFilter;
 };
