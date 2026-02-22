@@ -64,7 +64,10 @@ class ARCAI_API UArcTQSQuerySubsystem : public UTickableWorldSubsystem
 	GENERATED_BODY()
 
 public:
+	UArcTQSQuerySubsystem();
+	
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual bool IsTickableInEditor() const override { return true; }
 	virtual void Deinitialize() override;
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
 	virtual void Tick(float DeltaTime) override;

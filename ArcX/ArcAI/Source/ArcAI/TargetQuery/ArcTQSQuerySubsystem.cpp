@@ -8,6 +8,10 @@
 DECLARE_STATS_GROUP(TEXT("ArcTQS"), STATGROUP_ArcTQS, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("ArcTQS Tick"), STAT_ArcTQSTick, STATGROUP_ArcTQS);
 
+UArcTQSQuerySubsystem::UArcTQSQuerySubsystem()
+{
+}
+
 void UArcTQSQuerySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -30,7 +34,7 @@ void UArcTQSQuerySubsystem::Deinitialize()
 
 bool UArcTQSQuerySubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
 {
-	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
+	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE || WorldType == EWorldType::Editor;
 }
 
 void UArcTQSQuerySubsystem::Tick(float DeltaTime)

@@ -14,7 +14,7 @@
  * Contains an optional context provider, a generator, and an ordered pipeline of steps.
  * Can be shared across State Tree tasks or used inline.
  */
-UCLASS(BlueprintType, Blueprintable, DefaultToInstanced, EditInlineNew)
+UCLASS(BlueprintType, Blueprintable)
 class ARCAI_API UArcTQSQueryDefinition : public UDataAsset
 {
 	GENERATED_BODY()
