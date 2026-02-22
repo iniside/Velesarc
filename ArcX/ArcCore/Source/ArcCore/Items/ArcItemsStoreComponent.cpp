@@ -281,9 +281,9 @@ int32 UArcItemsStoreComponent::SetupItem(int32 ItemIdx
 FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem, const FArcItemId& OwnerItemId)
 {
 	UGameInstance* GameInstance = GetGameInstance<UGameInstance>();
-	UArcItemsSubsystem* ItemsSubsystem = GameInstance->GetSubsystem<UArcItemsSubsystem>();//::Get(this);
+	UArcItemsSubsystem* ItemsSubsystem = GameInstance ? GameInstance->GetSubsystem<UArcItemsSubsystem>() : nullptr;
 	
-	if (bUseSubsystemForItemStore)
+	if (bUseSubsystemForItemStore && ItemsSubsystem != nullptr)
 	{
 		UArcItemsStoreSubsystem* ItemsStoreSubsystem = GameInstance->GetSubsystem<UArcItemsStoreSubsystem>();
 		if (ItemsStoreSubsystem != nullptr)
@@ -361,11 +361,14 @@ FArcItemId UArcItemsStoreComponent::AddItem(const FArcItemSpec& InItem, const FA
 		}
 	}
 	
-	ItemsSubsystem->BroadcastOnItemAddedToStore(this, Entry);
-	ItemsSubsystem->OnItemAddedToStoreDynamic.Broadcast(this, Entry->GetItemId());
-	ItemsSubsystem->BroadcastActorOnItemAddedToStore(GetOwner(), this, Entry);
-	ItemsSubsystem->BroadcastActorOnItemAddedToStoreMap(GetOwner(), Entry->GetItemId(), this, Entry);
-
+	if (ItemsSubsystem != nullptr)
+	{
+		ItemsSubsystem->BroadcastOnItemAddedToStore(this, Entry);
+		ItemsSubsystem->OnItemAddedToStoreDynamic.Broadcast(this, Entry->GetItemId());
+		ItemsSubsystem->BroadcastActorOnItemAddedToStore(GetOwner(), this, Entry);
+		ItemsSubsystem->BroadcastActorOnItemAddedToStoreMap(GetOwner(), Entry->GetItemId(), this, Entry);
+	}
+	
 	Entry->OnItemAdded();
 	
 	return Entry->GetItemId();
@@ -793,13 +796,17 @@ void UArcItemsStoreComponent::AddItemToSlot(const FArcItemId& InItemId
 		Item->AddToSlot(InSlotId);
 
 		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
-		ItemsSubsystem->BroadcastActorOnItemChangedStore(GetOwner(), this, Item);
-		ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(GetOwner(), InItemId, this, Item);
+		if (ItemsSubsystem)
+		{
+			ItemsSubsystem->BroadcastActorOnItemChangedStore(GetOwner(), this, Item);
+			ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(GetOwner(), InItemId, this, Item);
 
-		ItemsSubsystem->OnItemAddedToSlotDynamic.Broadcast(this, InSlotId, Item->GetItemId());
-		ItemsSubsystem->BroadcastActorOnAddedToSlot(GetOwner(), this, InSlotId, Item);
-		ItemsSubsystem->BroadcastActorOnItemAddedToSlotMap(GetOwner(), InItemId, this, Item);
-		ItemsSubsystem->BroadcastActorOnAddedToSlotMap(GetOwner(), InSlotId, this, Item);
+			ItemsSubsystem->OnItemAddedToSlotDynamic.Broadcast(this, InSlotId, Item->GetItemId());
+			ItemsSubsystem->BroadcastActorOnAddedToSlot(GetOwner(), this, InSlotId, Item);
+			ItemsSubsystem->BroadcastActorOnItemAddedToSlotMap(GetOwner(), InItemId, this, Item);
+			ItemsSubsystem->BroadcastActorOnAddedToSlotMap(GetOwner(), InSlotId, this, Item);	
+		}
+		
 		
 		MarkItemDirtyById(Item->GetItemId());
 	}
@@ -818,14 +825,15 @@ void UArcItemsStoreComponent::RemoveItemFromSlot(const FArcItemId& InItemId)
 		
 		UE_LOGFMT(LogArcItems, Log, "Remove Item {0} from Slot {1}", Item->GetItemDefinition()->GetName(), Item->GetSlotId().ToString());
 		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
+		if (ItemsSubsystem)
+		{
+			ItemsSubsystem->BroadcastActorOnItemChangedStore(GetOwner(), this, Item);
+			ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(GetOwner(), InItemId, this, Item);
 
-		ItemsSubsystem->BroadcastActorOnItemChangedStore(GetOwner(), this, Item);
-		ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(GetOwner(), InItemId, this, Item);
-
-		ItemsSubsystem->OnItemRemovedFromSlotDynamic.Broadcast(this, Item->GetSlotId(), Item->GetItemId());
-		ItemsSubsystem->BroadcastActorOnRemovedFromSlot(GetOwner(), this, Item->GetSlotId(), Item);
-		ItemsSubsystem->BroadcastActorOnRemovedFromSlotMap(GetOwner(), Item->GetSlotId(), this, Item);
-		
+			ItemsSubsystem->OnItemRemovedFromSlotDynamic.Broadcast(this, Item->GetSlotId(), Item->GetItemId());
+			ItemsSubsystem->BroadcastActorOnRemovedFromSlot(GetOwner(), this, Item->GetSlotId(), Item);
+			ItemsSubsystem->BroadcastActorOnRemovedFromSlotMap(GetOwner(), Item->GetSlotId(), this, Item);
+		}
 		Item->RemoveFromSlot(FGameplayTag::EmptyTag);
 		MarkItemDirtyById(Item->GetItemId());
 	}
@@ -841,12 +849,14 @@ void UArcItemsStoreComponent::ChangeItemSlot(const FArcItemId& InItem
 		MarkItemDirtyById(Item->GetItemId());
 		
 		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
+		if (ItemsSubsystem)
+		{
+			ItemsSubsystem->BroadcastActorOnItemChangedStore(GetOwner(), this, Item);
+			ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(GetOwner(), InItem, this, Item);
 		
-		ItemsSubsystem->BroadcastActorOnItemChangedStore(GetOwner(), this, Item);
-		ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(GetOwner(), InItem, this, Item);
-		
-		ItemsSubsystem->BroadcastActorOnSlotChanged(GetOwner(), this, InNewSlot, Item);
-		ItemsSubsystem->BroadcastActorOnItemSlotChangedMap(GetOwner(), Item->GetItemId(), this, Item);
+			ItemsSubsystem->BroadcastActorOnSlotChanged(GetOwner(), this, InNewSlot, Item);
+			ItemsSubsystem->BroadcastActorOnItemSlotChangedMap(GetOwner(), Item->GetItemId(), this, Item);
+		}
 	}
 }
 
