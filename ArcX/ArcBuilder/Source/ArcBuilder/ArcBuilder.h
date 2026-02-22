@@ -21,11 +21,13 @@
 
 #pragma once
 
+#include "Debug/ArcBuilderDebugWindow.h"
 #include "Modules/ModuleManager.h"
 
 class FArcBuilderModule : public IModuleInterface
 {
 public:
+	static FArcBuilderDebugWindow GArcBuilderDebugWindow;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Lukasz Baran. All Rights Reserved.
 
 using System.IO;
 using UnrealBuildTool;
@@ -37,12 +37,14 @@ public class ArcBuilder : ModuleRules
 				"Core",
 				"CoreUObject",
 				"GameplayTags",
+				"StructUtils",
 				"TargetingSystem",
+				"MassEntity",
 				"MassActors",
 				"MassSpawner",
 				"MassRepresentation",
 				"ArcCore",
-				// ... add other public dependencies that you statically link with here ...
+				"ArcMass",
 			}
 			);
 			
@@ -54,7 +56,8 @@ public class ArcBuilder : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+				"SlateIM",
+				"AssetRegistry",
 			}
 			);
 		

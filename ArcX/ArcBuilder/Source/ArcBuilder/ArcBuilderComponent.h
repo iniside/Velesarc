@@ -1,4 +1,4 @@
-﻿/**
+/**
 * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
@@ -25,6 +25,7 @@
 #include "NativeGameplayTags.h"
 #include "Components/ActorComponent.h"
 #include "Items/Fragments/ArcItemFragment.h"
+#include "ArcNamedPrimaryAssetId.h"
 #include "Tasks/TargetingTask.h"
 #include "Types/TargetingSystemTypes.h"
 #include "ArcBuilderComponent.generated.h"
@@ -34,127 +35,32 @@ ARCBUILDER_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Build_Requirement_Item_Fail);
 class UStaticMesh;
 class UTargetingPreset;
 class UArcItemDefinition;
-
-USTRUCT()
-struct FArcBuildSocketInfo
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere)
-	FGameplayTagContainer SocketTags;
-
-	UPROPERTY(EditAnywhere)
-	TArray<FName> SocketNames;
-};
-
-class UArcBuilderComponent;
-
-USTRUCT()
-struct ARCBUILDER_API FArcBuildRequirement
-{
-	GENERATED_BODY()
-
-public:
-	virtual bool CanStartPlacement(UArcItemDefinition* InItemDef, UArcBuilderComponent* InBuilderComponent) const { return true; }
-
-	virtual bool CanPlace(const FTransform& InTransform, UArcItemDefinition* InItemDef, UArcBuilderComponent* InBuilderComponent) const { return true; }
-	
-	virtual ~FArcBuildRequirement() = default;
-};
-
-USTRUCT()
-struct ARCBUILDER_API FArcConsumeItemsRequirement
-{
-	GENERATED_BODY()
-
-public:
-	virtual bool CheckAndConsumeItems(UArcItemDefinition* InItemDef, const UArcBuilderComponent* InBuilderComponent, bool bConsume) const { return true; }
-	
-	virtual ~FArcConsumeItemsRequirement() = default;
-};
-
+class UArcBuildingDefinition;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FArcBuilderComponent_OnPlacementCompleted, UArcItemDefinition*, InItemDef, FGameplayTag, Tag);
 
-UCLASS()
-class UArcBuilderSharedConfigData : public UDataAsset
-{
-	GENERATED_BODY()
-	
-public:
-	// Will snap, only if target object hass all these tags.
-	UPROPERTY(EditAnywhere)
-	FGameplayTagContainer SnappingRequiredTags;
-
-	UPROPERTY(EditAnywhere)
-	TArray<TInstancedStruct<FArcBuildRequirement>> BuildRequirements;
-
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UMaterialInterface> RequirementMeetMaterial;
-
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UMaterialInterface> RequirementFailedMaterial;
-	
-	// Only Sockets with the same name will be matched.
-	UPROPERTY(EditAnywhere)
-	bool bMatchSocketsByName = true;
-	
-	UPROPERTY(EditAnywhere)
-	bool bSnapToClosestSocket = false;
-
-	// Default size of grid cell, when we are using grid snapping. 
-	UPROPERTY(EditAnywhere)
-	int32 DefaultGridSize = 100;
-
-	UPROPERTY(EditAnywhere)
-	FVector ApproximateSize = FVector(100.0, 100.0, 100.0);
-};
-
+/**
+ * Item fragment that references a UArcBuildingDefinition.
+ * Stored on UArcItemDefinition to associate items with building data.
+ */
 USTRUCT(BlueprintType)
 struct FArcItemFragment_BuilderData : public FArcItemFragment
 {
 	GENERATED_BODY()
 
 public:
-	// TODO:: Probably just add StaticMesh, SkinnedMesh and ActorClass, and then just implement spawning directly. YOLO.
-	UPROPERTY(EditAnywhere)
-	TSoftClassPtr<AActor> ActorClass;
-
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UArcBuilderSharedConfigData> SharedConfig;
-	
-	UPROPERTY(EditAnywhere)
-	FArcBuildSocketInfo SocketInfo;
-
-	// Will snap, only if target object hass all these tags.
-	UPROPERTY(EditAnywhere)
-	FGameplayTagContainer SnappingRequiredTags;
-
-	UPROPERTY(EditAnywhere)
-	TArray<TInstancedStruct<FArcBuildRequirement>> BuildRequirements;
-
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UMaterialInterface> RequirementMeetMaterial;
-
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UMaterialInterface> RequirementFailedMaterial;
-	
-	// Only Sockets with the same name will be matched.
-	UPROPERTY(EditAnywhere)
-	bool bMatchSocketsByName = true;
-	
-	UPROPERTY(EditAnywhere)
-	bool bSnapToClosestSocket = false;
-
-	// Default size of grid cell, when we are using grid snapping. 
-	UPROPERTY(EditAnywhere)
-	int32 DefaultGridSize = 100;
-
-	UPROPERTY(EditAnywhere)
-	FVector ApproximateSize = FVector(100.0, 100.0, 100.0);
+	/** Reference to the building definition data asset. */
+	UPROPERTY(EditAnywhere, meta = (AllowedClasses = "/Script/ArcBuilder.ArcBuildingDefinition", DisplayThumbnail = false))
+	FArcNamedPrimaryAssetId BuildingDefinitionId;
 };
 
+/**
+ * Builder component for survival-style building placement.
+ *
+ * Uses UArcBuildingDefinition data assets for building configuration,
+ * supports both actor spawning and Mass VisEntity spawning,
+ * and delegates snapping/requirements/consumption to pluggable instanced structs.
+ */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ARCBUILDER_API UArcBuilderComponent : public UActorComponent
 {
@@ -172,26 +78,28 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Config")
 	TObjectPtr<AActor> TemporaryPlacementActor;
 
-	UPROPERTY(EditAnywhere)
-	TInstancedStruct<FArcConsumeItemsRequirement> ConsumeItemRequirement;
-	
+	/** Cached building definition for current placement session. */
+	UPROPERTY()
+	TWeakObjectPtr<UArcBuildingDefinition> CurrentBuildingDef;
+
 	TWeakObjectPtr<UArcItemDefinition> CurrentItemDef;
 
 	bool bDidMeetPlaceRequirements = true;
-	
+
 	bool bUsePlacementGrid = false;
 
 	// If true, we will use grid relative to location of current object or location.
 	bool bUseRelativeGrid = false;
 	bool bAlignGridToSurfaceNormal = true;
-	bool bIsSocketSnappingEnabled = true;
-	
+
 	FVector RelativeGridOrigin = FVector::ZeroVector;
 	FQuat RelativeGridRotation = FQuat::Identity;
-	
+
 	int32 CurrentGridSize = 100;
 
 	FVector FinalPlacementLocation = FVector::ZeroVector;
+	FQuat FinalPlacementRotation = FQuat::Identity;
+
 public:
 	// Sets default values for this component's properties
 	UArcBuilderComponent();
@@ -203,13 +111,7 @@ protected:
 public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	bool DoesMeetItemRequirement(UArcItemDefinition* InItemDef) const;
-	
-	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
-	void SetSocketSnappingEnabled(bool bNewSocketSnappingEnabled)
-	{
-		bIsSocketSnappingEnabled = bNewSocketSnappingEnabled;
-	}
-	
+
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	void SetUsePlacementGrid(bool bNewUsePlacementGrid)
 	{
@@ -233,24 +135,33 @@ public:
 	{
 		CurrentGridSize = NewGridSize;
 	}
-	
+
 	int32 GetGridSize() const
 	{
 		return CurrentGridSize;
 	}
+
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	void SetPlacementOffsetLocation(const FVector& NewLocation);
-	
+
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	void BeginPlacement(UArcItemDefinition* InBuilderData);
 
+	/** Begin placement directly from a building definition (no item definition needed). */
+	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
+	void BeginPlacementFromDefinition(UArcBuildingDefinition* InBuildingDef);
+
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	void EndPlacement();
-	
+
 	void HandleTargetingCompleted(FTargetingRequestHandle InTargetingRequestHandle);
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	void PlaceObject();
+
+private:
+	/** Resolve and cache a UArcBuildingDefinition from an item definition's fragment. */
+	UArcBuildingDefinition* ResolveBuildingDefinition(UArcItemDefinition* InItemDef) const;
 };
 
 UCLASS()
@@ -260,7 +171,7 @@ class UArcTargetingTask_BuildTrace : public UTargetingTask
 
 	UPROPERTY(EditAnywhere, Category = "Target Trace Selection | Collision Data")
 	float SphereRadius = 400.f;
-	
+
 public:
 	UArcTargetingTask_BuildTrace(const FObjectInitializer& ObjectInitializer);
 

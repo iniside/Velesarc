@@ -22,49 +22,83 @@
 
 #include "ArcBuilderComponent.h"
 
+#include "ArcBuildingDefinition.h"
+#include "ArcBuildSnappingMethod.h"
+#include "ArcBuildResourceConsumption.h"
+#include "ArcBuildRequirement.h"
+#include "ArcMass/ArcMassEntityVisualization.h"
+
+#include "Engine/AssetManager.h"
 #include "GameFramework/PlayerState.h"
 #include "Items/ArcItemDefinition.h"
+#include "MassEntityConfigAsset.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "Targeting/ArcTargetingSourceContext.h"
 #include "TargetingSystem/TargetingSubsystem.h"
 
-UE_DEFINE_GAMEPLAY_TAG(TAG_Build_Item_Requirement_Fail, "Build.Requirement.Item.Fail");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Build_Requirement_Item_Fail, "Build.Requirement.Item.Fail");
 
 // Sets default values for this component's properties
 UArcBuilderComponent::UArcBuilderComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
-
-	// ...
 }
 
 // Called when the game starts
 void UArcBuilderComponent::BeginPlay()
 {
 	Super::BeginPlay();
+}
 
-	// ...
-	
+UArcBuildingDefinition* UArcBuilderComponent::ResolveBuildingDefinition(UArcItemDefinition* InItemDef) const
+{
+	if (!InItemDef)
+	{
+		return nullptr;
+	}
+
+	const FArcItemFragment_BuilderData* BuildFragment = InItemDef->FindFragment<FArcItemFragment_BuilderData>();
+	if (!BuildFragment)
+	{
+		return nullptr;
+	}
+
+	if (!BuildFragment->BuildingDefinitionId.IsValid())
+	{
+		return nullptr;
+	}
+
+	UAssetManager& AssetManager = UAssetManager::Get();
+	UArcBuildingDefinition* BuildingDef = AssetManager.GetPrimaryAssetObject<UArcBuildingDefinition>(BuildFragment->BuildingDefinitionId);
+
+	if (!BuildingDef)
+	{
+		// Try synchronous load.
+		FSoftObjectPath AssetPath = AssetManager.GetPrimaryAssetPath(BuildFragment->BuildingDefinitionId);
+		if (AssetPath.IsValid())
+		{
+			BuildingDef = Cast<UArcBuildingDefinition>(AssetPath.TryLoad());
+		}
+	}
+
+	return BuildingDef;
 }
 
 bool UArcBuilderComponent::DoesMeetItemRequirement(UArcItemDefinition* InItemDef) const
 {
-	const FArcItemFragment_BuilderData* BuildFragment = InItemDef->FindFragment<FArcItemFragment_BuilderData>();
-	if (!BuildFragment)
+	UArcBuildingDefinition* BuildDef = ResolveBuildingDefinition(InItemDef);
+	if (!BuildDef)
 	{
 		return false;
 	}
 
-	if (const FArcConsumeItemsRequirement* ItemReq = ConsumeItemRequirement.GetPtr<FArcConsumeItemsRequirement>())
+	if (const FArcBuildResourceConsumption* Consumption = BuildDef->ResourceConsumption.GetPtr<FArcBuildResourceConsumption>())
 	{
-		if (ItemReq->CheckAndConsumeItems(InItemDef, this, false))
-		{
-			return true;
-		}
-		return false;
+		return Consumption->CheckAndConsumeResources(BuildDef, this, false);
 	}
 
+	// No consumption strategy set — treat as free placement.
 	return true;
 }
 
@@ -83,22 +117,24 @@ void UArcBuilderComponent::BeginPlacement(UArcItemDefinition* InBuilderData)
 	{
 		return;
 	}
-	
+
 	if (TemporaryPlacementActor)
 	{
 		TemporaryPlacementActor->SetActorHiddenInGame(true);
 		TemporaryPlacementActor->Destroy();
 		TemporaryPlacementActor = nullptr;
 	}
-	
+
 	CurrentItemDef = InBuilderData;
-	
-	const FArcItemFragment_BuilderData* BuildFragment = CurrentItemDef->FindFragment<FArcItemFragment_BuilderData>();
-	if (!BuildFragment)
+
+	UArcBuildingDefinition* BuildDef = ResolveBuildingDefinition(InBuilderData);
+	if (!BuildDef)
 	{
 		return;
 	}
-	
+
+	CurrentBuildingDef = BuildDef;
+
 	APawn* Pawn = nullptr;
 	if (APlayerController* PC = GetOwner<APlayerController>())
 	{
@@ -116,20 +152,18 @@ void UArcBuilderComponent::BeginPlacement(UArcItemDefinition* InBuilderData)
 	{
 		return;
 	}
-	
-	CurrentItemDef = InBuilderData;
-	
+
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = GetOwner();
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	// TODO:: Load as part of bundle.
-	UClass* ActorClass = InBuilderData ? BuildFragment->ActorClass.LoadSynchronous() : nullptr;
+	UClass* ActorClass = BuildDef->ActorClass.LoadSynchronous();
 	if (!ActorClass)
 	{
 		return;
 	}
-	
+
 	TemporaryPlacementActor = GetWorld()->SpawnActor<AActor>(ActorClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
 	TemporaryPlacementActor->SetActorEnableCollision(false);
 
@@ -139,24 +173,27 @@ void UArcBuilderComponent::BeginPlacement(UArcItemDefinition* InBuilderData)
 	TemporaryPlacementActor->GetComponents(StaticMeshComponents);
 
 	UMaterialInterface* Material = bDoesMeetReq
-		? BuildFragment->RequirementMeetMaterial
-		: BuildFragment->RequirementFailedMaterial;
-	
+		? BuildDef->RequirementMeetMaterial
+		: BuildDef->RequirementFailedMaterial;
+
 	for (UStaticMeshComponent* SMComp : StaticMeshComponents)
 	{
 		int32 MaterialNum = SMComp->GetNumMaterials();
 		for (int32 i = 0; i < MaterialNum; ++i)
 		{
-			SMComp->SetMaterial(i, Material);	
-		}	
+			SMComp->SetMaterial(i, Material);
+		}
 	}
-	
+
+	// Apply grid size from building definition.
+	CurrentGridSize = BuildDef->DefaultGridSize;
+
 	UTargetingSubsystem* Targeting = UTargetingSubsystem::Get(GetWorld());
 	FArcTargetingSourceContext Context;
 	Context.InstigatorActor = GetOwner();
 	Context.SourceActor = Pawn;
 	Context.SourceObject = TemporaryPlacementActor;
-	
+
 	if (Targeting)
 	{
 		if (PlacementTargetingPreset && !TargetingRequestHandle.IsValid())
@@ -165,10 +202,117 @@ void UArcBuilderComponent::BeginPlacement(UArcItemDefinition* InBuilderData)
 
 			FTargetingAsyncTaskData& AsyncTaskData = FTargetingAsyncTaskData::FindOrAdd(TargetingRequestHandle);
 			AsyncTaskData.bRequeueOnCompletion = true;
-			
+
 			FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcBuilderComponent::HandleTargetingCompleted);
-			
-			Targeting->StartAsyncTargetingRequestWithHandle(TargetingRequestHandle, CompletionDelegate);	
+
+			Targeting->StartAsyncTargetingRequestWithHandle(TargetingRequestHandle, CompletionDelegate);
+		}
+	}
+}
+
+void UArcBuilderComponent::BeginPlacementFromDefinition(UArcBuildingDefinition* InBuildingDef)
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	if (!InBuildingDef)
+	{
+		return;
+	}
+
+	if (InBuildingDef == CurrentBuildingDef.Get())
+	{
+		return;
+	}
+
+	if (TemporaryPlacementActor)
+	{
+		TemporaryPlacementActor->SetActorHiddenInGame(true);
+		TemporaryPlacementActor->Destroy();
+		TemporaryPlacementActor = nullptr;
+	}
+
+	CurrentItemDef.Reset();
+	CurrentBuildingDef = InBuildingDef;
+
+	APawn* Pawn = nullptr;
+	if (APlayerController* PC = GetOwner<APlayerController>())
+	{
+		Pawn = PC->GetPawn();
+	}
+	if (!Pawn)
+	{
+		if (APlayerState* PS = GetOwner<APlayerState>())
+		{
+			Pawn = PS->GetPawn();
+		}
+	}
+
+	if (!Pawn)
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = GetOwner();
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	UClass* ActorClass = InBuildingDef->ActorClass.LoadSynchronous();
+	if (!ActorClass)
+	{
+		return;
+	}
+
+	TemporaryPlacementActor = GetWorld()->SpawnActor<AActor>(ActorClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	TemporaryPlacementActor->SetActorEnableCollision(false);
+
+	const bool bDoesMeetReq = [&]()
+	{
+		if (const FArcBuildResourceConsumption* Consumption = InBuildingDef->ResourceConsumption.GetPtr<FArcBuildResourceConsumption>())
+		{
+			return Consumption->CheckAndConsumeResources(InBuildingDef, this, false);
+		}
+		return true;
+	}();
+
+	TArray<UStaticMeshComponent*> StaticMeshComponents;
+	TemporaryPlacementActor->GetComponents(StaticMeshComponents);
+
+	UMaterialInterface* Material = bDoesMeetReq
+		? InBuildingDef->RequirementMeetMaterial
+		: InBuildingDef->RequirementFailedMaterial;
+
+	for (UStaticMeshComponent* SMComp : StaticMeshComponents)
+	{
+		int32 MaterialNum = SMComp->GetNumMaterials();
+		for (int32 i = 0; i < MaterialNum; ++i)
+		{
+			SMComp->SetMaterial(i, Material);
+		}
+	}
+
+	CurrentGridSize = InBuildingDef->DefaultGridSize;
+
+	UTargetingSubsystem* Targeting = UTargetingSubsystem::Get(GetWorld());
+	FArcTargetingSourceContext Context;
+	Context.InstigatorActor = GetOwner();
+	Context.SourceActor = Pawn;
+	Context.SourceObject = TemporaryPlacementActor;
+
+	if (Targeting)
+	{
+		if (PlacementTargetingPreset && !TargetingRequestHandle.IsValid())
+		{
+			TargetingRequestHandle = Arcx::MakeTargetRequestHandle(PlacementTargetingPreset, Context);
+
+			FTargetingAsyncTaskData& AsyncTaskData = FTargetingAsyncTaskData::FindOrAdd(TargetingRequestHandle);
+			AsyncTaskData.bRequeueOnCompletion = true;
+
+			FTargetingRequestDelegate CompletionDelegate = FTargetingRequestDelegate::CreateUObject(this, &UArcBuilderComponent::HandleTargetingCompleted);
+
+			Targeting->StartAsyncTargetingRequestWithHandle(TargetingRequestHandle, CompletionDelegate);
 		}
 	}
 }
@@ -181,7 +325,7 @@ void UArcBuilderComponent::EndPlacement()
 		Targeting->RemoveAsyncTargetingRequestWithHandle(TargetingRequestHandle);
 		TargetingRequestHandle.Reset();
 	}
-	
+
 	if (TemporaryPlacementActor)
 	{
 		TemporaryPlacementActor->SetActorHiddenInGame(true);
@@ -190,6 +334,7 @@ void UArcBuilderComponent::EndPlacement()
 	}
 
 	CurrentItemDef.Reset();
+	CurrentBuildingDef.Reset();
 }
 
 namespace
@@ -236,7 +381,14 @@ void UArcBuilderComponent::HandleTargetingCompleted(FTargetingRequestHandle InTa
 	{
 		return;
 	}
-	
+
+	if (!CurrentBuildingDef.IsValid())
+	{
+		return;
+	}
+
+	const UArcBuildingDefinition* BuildDef = CurrentBuildingDef.Get();
+
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(InTargetingRequestHandle);
 
 	if (TargetingResults.TargetResults.Num() > 0)
@@ -250,7 +402,7 @@ void UArcBuilderComponent::HandleTargetingCompleted(FTargetingRequestHandle InTa
 		FVector End = FirstHitResult.ImpactPoint + FirstHitResult.ImpactNormal * 200.f;
 		DrawDebugPoint(GetWorld(), FirstHitResult.ImpactPoint, 30.f, FColor::Red, false, -1, 0);
 		DrawDebugLine(GetWorld(), RelativeGridOrigin, End, FColor::Red, false, -1, 0, 2.0f);
-		
+
 		if (bAlignGridToSurfaceNormal)
 		{
 			const FVector Normal = FirstHitResult.ImpactNormal.GetSafeNormal();
@@ -270,7 +422,7 @@ void UArcBuilderComponent::HandleTargetingCompleted(FTargetingRequestHandle InTa
 
 		FVector EndRelative = FirstHitResult.ImpactPoint + RelativeGridRotation.Vector() * 200.f;
 		DrawDebugLine(GetWorld(), RelativeGridOrigin, EndRelative, FColor::Green, false, -1, 0, 2.0f);
-		
+
 		for (const FTargetingDefaultResultData& ResultData : TargetingResults.TargetResults)
 		{
 			if (ResultData.HitResult.GetActor())
@@ -279,170 +431,122 @@ void UArcBuilderComponent::HandleTargetingCompleted(FTargetingRequestHandle InTa
 				HitResult = ResultData.HitResult;
 				if (TargetSMC)
 				{
-					break;	
+					break;
 				}
 			}
 		}
-		
-		if (TargetSMC && !bUsePlacementGrid && bIsSocketSnappingEnabled)
+
+		// Try snapping method from building definition.
+		bool bSnappingApplied = false;
+		if (const FArcBuildSnappingMethod* SnapMethod = BuildDef->SnappingMethod.GetPtr<FArcBuildSnappingMethod>())
 		{
-			AActor* TargetActor = HitResult.GetActor();
-			
 			UStaticMeshComponent* MySMC = TemporaryPlacementActor->FindComponentByClass<UStaticMeshComponent>();
-			
-			if (TargetSMC && MySMC)
+
+			FGameplayTagContainer TargetTags;
+			// TODO: Extract tags from target actor if needed.
+
+			FTransform SnappedTransform;
+			if (SnapMethod->ComputeSnappedTransform(FirstHitResult, MySMC, TargetSMC, TargetTags, SnappedTransform))
 			{
-				TArray<FName> TargetSockets = TargetSMC->GetAllSocketNames();
-				TArray<FName> MySockets = MySMC->GetAllSocketNames();
+				FinalPlacementLocation = SnappedTransform.GetLocation();
+				FinalPlacementRotation = SnappedTransform.GetRotation();
+				TemporaryPlacementActor->SetActorLocation(FinalPlacementLocation);
+				TemporaryPlacementActor->SetActorRotation(FinalPlacementRotation);
+				bSnappingApplied = true;
+			}
+		}
 
-				if (TargetSockets.Num() > 0 && MySockets.Num() > 0)
+		// Grid / raw placement fallback.
+		if (!bSnappingApplied)
+		{
+			FVector FinalLocation = FirstHitResult.ImpactPoint + PlacementOffsetLocation;
+
+			if (bUsePlacementGrid)
+			{
+				if (bUseRelativeGrid)
 				{
-					float SqDistance = FLT_MAX;
-
-					FName TargetSocketName;
-				
-					for (const FName& TargetSocket : TargetSockets)
-					{
-						FVector TargetSocketLocation = TargetSMC->GetSocketLocation(TargetSocket);
-													
-						float NewSqDistance = FVector::DistSquared(TargetSocketLocation, FirstHitResult.ImpactPoint);
-
-						if (NewSqDistance < SqDistance)
-						{
-							SqDistance = NewSqDistance;
-							TargetSocketName = TargetSocket;
-						}
-						
-					}
-
-					if (TargetSocketName.IsValid())
-					{
-						FVector TargetSocketLocation = TargetSMC->GetSocketLocation(TargetSocketName);
-						FVector TargetSocketDir = MySMC->GetSocketRotation(TargetSocketName).Vector();
-						
-						FBoxSphereBounds Bounds = MySMC->Bounds;
-						double Half = Bounds.BoxExtent.X * 0.5;
-
-						SqDistance = FLT_MAX;
-						FName MySocketName;
-						
-						for (const FName& MySocket : MySockets)
-						{
-							FVector MySocketLocation = MySMC->GetSocketLocation(MySocket);
-													
-							float NewSqDistance = FVector::DistSquared(TargetSocketLocation, MySocketLocation);
-
-							if (NewSqDistance < SqDistance)
-							{
-								SqDistance = NewSqDistance;
-								MySocketName = MySocket;
-							}
-						}
-						
-						FVector MySocketLocation = MySMC->GetSocketLocation(MySocketName);
-						float Dist = FVector::Dist(TemporaryPlacementActor->GetActorLocation(), MySocketLocation);
-						FVector NewLocation = TargetSocketLocation + (TargetSocketDir * Dist);
-						TemporaryPlacementActor->SetActorLocation(NewLocation);
-						FinalPlacementLocation = NewLocation;
-						return;
-					}
+					FinalLocation = SnapRelative(FinalLocation, CurrentGridSize, RelativeGridOrigin, RelativeGridRotation);
+				}
+				else
+				{
+					const double Grid = static_cast<double>(CurrentGridSize);
+					FinalLocation.X = FMath::GridSnap(FinalLocation.X, Grid);
+					FinalLocation.Y = FMath::GridSnap(FinalLocation.Y, Grid);
 				}
 			}
-		}
-		
-		FVector FinalLocation = FirstHitResult.ImpactPoint + PlacementOffsetLocation;
 
-		if (bUsePlacementGrid)
-		{
-			if (bUseRelativeGrid)
-			{
-				FinalLocation = SnapRelative(FinalLocation, CurrentGridSize, RelativeGridOrigin, RelativeGridRotation);
-			}
-			else
-			{
-				const double Grid = static_cast<double>(CurrentGridSize);
-				FinalLocation.X = FMath::GridSnap(FinalLocation.X, Grid);
-				FinalLocation.Y = FMath::GridSnap(FinalLocation.Y, Grid);	
-			}
-				
-		}
-		const FVector Normal = FirstHitResult.ImpactNormal.GetSafeNormal();
+			const FVector Normal = FirstHitResult.ImpactNormal.GetSafeNormal();
 
-		FQuat DesiredRotationQuat = FQuat::Identity;
-		if (!Normal.IsNearlyZero() && bUseRelativeGrid)
-		{
-			FRotator ViewRot = FRotator::ZeroRotator;
-			FVector ViewLoc = FVector::ZeroVector;
+			FQuat DesiredRotationQuat = FQuat::Identity;
+			if (!Normal.IsNearlyZero() && bUseRelativeGrid)
+			{
+				FRotator ViewRot = FRotator::ZeroRotator;
+				FVector ViewLoc = FVector::ZeroVector;
 
-			if (APlayerController* PC = Cast<APlayerController>(GetOwner()))
-			{
-				PC->GetPlayerViewPoint(ViewLoc, ViewRot);
-			}
-			else if (APawn* PawnOwner = Cast<APawn>(GetOwner()))
-			{
-				PawnOwner->GetActorEyesViewPoint(ViewLoc, ViewRot);
+				if (APlayerController* PC = Cast<APlayerController>(GetOwner()))
+				{
+					PC->GetPlayerViewPoint(ViewLoc, ViewRot);
+				}
+				else if (APawn* PawnOwner = Cast<APawn>(GetOwner()))
+				{
+					PawnOwner->GetActorEyesViewPoint(ViewLoc, ViewRot);
+				}
+
+				const FVector ViewFwd = ViewRot.Vector();
+				const FVector TangentFwd = (ViewFwd - FVector::DotProduct(ViewFwd, Normal) * Normal).GetSafeNormal();
+
+				// If the projection degenerates (looking straight at the surface), fall back to "Up only"
+				DesiredRotationQuat = TangentFwd.IsNearlyZero()
+					? FRotationMatrix::MakeFromZ(Normal).ToQuat()
+					: FRotationMatrix::MakeFromXZ(TangentFwd, Normal).ToQuat();
 			}
 
-			const FVector ViewFwd = ViewRot.Vector();
-			const FVector TangentFwd = (ViewFwd - FVector::DotProduct(ViewFwd, Normal) * Normal).GetSafeNormal();
+			if (TemporaryPlacementActor)
+			{
+				TemporaryPlacementActor->SetActorRotation(DesiredRotationQuat);
+			}
 
-			// If the projection degenerates (looking straight at the surface), fall back to "Up only"
-			DesiredRotationQuat = TangentFwd.IsNearlyZero()
-				? FRotationMatrix::MakeFromZ(Normal).ToQuat()
-				: FRotationMatrix::MakeFromXZ(TangentFwd, Normal).ToQuat();
+			FinalPlacementLocation = FinalLocation;
+			FinalPlacementRotation = DesiredRotationQuat;
+			TemporaryPlacementActor->SetActorLocation(FinalLocation);
 		}
 
-		// Apply rotation to the preview actor (so you can see the orientation while placing)
-		if (TemporaryPlacementActor)
-		{
-			TemporaryPlacementActor->SetActorRotation(DesiredRotationQuat);
-		}
-
-		
-		FinalPlacementLocation = FinalLocation;
-		TemporaryPlacementActor->SetActorLocation(FinalLocation);
-
-		const FArcItemFragment_BuilderData* BuildFragment = CurrentItemDef->FindFragment<FArcItemFragment_BuilderData>();
-		if (!BuildFragment)
-		{
-			return;
-		}
-
+		// Check placement requirements.
 		FTransform TM;
-		TM.SetLocation(FinalLocation);
-		TM.SetRotation(DesiredRotationQuat);
-		
+		TM.SetLocation(FinalPlacementLocation);
+		TM.SetRotation(FinalPlacementRotation);
+
 		bool bNewMeetsReq = true;
-		for (const TInstancedStruct<FArcBuildRequirement>& Item : BuildFragment->BuildRequirements)
+		for (const TInstancedStruct<FArcBuildRequirement>& Item : BuildDef->BuildRequirements)
 		{
 			if (const FArcBuildRequirement* ItemReq = Item.GetPtr<FArcBuildRequirement>())
 			{
-				if (!ItemReq->CanPlace(TM, CurrentItemDef.Get(), this))
+				if (!ItemReq->CanPlace(TM, BuildDef, this))
 				{
 					bNewMeetsReq = false;
 					break;
 				}
-			}	
+			}
 		}
-		
+
 		if (bNewMeetsReq != bDidMeetPlaceRequirements)
 		{
 			bDidMeetPlaceRequirements = bNewMeetsReq;
 
 			TArray<UStaticMeshComponent*> StaticMeshComponents;
 			TemporaryPlacementActor->GetComponents(StaticMeshComponents);
-			
+
 			UMaterialInterface* Material = bDidMeetPlaceRequirements
-				? BuildFragment->RequirementMeetMaterial
-				: BuildFragment->RequirementFailedMaterial;
-	
+				? BuildDef->RequirementMeetMaterial
+				: BuildDef->RequirementFailedMaterial;
+
 			for (UStaticMeshComponent* SMComp : StaticMeshComponents)
 			{
 				int32 MaterialNum = SMComp->GetNumOverrideMaterials();
 				for (int32 i = 0; i < MaterialNum; ++i)
 				{
-					SMComp->SetMaterial(i, Material);	
-				}	
+					SMComp->SetMaterial(i, Material);
+				}
 			}
 		}
 	}
@@ -450,28 +554,42 @@ void UArcBuilderComponent::HandleTargetingCompleted(FTargetingRequestHandle InTa
 
 void UArcBuilderComponent::PlaceObject()
 {
-	const FArcItemFragment_BuilderData* BuildFragment = CurrentItemDef->FindFragment<FArcItemFragment_BuilderData>();
-	if (!BuildFragment)
+	if (!CurrentBuildingDef.IsValid())
 	{
 		return;
 	}
 
-	if (const FArcConsumeItemsRequirement* ItemReq = ConsumeItemRequirement.GetPtr<FArcConsumeItemsRequirement>())
+	const UArcBuildingDefinition* BuildDef = CurrentBuildingDef.Get();
+
+	// Check and consume resources via the building definition's consumption strategy.
+	if (const FArcBuildResourceConsumption* Consumption = BuildDef->ResourceConsumption.GetPtr<FArcBuildResourceConsumption>())
 	{
-		if (!ItemReq->CheckAndConsumeItems(CurrentItemDef.Get(), this, true))
+		if (!Consumption->CheckAndConsumeResources(BuildDef, this, true))
 		{
 			return;
 		}
 	}
-	
-	UClass* ActorClass = BuildFragment->ActorClass.LoadSynchronous();
-	if (ActorClass)
+
+	FTransform SpawnTransform;
+	SpawnTransform.SetLocation(FinalPlacementLocation);
+	SpawnTransform.SetRotation(FinalPlacementRotation);
+
+	// Dual path: Mass entity or Actor.
+	if (BuildDef->HasMassEntityConfig())
 	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = GetOwner();
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		
-		GetWorld()->SpawnActor<AActor>(ActorClass, FinalPlacementLocation, FRotator::ZeroRotator, SpawnParams);
+		UArcVisEntitySpawnLibrary::SpawnVisEntity(this, BuildDef->MassEntityConfig, SpawnTransform);
+	}
+	else
+	{
+		UClass* ActorClass = BuildDef->ActorClass.LoadSynchronous();
+		if (ActorClass)
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.Owner = GetOwner();
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+			GetWorld()->SpawnActor<AActor>(ActorClass, SpawnTransform.GetLocation(), SpawnTransform.GetRotation().Rotator(), SpawnParams);
+		}
 	}
 }
 
@@ -483,9 +601,9 @@ UArcTargetingTask_BuildTrace::UArcTargetingTask_BuildTrace(const FObjectInitiali
 void UArcTargetingTask_BuildTrace::Execute(const FTargetingRequestHandle& TargetingHandle) const
 {
 	Super::Execute(TargetingHandle);
-	
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
-	
+
 	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
 
@@ -494,13 +612,13 @@ void UArcTargetingTask_BuildTrace::Execute(const FTargetingRequestHandle& Target
 		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 		return;
 	}
-	
+
 	FVector EyeLocation;
 	FRotator EyeRotation;
 	Ctx->SourceActor->GetActorEyesViewPoint(EyeLocation, EyeRotation);
 
 	FVector EndLocation = EyeLocation + EyeRotation.Vector() * 10000.f;
-	
+
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(Ctx->SourceActor);
 	Params.bTraceComplex = true;
@@ -516,11 +634,11 @@ void UArcTargetingTask_BuildTrace::Execute(const FTargetingRequestHandle& Target
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = FirstHitResult;
 	}
-	
+
 	TArray<FHitResult> HitResults;
 
 	FCollisionResponseParams ResponseParams(ECollisionResponse::ECR_Overlap);
-	
+
 	Ctx->InstigatorActor->GetWorld()->SweepMultiByChannel(HitResults, EyeLocation, EndLocation, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(SphereRadius), Params, ResponseParams);
 
 	DrawDebugCylinder(Ctx->InstigatorActor->GetWorld(), EyeLocation, EndLocation, SphereRadius, 10.f, FColor::Green, false, -1.f, 0, 0.2f);
@@ -530,11 +648,6 @@ void UArcTargetingTask_BuildTrace::Execute(const FTargetingRequestHandle& Target
 		ResultData->HitResult = HitResult;
 		DrawDebugPoint(Ctx->InstigatorActor->GetWorld(), HitResult.ImpactPoint, 10.f, FColor::Red, false);
 	}
-	
-	//DrawDebugLine(Ctx->InstigatorActor->GetWorld()
-	//, EyeLocation, EndLocation
-	//, FColor::Blue, false, 0.1, 0, 0.2f);
-	
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 }
-
