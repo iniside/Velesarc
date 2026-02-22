@@ -29,13 +29,20 @@ UArcItemsSubsystem* UArcItemsSubsystem::Get(UObject* WorldObject)
 {
 	if (UWorld* World = WorldObject->GetWorld())
 	{
-		return World->GetGameInstance()->GetSubsystem<UArcItemsSubsystem>();
+		if (World->GetGameInstance())
+		{
+			return World->GetGameInstance()->GetSubsystem<UArcItemsSubsystem>();	
+		}
+		
 		//return World->GetSubsystem<UArcItemsSubsystem>();
 	}
 
 	if (UWorld* World= Cast<UWorld>(WorldObject))
 	{
-		return World->GetGameInstance()->GetSubsystem<UArcItemsSubsystem>();
+		if (World->GetGameInstance())
+		{
+			return World->GetGameInstance()->GetSubsystem<UArcItemsSubsystem>();
+		}
 		//return World->GetSubsystem<UArcItemsSubsystem>();
 	}
 

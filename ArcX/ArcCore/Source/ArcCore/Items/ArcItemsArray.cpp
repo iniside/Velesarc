@@ -87,9 +87,19 @@ void FArcItemDataInternal::SetItemData(TSharedPtr<FArcItemData>& InItem
 
 	const UArcItemDefinition* ItemDef = UArcCoreAssetManager::Get().GetAsset<UArcItemDefinition>(InSpec.GetItemDefinitionId());
 
+	// Fallback: use the definition set directly on the spec (e.g. from tests or manually created items)
+	if (ItemDef == nullptr)
+	{
+		ItemDef = InSpec.GetItemDefinition();
+	}
+
 	ItemPtr->SetItemSpec(InSpec);
 
-	TArray<const FArcItemFragment_ItemInstanceBase*> InstancesToMake = ItemDef->GetFragmentsOfType<FArcItemFragment_ItemInstanceBase>();
+	TArray<const FArcItemFragment_ItemInstanceBase*> InstancesToMake;
+	if (ItemDef != nullptr)
+	{
+		InstancesToMake = ItemDef->GetFragmentsOfType<FArcItemFragment_ItemInstanceBase>();
+	}
 	for (const FArcItemFragment_ItemInstanceBase* IIB : InstancesToMake)
 	{
 		if (IIB->GetCreateItemInstance() == false)

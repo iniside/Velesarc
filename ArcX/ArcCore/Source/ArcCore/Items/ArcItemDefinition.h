@@ -51,10 +51,11 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	FGuid ItemId;
 	
+public:
 	UFUNCTION(BlueprintCallable, CallInEditor)
 	void RegenerateItemId();
 	
-	
+protected:
 	/** Fragments are way to add custom data into Item Definition. */
 	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcCore.ArcItemFragment", ShowTreeView, ExcludeBaseStruct), Category = "Item")
 	TSet<FArcInstancedStruct> FragmentSet;

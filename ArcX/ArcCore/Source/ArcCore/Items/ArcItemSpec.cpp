@@ -40,7 +40,12 @@ DEFINE_LOG_CATEGORY(LogArcItemSpec);
 
 const UArcItemDefinition* FArcItemSpec::GetItemDefinition() const
 {
+	if (ItemDefinition)
+	{
+		return ItemDefinition;
+	}
 	const UArcItemDefinition* Item = UArcCoreAssetManager::Get().GetAssetWithBundles<UArcItemDefinition>(ItemDefinitionId, false);
+	ItemDefinition = Item;
 	return Item;
 }
 

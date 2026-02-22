@@ -142,7 +142,7 @@ TSharedPtr<FArcItemData> FArcItemData::NewFromSpec(const FArcItemSpec& InSpec)
 		NewEntry->ItemId = InSpec.ItemId;	
 	}
 	
-	
+	NewEntry->ItemDefinition = InSpec.GetItemDefinition();
 	NewEntry->Level = InSpec.Level;
 
 	return NewEntry;
@@ -197,12 +197,21 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 	
 	ItemDefinition = UArcCoreAssetManager::Get().GetAssetWithBundles<UArcItemDefinition>(ItemsStoreComponent
 		, GetItemDefinitionId()
-		, false);	
-	
-	const TSet<FArcInstancedStruct>& IS = GetItemDefinition()->GetScalableFloatFragments();
-	for (const FArcInstancedStruct& I : IS)
+		, false);
+
+	// Fallback: use the definition set directly on the spec (e.g. from tests or manually created items)
+	if (ItemDefinition == nullptr && Spec.ItemDefinition != nullptr)
 	{
-		ScalableFloatFragments.FindOrAdd(I.GetScriptStruct()) = I.GetPtr<FArcScalableFloatItemFragment>();
+		ItemDefinition = Spec.ItemDefinition;
+	}
+
+	if (const UArcItemDefinition* Def = GetItemDefinition())
+	{
+		const TSet<FArcInstancedStruct>& IS = Def->GetScalableFloatFragments();
+		for (const FArcInstancedStruct& I : IS)
+		{
+			ScalableFloatFragments.FindOrAdd(I.GetScriptStruct()) = I.GetPtr<FArcScalableFloatItemFragment>();
+		}
 	}
 	
 	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(this))

@@ -250,6 +250,9 @@ public:
 
 	TArray<TSharedPtr<FArcItemInstance>> InitialInstanceData;
 	
+	UPROPERTY()
+	mutable TObjectPtr<const UArcItemDefinition> ItemDefinition;
+	
 public:
 	UScriptStruct* GetScriptStruct() const
 	{
@@ -317,7 +320,13 @@ public:
 		ItemDefinitionId = InItemDefinitionId;
 		return *this;
 	}
-
+	
+	FArcItemSpec& SetItemDefinitionAsset(const UArcItemDefinition* InItemDefinition)
+	{
+		ItemDefinition = InItemDefinition;
+		return *this;
+	}
+	
 	FArcItemSpec()
 		: ItemId()
 		, Amount(1)
@@ -333,6 +342,7 @@ public:
 		Level = Other.Level;
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = Other.InstanceData;
+		ItemDefinition = Other.ItemDefinition;
 	}
 	FArcItemSpec(FArcItemSpec&& Other)
 	{
@@ -341,6 +351,8 @@ public:
 		Level = Other.Level;
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = MoveTemp(Other.InstanceData);
+		ItemDefinition = MoveTemp(Other.ItemDefinition);
+		Other.ItemDefinition = nullptr;
 	}
 
 	~FArcItemSpec()
@@ -382,7 +394,8 @@ public:
 		Level = Other.Level;
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = Other.InstanceData;
-
+		ItemDefinition = Other.ItemDefinition;
+		
 		return *this;
 	}
 
@@ -393,7 +406,9 @@ public:
 		Level = Other.Level;
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = MoveTemp(Other.InstanceData);
-
+		ItemDefinition = MoveTemp(Other.ItemDefinition);
+		Other.ItemDefinition = nullptr;
+		
 		return *this;
 	}
 

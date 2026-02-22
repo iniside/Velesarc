@@ -464,7 +464,11 @@ void UArcItemsStoreComponent::RemoveItem(const FArcItemId& Item, int32 Stacks, b
 		
 		if (ItemData != nullptr && bRemove && bRemoveOnZeroStacks)
 		{
-			ItemsSubsystem->BroadcastActorOnItemRemovedFromStoreMap(GetOwner(), Item, this, ItemData);
+			if (ItemsSubsystem)
+			{
+				ItemsSubsystem->BroadcastActorOnItemRemovedFromStoreMap(GetOwner(), Item, this, ItemData);	
+			}
+			
 
 			ItemData->OnPreRemove();
 	
