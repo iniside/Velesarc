@@ -159,6 +159,12 @@ public class ArcCore : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
+				"SlateIM"
+			}
+		);
+		PublicDependencyModuleNames.AddRange(
+			new string[]
+			{
 				"CommonUser", "ControlFlows", "CommonGame", "GameplayMessageRuntime", "GameSettings",
 				"ModularGameplayActors", "CommonLoadingScreen", "CommonStartupLoadingScreen", "GameSubtitles",
 				"CommonUI", "CommonInput"

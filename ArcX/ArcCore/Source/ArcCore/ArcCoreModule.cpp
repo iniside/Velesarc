@@ -38,6 +38,7 @@
 #include "Misc/CoreDelegates.h"
 
 #define LOCTEXT_NAMESPACE "FArcGameCoreModule"
+FArcItemsDebugWindow FArcCoreModule::GArcItemsDebugWindow = FArcItemsDebugWindow();
 
 namespace Arcx
 {
@@ -148,6 +149,18 @@ void FArcCoreModule::StartupModule()
 	GameplayDebuggerModule.NotifyCategoriesChanged();
 #endif // WITH_GAMEPLAY_DEBUGGER
 
+#if WITH_EDITOR
+	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstace)
+		{
+			FArcCoreModule::GArcItemsDebugWindow.World = GameInstace->GetWorld();
+		});
+	
+	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstace)
+		{
+			FArcCoreModule::GArcItemsDebugWindow.World = nullptr;
+		});
+#endif
+	
 	FCoreDelegates::OnAllModuleLoadingPhasesComplete.AddRaw(this, &FArcCoreModule::OnAllModuleLoadingPhasesComplete);
 	
 	// This code will execute after your module is loaded into memory; the exact timing
