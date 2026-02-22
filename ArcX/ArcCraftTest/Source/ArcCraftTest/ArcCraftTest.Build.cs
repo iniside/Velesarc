@@ -43,6 +43,8 @@ public class ArcCraftTest : ModuleRules
 				, "DeveloperSettings"
 				, "CQTest"
 				, "StructUtils"
+				, "ModularGameplay"
+				, "GameFeatures"
 			}
 			);
 		if (Target.bBuildEditor)
