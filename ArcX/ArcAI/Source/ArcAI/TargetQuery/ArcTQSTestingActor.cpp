@@ -119,6 +119,7 @@ void AArcTQSTestingActor::RunQuery()
 			InlineSelectionMode,
 			InlineTopN,
 			InlineMinPassingScore,
+			InlineTopPercent,
 			QueryContext,
 			FArcTQSQueryFinished::CreateUObject(this, &AArcTQSTestingActor::OnQueryCompleted));
 	}

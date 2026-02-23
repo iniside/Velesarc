@@ -131,7 +131,7 @@ FBoxSphereBounds UArcTQSRenderingComponent::CalcBounds(const FTransform& LocalTo
 #if UE_ENABLE_DEBUG_DRAWING
 FDebugRenderSceneProxy* UArcTQSRenderingComponent::CreateDebugSceneProxy()
 {
-	FArcTQSDebugDrawSceneProxy* Proxy = new FArcTQSDebugDrawSceneProxy(*this);
+	FArcTQSDebugDrawSceneProxy* Proxy = new FArcTQSDebugDrawSceneProxy(*this, FDebugRenderSceneProxy::SolidAndWireMeshes, TEXT("DebugAI"));
 	Proxy->DrawType = FDebugRenderSceneProxy::SolidAndWireMeshes;
 	Proxy->TextWithoutShadowDistance = 1500.0f;
 

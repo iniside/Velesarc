@@ -37,7 +37,21 @@ enum class EArcTQSSelectionMode : uint8
 	HighestScore,
 	TopN,
 	AllPassing,
-	RandomWeighted
+	RandomWeighted,
+
+	// Random uniform pick from top 5% of scored items
+	RandomFromTop5Percent,
+	// Random uniform pick from top 25% of scored items
+	RandomFromTop25Percent,
+	// Random uniform pick from top N% of scored items (uses TopPercent)
+	RandomFromTopPercent,
+
+	// Weighted random (skewed toward higher scores) from top 5%
+	WeightedRandomFromTop5Percent,
+	// Weighted random (skewed toward higher scores) from top 25%
+	WeightedRandomFromTop25Percent,
+	// Weighted random (skewed toward higher scores) from top N% (uses TopPercent)
+	WeightedRandomFromTopPercent
 };
 
 USTRUCT(BlueprintType)

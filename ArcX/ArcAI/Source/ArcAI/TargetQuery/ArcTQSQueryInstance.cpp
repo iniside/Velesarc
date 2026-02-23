@@ -352,7 +352,7 @@ void FArcTQSQueryInstance::RunSelection()
 
 	case EArcTQSSelectionMode::RandomWeighted:
 		{
-			// Weighted random selection — single pick
+			// Weighted random selection — single pick from ALL valid items
 			float TotalWeight = 0.0f;
 			for (const FArcTQSTargetItem* Item : ValidItems)
 			{
@@ -377,6 +377,88 @@ void FArcTQSQueryInstance::RunSelection()
 				{
 					Results.Add(*ValidItems.Last());
 				}
+			}
+		}
+		break;
+
+	case EArcTQSSelectionMode::RandomFromTop5Percent:
+	case EArcTQSSelectionMode::RandomFromTop25Percent:
+	case EArcTQSSelectionMode::RandomFromTopPercent:
+		{
+			// Determine the percentage to use
+			float Percent;
+			if (SelectionMode == EArcTQSSelectionMode::RandomFromTop5Percent)
+			{
+				Percent = 5.0f;
+			}
+			else if (SelectionMode == EArcTQSSelectionMode::RandomFromTop25Percent)
+			{
+				Percent = 25.0f;
+			}
+			else
+			{
+				Percent = FMath::Clamp(TopPercent, 1.0f, 100.0f);
+			}
+
+			// Already sorted descending — take top Percent% (at least 1)
+			const int32 PoolSize = FMath::Max(1, FMath::CeilToInt(ValidItems.Num() * Percent / 100.0f));
+			const int32 PickIndex = FMath::RandRange(0, PoolSize - 1);
+			Results.Add(*ValidItems[PickIndex]);
+		}
+		break;
+
+	case EArcTQSSelectionMode::WeightedRandomFromTop5Percent:
+	case EArcTQSSelectionMode::WeightedRandomFromTop25Percent:
+	case EArcTQSSelectionMode::WeightedRandomFromTopPercent:
+		{
+			// Determine the percentage to use
+			float Percent;
+			if (SelectionMode == EArcTQSSelectionMode::WeightedRandomFromTop5Percent)
+			{
+				Percent = 5.0f;
+			}
+			else if (SelectionMode == EArcTQSSelectionMode::WeightedRandomFromTop25Percent)
+			{
+				Percent = 25.0f;
+			}
+			else
+			{
+				Percent = FMath::Clamp(TopPercent, 1.0f, 100.0f);
+			}
+
+			// Already sorted descending — take top Percent% (at least 1)
+			const int32 PoolSize = FMath::Max(1, FMath::CeilToInt(ValidItems.Num() * Percent / 100.0f));
+
+			// Weighted random within the top pool — higher scores more likely
+			float TotalWeight = 0.0f;
+			for (int32 i = 0; i < PoolSize; ++i)
+			{
+				TotalWeight += ValidItems[i]->Score;
+			}
+
+			if (TotalWeight > 0.0f)
+			{
+				float Random = FMath::FRand() * TotalWeight;
+				for (int32 i = 0; i < PoolSize; ++i)
+				{
+					Random -= ValidItems[i]->Score;
+					if (Random <= 0.0f)
+					{
+						Results.Add(*ValidItems[i]);
+						break;
+					}
+				}
+
+				// Fallback
+				if (Results.IsEmpty())
+				{
+					Results.Add(*ValidItems[PoolSize - 1]);
+				}
+			}
+			else
+			{
+				// All zero scores — uniform pick
+				Results.Add(*ValidItems[FMath::RandRange(0, PoolSize - 1)]);
 			}
 		}
 		break;

@@ -248,6 +248,7 @@ int32 FArcTQSRunQueryTask::SubmitQuery(
 			InstanceData.InlineSelectionMode,
 			InstanceData.InlineTopN,
 			InstanceData.InlineMinPassingScore,
+			InstanceData.InlineTopPercent,
 			QueryContext,
 			MoveTemp(OnFinished));
 	}

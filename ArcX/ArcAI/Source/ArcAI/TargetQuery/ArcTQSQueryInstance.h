@@ -34,6 +34,7 @@ struct ARCAI_API FArcTQSQueryInstance
 	EArcTQSSelectionMode SelectionMode = EArcTQSSelectionMode::HighestScore;
 	int32 TopN = 5;
 	float MinPassingScore = 0.0f;
+	float TopPercent = 25.0f;
 
 	// --- Runtime state ---
 

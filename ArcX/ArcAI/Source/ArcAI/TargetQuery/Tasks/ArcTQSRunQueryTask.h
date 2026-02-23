@@ -68,6 +68,12 @@ struct FArcTQSRunQueryTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::AllPassing"))
 	float InlineMinPassingScore = 0.0f;
 
+	// For custom top-percent modes: what percentage of the top items to consider
+	UPROPERTY(EditAnywhere, Category = Parameter,
+		meta = (EditCondition = "bUseInlineDefinition && (InlineSelectionMode == EArcTQSSelectionMode::RandomFromTopPercent || InlineSelectionMode == EArcTQSSelectionMode::WeightedRandomFromTopPercent)",
+			ClampMin = 1.0, ClampMax = 100.0))
+	float InlineTopPercent = 25.0f;
+
 	// --- Outputs ---
 
 	// Best single result

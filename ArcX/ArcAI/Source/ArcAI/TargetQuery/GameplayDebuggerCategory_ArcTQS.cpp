@@ -87,11 +87,17 @@ namespace ArcTQSDebug
 	{
 		switch (Mode)
 		{
-		case EArcTQSSelectionMode::HighestScore:	return TEXT("HighestScore");
-		case EArcTQSSelectionMode::TopN:			return TEXT("TopN");
-		case EArcTQSSelectionMode::AllPassing:		return TEXT("AllPassing");
-		case EArcTQSSelectionMode::RandomWeighted:	return TEXT("RandomWeighted");
-		default:									return TEXT("Unknown");
+		case EArcTQSSelectionMode::HighestScore:					return TEXT("HighestScore");
+		case EArcTQSSelectionMode::TopN:							return TEXT("TopN");
+		case EArcTQSSelectionMode::AllPassing:						return TEXT("AllPassing");
+		case EArcTQSSelectionMode::RandomWeighted:					return TEXT("RandomWeighted");
+		case EArcTQSSelectionMode::RandomFromTop5Percent:			return TEXT("RandomTop5%");
+		case EArcTQSSelectionMode::RandomFromTop25Percent:			return TEXT("RandomTop25%");
+		case EArcTQSSelectionMode::RandomFromTopPercent:			return TEXT("RandomTopN%");
+		case EArcTQSSelectionMode::WeightedRandomFromTop5Percent:	return TEXT("WeightedTop5%");
+		case EArcTQSSelectionMode::WeightedRandomFromTop25Percent:	return TEXT("WeightedTop25%");
+		case EArcTQSSelectionMode::WeightedRandomFromTopPercent:	return TEXT("WeightedTopN%");
+		default:													return TEXT("Unknown");
 		}
 	}
 

@@ -47,4 +47,10 @@ public:
 	// For AllPassing mode: minimum score threshold
 	UPROPERTY(EditAnywhere, Category = "Selection", meta = (EditCondition = "SelectionMode == EArcTQSSelectionMode::AllPassing"))
 	float MinPassingScore = 0.0f;
+
+	// For custom top-percent modes: what percentage of the top items to consider
+	UPROPERTY(EditAnywhere, Category = "Selection",
+		meta = (EditCondition = "SelectionMode == EArcTQSSelectionMode::RandomFromTopPercent || SelectionMode == EArcTQSSelectionMode::WeightedRandomFromTopPercent",
+			ClampMin = 1.0, ClampMax = 100.0))
+	float TopPercent = 25.0f;
 };

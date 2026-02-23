@@ -99,6 +99,7 @@ public:
 		EArcTQSSelectionMode InSelectionMode,
 		int32 InTopN,
 		float InMinPassingScore,
+		float InTopPercent,
 		const FArcTQSQueryContext& Context,
 		FArcTQSQueryFinished OnFinished,
 		int32 Priority = 0);

@@ -122,6 +122,7 @@ int32 UArcTQSQuerySubsystem::RunQuery(
 	Instance->SelectionMode = Definition->SelectionMode;
 	Instance->TopN = Definition->TopN;
 	Instance->MinPassingScore = Definition->MinPassingScore;
+	Instance->TopPercent = Definition->TopPercent;
 
 	Instance->QueryContext = Context;
 	Instance->Priority = Priority;
@@ -138,6 +139,7 @@ int32 UArcTQSQuerySubsystem::RunQuery(
 	EArcTQSSelectionMode InSelectionMode,
 	int32 InTopN,
 	float InMinPassingScore,
+	float InTopPercent,
 	const FArcTQSQueryContext& Context,
 	FArcTQSQueryFinished OnFinished,
 	int32 Priority)
@@ -155,6 +157,7 @@ int32 UArcTQSQuerySubsystem::RunQuery(
 	Instance->SelectionMode = InSelectionMode;
 	Instance->TopN = InTopN;
 	Instance->MinPassingScore = InMinPassingScore;
+	Instance->TopPercent = InTopPercent;
 
 	Instance->QueryContext = Context;
 	Instance->Priority = Priority;
