@@ -44,6 +44,35 @@ void FArcTQSDebugDrawDelegateHelper::DrawDebugLabels(UCanvas* Canvas, APlayerCon
 	FDebugDrawDelegateHelper::DrawDebugLabels(Canvas, PC);
 }
 
+class FArcTQSDebugDrawSceneProxy final : public FDebugRenderSceneProxy
+{
+public:
+	explicit FArcTQSDebugDrawSceneProxy(const UPrimitiveComponent& InComponent, const EDrawType InDrawType = EDrawType::SolidAndWireMeshes, const TCHAR* InViewFlagName = nullptr)
+	: FDebugRenderSceneProxy(&InComponent)
+	{
+		DrawType = InDrawType;
+		ViewFlagName = InViewFlagName;
+		ViewFlagIndex = uint32(FEngineShowFlags::FindIndexByName(*ViewFlagName));
+	}
+
+	virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* View) const override
+	{
+		FPrimitiveViewRelevance Result;
+		Result.bDrawRelevance = true;
+		Result.bDynamicRelevance = true;
+		Result.bSeparateTranslucency = Result.bNormalTranslucency = true;
+		return Result;
+	}
+	
+	virtual uint32 GetMemoryFootprint() const override
+	{
+		return sizeof(*this) + FDebugRenderSceneProxy::GetAllocatedSize();
+	}
+
+private:
+	uint32 ViewFlagIndex = 0;
+};
+
 // --------------------------------------------------------------------------
 // UArcTQSRenderingComponent
 // --------------------------------------------------------------------------
@@ -102,7 +131,7 @@ FBoxSphereBounds UArcTQSRenderingComponent::CalcBounds(const FTransform& LocalTo
 #if UE_ENABLE_DEBUG_DRAWING
 FDebugRenderSceneProxy* UArcTQSRenderingComponent::CreateDebugSceneProxy()
 {
-	FDebugRenderSceneProxy* Proxy = new FDebugRenderSceneProxy(this);
+	FArcTQSDebugDrawSceneProxy* Proxy = new FArcTQSDebugDrawSceneProxy(*this);
 	Proxy->DrawType = FDebugRenderSceneProxy::SolidAndWireMeshes;
 	Proxy->TextWithoutShadowDistance = 1500.0f;
 

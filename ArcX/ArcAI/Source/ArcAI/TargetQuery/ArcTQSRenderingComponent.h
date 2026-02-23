@@ -12,7 +12,7 @@
  * Custom debug draw delegate helper that controls label visibility
  * based on the owning actor's selection state and label toggle.
  */
-class FArcTQSDebugDrawDelegateHelper : public FDebugDrawDelegateHelper
+struct FArcTQSDebugDrawDelegateHelper : public FDebugDrawDelegateHelper
 {
 	typedef FDebugDrawDelegateHelper Super;
 
@@ -22,7 +22,7 @@ public:
 		, bDrawLabels(true)
 	{
 	}
-
+	
 	void SetupFromProxy(const FDebugRenderSceneProxy* InSceneProxy, AActor* InActorOwner, bool bInDrawLabels);
 	void Reset() { ResetTexts(); }
 

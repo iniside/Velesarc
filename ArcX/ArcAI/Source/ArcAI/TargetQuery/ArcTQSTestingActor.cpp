@@ -192,7 +192,8 @@ void AArcTQSTestingActor::OnQueryCompleted(FArcTQSQueryInstance& CompletedQuery)
 	ValidCount = CachedData.TotalValid;
 	ResultCount = CachedData.Results.Num();
 	LastExecutionTimeMs = static_cast<float>(CachedData.ExecutionTimeMs);
-
+	ApproximateQueryTimeMs = FPlatformTime::Seconds() - LastQueryTime;
+	
 	bHasData = true;
 	UpdateDrawing();
 }

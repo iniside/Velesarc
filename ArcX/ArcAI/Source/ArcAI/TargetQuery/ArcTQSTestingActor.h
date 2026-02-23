@@ -100,6 +100,9 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Status")
 	float LastExecutionTimeMs = 0.0f;
 
+	UPROPERTY(VisibleAnywhere, Category = "Status")
+	float ApproximateQueryTimeMs = 0.0f;
+	
 	// --- Methods ---
 
 	virtual void BeginPlay() override;
