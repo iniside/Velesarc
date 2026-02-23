@@ -83,6 +83,8 @@ struct ARCMASS_API FArcVisConfigFragment : public FMassConstSharedFragment
 
 	UPROPERTY(EditAnywhere, Category = "Visualization")
 	bool bCastShadows = false;
+	
+	FArcVisConfigFragment();
 };
 
 template<>

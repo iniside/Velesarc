@@ -19,6 +19,11 @@ TAutoConsoleVariable<bool> CVarArcDebugDrawVisualizationGrid(
 // UArcEntityVisualizationSubsystem
 // ---------------------------------------------------------------------------
 
+FArcVisConfigFragment::FArcVisConfigFragment()
+{
+	ISMManagerClass = AActor::StaticClass();
+}
+
 void UArcEntityVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);

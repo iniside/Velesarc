@@ -2,12 +2,16 @@
 
 #include "ArcMassEntityVisualizationTrait.h"
 
+#include "GameFramework/Actor.h"
+#include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassEntityTemplateRegistry.h"
 
 void UArcEntityVisualizationTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {
 	BuildContext.RequireFragment<FTransformFragment>();
+	BuildContext.RequireFragment<FMassActorFragment>();
+	
 	BuildContext.AddFragment<FArcVisRepresentationFragment>();
 	BuildContext.AddTag<FArcVisEntityTag>();
 

@@ -52,16 +52,21 @@ public class ArcMass : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+				"PhysicsCore",
+				"Chaos",
+				"InputCore"
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
-		
-		
+
+
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{
 				// ... add any modules that your module loads dynamically here ...
 			}
 			);
+
+		SetupGameplayDebuggerSupport(Target);
 	}
 }
