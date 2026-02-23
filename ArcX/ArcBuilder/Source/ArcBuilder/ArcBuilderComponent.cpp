@@ -158,7 +158,7 @@ void UArcBuilderComponent::BeginPlacement(UArcItemDefinition* InBuilderData)
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	// TODO:: Load as part of bundle.
-	UClass* ActorClass = BuildDef->ActorClass.LoadSynchronous();
+	UClass* ActorClass = BuildDef->ResolvePreviewActorClass();
 	if (!ActorClass)
 	{
 		return;
@@ -259,7 +259,7 @@ void UArcBuilderComponent::BeginPlacementFromDefinition(UArcBuildingDefinition* 
 	SpawnParams.Owner = GetOwner();
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	UClass* ActorClass = InBuildingDef->ActorClass.LoadSynchronous();
+	UClass* ActorClass = InBuildingDef->ResolvePreviewActorClass();
 	if (!ActorClass)
 	{
 		return;

@@ -2,6 +2,10 @@
 
 #include "ArcBuildingDefinition.h"
 
+#include "MassEntityConfigAsset.h"
+#include "ArcMass/ArcMassEntityVisualizationTrait.h"
+#include "MassVisualizationTrait.h"
+
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
 #endif
@@ -69,6 +73,46 @@ void UArcBuildingDefinition::RegenerateBuildingId()
 {
 	BuildingId = FGuid::NewGuid();
 	MarkPackageDirty();
+}
+
+// -------------------------------------------------------------------
+// Actor class resolution
+// -------------------------------------------------------------------
+
+UClass* UArcBuildingDefinition::ResolvePreviewActorClass() const
+{
+	// Try the explicit ActorClass first.
+	UClass* Result = ActorClass.LoadSynchronous();
+	if (Result)
+	{
+		return Result;
+	}
+
+	// Fall back to MassEntityConfig visualization traits.
+	if (MassEntityConfig)
+	{
+		// Try ArcMass visualization trait.
+		if (const UArcEntityVisualizationTrait* ArcVisTrait =
+			Cast<UArcEntityVisualizationTrait>(MassEntityConfig->FindTrait(UArcEntityVisualizationTrait::StaticClass())))
+		{
+			if (ArcVisTrait->VisualizationConfig.ActorClass)
+			{
+				return ArcVisTrait->VisualizationConfig.ActorClass;
+			}
+		}
+
+		// Try engine MassVisualizationTrait (HighResTemplateActor).
+		if (const UMassVisualizationTrait* EngineVisTrait =
+			Cast<UMassVisualizationTrait>(MassEntityConfig->FindTrait(UMassVisualizationTrait::StaticClass())))
+		{
+			if (EngineVisTrait->HighResTemplateActor)
+			{
+				return EngineVisTrait->HighResTemplateActor;
+			}
+		}
+	}
+
+	return nullptr;
 }
 
 // -------------------------------------------------------------------

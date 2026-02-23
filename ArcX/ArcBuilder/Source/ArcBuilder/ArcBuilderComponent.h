@@ -141,6 +141,12 @@ public:
 		return CurrentGridSize;
 	}
 
+	/** Returns true if the builder is currently in placement mode. */
+	bool IsPlacing() const
+	{
+		return CurrentBuildingDef.IsValid() && TemporaryPlacementActor != nullptr;
+	}
+
 	UFUNCTION(BlueprintCallable, Category = "Arc Builder")
 	void SetPlacementOffsetLocation(const FVector& NewLocation);
 

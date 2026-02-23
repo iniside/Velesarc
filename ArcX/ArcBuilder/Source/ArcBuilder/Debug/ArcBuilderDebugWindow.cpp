@@ -101,6 +101,28 @@ void FArcBuilderDebugWindow::DrawWindow(float DeltaTime)
 	SlateIM::VAlign(VAlign_Fill);
 	SlateIM::BeginVerticalStack();
 	{
+		// Placement controls bar (visible when actively placing).
+		UArcBuilderComponent* BuilderComp = FindLocalPlayerBuilderComponent();
+		if (BuilderComp && BuilderComp->IsPlacing())
+		{
+			SlateIM::Padding(FMargin(4.f));
+			SlateIM::BeginHorizontalStack();
+			{
+				SlateIM::Text(TEXT("Placement active"));
+				SlateIM::Padding(FMargin(8.f, 0.f));
+				if (SlateIM::Button(TEXT("Place Object")))
+				{
+					BuilderComp->PlaceObject();
+				}
+				SlateIM::Padding(FMargin(4.f, 0.f));
+				if (SlateIM::Button(TEXT("Cancel")))
+				{
+					BuilderComp->EndPlacement();
+				}
+			}
+			SlateIM::EndHorizontalStack();
+		}
+
 		// Header row with refresh button.
 		SlateIM::Padding(FMargin(4.f));
 		SlateIM::BeginHorizontalStack();
@@ -382,13 +404,31 @@ void FArcBuilderDebugWindow::DrawBuildingDefinitionDetail(UArcBuildingDefinition
 
 		// Actions at the bottom.
 		SlateIM::Spacer(FVector2D(0.0, 12.0));
-		if (SlateIM::Button(TEXT("Begin Placement")))
+		UArcBuilderComponent* DetailBuilderComp = FindLocalPlayerBuilderComponent();
+		if (DetailBuilderComp)
 		{
-			UArcBuilderComponent* BuilderComp = FindLocalPlayerBuilderComponent();
-			if (BuilderComp)
+			SlateIM::BeginHorizontalStack();
 			{
-				BuilderComp->BeginPlacementFromDefinition(BuildDef);
+				if (SlateIM::Button(TEXT("Begin Placement")))
+				{
+					DetailBuilderComp->BeginPlacementFromDefinition(BuildDef);
+				}
+
+				if (DetailBuilderComp->IsPlacing())
+				{
+					SlateIM::Padding(FMargin(4.f, 0.f));
+					if (SlateIM::Button(TEXT("Place Object")))
+					{
+						DetailBuilderComp->PlaceObject();
+					}
+					SlateIM::Padding(FMargin(4.f, 0.f));
+					if (SlateIM::Button(TEXT("Cancel")))
+					{
+						DetailBuilderComp->EndPlacement();
+					}
+				}
 			}
+			SlateIM::EndHorizontalStack();
 		}
 	}
 	SlateIM::EndScrollBox();

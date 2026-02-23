@@ -131,4 +131,11 @@ public:
 	// ---- Helpers ----
 
 	bool HasMassEntityConfig() const { return MassEntityConfig != nullptr; }
+
+	/**
+	 * Resolve an actor class for preview placement.
+	 * Tries ActorClass first, then falls back to the MassEntityConfig's visualization trait actor class.
+	 * Returns nullptr if neither provides a valid actor class.
+	 */
+	UClass* ResolvePreviewActorClass() const;
 };
