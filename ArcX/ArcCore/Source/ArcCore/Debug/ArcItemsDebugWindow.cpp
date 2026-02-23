@@ -19,6 +19,8 @@
 #include "QuickBar/ArcQuickBarComponent.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
 #include "Commands/ArcAddItemToQuickBarCommand.h"
+#include "Commands/ArcDropItemCommand.h"
+#include "Items/Fragments/ArcItemFragment_Droppable.h"
 
 ;
 
@@ -328,7 +330,7 @@ void FArcItemsDebugWindow::DrawItemsList()
 			SlateIM::AddTableColumn(TEXT("Level"), TEXT("Level"));
 			SlateIM::InitialTableColumnWidth(120.f);
 			SlateIM::AddTableColumn(TEXT("Slot"), TEXT("Slot"));
-			SlateIM::FixedTableColumnWidth(70.f);
+			SlateIM::FixedTableColumnWidth(140.f);
 			SlateIM::AddTableColumn(TEXT("Actions"), TEXT("Actions"));
 		}
 		SlateIM::EndTableHeader();
@@ -380,14 +382,51 @@ void FArcItemsDebugWindow::DrawItemsList()
 				// Actions column
 				if (SlateIM::NextTableCell())
 				{
-					if (SlateIM::Button(TEXT("Remove")))
+					SlateIM::BeginHorizontalStack();
 					{
-						SelectedStore->RemoveItem(Item->GetItemId(), Item->GetStacks());
-						if (SelectedItemIndex >= Items.Num() - 1)
+						if (SlateIM::Button(*FString::Printf(TEXT("Remove##%d"), i)))
 						{
-							SelectedItemIndex = Items.Num() - 2;
+							SelectedStore->RemoveItem(Item->GetItemId(), Item->GetStacks());
+							if (SelectedItemIndex >= Items.Num() - 1)
+							{
+								SelectedItemIndex = Items.Num() - 2;
+							}
+						}
+
+						// Drop button — only if item has FArcItemFragment_Droppable
+						const UArcItemDefinition* ItemDef = Item->GetItemDefinition();
+						if (ItemDef)
+						{
+							const FArcItemFragment_Droppable* DroppableFrag = ItemDef->FindFragment<FArcItemFragment_Droppable>();
+							if (DroppableFrag && DroppableFrag->DropEntityConfig)
+							{
+								SlateIM::Padding(FMargin(2.f, 0.f));
+								if (SlateIM::Button(*FString::Printf(TEXT("Drop##%d"), i)))
+								{
+									if (World.IsValid())
+									{
+										FTransform DropTransform = FTransform::Identity;
+										APlayerController* PC = World->GetFirstPlayerController();
+										if (PC && PC->GetPawn())
+										{
+											DropTransform = PC->GetPawn()->GetActorTransform();
+											// Offset slightly forward from the pawn.
+											FVector Forward = DropTransform.GetRotation().GetForwardVector();
+											DropTransform.SetLocation(DropTransform.GetLocation() + Forward * 100.f);
+										}
+
+										Arcx::SendServerCommand<FArcDropItemCommand>(
+											World.Get(),
+											SelectedStore.Get(),
+											Item->GetItemId(),
+											DropTransform,
+											0);
+									}
+								}
+							}
 						}
 					}
+					SlateIM::EndHorizontalStack();
 				}
 			}
 		}
@@ -502,6 +541,17 @@ void FArcItemsDebugWindow::DrawItemDetail(const FArcItemData* Item)
 		if (Item->OwnerId.IsValid())
 		{
 			SlateIM::Text(*FString::Printf(TEXT("Owner: %s"), *Item->OwnerId.ToString()));
+		}
+
+		// Droppable status
+		{
+			bool bDroppable = false;
+			if (Def)
+			{
+				const FArcItemFragment_Droppable* DroppableFrag = Def->FindFragment<FArcItemFragment_Droppable>();
+				bDroppable = DroppableFrag && DroppableFrag->DropEntityConfig != nullptr;
+			}
+			SlateIM::Text(*FString::Printf(TEXT("Droppable: %s"), bDroppable ? TEXT("Yes") : TEXT("No")));
 		}
 
 		// Slot controls

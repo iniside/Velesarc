@@ -210,10 +210,19 @@ struct ARCCORE_API FArcItemCopyContainerHelper
 	static FArcItemCopyContainerHelper New(UArcItemsStoreComponent* InItemsStore, const FArcItemDataInternal& InDataInternal);
 	static FArcItemCopyContainerHelper New(UArcItemsStoreComponent* InItemsStore, const FArcItemData* InData);
 	static FArcItemCopyContainerHelper New(const FArcItemData* InData);
-	
+
 	static FArcItemCopyContainerHelper FromSpec(const FArcItemSpec& Item);
-	
+
 	TArray<FArcItemId> AddItems(UArcItemsStoreComponent* InItemsStore);
+
+	/** Converts an FArcItemData back to an FArcItemSpec, preserving persistent instance data. */
+	static FArcItemSpec ToSpec(const FArcItemData* InData);
+
+private:
+	/** Copies all persistent FArcItemInstance data from ItemData into the spec's InitialInstanceData. */
+	static void CopyPersistentInstances(FArcItemSpec& OutSpec, const FArcItemData* InData);
+
+public:
 
 	friend uint32 GetTypeHash(const FArcItemCopyContainerHelper& In)
 	{

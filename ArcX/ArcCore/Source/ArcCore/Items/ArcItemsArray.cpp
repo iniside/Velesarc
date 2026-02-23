@@ -325,39 +325,47 @@ void FArcItemDataInternal::AddStructReferencedObjects(FReferenceCollector& Colle
 	//}
 }
 
+void FArcItemCopyContainerHelper::CopyPersistentInstances(FArcItemSpec& OutSpec, const FArcItemData* InData)
+{
+	for (const FArcItemInstanceInternal& Instance : InData->ItemInstances.Data)
+	{
+		if (Instance.Data->ShouldPersist())
+		{
+			OutSpec.InitialInstanceData.Add(Instance.Data->Duplicate());
+		}
+	}
+}
+
+FArcItemSpec FArcItemCopyContainerHelper::ToSpec(const FArcItemData* InData)
+{
+	FArcItemSpec Spec = InData->Spec;
+	Spec.ItemId = InData->GetItemId();
+	Spec.Amount = InData->GetStacks();
+	Spec.Level = InData->GetLevel();
+	CopyPersistentInstances(Spec, InData);
+	return Spec;
+}
+
 FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(UArcItemsStoreComponent* InItemsStore, const FArcItemDataInternal& InDataInternal)
 {
 	FArcItemCopyContainerHelper Container;
 	Container.Item = InDataInternal.GetItem()->Spec;
 	Container.Item.ItemId = InDataInternal.GetItem()->GetItemId();
 	Container.SlotId = InDataInternal.GetItem()->GetSlotId();
+	CopyPersistentInstances(Container.Item, InDataInternal.GetItem().Get());
 
-	for (const FArcItemInstanceInternal& Instance : InDataInternal.GetItem()->ItemInstances.Data)
-	{
-		if (Instance.Data->ShouldPersist())
-		{
-			Container.Item.InitialInstanceData.Add(Instance.Data->Duplicate());
-		}
-	}
-	
 	TArray<const FArcItemDataInternal*> AttachedItems = InItemsStore->GetItemsArray().GetInternalItemsAttachedTo(InDataInternal.GetItemId());
-	
+
 	for (const FArcItemDataInternal* Item : AttachedItems)
 	{
 		if (Item)
 		{
 			int32 Idx = Container.ItemAttachments.Add( {Item->GetItem()->GetItemId(), Item->GetItem()->Spec, Item->GetItem()->GetAttachSlot() });
 			Container.ItemAttachments[Idx].Item.ItemId = Item->GetItem()->GetItemId();
-			for (const FArcItemInstanceInternal& Instance : Item->GetItem()->ItemInstances.Data)
-			{
-				if (Instance.Data->ShouldPersist())
-				{
-					Container.ItemAttachments[Idx].Item.InitialInstanceData.Add(Instance.Data->Duplicate());
-				}
-			}
+			CopyPersistentInstances(Container.ItemAttachments[Idx].Item, Item->GetItem().Get());
 		}
 	}
-	
+
 	return Container;
 }
 
@@ -367,33 +375,20 @@ FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(UArcItemsStoreCompo
 	Container.Item = InData->Spec;
 	Container.Item.ItemId = InData->GetItemId();
 	Container.SlotId = InData->GetSlotId();
+	CopyPersistentInstances(Container.Item, InData);
 
-	for (const FArcItemInstanceInternal& Instance : InData->ItemInstances.Data)
-	{
-		if (Instance.Data->ShouldPersist())
-		{
-			Container.Item.InitialInstanceData.Add(Instance.Data->Duplicate());
-		}
-	}
-	
 	TArray<const FArcItemData*> AttachedItems = InItemsStore->GetItemsArray().GetItemsAttachedTo(InData->GetItemId());
-	
+
 	for (const FArcItemData* Item : AttachedItems)
 	{
 		if (Item)
 		{
 			int32 Idx = Container.ItemAttachments.Add( { Item->GetItemId(), Item->Spec, Item->GetAttachSlot() });
 			Container.ItemAttachments[Idx].Item.ItemId = Item->GetItemId();
-			for (const FArcItemInstanceInternal& Instance : Item->ItemInstances.Data)
-			{
-				if (Instance.Data->ShouldPersist())
-				{
-					Container.ItemAttachments[Idx].Item.InitialInstanceData.Add(Instance.Data->Duplicate());
-				}
-			}
+			CopyPersistentInstances(Container.ItemAttachments[Idx].Item, Item);
 		}
 	}
-	
+
 	return Container;
 }
 
@@ -403,14 +398,7 @@ FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(const FArcItemData*
 	Container.Item = InData->Spec;
 	Container.Item.ItemId = InData->GetItemId();
 	Container.SlotId = InData->GetSlotId();
-
-	for (const FArcItemInstanceInternal& Instance : InData->ItemInstances.Data)
-	{
-		if (Instance.Data->ShouldPersist())
-		{
-			Container.Item.InitialInstanceData.Add(Instance.Data->Duplicate());
-		}
-	}
+	CopyPersistentInstances(Container.Item, InData);
 
 	return Container;
 }
