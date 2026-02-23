@@ -21,11 +21,13 @@
 
 #pragma once
 
+#include "Debug/ArcCraftDebugWindow.h"
 #include "Modules/ModuleManager.h"
 
 class FArcCraftModule : public IModuleInterface
 {
 public:
+	static FArcCraftDebugWindow GArcCraftDebugWindow;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;

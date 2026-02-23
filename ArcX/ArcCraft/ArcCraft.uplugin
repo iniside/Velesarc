@@ -45,6 +45,10 @@
 		{
 			"Name": "EngineAssetDefinitions",
 			"Enabled": true
+		},
+		{
+			"Name": "SlateIM",
+			"Enabled": true
 		}
 	]
 }

@@ -50,7 +50,8 @@ public class ArcCraft : ModuleRules
 				"Iris",
 				"StructUtils",
 				"Chooser",
-				"XmlParser"
+				"XmlParser",
+				"SlateIM"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

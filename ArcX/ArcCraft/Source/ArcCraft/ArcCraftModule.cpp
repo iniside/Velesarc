@@ -22,9 +22,12 @@
 #include "ArcCraftModule.h"
 
 #include "Engine/AssetManager.h"
+#include "Engine/GameInstance.h"
 #include "Recipe/ArcRecipeDefinition.h"
 
 #define LOCTEXT_NAMESPACE "FArcCraftModule"
+
+FArcCraftDebugWindow FArcCraftModule::GArcCraftDebugWindow = FArcCraftDebugWindow();
 
 void FArcCraftModule::StartupModule()
 {
@@ -40,6 +43,18 @@ void FArcCraftModule::StartupModule()
 			false /* bIsEditorOnly */,
 			false /* bForceSynchronousScan */);
 	}
+
+#if WITH_EDITOR
+	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstace)
+		{
+			FArcCraftModule::GArcCraftDebugWindow.World = GameInstace->GetWorld();
+		});
+
+	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstace)
+		{
+			FArcCraftModule::GArcCraftDebugWindow.World = nullptr;
+		});
+#endif
 }
 
 void FArcCraftModule::ShutdownModule()
