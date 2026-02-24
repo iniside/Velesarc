@@ -1,0 +1,819 @@
+/**
+ * This file is part of Velesarc
+ * Copyright (C) 2025-2025 Lukasz Baran
+ *
+ * Licensed under the European Union Public License (EUPL), Version 1.2 or -
+ * as soon as they will be approved by the European Commission - later versions
+ * of the EUPL (the "License");
+ *
+ * You may not use this work except in compliance with the License.
+ * You may get a copy of the License at:
+ *
+ * https://eupl.eu/
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ */
+
+#include "ArcCraft/Shared/ArcCraftJsonUtils.h"
+
+#include "Chooser.h"
+#include "GameplayEffect.h"
+#include "Abilities/GameplayAbility.h"
+#include "GameplayTagsManager.h"
+#include "ArcCraft/Recipe/ArcRecipeOutput.h"
+#include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
+#include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
+#include "ArcCraft/MaterialCraft/ArcMaterialOutputModifier.h"
+#include "ArcCraft/MaterialCraft/ArcMaterialModifierSlotConfig.h"
+#include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
+#include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
+#include "StructUtils/InstancedStruct.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogArcCraftJsonUtils, Log, All);
+
+// -------------------------------------------------------------------
+// Internal helpers
+// -------------------------------------------------------------------
+
+namespace
+{
+	/** Map ExprType enum to string for serialization. */
+	FString ExprTypeToString(EGameplayTagQueryExprType InType)
+	{
+		switch (InType)
+		{
+		case EGameplayTagQueryExprType::AnyTagsMatch:      return TEXT("AnyTagsMatch");
+		case EGameplayTagQueryExprType::AllTagsMatch:      return TEXT("AllTagsMatch");
+		case EGameplayTagQueryExprType::NoTagsMatch:       return TEXT("NoTagsMatch");
+		case EGameplayTagQueryExprType::AnyExprMatch:      return TEXT("AnyExprMatch");
+		case EGameplayTagQueryExprType::AllExprMatch:      return TEXT("AllExprMatch");
+		case EGameplayTagQueryExprType::NoExprMatch:       return TEXT("NoExprMatch");
+		case EGameplayTagQueryExprType::AnyTagsExactMatch: return TEXT("AnyTagsExactMatch");
+		case EGameplayTagQueryExprType::AllTagsExactMatch: return TEXT("AllTagsExactMatch");
+		default:                                           return TEXT("Undefined");
+		}
+	}
+
+	/** Map string to ExprType enum for parsing. */
+	EGameplayTagQueryExprType StringToExprType(const FString& TypeStr)
+	{
+		if (TypeStr == TEXT("AnyTagsMatch"))      return EGameplayTagQueryExprType::AnyTagsMatch;
+		if (TypeStr == TEXT("AllTagsMatch"))      return EGameplayTagQueryExprType::AllTagsMatch;
+		if (TypeStr == TEXT("NoTagsMatch"))       return EGameplayTagQueryExprType::NoTagsMatch;
+		if (TypeStr == TEXT("AnyExprMatch"))      return EGameplayTagQueryExprType::AnyExprMatch;
+		if (TypeStr == TEXT("AllExprMatch"))      return EGameplayTagQueryExprType::AllExprMatch;
+		if (TypeStr == TEXT("NoExprMatch"))       return EGameplayTagQueryExprType::NoExprMatch;
+		if (TypeStr == TEXT("AnyTagsExactMatch")) return EGameplayTagQueryExprType::AnyTagsExactMatch;
+		if (TypeStr == TEXT("AllTagsExactMatch")) return EGameplayTagQueryExprType::AllTagsExactMatch;
+		return EGameplayTagQueryExprType::Undefined;
+	}
+
+	/** Map EArcModType to string for serialization. */
+	FString ModTypeToString(EArcModType InType)
+	{
+		switch (InType)
+		{
+		case EArcModType::Multiply:  return TEXT("Multiply");
+		case EArcModType::Division:  return TEXT("Division");
+		case EArcModType::Additive:
+		default:                     return TEXT("Additive");
+		}
+	}
+
+	/** Map string to EArcModType for parsing. */
+	EArcModType StringToModType(const FString& TypeStr)
+	{
+		if (TypeStr == TEXT("Multiply"))  return EArcModType::Multiply;
+		if (TypeStr == TEXT("Division"))  return EArcModType::Division;
+		return EArcModType::Additive;
+	}
+
+	/** Map EArcModifierSlotSelection to string for serialization. */
+	FString SlotSelectionToString(EArcModifierSlotSelection InSelection)
+	{
+		switch (InSelection)
+		{
+		case EArcModifierSlotSelection::Random: return TEXT("Random");
+		case EArcModifierSlotSelection::All:    return TEXT("All");
+		case EArcModifierSlotSelection::HighestWeight:
+		default:                                return TEXT("HighestWeight");
+		}
+	}
+
+	/** Map string to EArcModifierSlotSelection for parsing. */
+	EArcModifierSlotSelection StringToSlotSelection(const FString& SelectionStr)
+	{
+		if (SelectionStr == TEXT("Random")) return EArcModifierSlotSelection::Random;
+		if (SelectionStr == TEXT("All"))    return EArcModifierSlotSelection::All;
+		return EArcModifierSlotSelection::HighestWeight;
+	}
+
+	/** Safely read a string from a JSON object field. Returns empty FString if not present or not a string. */
+	FString GetJsonString(const nlohmann::json& Obj, const char* Key)
+	{
+		if (Obj.contains(Key) && Obj[Key].is_string())
+		{
+			return UTF8_TO_TCHAR(Obj[Key].get<std::string>().c_str());
+		}
+		return FString();
+	}
+
+	/** Safely read a float from a JSON object field. Returns Default if not present or not a number. */
+	float GetJsonFloat(const nlohmann::json& Obj, const char* Key, float Default = 0.0f)
+	{
+		if (Obj.contains(Key) && Obj[Key].is_number())
+		{
+			return Obj[Key].get<float>();
+		}
+		return Default;
+	}
+
+	/** Safely read an int from a JSON object field. Returns Default if not present or not a number. */
+	int32 GetJsonInt(const nlohmann::json& Obj, const char* Key, int32 Default = 0)
+	{
+		if (Obj.contains(Key) && Obj[Key].is_number())
+		{
+			return Obj[Key].get<int32>();
+		}
+		return Default;
+	}
+
+	/** Safely read a bool from a JSON object field. Returns Default if not present or not a boolean. */
+	bool GetJsonBool(const nlohmann::json& Obj, const char* Key, bool Default = false)
+	{
+		if (Obj.contains(Key) && Obj[Key].is_boolean())
+		{
+			return Obj[Key].get<bool>();
+		}
+		return Default;
+	}
+}
+
+// -------------------------------------------------------------------
+// Parsing (JSON -> UE)
+// -------------------------------------------------------------------
+
+FGameplayTag ArcCraftJsonUtils::ParseGameplayTag(const FString& TagString)
+{
+	const FString Trimmed = TagString.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
+	{
+		return FGameplayTag();
+	}
+	return FGameplayTag::RequestGameplayTag(FName(*Trimmed), /*bErrorIfNotFound=*/ false);
+}
+
+FGameplayTagContainer ArcCraftJsonUtils::ParseGameplayTags(const nlohmann::json& TagsArray)
+{
+	FGameplayTagContainer Container;
+
+	if (!TagsArray.is_array())
+	{
+		return Container;
+	}
+
+	for (const auto& Element : TagsArray)
+	{
+		if (Element.is_string())
+		{
+			const FString TagStr = UTF8_TO_TCHAR(Element.get<std::string>().c_str());
+			const FGameplayTag Tag = ParseGameplayTag(TagStr);
+			if (Tag.IsValid())
+			{
+				Container.AddTag(Tag);
+			}
+		}
+	}
+
+	return Container;
+}
+
+bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInstancedStruct& OutModifier)
+{
+	if (!ModObj.is_object())
+	{
+		return false;
+	}
+
+	const FString TypeStr = GetJsonString(ModObj, "type");
+	const FGameplayTag SlotTag = ParseGameplayTag(GetJsonString(ModObj, "slotTag"));
+
+	// ---- Stats ----
+	if (TypeStr == TEXT("Stats"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_Stats>();
+		FArcRecipeOutputModifier_Stats& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Stats>();
+		Modifier.SlotTag = SlotTag;
+		Modifier.QualityScalingFactor = GetJsonFloat(ModObj, "qualityScaling", 1.0f);
+
+		if (ModObj.contains("stats") && ModObj["stats"].is_array())
+		{
+			for (const auto& StatObj : ModObj["stats"])
+			{
+				FArcItemAttributeStat Stat;
+				Stat.SetValue(GetJsonFloat(StatObj, "value", 0.0f));
+				Stat.Type = StringToModType(GetJsonString(StatObj, "modType"));
+
+				// Note: Attribute is stored by name string. The FGameplayAttribute reference
+				// will need to be resolved at runtime by the stat system.
+				// The "attribute" field is stored for round-trip serialization but actual
+				// attribute binding happens during item initialization.
+
+				Modifier.BaseStats.Add(Stat);
+			}
+		}
+
+		return true;
+	}
+
+	// ---- Abilities ----
+	if (TypeStr == TEXT("Abilities"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_Abilities>();
+		FArcRecipeOutputModifier_Abilities& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Abilities>();
+		Modifier.SlotTag = SlotTag;
+
+		if (ModObj.contains("triggerTags") && ModObj["triggerTags"].is_array())
+		{
+			Modifier.TriggerTags = ParseGameplayTags(ModObj["triggerTags"]);
+		}
+
+		if (ModObj.contains("abilities") && ModObj["abilities"].is_array())
+		{
+			for (const auto& AbilityObj : ModObj["abilities"])
+			{
+				FArcAbilityEntry Entry;
+
+				const FString ClassStr = GetJsonString(AbilityObj, "class");
+				if (!ClassStr.IsEmpty())
+				{
+					Entry.GrantedAbility = LoadClass<UGameplayAbility>(nullptr, *ClassStr);
+				}
+
+				const FString InputTagStr = GetJsonString(AbilityObj, "inputTag");
+				Entry.InputTag = ParseGameplayTag(InputTagStr);
+				Entry.bAddInputTag = Entry.InputTag.IsValid();
+
+				Modifier.AbilitiesToGrant.Add(Entry);
+			}
+		}
+
+		return true;
+	}
+
+	// ---- Effects ----
+	if (TypeStr == TEXT("Effects"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_Effects>();
+		FArcRecipeOutputModifier_Effects& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Effects>();
+		Modifier.SlotTag = SlotTag;
+
+		if (ModObj.contains("triggerTags") && ModObj["triggerTags"].is_array())
+		{
+			Modifier.TriggerTags = ParseGameplayTags(ModObj["triggerTags"]);
+		}
+
+		Modifier.MinQualityThreshold = GetJsonFloat(ModObj, "minQuality", 0.0f);
+
+		if (ModObj.contains("effects") && ModObj["effects"].is_array())
+		{
+			for (const auto& EffectObj : ModObj["effects"])
+			{
+				const FString ClassStr = GetJsonString(EffectObj, "class");
+				if (!ClassStr.IsEmpty())
+				{
+					TSubclassOf<UGameplayEffect> EffectClass = LoadClass<UGameplayEffect>(nullptr, *ClassStr);
+					if (EffectClass)
+					{
+						Modifier.EffectsToGrant.Add(EffectClass);
+					}
+				}
+			}
+		}
+
+		return true;
+	}
+
+	// ---- TransferStats ----
+	if (TypeStr == TEXT("TransferStats"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_TransferStats>();
+		FArcRecipeOutputModifier_TransferStats& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_TransferStats>();
+		Modifier.SlotTag = SlotTag;
+		Modifier.IngredientSlotIndex = GetJsonInt(ModObj, "ingredientSlot", 0);
+		Modifier.TransferScale = GetJsonFloat(ModObj, "transferScale", 1.0f);
+		Modifier.bScaleByQuality = GetJsonBool(ModObj, "scaleByQuality", true);
+
+		return true;
+	}
+
+	// ---- Random (Chooser) ----
+	if (TypeStr == TEXT("Random"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_Random>();
+		FArcRecipeOutputModifier_Random& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Random>();
+		Modifier.SlotTag = SlotTag;
+
+		const FString ChooserTableStr = GetJsonString(ModObj, "chooserTable");
+		if (!ChooserTableStr.IsEmpty())
+		{
+			Modifier.ModifierChooserTable = TSoftObjectPtr<UChooserTable>(FSoftObjectPath(ChooserTableStr));
+		}
+
+		Modifier.MaxRolls = FMath::Max(1, GetJsonInt(ModObj, "maxRolls", 1));
+		Modifier.bAllowDuplicates = GetJsonBool(ModObj, "allowDuplicates", false);
+		Modifier.bQualityAffectsRolls = GetJsonBool(ModObj, "qualityAffectsRolls", false);
+		Modifier.QualityBonusRollThreshold = GetJsonFloat(ModObj, "qualityBonusRollThreshold", 2.0f);
+
+		return true;
+	}
+
+	// ---- RandomPool ----
+	if (TypeStr == TEXT("RandomPool"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_RandomPool>();
+		FArcRecipeOutputModifier_RandomPool& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_RandomPool>();
+		Modifier.SlotTag = SlotTag;
+
+		const FString PoolDefStr = GetJsonString(ModObj, "poolDefinition");
+		if (!PoolDefStr.IsEmpty())
+		{
+			Modifier.PoolDefinition = TSoftObjectPtr<UArcRandomPoolDefinition>(FSoftObjectPath(PoolDefStr));
+		}
+
+		const bool bAllowDups = GetJsonBool(ModObj, "allowDuplicates", false);
+
+		const FString SelectionModeStr = GetJsonString(ModObj, "selectionMode");
+		if (SelectionModeStr == TEXT("Budget"))
+		{
+			Modifier.SelectionMode.InitializeAs<FArcRandomPoolSelection_Budget>();
+			FArcRandomPoolSelection_Budget& BudgetMode = Modifier.SelectionMode.GetMutable<FArcRandomPoolSelection_Budget>();
+			BudgetMode.bAllowDuplicates = bAllowDups;
+			BudgetMode.BaseBudget = GetJsonFloat(ModObj, "baseBudget", 3.0f);
+			BudgetMode.BudgetPerQuality = GetJsonFloat(ModObj, "budgetPerQuality", 1.0f);
+			BudgetMode.MaxBudgetSelections = GetJsonInt(ModObj, "maxBudgetSelections", 0);
+		}
+		else // Default to SimpleRandom
+		{
+			Modifier.SelectionMode.InitializeAs<FArcRandomPoolSelection_SimpleRandom>();
+			FArcRandomPoolSelection_SimpleRandom& SimpleMode = Modifier.SelectionMode.GetMutable<FArcRandomPoolSelection_SimpleRandom>();
+			SimpleMode.bAllowDuplicates = bAllowDups;
+			SimpleMode.MaxSelections = FMath::Max(1, GetJsonInt(ModObj, "maxSelections", 1));
+			SimpleMode.bQualityAffectsSelections = GetJsonBool(ModObj, "qualityAffectsSelections", false);
+			SimpleMode.QualityBonusThreshold = GetJsonFloat(ModObj, "qualityBonusThreshold", 2.0f);
+		}
+
+		return true;
+	}
+
+	// ---- MaterialProperties ----
+	if (TypeStr == TEXT("MaterialProperties"))
+	{
+		OutModifier.InitializeAs<FArcRecipeOutputModifier_MaterialProperties>();
+		FArcRecipeOutputModifier_MaterialProperties& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_MaterialProperties>();
+		Modifier.SlotTag = SlotTag;
+
+		const FString PropertyTableStr = GetJsonString(ModObj, "propertyTable");
+		if (!PropertyTableStr.IsEmpty())
+		{
+			Modifier.PropertyTable = TSoftObjectPtr<UArcMaterialPropertyTable>(FSoftObjectPath(PropertyTableStr));
+		}
+
+		Modifier.BaseIngredientCount = FMath::Max(0, GetJsonInt(ModObj, "baseIngredientCount", 0));
+		Modifier.ExtraCraftTimeBonus = GetJsonFloat(ModObj, "extraCraftTimeBonus", 0.0f);
+		Modifier.bUseRecipeTierTable = GetJsonBool(ModObj, "useRecipeTierTable", true);
+
+		if (ModObj.contains("recipeTags") && ModObj["recipeTags"].is_array())
+		{
+			Modifier.RecipeTags = ParseGameplayTags(ModObj["recipeTags"]);
+		}
+
+		if (ModObj.contains("modifierSlots") && ModObj["modifierSlots"].is_array())
+		{
+			for (const auto& SlotObj : ModObj["modifierSlots"])
+			{
+				FArcMaterialModifierSlotConfig SlotConfig;
+
+				const FString SlotTagStr = GetJsonString(SlotObj, "tag");
+				if (!SlotTagStr.IsEmpty())
+				{
+					SlotConfig.SlotTag = FGameplayTag::RequestGameplayTag(FName(*SlotTagStr), false);
+				}
+
+				SlotConfig.MaxCount = FMath::Max(0, GetJsonInt(SlotObj, "maxCount", 1));
+				SlotConfig.SelectionMode = StringToSlotSelection(GetJsonString(SlotObj, "selection"));
+
+				if (SlotConfig.SlotTag.IsValid())
+				{
+					Modifier.ModifierSlotConfigs.Add(SlotConfig);
+				}
+			}
+		}
+
+		return true;
+	}
+
+	UE_LOG(LogArcCraftJsonUtils, Warning, TEXT("Unknown output modifier type: %s"), *TypeStr);
+	return false;
+}
+
+FGameplayTagQueryExpression ArcCraftJsonUtils::ParseTagQueryExpr(const nlohmann::json& ExprObj)
+{
+	FGameplayTagQueryExpression Expr;
+
+	if (!ExprObj.is_object())
+	{
+		return Expr;
+	}
+
+	const FString TypeStr = GetJsonString(ExprObj, "type");
+	Expr.ExprType = StringToExprType(TypeStr);
+
+	if (Expr.UsesTagSet())
+	{
+		if (ExprObj.contains("tags") && ExprObj["tags"].is_array())
+		{
+			for (const auto& TagElement : ExprObj["tags"])
+			{
+				if (TagElement.is_string())
+				{
+					const FString TagStr = UTF8_TO_TCHAR(TagElement.get<std::string>().c_str());
+					FGameplayTag Tag = ParseGameplayTag(TagStr);
+					if (Tag.IsValid())
+					{
+						Expr.TagSet.Add(Tag);
+					}
+				}
+			}
+		}
+	}
+	else if (Expr.UsesExprSet())
+	{
+		if (ExprObj.contains("expressions") && ExprObj["expressions"].is_array())
+		{
+			for (const auto& SubExprObj : ExprObj["expressions"])
+			{
+				Expr.ExprSet.Add(ParseTagQueryExpr(SubExprObj));
+			}
+		}
+	}
+
+	return Expr;
+}
+
+FGameplayTagQuery ArcCraftJsonUtils::ParseTagQuery(const nlohmann::json& QueryObj)
+{
+	FGameplayTagQueryExpression Expr = ParseTagQueryExpr(QueryObj);
+	return FGameplayTagQuery::BuildQuery(Expr);
+}
+
+bool ArcCraftJsonUtils::ParseQualityBand(const nlohmann::json& BandObj, FArcMaterialQualityBand& OutBand)
+{
+	if (!BandObj.is_object())
+	{
+		return false;
+	}
+
+	const FString NameStr = GetJsonString(BandObj, "name");
+	if (!NameStr.IsEmpty())
+	{
+		OutBand.BandName = FText::FromString(NameStr);
+	}
+
+	OutBand.MinQuality = GetJsonFloat(BandObj, "minQuality", 0.0f);
+	OutBand.BaseWeight = GetJsonFloat(BandObj, "baseWeight", 1.0f);
+	OutBand.QualityWeightBias = GetJsonFloat(BandObj, "qualityWeightBias", 0.0f);
+
+	if (BandObj.contains("modifiers") && BandObj["modifiers"].is_array())
+	{
+		for (const auto& ModObj : BandObj["modifiers"])
+		{
+			FInstancedStruct ModifierStruct;
+			if (ParseOutputModifier(ModObj, ModifierStruct))
+			{
+				OutBand.Modifiers.Add(MoveTemp(ModifierStruct));
+			}
+		}
+	}
+
+	return true;
+}
+
+// -------------------------------------------------------------------
+// Serialization (UE -> JSON)
+// -------------------------------------------------------------------
+
+nlohmann::json ArcCraftJsonUtils::SerializeTagContainer(const FGameplayTagContainer& Tags)
+{
+	nlohmann::json Array = nlohmann::json::array();
+
+	for (const FGameplayTag& Tag : Tags)
+	{
+		Array.push_back(TCHAR_TO_UTF8(*Tag.ToString()));
+	}
+
+	return Array;
+}
+
+nlohmann::json ArcCraftJsonUtils::SerializeGameplayTags(const FGameplayTagContainer& Tags)
+{
+	return SerializeTagContainer(Tags);
+}
+
+nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct& Modifier)
+{
+	nlohmann::json Obj = nlohmann::json::object();
+
+	// ---- Stats ----
+	if (const FArcRecipeOutputModifier_Stats* Stats = Modifier.GetPtr<FArcRecipeOutputModifier_Stats>())
+	{
+		Obj["type"] = "Stats";
+		Obj["qualityScaling"] = Stats->QualityScalingFactor;
+
+		if (Stats->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*Stats->SlotTag.ToString());
+		}
+
+		nlohmann::json StatsArray = nlohmann::json::array();
+		for (const FArcItemAttributeStat& Stat : Stats->BaseStats)
+		{
+			nlohmann::json StatObj = nlohmann::json::object();
+			StatObj["value"] = Stat.Value.GetValueAtLevel(0);
+			StatObj["modType"] = TCHAR_TO_UTF8(*ModTypeToString(Stat.Type));
+
+			if (Stat.Attribute.IsValid())
+			{
+				StatObj["attribute"] = TCHAR_TO_UTF8(*Stat.Attribute.GetName());
+			}
+
+			StatsArray.push_back(StatObj);
+		}
+		Obj["stats"] = StatsArray;
+
+		return Obj;
+	}
+
+	// ---- Abilities ----
+	if (const FArcRecipeOutputModifier_Abilities* Abilities = Modifier.GetPtr<FArcRecipeOutputModifier_Abilities>())
+	{
+		Obj["type"] = "Abilities";
+
+		if (Abilities->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*Abilities->SlotTag.ToString());
+		}
+
+		if (!Abilities->TriggerTags.IsEmpty())
+		{
+			Obj["triggerTags"] = SerializeTagContainer(Abilities->TriggerTags);
+		}
+
+		nlohmann::json AbilitiesArray = nlohmann::json::array();
+		for (const FArcAbilityEntry& Entry : Abilities->AbilitiesToGrant)
+		{
+			nlohmann::json AbilityObj = nlohmann::json::object();
+
+			if (Entry.GrantedAbility)
+			{
+				AbilityObj["class"] = TCHAR_TO_UTF8(*Entry.GrantedAbility->GetPathName());
+			}
+
+			if (Entry.InputTag.IsValid())
+			{
+				AbilityObj["inputTag"] = TCHAR_TO_UTF8(*Entry.InputTag.ToString());
+			}
+
+			AbilitiesArray.push_back(AbilityObj);
+		}
+		Obj["abilities"] = AbilitiesArray;
+
+		return Obj;
+	}
+
+	// ---- Effects ----
+	if (const FArcRecipeOutputModifier_Effects* Effects = Modifier.GetPtr<FArcRecipeOutputModifier_Effects>())
+	{
+		Obj["type"] = "Effects";
+
+		if (Effects->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*Effects->SlotTag.ToString());
+		}
+
+		if (!Effects->TriggerTags.IsEmpty())
+		{
+			Obj["triggerTags"] = SerializeTagContainer(Effects->TriggerTags);
+		}
+
+		if (Effects->MinQualityThreshold != 0.0f)
+		{
+			Obj["minQuality"] = Effects->MinQualityThreshold;
+		}
+
+		nlohmann::json EffectsArray = nlohmann::json::array();
+		for (const TSubclassOf<UGameplayEffect>& EffectClass : Effects->EffectsToGrant)
+		{
+			nlohmann::json EffectObj = nlohmann::json::object();
+
+			if (EffectClass)
+			{
+				EffectObj["class"] = TCHAR_TO_UTF8(*EffectClass->GetPathName());
+			}
+
+			EffectsArray.push_back(EffectObj);
+		}
+		Obj["effects"] = EffectsArray;
+
+		return Obj;
+	}
+
+	// ---- TransferStats ----
+	if (const FArcRecipeOutputModifier_TransferStats* Transfer = Modifier.GetPtr<FArcRecipeOutputModifier_TransferStats>())
+	{
+		Obj["type"] = "TransferStats";
+
+		if (Transfer->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*Transfer->SlotTag.ToString());
+		}
+
+		Obj["ingredientSlot"] = Transfer->IngredientSlotIndex;
+		Obj["transferScale"] = Transfer->TransferScale;
+		Obj["scaleByQuality"] = Transfer->bScaleByQuality;
+
+		return Obj;
+	}
+
+	// ---- Random (Chooser) ----
+	if (const FArcRecipeOutputModifier_Random* Random = Modifier.GetPtr<FArcRecipeOutputModifier_Random>())
+	{
+		Obj["type"] = "Random";
+
+		if (Random->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*Random->SlotTag.ToString());
+		}
+
+		if (!Random->ModifierChooserTable.IsNull())
+		{
+			Obj["chooserTable"] = TCHAR_TO_UTF8(*Random->ModifierChooserTable.ToString());
+		}
+
+		Obj["maxRolls"] = Random->MaxRolls;
+		Obj["allowDuplicates"] = Random->bAllowDuplicates;
+		Obj["qualityAffectsRolls"] = Random->bQualityAffectsRolls;
+		Obj["qualityBonusRollThreshold"] = Random->QualityBonusRollThreshold;
+
+		return Obj;
+	}
+
+	// ---- RandomPool ----
+	if (const FArcRecipeOutputModifier_RandomPool* Pool = Modifier.GetPtr<FArcRecipeOutputModifier_RandomPool>())
+	{
+		Obj["type"] = "RandomPool";
+
+		if (Pool->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*Pool->SlotTag.ToString());
+		}
+
+		if (!Pool->PoolDefinition.IsNull())
+		{
+			Obj["poolDefinition"] = TCHAR_TO_UTF8(*Pool->PoolDefinition.ToString());
+		}
+
+		// Serialize selection mode
+		if (const FArcRandomPoolSelection_Budget* BudgetMode = Pool->SelectionMode.GetPtr<FArcRandomPoolSelection_Budget>())
+		{
+			Obj["selectionMode"] = "Budget";
+			Obj["allowDuplicates"] = BudgetMode->bAllowDuplicates;
+			Obj["baseBudget"] = BudgetMode->BaseBudget;
+			Obj["budgetPerQuality"] = BudgetMode->BudgetPerQuality;
+			Obj["maxBudgetSelections"] = BudgetMode->MaxBudgetSelections;
+		}
+		else if (const FArcRandomPoolSelection_SimpleRandom* SimpleMode = Pool->SelectionMode.GetPtr<FArcRandomPoolSelection_SimpleRandom>())
+		{
+			Obj["selectionMode"] = "SimpleRandom";
+			Obj["allowDuplicates"] = SimpleMode->bAllowDuplicates;
+			Obj["maxSelections"] = SimpleMode->MaxSelections;
+			Obj["qualityAffectsSelections"] = SimpleMode->bQualityAffectsSelections;
+			Obj["qualityBonusThreshold"] = SimpleMode->QualityBonusThreshold;
+		}
+
+		return Obj;
+	}
+
+	// ---- MaterialProperties ----
+	if (const FArcRecipeOutputModifier_MaterialProperties* MatProps = Modifier.GetPtr<FArcRecipeOutputModifier_MaterialProperties>())
+	{
+		Obj["type"] = "MaterialProperties";
+
+		if (MatProps->SlotTag.IsValid())
+		{
+			Obj["slotTag"] = TCHAR_TO_UTF8(*MatProps->SlotTag.ToString());
+		}
+
+		if (!MatProps->PropertyTable.IsNull())
+		{
+			Obj["propertyTable"] = TCHAR_TO_UTF8(*MatProps->PropertyTable.ToString());
+		}
+
+		Obj["baseIngredientCount"] = MatProps->BaseIngredientCount;
+		Obj["extraCraftTimeBonus"] = MatProps->ExtraCraftTimeBonus;
+		Obj["useRecipeTierTable"] = MatProps->bUseRecipeTierTable;
+
+		if (!MatProps->RecipeTags.IsEmpty())
+		{
+			Obj["recipeTags"] = SerializeTagContainer(MatProps->RecipeTags);
+		}
+
+		if (MatProps->ModifierSlotConfigs.Num() > 0)
+		{
+			nlohmann::json SlotsArray = nlohmann::json::array();
+			for (const FArcMaterialModifierSlotConfig& SlotConfig : MatProps->ModifierSlotConfigs)
+			{
+				nlohmann::json SlotObj = nlohmann::json::object();
+
+				if (SlotConfig.SlotTag.IsValid())
+				{
+					SlotObj["tag"] = TCHAR_TO_UTF8(*SlotConfig.SlotTag.ToString());
+				}
+
+				SlotObj["maxCount"] = SlotConfig.MaxCount;
+				SlotObj["selection"] = TCHAR_TO_UTF8(*SlotSelectionToString(SlotConfig.SelectionMode));
+
+				SlotsArray.push_back(SlotObj);
+			}
+			Obj["modifierSlots"] = SlotsArray;
+		}
+
+		return Obj;
+	}
+
+	UE_LOG(LogArcCraftJsonUtils, Warning, TEXT("SerializeOutputModifier: Unrecognized modifier type."));
+	return nlohmann::json();
+}
+
+nlohmann::json ArcCraftJsonUtils::SerializeTagQueryExpr(const FGameplayTagQueryExpression& Expr)
+{
+	nlohmann::json Obj = nlohmann::json::object();
+
+	Obj["type"] = TCHAR_TO_UTF8(*ExprTypeToString(Expr.ExprType));
+
+	if (Expr.UsesTagSet())
+	{
+		nlohmann::json TagsArray = nlohmann::json::array();
+		for (const FGameplayTag& Tag : Expr.TagSet)
+		{
+			TagsArray.push_back(TCHAR_TO_UTF8(*Tag.ToString()));
+		}
+		Obj["tags"] = TagsArray;
+	}
+	else if (Expr.UsesExprSet())
+	{
+		nlohmann::json ExpressionsArray = nlohmann::json::array();
+		for (const FGameplayTagQueryExpression& SubExpr : Expr.ExprSet)
+		{
+			ExpressionsArray.push_back(SerializeTagQueryExpr(SubExpr));
+		}
+		Obj["expressions"] = ExpressionsArray;
+	}
+
+	return Obj;
+}
+
+nlohmann::json ArcCraftJsonUtils::SerializeTagQuery(const FGameplayTagQuery& Query)
+{
+	FGameplayTagQueryExpression Expr;
+	Query.GetQueryExpr(Expr);
+	return SerializeTagQueryExpr(Expr);
+}
+
+nlohmann::json ArcCraftJsonUtils::SerializeQualityBand(const FArcMaterialQualityBand& Band)
+{
+	nlohmann::json Obj = nlohmann::json::object();
+
+	Obj["name"] = TCHAR_TO_UTF8(*Band.BandName.ToString());
+	Obj["minQuality"] = Band.MinQuality;
+	Obj["baseWeight"] = Band.BaseWeight;
+	Obj["qualityWeightBias"] = Band.QualityWeightBias;
+
+	nlohmann::json ModifiersArray = nlohmann::json::array();
+	for (const FInstancedStruct& ModifierStruct : Band.Modifiers)
+	{
+		nlohmann::json ModJson = SerializeOutputModifier(ModifierStruct);
+		if (!ModJson.is_null())
+		{
+			ModifiersArray.push_back(ModJson);
+		}
+	}
+	Obj["modifiers"] = ModifiersArray;
+
+	return Obj;
+}

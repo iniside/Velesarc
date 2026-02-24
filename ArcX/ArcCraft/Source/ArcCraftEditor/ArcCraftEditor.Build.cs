@@ -47,7 +47,7 @@ public class ArcCraftEditor : ModuleRules
 				, "PropertyEditor"
 				, "ArcCraft"
 				, "ArcCore"
-				, "XmlParser"
+				, "ArcJson"
 				, "GameplayTags"
 			}
 		);

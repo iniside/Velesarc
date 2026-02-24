@@ -24,56 +24,38 @@
 #include "Factories/Factory.h"
 #include "EditorReimportHandler.h"
 
-#include "ArcRecipeXmlImportFactory.generated.h"
+#include "ArcMaterialPropertyTableJsonImportFactory.generated.h"
 
-class UArcRecipeDefinition;
+class UArcMaterialPropertyTable;
 
 /**
- * Factory that imports XML files into UArcRecipeDefinition assets.
- * Also serves as a reimport handler — stores the source XML path on the asset
- * and can re-parse it to update the recipe.
+ * Factory that imports JSON files into UArcMaterialPropertyTable assets.
+ * Also serves as a reimport handler.
  *
- * Reuses UArcRecipeXmlLoader::ParseRecipeNode() for parsing (single source of truth).
- *
- * Supported XML formats:
- *   <Recipes><Recipe ...>...</Recipe></Recipes>   (multi-recipe file)
- *   <Recipe ...>...</Recipe>                       (single recipe)
+ * Supported JSON format:
+ *   { "$type": "ArcMaterialPropertyTable", "rules": [ ... ] }
  */
 UCLASS()
-class ARCCRAFTEDITOR_API UArcRecipeXmlImportFactory : public UFactory, public FReimportHandler
+class ARCCRAFTEDITOR_API UArcMaterialPropertyTableJsonImportFactory : public UFactory, public FReimportHandler
 {
 	GENERATED_BODY()
 
 public:
-	UArcRecipeXmlImportFactory(const FObjectInitializer& ObjectInitializer);
+	UArcMaterialPropertyTableJsonImportFactory(const FObjectInitializer& ObjectInitializer);
 
 	// ---- UFactory interface ----
-
 	virtual bool FactoryCanImport(const FString& Filename) override;
-
 	virtual UObject* FactoryCreateFile(UClass* InClass, UObject* InParent,
 		FName InName, EObjectFlags Flags, const FString& Filename,
 		const TCHAR* Parms, FFeedbackContext* Warn,
 		bool& bOutOperationCanceled) override;
 
 	// ---- FReimportHandler interface ----
-
 	virtual bool CanReimport(UObject* Obj, TArray<FString>& OutFilenames) override;
 	virtual void SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths) override;
 	virtual EReimportResult::Type Reimport(UObject* Obj) override;
 	virtual int32 GetPriority() const override;
 
 private:
-	/**
-	 * Find the <Recipe> node that matches an existing recipe's Id.
-	 * Falls back to the first <Recipe> node if no Id match is found.
-	 */
-	static const class FXmlNode* FindMatchingRecipeNode(
-		const class FXmlNode* RootNode,
-		const FGuid& RecipeId);
-
-	/**
-	 * Reset a recipe definition to default values before re-parsing from XML.
-	 */
-	static void ResetRecipeToDefaults(UArcRecipeDefinition* Recipe);
+	static void ResetToDefaults(UArcMaterialPropertyTable* Table);
 };

@@ -21,6 +21,88 @@
 
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
 
+#include "ArcJsonIncludes.h"
+#include "ArcCraft/Shared/ArcCraftJsonUtils.h"
+#include "EditorFramework/AssetImportData.h"
+#include "Misc/FileHelper.h"
+#include "UObject/Package.h"
+
+// -------------------------------------------------------------------
+// PostInitProperties / AssetImportData
+// -------------------------------------------------------------------
+
+void UArcQualityTierTable::PostInitProperties()
+{
+	Super::PostInitProperties();
+
+#if WITH_EDITORONLY_DATA
+	if (!HasAnyFlags(RF_ClassDefaultObject | RF_NeedLoad))
+	{
+		if (!AssetImportData)
+		{
+			AssetImportData = NewObject<UAssetImportData>(this, TEXT("AssetImportData"));
+		}
+	}
+#endif
+}
+
+UAssetImportData* UArcQualityTierTable::GetAssetImportData() const
+{
+#if WITH_EDITORONLY_DATA
+	return AssetImportData;
+#else
+	return nullptr;
+#endif
+}
+
+// -------------------------------------------------------------------
+// JSON Export
+// -------------------------------------------------------------------
+
+void UArcQualityTierTable::ExportToJson()
+{
+#if WITH_EDITOR
+	const FString PackagePath = GetOutermost()->GetName();
+	FString FilePath;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(PackagePath, FilePath, TEXT(".json")))
+	{
+		UE_LOG(LogTemp, Error, TEXT("ExportToJson: Could not resolve file path for %s"), *PackagePath);
+		return;
+	}
+
+	nlohmann::json JsonObj;
+
+	JsonObj["$schema"] = "../../Schemas/quality-tier-table.schema.json";
+	JsonObj["$type"] = "ArcQualityTierTable";
+	JsonObj["name"] = TCHAR_TO_UTF8(*GetName());
+
+	nlohmann::json TiersArr = nlohmann::json::array();
+	for (const FArcQualityTierMapping& Tier : Tiers)
+	{
+		nlohmann::json TierObj;
+		TierObj["tag"] = Tier.TierTag.IsValid() ? TCHAR_TO_UTF8(*Tier.TierTag.ToString()) : "";
+		TierObj["value"] = Tier.TierValue;
+		TierObj["multiplier"] = Tier.QualityMultiplier;
+		TiersArr.push_back(TierObj);
+	}
+	JsonObj["tiers"] = TiersArr;
+
+	const FString JsonStr = UTF8_TO_TCHAR(JsonObj.dump(1, '\t').c_str());
+	if (FFileHelper::SaveStringToFile(JsonStr, *FilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(LogTemp, Log, TEXT("ExportToJson: Exported quality tier table to %s"), *FilePath);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("ExportToJson: Failed to write %s"), *FilePath);
+	}
+#endif
+}
+
+// -------------------------------------------------------------------
+// Tier lookups
+// -------------------------------------------------------------------
+
 int32 UArcQualityTierTable::GetTierValue(const FGameplayTag& InTag) const
 {
 	for (const FArcQualityTierMapping& Mapping : Tiers)

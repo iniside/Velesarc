@@ -141,7 +141,7 @@ public:
 	FPrimaryAssetType RecipeType;
 
 #if WITH_EDITORONLY_DATA
-	/** Import data storing the source XML file path for reimport. */
+	/** Import data storing the source file path for reimport. */
 	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
 	TObjectPtr<UAssetImportData> AssetImportData;
 #endif
@@ -159,6 +159,10 @@ public:
 	/** Regenerate the unique recipe identifier. */
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Recipe")
 	void RegenerateRecipeId();
+
+	/** Export this recipe to JSON at the asset's file location. */
+	UFUNCTION(CallInEditor, Category = "Recipe")
+	void ExportToJson();
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;

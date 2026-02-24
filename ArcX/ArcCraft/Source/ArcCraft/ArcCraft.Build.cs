@@ -50,7 +50,7 @@ public class ArcCraft : ModuleRules
 				"Iris",
 				"StructUtils",
 				"Chooser",
-				"XmlParser",
+				"ArcJson",
 				"SlateIM",
 				"MassEntity",
 				"MassCommon",

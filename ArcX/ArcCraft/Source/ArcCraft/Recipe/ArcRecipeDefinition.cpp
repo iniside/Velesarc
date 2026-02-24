@@ -21,8 +21,17 @@
 
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 
+#include "ArcJsonIncludes.h"
+#include "GameplayEffect.h"
+#include "Abilities/GameplayAbility.h"
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
+#include "ArcCraft/Recipe/ArcRecipeOutput.h"
+#include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
+#include "ArcCraft/MaterialCraft/ArcMaterialOutputModifier.h"
+#include "ArcCraft/Shared/ArcCraftJsonUtils.h"
 #include "EditorFramework/AssetImportData.h"
+#include "Misc/FileHelper.h"
+#include "UObject/Package.h"
 
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
@@ -284,6 +293,143 @@ void UArcRecipeDefinition::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 void UArcRecipeDefinition::RegenerateRecipeId()
 {
 	RecipeId = FGuid::NewGuid();
+}
+
+// -------------------------------------------------------------------
+// JSON Export
+// -------------------------------------------------------------------
+
+void UArcRecipeDefinition::ExportToJson()
+{
+#if WITH_EDITOR
+	const FString PackagePath = GetOutermost()->GetName();
+	FString FilePath;
+	if (!FPackageName::TryConvertLongPackageNameToFilename(PackagePath, FilePath, TEXT(".json")))
+	{
+		UE_LOG(LogTemp, Error, TEXT("ExportToJson: Could not resolve file path for %s"), *PackagePath);
+		return;
+	}
+
+	nlohmann::json JsonObj;
+
+	JsonObj["$schema"] = "../../Schemas/recipe-definition.schema.json";
+	JsonObj["$type"] = "ArcRecipeDefinition";
+
+	JsonObj["id"] = TCHAR_TO_UTF8(*RecipeId.ToString());
+	JsonObj["name"] = TCHAR_TO_UTF8(*RecipeName.ToString());
+	JsonObj["craftTime"] = CraftTime;
+
+	// Tags
+	if (RecipeTags.Num() > 0)
+	{
+		JsonObj["tags"] = ArcCraftJsonUtils::SerializeGameplayTags(RecipeTags);
+	}
+	if (RequiredStationTags.Num() > 0)
+	{
+		JsonObj["requiredStationTags"] = ArcCraftJsonUtils::SerializeGameplayTags(RequiredStationTags);
+	}
+	if (RequiredInstigatorTags.Num() > 0)
+	{
+		JsonObj["requiredInstigatorTags"] = ArcCraftJsonUtils::SerializeGameplayTags(RequiredInstigatorTags);
+	}
+
+	// Quality tier table
+	if (!QualityTierTable.IsNull())
+	{
+		JsonObj["qualityTierTable"] = TCHAR_TO_UTF8(*QualityTierTable.ToSoftObjectPath().ToString());
+	}
+	JsonObj["qualityAffectsLevel"] = bQualityAffectsLevel;
+
+	// Ingredients
+	if (Ingredients.Num() > 0)
+	{
+		nlohmann::json IngredientsArr = nlohmann::json::array();
+		for (const FInstancedStruct& IngredientStruct : Ingredients)
+		{
+			const FArcRecipeIngredient_ItemDef* ItemDefIngredient = IngredientStruct.GetPtr<FArcRecipeIngredient_ItemDef>();
+			const FArcRecipeIngredient_Tags* TagsIngredient = IngredientStruct.GetPtr<FArcRecipeIngredient_Tags>();
+
+			if (ItemDefIngredient)
+			{
+				nlohmann::json IngObj;
+				IngObj["type"] = "ItemDef";
+				IngObj["amount"] = ItemDefIngredient->Amount;
+				IngObj["consume"] = ItemDefIngredient->bConsumeOnCraft;
+				if (!ItemDefIngredient->SlotName.IsEmpty())
+				{
+					IngObj["slotName"] = TCHAR_TO_UTF8(*ItemDefIngredient->SlotName.ToString());
+				}
+				if (ItemDefIngredient->ItemDefinitionId.IsValid())
+				{
+					IngObj["itemDefinition"] = TCHAR_TO_UTF8(*ItemDefIngredient->ItemDefinitionId.AssetId.ToString());
+				}
+				IngredientsArr.push_back(IngObj);
+			}
+			else if (TagsIngredient)
+			{
+				nlohmann::json IngObj;
+				IngObj["type"] = "Tags";
+				IngObj["amount"] = TagsIngredient->Amount;
+				IngObj["consume"] = TagsIngredient->bConsumeOnCraft;
+				if (!TagsIngredient->SlotName.IsEmpty())
+				{
+					IngObj["slotName"] = TCHAR_TO_UTF8(*TagsIngredient->SlotName.ToString());
+				}
+				if (TagsIngredient->RequiredTags.Num() > 0)
+				{
+					IngObj["requiredTags"] = ArcCraftJsonUtils::SerializeGameplayTags(TagsIngredient->RequiredTags);
+				}
+				if (TagsIngredient->DenyTags.Num() > 0)
+				{
+					IngObj["denyTags"] = ArcCraftJsonUtils::SerializeGameplayTags(TagsIngredient->DenyTags);
+				}
+				if (TagsIngredient->MinimumTierTag.IsValid())
+				{
+					IngObj["minimumTier"] = TCHAR_TO_UTF8(*TagsIngredient->MinimumTierTag.ToString());
+				}
+				IngredientsArr.push_back(IngObj);
+			}
+		}
+		JsonObj["ingredients"] = IngredientsArr;
+	}
+
+	// Output
+	{
+		nlohmann::json OutputObj;
+		if (OutputItemDefinition.IsValid())
+		{
+			OutputObj["itemDefinition"] = TCHAR_TO_UTF8(*OutputItemDefinition.AssetId.ToString());
+		}
+		OutputObj["amount"] = OutputAmount;
+		OutputObj["level"] = static_cast<int32>(OutputLevel);
+
+		// Output modifiers
+		if (OutputModifiers.Num() > 0)
+		{
+			nlohmann::json ModifiersArr = nlohmann::json::array();
+			for (const FInstancedStruct& ModStruct : OutputModifiers)
+			{
+				nlohmann::json ModJson = ArcCraftJsonUtils::SerializeOutputModifier(ModStruct);
+				if (!ModJson.is_null())
+				{
+					ModifiersArr.push_back(ModJson);
+				}
+			}
+			OutputObj["modifiers"] = ModifiersArr;
+		}
+		JsonObj["output"] = OutputObj;
+	}
+
+	const FString JsonStr = UTF8_TO_TCHAR(JsonObj.dump(1, '\t').c_str());
+	if (FFileHelper::SaveStringToFile(JsonStr, *FilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(LogTemp, Log, TEXT("ExportToJson: Exported recipe to %s"), *FilePath);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("ExportToJson: Failed to write %s"), *FilePath);
+	}
+#endif // WITH_EDITOR
 }
 
 #if WITH_EDITOR

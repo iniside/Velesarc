@@ -27,6 +27,8 @@
 
 #include "ArcQualityBandPreset.generated.h"
 
+class UAssetImportData;
+
 /**
  * Reusable quality band definitions that can be shared across multiple rules.
  * When referenced by a FArcMaterialPropertyRule via QualityBandPreset,
@@ -45,6 +47,19 @@ public:
 	/** Quality bands, ordered from lowest to highest quality. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Preset")
 	TArray<FArcMaterialQualityBand> QualityBands;
+
+#if WITH_EDITORONLY_DATA
+	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
+	TObjectPtr<UAssetImportData> AssetImportData;
+#endif
+
+public:
+	virtual void PostInitProperties() override;
+
+	UFUNCTION(CallInEditor, Category = "Preset")
+	void ExportToJson();
+
+	UAssetImportData* GetAssetImportData() const;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;

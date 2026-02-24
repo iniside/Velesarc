@@ -24,8 +24,11 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
+#include "UObject/ObjectSaveContext.h"
 
 #include "ArcRecipeQuality.generated.h"
+
+class UAssetImportData;
 
 /**
  * Maps a single gameplay tag to a numerical tier value and quality multiplier.
@@ -62,6 +65,13 @@ class ARCCRAFT_API UArcQualityTierTable : public UDataAsset
 	GENERATED_BODY()
 
 public:
+#if WITH_EDITORONLY_DATA
+	/** Import data storing the source file path for reimport. */
+	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
+	TObjectPtr<UAssetImportData> AssetImportData;
+#endif
+
+public:
 	/** Ordered list of tiers, lowest to highest. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Quality")
 	TArray<FArcQualityTierMapping> Tiers;
@@ -87,4 +97,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Arc Craft|Quality")
 	float EvaluateQuality(const FGameplayTagContainer& InItemTags) const;
+
+	/** Export this table to JSON at the asset's file location. */
+	UFUNCTION(CallInEditor, Category = "Quality")
+	void ExportToJson();
+
+	/** Get the asset import data for reimport support. */
+	UAssetImportData* GetAssetImportData() const;
+
+	virtual void PostInitProperties() override;
 };

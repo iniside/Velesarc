@@ -28,6 +28,8 @@
 
 #include "ArcRandomPoolDefinition.generated.h"
 
+class UAssetImportData;
+
 /**
  * Tag-conditional weight modifier for a random pool entry.
  * When all RequiredTags are present in the aggregated ingredient tags,
@@ -178,6 +180,21 @@ public:
 	/** All possible entries in this pool. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pool")
 	TArray<FArcRandomPoolEntry> Entries;
+
+#if WITH_EDITORONLY_DATA
+	/** Import data storing the source file path for reimport. */
+	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
+	TObjectPtr<UAssetImportData> AssetImportData;
+#endif
+
+	/** Export this pool to JSON at the asset's file location. */
+	UFUNCTION(CallInEditor, Category = "Pool")
+	void ExportToJson();
+
+	/** Get the asset import data for reimport support. */
+	UAssetImportData* GetAssetImportData() const;
+
+	virtual void PostInitProperties() override;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;

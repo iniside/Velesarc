@@ -28,6 +28,7 @@
 #include "ArcMaterialPropertyTable.generated.h"
 
 class UArcQualityTierTable;
+class UAssetImportData;
 
 /**
  * Data asset that maps material tag patterns to quality-banded modifier contributions.
@@ -93,6 +94,19 @@ public:
 	 *  TotalBudget = BaseBandBudget + max(0, BandEligibilityQuality - 1.0) * BudgetPerQuality. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Table|Limits")
 	float BudgetPerQuality = 0.0f;
+
+#if WITH_EDITORONLY_DATA
+	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
+	TObjectPtr<UAssetImportData> AssetImportData;
+#endif
+
+public:
+	virtual void PostInitProperties() override;
+
+	UFUNCTION(CallInEditor, Category = "Table")
+	void ExportToJson();
+
+	UAssetImportData* GetAssetImportData() const;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
