@@ -139,6 +139,18 @@ public:
 	{
 		return FragmentSet;
 	}
+
+	/**
+	 * Add a fragment to this item definition. Useful for programmatic/test construction. 
+	 * USe this function only in editor or for automated testing. Item definitions should not be edited in game.
+	 */
+	template <typename T>
+	void AddFragment(const T& InFragment)
+	{
+		FInstancedStruct Instance;
+		Instance.InitializeAs<T>(InFragment);
+		FragmentSet.Add(FArcInstancedStruct(Instance));
+	}
 public:
 	UArcItemDefinition();
 

@@ -24,6 +24,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
+#include "MassEntityManager.h"
 #include "StructUtils/InstancedStruct.h"
 #include "AssetRegistry/AssetData.h"
 #include "Items/ArcItemSpec.h"
@@ -37,7 +38,6 @@ class UArcRecipeDefinition;
 class UArcCraftVisEntityComponent;
 struct FArcItemData;
 struct FMassEntityHandle;
-class FMassEntityManager;
 
 /**
  * Crafting station component that supports:
