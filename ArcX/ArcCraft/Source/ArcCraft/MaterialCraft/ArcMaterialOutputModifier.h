@@ -79,15 +79,21 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MaterialProperties")
 	FGameplayTagContainer RecipeTags;
 
-	/** Modifier slot configurations.
-	 *  If non-empty, evaluations are filtered through these slots before applying.
-	 *  Rules' OutputTags are matched to slot tags to determine routing.
-	 *  Evaluations not matching any slot pass through unchanged. */
+	/** Modifier slot configurations (per-MaterialProperties level).
+	 *  DEPRECATED: Prefer recipe-level ModifierSlots on UArcRecipeDefinition.
+	 *  When recipe-level slots are configured, this field is ignored.
+	 *  Kept for backward compatibility with the legacy direct-apply path. */
 	UPROPERTY(EditAnywhere, Category = "MaterialProperties|Slots")
 	TArray<FArcMaterialModifierSlotConfig> ModifierSlotConfigs;
 
 	virtual void ApplyToOutput(
 		FArcItemSpec& OutItemSpec,
+		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const FArcItemSpec& BaseSpec,
 		const TArray<const FArcItemData*>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;

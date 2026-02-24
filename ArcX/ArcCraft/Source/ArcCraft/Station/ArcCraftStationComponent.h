@@ -34,7 +34,10 @@
 #include "ArcCraftStationComponent.generated.h"
 
 class UArcRecipeDefinition;
+class UArcCraftVisEntityComponent;
 struct FArcItemData;
+struct FMassEntityHandle;
+class FMassEntityManager;
 
 /**
  * Crafting station component that supports:
@@ -216,4 +219,21 @@ private:
 
 	/** Finish one item in a queue entry: build output, deliver, broadcast. */
 	void FinishCurrentItem(FArcCraftQueueEntry& Entry);
+
+	// ---- Entity Access Helpers ----
+
+	/**
+	 * Get the entity handle from the owning actor's UArcCraftVisEntityComponent.
+	 * Returns an invalid handle if the component is missing.
+	 */
+	FMassEntityHandle GetEntityHandle() const;
+
+	/**
+	 * Get the entity manager for the current world.
+	 * Returns nullptr if the subsystem is unavailable.
+	 */
+	FMassEntityManager* GetEntityManager() const;
+
+	/** Cached reference to the vis entity component on our owner. Set in BeginPlay. */
+	TWeakObjectPtr<UArcCraftVisEntityComponent> CachedVisComponent;
 };

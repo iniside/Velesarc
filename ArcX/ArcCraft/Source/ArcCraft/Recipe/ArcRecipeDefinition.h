@@ -28,6 +28,7 @@
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
 #include "UObject/ObjectSaveContext.h"
+#include "ArcCraft/Recipe/ArcCraftModifierSlot.h"
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
 
@@ -101,6 +102,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Output",
 		meta = (BaseStruct = "/Script/ArcCraft.ArcRecipeOutputModifier", ExcludeBaseStruct))
 	TArray<FInstancedStruct> OutputModifiers;
+
+	// ---- Modifier Slots ----
+
+	/** Modifier slot definitions for this recipe.
+	 *  Each entry is one "chair" that a single modifier can fill.
+	 *  The SlotTag identifies the category — only modifiers with a matching SlotTag
+	 *  can occupy that chair. Duplicate tags are allowed for multiple slots of the same type.
+	 *  If empty, modifiers are applied directly in order (legacy behavior). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Slots")
+	TArray<FArcCraftModifierSlot> ModifierSlots;
+
+	/** Hard cap on how many modifier slots can be filled.
+	 *  0 = all defined slots are usable (no cap).
+	 *  If lower than the number of ModifierSlots entries, only this many get filled. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Slots", meta = (ClampMin = "0"))
+	int32 MaxUsableSlots = 0;
+
+	/** Strategy for selecting which modifiers fill the available slots
+	 *  when more modifiers are evaluated than slots allow. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Slots")
+	EArcCraftSlotSelection SlotSelectionMode = EArcCraftSlotSelection::HighestWeight;
 
 	// ---- Quality ----
 

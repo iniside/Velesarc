@@ -29,7 +29,9 @@
 class UArcCraftStationComponent;
 class UArcRecipeDefinition;
 class UArcItemsStoreComponent;
+class UArcCraftVisEntityComponent;
 struct FArcItemData;
+struct FArcCraftInputFragment;
 
 /**
  * Base instanced struct for ingredient sourcing.
@@ -174,4 +176,56 @@ public:
 
 protected:
 	UArcItemsStoreComponent* GetStationStore(const UArcCraftStationComponent* Station) const;
+};
+
+/**
+ * Item source that reads from the entity's FArcCraftInputFragment.
+ * Items must be deposited via the actor interface; depositing writes directly
+ * to the entity fragment through UArcCraftVisEntityComponent.
+ *
+ * When the actor is alive (vis active), items are also available from the
+ * UArcItemsStoreComponent that mirrors the entity data. When the actor is
+ * despawned, only the entity fragment persists — the processor reads it directly.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage"))
+struct ARCCRAFT_API FArcCraftItemSource_EntityStore : public FArcCraftItemSource
+{
+	GENERATED_BODY()
+
+public:
+	virtual TArray<const FArcItemData*> GetAvailableItems(
+		const UArcCraftStationComponent* Station,
+		const UObject* Instigator) const override;
+
+	virtual bool CanSatisfyRecipe(
+		const UArcCraftStationComponent* Station,
+		const UArcRecipeDefinition* Recipe,
+		const UObject* Instigator) const override;
+
+	virtual bool ConsumeIngredients(
+		UArcCraftStationComponent* Station,
+		const UArcRecipeDefinition* Recipe,
+		const UObject* Instigator,
+		TArray<const FArcItemData*>& OutMatchedItems,
+		TArray<float>& OutQualityMults) const override;
+
+	virtual bool DepositItem(
+		UArcCraftStationComponent* Station,
+		const FArcItemSpec& Item,
+		const UObject* Instigator) override;
+
+	virtual ~FArcCraftItemSource_EntityStore() override = default;
+
+private:
+	/**
+	 * Get the UArcCraftVisEntityComponent from the station's owner.
+	 * Returns nullptr if the owner doesn't have one.
+	 */
+	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
+
+	/**
+	 * Get the input store component that mirrors entity data.
+	 * This is the store class configured on the vis component.
+	 */
+	UArcItemsStoreComponent* GetInputStore(const UArcCraftStationComponent* Station) const;
 };

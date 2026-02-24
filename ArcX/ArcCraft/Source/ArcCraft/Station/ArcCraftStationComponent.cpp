@@ -21,15 +21,17 @@
 
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
 
+#include "MassEntityManager.h"
+#include "MassEntitySubsystem.h"
+#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcRecipeLookup.h"
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "Net/UnrealNetwork.h"
+#include "ArcCraft/Recipe/ArcCraftOutputBuilder.h"
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
-#include "ArcCraft/Recipe/ArcRecipeOutput.h"
-#include "ArcCraft/Recipe/ArcRecipeQuality.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogArcCraftStation, Log, All);
 DEFINE_LOG_CATEGORY(LogArcCraftStation);
@@ -57,6 +59,25 @@ void UArcCraftStationComponent::BeginPlay()
 	Super::BeginPlay();
 
 	PrimaryComponentTick.TickInterval = TickInterval;
+
+	// Validate that the owning actor has UArcCraftVisEntityComponent for Mass entity access
+	if (GetOwner())
+	{
+		UArcCraftVisEntityComponent* CraftVisComp =
+			GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
+
+		if (!CraftVisComp)
+		{
+			UE_LOG(LogArcCraftStation, Error,
+				TEXT("UArcCraftStationComponent on %s requires UArcCraftVisEntityComponent "
+					 "for Mass entity access. Entity-backed features will not work."),
+				*GetOwner()->GetName());
+		}
+		else
+		{
+			CachedVisComponent = CraftVisComp;
+		}
+	}
 }
 
 void UArcCraftStationComponent::GetLifetimeReplicatedProps(
@@ -585,45 +606,39 @@ void UArcCraftStationComponent::FinishCurrentItem(FArcCraftQueueEntry& Entry)
 }
 
 // -------------------------------------------------------------------
-// Internal: Build output spec
+// Internal: Build output spec — delegates to FArcCraftOutputBuilder
 // -------------------------------------------------------------------
 
 FArcItemSpec UArcCraftStationComponent::BuildOutputSpec(
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator) const
 {
-	FArcItemSpec OutputSpec;
 	if (!Recipe || !Recipe->OutputItemDefinition.IsValid())
 	{
-		return OutputSpec;
+		return FArcItemSpec();
 	}
-
-	// Try to get ingredient quality data for output modifiers.
-	// If items were already consumed, we do a best-effort re-match without consuming.
-	TArray<const FArcItemData*> MatchedIngredients;
-	TArray<float> QualityMultipliers;
 
 	// NOTE: Ingredients were consumed at queue time. We cannot re-match them now.
 	// Quality data should ideally be cached on the queue entry at consume time.
-	// This is a known simplification matching FArcCraftExecution_Recipe::OnRecipeCraftFinished.
-	// For now, we use default quality (1.0) for all slots.
+	// This is a known simplification — for now, use default quality (1.0) for all slots.
+	const int32 NumIngredients = Recipe->Ingredients.Num();
 
-	// If no quality data available, use defaults
-	if (QualityMultipliers.Num() != Recipe->Ingredients.Num())
+	TArray<const FArcItemData*> MatchedIngredients;
+	MatchedIngredients.SetNum(NumIngredients);
+
+	TArray<float> QualityMultipliers;
+	QualityMultipliers.SetNum(NumIngredients);
+
+	for (int32 i = 0; i < NumIngredients; ++i)
 	{
-		MatchedIngredients.SetNum(Recipe->Ingredients.Num());
-		QualityMultipliers.SetNum(Recipe->Ingredients.Num());
-		for (int32 i = 0; i < QualityMultipliers.Num(); ++i)
-		{
-			QualityMultipliers[i] = 1.0f;
-			MatchedIngredients[i] = nullptr;
-		}
+		MatchedIngredients[i] = nullptr;
+		QualityMultipliers[i] = 1.0f;
 	}
 
 	// Compute average quality
 	float TotalQuality = 0.0f;
 	int32 TotalWeight = 0;
-	for (int32 Idx = 0; Idx < QualityMultipliers.Num(); ++Idx)
+	for (int32 Idx = 0; Idx < NumIngredients; ++Idx)
 	{
 		const FArcRecipeIngredient* Ingredient = Recipe->GetIngredientBase(Idx);
 		const int32 Weight = Ingredient ? Ingredient->Amount : 1;
@@ -632,48 +647,35 @@ FArcItemSpec UArcCraftStationComponent::BuildOutputSpec(
 	}
 	const float AverageQuality = TotalWeight > 0 ? TotalQuality / TotalWeight : 1.0f;
 
-	// Compute output level
-	uint8 OutputLevel = Recipe->OutputLevel;
-	if (Recipe->bQualityAffectsLevel && !Recipe->QualityTierTable.IsNull())
+	return FArcCraftOutputBuilder::Build(Recipe, MatchedIngredients, QualityMultipliers, AverageQuality);
+}
+
+// -------------------------------------------------------------------
+// Internal: Entity access helpers
+// -------------------------------------------------------------------
+
+FMassEntityHandle UArcCraftStationComponent::GetEntityHandle() const
+{
+	if (CachedVisComponent.IsValid())
 	{
-		UArcQualityTierTable* TierTable = Recipe->QualityTierTable.LoadSynchronous();
-		if (TierTable)
-		{
-			float TotalTierValue = 0.0f;
-			int32 TierCount = 0;
-			for (int32 Idx = 0; Idx < MatchedIngredients.Num(); ++Idx)
-			{
-				if (MatchedIngredients[Idx])
-				{
-					const FGameplayTag BestTag = TierTable->FindBestTierTag(
-						MatchedIngredients[Idx]->GetItemAggregatedTags());
-					if (BestTag.IsValid())
-					{
-						TotalTierValue += TierTable->GetTierValue(BestTag);
-						++TierCount;
-					}
-				}
-			}
-			if (TierCount > 0)
-			{
-				OutputLevel = static_cast<uint8>(FMath::Clamp(
-					FMath::RoundToInt(TotalTierValue / TierCount), 1, 255));
-			}
-		}
+		return CachedVisComponent->GetEntityHandle();
+	}
+	return FMassEntityHandle();
+}
+
+FMassEntityManager* UArcCraftStationComponent::GetEntityManager() const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
 	}
 
-	// Create base output spec
-	OutputSpec = FArcItemSpec::NewItem(Recipe->OutputItemDefinition, OutputLevel, Recipe->OutputAmount);
-
-	// Apply output modifiers
-	for (const FInstancedStruct& ModifierStruct : Recipe->OutputModifiers)
+	UMassEntitySubsystem* EntitySubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!EntitySubsystem)
 	{
-		const FArcRecipeOutputModifier* Modifier = ModifierStruct.GetPtr<FArcRecipeOutputModifier>();
-		if (Modifier)
-		{
-			Modifier->ApplyToOutput(OutputSpec, MatchedIngredients, QualityMultipliers, AverageQuality);
-		}
+		return nullptr;
 	}
 
-	return OutputSpec;
+	return &EntitySubsystem->GetMutableEntityManager();
 }

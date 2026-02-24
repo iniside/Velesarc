@@ -26,7 +26,10 @@
 
 #include "ArcMaterialModifierSlotConfig.generated.h"
 
-/** How to select among evaluations competing for the same modifier slot. */
+/** How to select among evaluations competing for the same modifier slot.
+ *  DEPRECATED: Prefer recipe-level slot management via FArcCraftModifierSlot on UArcRecipeDefinition.
+ *  This enum is only used by the legacy per-MaterialProperties slot filtering path
+ *  (FArcMaterialCraftEvaluator::FilterBySlotConfig). */
 UENUM(BlueprintType)
 enum class EArcModifierSlotSelection : uint8
 {
@@ -42,6 +45,11 @@ enum class EArcModifierSlotSelection : uint8
  * Defines a modifier slot that constrains how many evaluations of a given
  * type can apply to the output. Rules' OutputTags must contain the SlotTag
  * to be routed to this slot.
+ *
+ * DEPRECATED: Prefer recipe-level slot management via FArcCraftModifierSlot on UArcRecipeDefinition.
+ * This struct is used by FArcRecipeOutputModifier_MaterialProperties::ModifierSlotConfigs for
+ * backward compatibility with the legacy direct-apply path. When recipe-level ModifierSlots
+ * are configured, this per-MaterialProperties slot config is ignored.
  */
 USTRUCT(BlueprintType)
 struct ARCCRAFT_API FArcMaterialModifierSlotConfig

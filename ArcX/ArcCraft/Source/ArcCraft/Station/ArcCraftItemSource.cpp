@@ -22,6 +22,9 @@
 #include "ArcCraft/Station/ArcCraftItemSource.h"
 
 #include "ArcCoreUtils.h"
+#include "MassEntitySubsystem.h"
+#include "ArcCraft/Mass/ArcCraftMassFragments.h"
+#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
@@ -275,6 +278,91 @@ bool FArcCraftItemSource_StationStore::DepositItem(
 	const UObject* Instigator)
 {
 	UArcItemsStoreComponent* Store = GetStationStore(Station);
+	if (!Store)
+	{
+		return false;
+	}
+
+	Store->AddItem(Item, FArcItemId::InvalidId);
+	return true;
+}
+
+// -------------------------------------------------------------------
+// FArcCraftItemSource_EntityStore
+// -------------------------------------------------------------------
+
+UArcCraftVisEntityComponent* FArcCraftItemSource_EntityStore::GetVisComponent(
+	const UArcCraftStationComponent* Station) const
+{
+	if (!Station || !Station->GetOwner())
+	{
+		return nullptr;
+	}
+	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
+}
+
+UArcItemsStoreComponent* FArcCraftItemSource_EntityStore::GetInputStore(
+	const UArcCraftStationComponent* Station) const
+{
+	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
+	if (!VisComp || !VisComp->InputStoreClass || !Station->GetOwner())
+	{
+		return nullptr;
+	}
+
+	TArray<UArcItemsStoreComponent*> Stores;
+	Station->GetOwner()->GetComponents<UArcItemsStoreComponent>(Stores);
+	for (UArcItemsStoreComponent* Store : Stores)
+	{
+		if (Store && Store->IsA(VisComp->InputStoreClass))
+		{
+			return Store;
+		}
+	}
+	return nullptr;
+}
+
+TArray<const FArcItemData*> FArcCraftItemSource_EntityStore::GetAvailableItems(
+	const UArcCraftStationComponent* Station,
+	const UObject* Instigator) const
+{
+	// When actor is alive, read from the mirrored input store
+	UArcItemsStoreComponent* Store = GetInputStore(Station);
+	if (Store)
+	{
+		return Store->GetItems();
+	}
+	return {};
+}
+
+bool FArcCraftItemSource_EntityStore::CanSatisfyRecipe(
+	const UArcCraftStationComponent* Station,
+	const UArcRecipeDefinition* Recipe,
+	const UObject* Instigator) const
+{
+	UArcItemsStoreComponent* Store = GetInputStore(Station);
+	return MatchAndConsumeFromStore(Store, Recipe, false);
+}
+
+bool FArcCraftItemSource_EntityStore::ConsumeIngredients(
+	UArcCraftStationComponent* Station,
+	const UArcRecipeDefinition* Recipe,
+	const UObject* Instigator,
+	TArray<const FArcItemData*>& OutMatchedItems,
+	TArray<float>& OutQualityMults) const
+{
+	UArcItemsStoreComponent* Store = GetInputStore(Station);
+	return MatchAndConsumeFromStore(Store, Recipe, true, &OutMatchedItems, &OutQualityMults);
+}
+
+bool FArcCraftItemSource_EntityStore::DepositItem(
+	UArcCraftStationComponent* Station,
+	const FArcItemSpec& Item,
+	const UObject* Instigator)
+{
+	// When actor is alive, deposit into the mirrored input store.
+	// On deactivation, UArcCraftVisEntityComponent syncs store → entity fragment.
+	UArcItemsStoreComponent* Store = GetInputStore(Station);
 	if (!Store)
 	{
 		return false;

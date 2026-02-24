@@ -32,6 +32,7 @@
 
 struct FArcItemSpec;
 struct FArcItemData;
+struct FArcCraftPendingModifier;
 class UGameplayEffect;
 class UChooserTable;
 class UArcRandomModifierEntry;
@@ -48,6 +49,11 @@ struct ARCCRAFT_API FArcRecipeOutputModifier
 	GENERATED_BODY()
 
 public:
+	/** Slot tag this modifier targets at recipe level.
+	 *  Empty = unslotted (always applies, bypasses slot resolution). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slot")
+	FGameplayTag SlotTag;
+
 	/**
 	 * Evaluate and apply this modifier to the output item spec.
 	 *
@@ -58,6 +64,23 @@ public:
 	 */
 	virtual void ApplyToOutput(
 		FArcItemSpec& OutItemSpec,
+		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const;
+
+	/**
+	 * Evaluate this modifier and produce pending results for deferred slot-based application.
+	 * Default implementation wraps ApplyToOutput in a single pending modifier.
+	 * Override for modifiers that produce multiple independent results (Random, MaterialProperties).
+	 *
+	 * @param BaseSpec                The current output item spec (read-only for evaluation).
+	 * @param ConsumedIngredients     The actual items matched to each ingredient slot.
+	 * @param IngredientQualityMults  Quality multiplier for each ingredient slot (parallel array).
+	 * @param AverageQuality          Weighted average quality across all ingredients.
+	 * @return Pending modifiers to be resolved through the recipe's slot configuration.
+	 */
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const FArcItemSpec& BaseSpec,
 		const TArray<const FArcItemData*>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const;
@@ -212,6 +235,12 @@ public:
 		const TArray<const FArcItemData*>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const FArcItemSpec& BaseSpec,
+		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
 };
 
 /**
@@ -240,6 +269,12 @@ public:
 
 	virtual void ApplyToOutput(
 		FArcItemSpec& OutItemSpec,
+		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const FArcItemSpec& BaseSpec,
 		const TArray<const FArcItemData*>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;

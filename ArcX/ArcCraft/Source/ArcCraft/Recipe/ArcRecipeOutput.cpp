@@ -28,6 +28,7 @@
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
+#include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
 #include "ArcCraft/Recipe/ArcRecipeCraftContext.h"
 #include "ArcCraft/Recipe/ArcRandomModifierEntry.h"
 #include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
@@ -44,6 +45,39 @@ void FArcRecipeOutputModifier::ApplyToOutput(
 	float AverageQuality) const
 {
 	// Base does nothing
+}
+
+TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier::Evaluate(
+	const FArcItemSpec& BaseSpec,
+	const TArray<const FArcItemData*>& ConsumedIngredients,
+	const TArray<float>& IngredientQualityMults,
+	float AverageQuality) const
+{
+	TArray<FArcCraftPendingModifier> Result;
+
+	// Default: wrap the ApplyToOutput call in a single pending modifier.
+	// Capture a copy of the parameters needed for deferred application.
+	FArcCraftPendingModifier Pending;
+	Pending.SlotTag = SlotTag;
+	Pending.EffectiveWeight = AverageQuality;
+
+	// SAFETY: Self points into Recipe->OutputModifiers (FInstancedStruct array) which must
+	// outlive this lambda. This lambda is consumed within BuildOutputSpec before the recipe
+	// is released. Do not store pending modifiers beyond the scope of BuildOutputSpec.
+	const FArcRecipeOutputModifier* Self = this;
+	TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
+	TArray<float> CapturedQualityMults = IngredientQualityMults;
+	float CapturedQuality = AverageQuality;
+
+	Pending.ApplyFn = [Self, CapturedIngredients = MoveTemp(CapturedIngredients),
+		CapturedQualityMults = MoveTemp(CapturedQualityMults), CapturedQuality]
+		(FArcItemSpec& OutSpec)
+	{
+		Self->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, CapturedQuality);
+	};
+
+	Result.Add(MoveTemp(Pending));
+	return Result;
 }
 
 // -------------------------------------------------------------------
@@ -342,6 +376,125 @@ void FArcRecipeOutputModifier_Random::ApplyToOutput(
 	}
 }
 
+TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_Random::Evaluate(
+	const FArcItemSpec& BaseSpec,
+	const TArray<const FArcItemData*>& ConsumedIngredients,
+	const TArray<float>& IngredientQualityMults,
+	float AverageQuality) const
+{
+	TArray<FArcCraftPendingModifier> Result;
+
+	// 1. Load the chooser table
+	UChooserTable* ChooserTable = ModifierChooserTable.LoadSynchronous();
+	if (!ChooserTable)
+	{
+		return Result;
+	}
+
+	// 2. Build the craft context struct
+	FArcRecipeCraftContext CraftContext;
+	CraftContext.AverageQuality = AverageQuality;
+	CraftContext.IngredientCount = ConsumedIngredients.Num();
+
+	float TotalQuality = 0.0f;
+	for (int32 Idx = 0; Idx < ConsumedIngredients.Num(); ++Idx)
+	{
+		if (const FArcItemData* ItemData = ConsumedIngredients[Idx])
+		{
+			CraftContext.IngredientTags.AppendTags(ItemData->GetItemAggregatedTags());
+		}
+		if (IngredientQualityMults.IsValidIndex(Idx))
+		{
+			TotalQuality += IngredientQualityMults[Idx];
+		}
+	}
+	CraftContext.TotalQuality = TotalQuality;
+
+	// 3. Determine total rolls
+	int32 TotalRolls = MaxRolls;
+	if (bQualityAffectsRolls && QualityBonusRollThreshold > 0.0f)
+	{
+		const int32 BonusRolls = FMath::FloorToInt32(AverageQuality / QualityBonusRollThreshold);
+		TotalRolls += BonusRolls;
+	}
+
+	// 4. Roll the chooser table — each roll produces one pending modifier
+	TSet<UArcRandomModifierEntry*> AlreadySelected;
+
+	for (int32 Roll = 0; Roll < TotalRolls; ++Roll)
+	{
+		FChooserEvaluationContext EvalContext;
+		EvalContext.AddStructParam(CraftContext);
+
+		UArcRandomModifierEntry* SelectedEntry = nullptr;
+
+		UChooserTable::EvaluateChooser(EvalContext, ChooserTable,
+			FObjectChooserBase::FObjectChooserIteratorCallback::CreateLambda(
+				[&SelectedEntry, &AlreadySelected, bAllowDups = bAllowDuplicates]
+				(UObject* Obj) -> FObjectChooserBase::EIteratorStatus
+				{
+					UArcRandomModifierEntry* Entry = Cast<UArcRandomModifierEntry>(Obj);
+					if (Entry)
+					{
+						if (bAllowDups || !AlreadySelected.Contains(Entry))
+						{
+							SelectedEntry = Entry;
+							return FObjectChooserBase::EIteratorStatus::Stop;
+						}
+					}
+					return FObjectChooserBase::EIteratorStatus::Continue;
+				}));
+
+		if (!SelectedEntry)
+		{
+			continue;
+		}
+
+		AlreadySelected.Add(SelectedEntry);
+
+		// Compute effective quality for this entry
+		float EffectiveQuality = AverageQuality;
+		if (SelectedEntry->bScaleByQuality)
+		{
+			EffectiveQuality *= SelectedEntry->ValueScale;
+			EffectiveQuality += SelectedEntry->ValueSkew;
+		}
+		else
+		{
+			EffectiveQuality = SelectedEntry->ValueScale + SelectedEntry->ValueSkew;
+		}
+
+		// Create one pending modifier per roll result
+		FArcCraftPendingModifier Pending;
+		Pending.SlotTag = SlotTag;
+		Pending.EffectiveWeight = EffectiveQuality;
+
+		// Capture the entry's modifiers for deferred application
+		TArray<FInstancedStruct> CapturedModifiers = SelectedEntry->Modifiers;
+		TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
+		TArray<float> CapturedQualityMults = IngredientQualityMults;
+
+		Pending.ApplyFn = [CapturedModifiers = MoveTemp(CapturedModifiers),
+			CapturedIngredients = MoveTemp(CapturedIngredients),
+			CapturedQualityMults = MoveTemp(CapturedQualityMults),
+			EffectiveQuality](FArcItemSpec& OutSpec)
+		{
+			for (const FInstancedStruct& ModStruct : CapturedModifiers)
+			{
+				const FArcRecipeOutputModifier* SubMod = ModStruct.GetPtr<FArcRecipeOutputModifier>();
+				if (SubMod)
+				{
+					SubMod->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, EffectiveQuality);
+				}
+			}
+		};
+
+		Result.Add(MoveTemp(Pending));
+	}
+
+	return Result;
+}
+
 // -------------------------------------------------------------------
 // FArcRecipeOutputModifier_RandomPool
 // -------------------------------------------------------------------
@@ -521,4 +674,103 @@ void FArcRecipeOutputModifier_RandomPool::ApplyToOutput(
 			}
 		}
 	}
+}
+
+TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_RandomPool::Evaluate(
+	const FArcItemSpec& BaseSpec,
+	const TArray<const FArcItemData*>& ConsumedIngredients,
+	const TArray<float>& IngredientQualityMults,
+	float AverageQuality) const
+{
+	TArray<FArcCraftPendingModifier> Result;
+
+	// 1. Load pool definition
+	UArcRandomPoolDefinition* PoolDef = PoolDefinition.LoadSynchronous();
+	if (!PoolDef || PoolDef->Entries.Num() == 0)
+	{
+		return Result;
+	}
+
+	// 2. Get the selection mode
+	const FArcRandomPoolSelectionMode* Mode = SelectionMode.GetPtr<FArcRandomPoolSelectionMode>();
+	if (!Mode)
+	{
+		return Result;
+	}
+
+	// 3. Aggregate ingredient tags
+	const FGameplayTagContainer IngredientTags = AggregateIngredientTags(ConsumedIngredients);
+
+	// 4. Filter eligible entries and compute weights
+	TArray<int32> EligibleIndices;
+	TArray<float> EffectiveWeights;
+	EligibleIndices.Reserve(PoolDef->Entries.Num());
+	EffectiveWeights.Reserve(PoolDef->Entries.Num());
+
+	for (int32 Idx = 0; Idx < PoolDef->Entries.Num(); ++Idx)
+	{
+		const FArcRandomPoolEntry& Entry = PoolDef->Entries[Idx];
+		if (IsPoolEntryEligible(Entry, IngredientTags, AverageQuality))
+		{
+			EligibleIndices.Add(Idx);
+			EffectiveWeights.Add(CalculateEffectiveWeight(Entry, IngredientTags, AverageQuality));
+		}
+	}
+
+	if (EligibleIndices.Num() == 0)
+	{
+		return Result;
+	}
+
+	// 5. Delegate to selection mode
+	FArcRandomPoolSelectionContext SelectionContext
+	{
+		PoolDef->Entries,
+		EligibleIndices,
+		EffectiveWeights,
+		AverageQuality
+	};
+
+	TArray<int32> SelectedIndices;
+	Mode->Select(SelectionContext, SelectedIndices);
+
+	// 6. Create one pending modifier per selected entry
+	for (const int32 SelectedIdx : SelectedIndices)
+	{
+		if (!PoolDef->Entries.IsValidIndex(SelectedIdx))
+		{
+			continue;
+		}
+
+		const FArcRandomPoolEntry& Entry = PoolDef->Entries[SelectedIdx];
+		const float EffectiveQual = CalculateEffectiveQuality(Entry, IngredientTags, AverageQuality);
+
+		FArcCraftPendingModifier Pending;
+		Pending.SlotTag = SlotTag;
+		Pending.EffectiveWeight = EffectiveQual;
+
+		// Capture the entry's modifiers for deferred application
+		TArray<FInstancedStruct> CapturedModifiers = Entry.Modifiers;
+		TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
+		TArray<float> CapturedQualityMults = IngredientQualityMults;
+
+		Pending.ApplyFn = [CapturedModifiers = MoveTemp(CapturedModifiers),
+			CapturedIngredients = MoveTemp(CapturedIngredients),
+			CapturedQualityMults = MoveTemp(CapturedQualityMults),
+			EffectiveQual](FArcItemSpec& OutSpec)
+		{
+			for (const FInstancedStruct& ModStruct : CapturedModifiers)
+			{
+				const FArcRecipeOutputModifier* SubMod = ModStruct.GetPtr<FArcRecipeOutputModifier>();
+				if (SubMod)
+				{
+					SubMod->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, EffectiveQual);
+				}
+			}
+		};
+
+		Result.Add(MoveTemp(Pending));
+	}
+
+	return Result;
 }

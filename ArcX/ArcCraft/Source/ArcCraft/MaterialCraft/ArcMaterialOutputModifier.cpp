@@ -23,7 +23,9 @@
 
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftContext.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftEvaluator.h"
+#include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
+#include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
 #include "Items/ArcItemSpec.h"
 
 void FArcRecipeOutputModifier_MaterialProperties::ApplyToOutput(
@@ -72,4 +74,96 @@ void FArcRecipeOutputModifier_MaterialProperties::ApplyToOutput(
 		ConsumedIngredients,
 		IngredientQualityMults,
 		Context.BandEligibilityQuality);
+}
+
+TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_MaterialProperties::Evaluate(
+	const FArcItemSpec& BaseSpec,
+	const TArray<const FArcItemData*>& ConsumedIngredients,
+	const TArray<float>& IngredientQualityMults,
+	float AverageQuality) const
+{
+	TArray<FArcCraftPendingModifier> Result;
+
+	// 1. Load property table
+	UArcMaterialPropertyTable* Table = PropertyTable.LoadSynchronous();
+	if (!Table || Table->Rules.Num() == 0)
+	{
+		return Result;
+	}
+
+	// 2. Build material craft context
+	FArcMaterialCraftContext Context = FArcMaterialCraftContext::Build(
+		ConsumedIngredients,
+		IngredientQualityMults,
+		AverageQuality,
+		RecipeTags,
+		BaseIngredientCount,
+		ExtraCraftTimeBonus);
+
+	// 3. Compute separated quality and weight bonus
+	FArcMaterialCraftEvaluator::ComputeQualityAndWeightBonus(Table, Context);
+
+	// 4. Evaluate rules and select bands
+	TArray<FArcMaterialRuleEvaluation> Evaluations = FArcMaterialCraftEvaluator::EvaluateRules(Table, Context);
+
+	if (Evaluations.Num() == 0)
+	{
+		return Result;
+	}
+
+	// NOTE: We do NOT call FilterBySlotConfig here.
+	// When the recipe uses recipe-level slots, the slot resolver handles filtering.
+	// The per-MaterialProperties ModifierSlotConfigs are only used in the legacy ApplyToOutput path.
+
+	// 5. Create one pending modifier per rule evaluation
+	const float BandEligibilityQuality = Context.BandEligibilityQuality;
+
+	for (const FArcMaterialRuleEvaluation& Eval : Evaluations)
+	{
+		if (!Eval.Band)
+		{
+			continue;
+		}
+
+		FArcCraftPendingModifier Pending;
+
+		// Determine slot tag: use the rule's first OutputTag if available,
+		// otherwise fall back to this modifier's own SlotTag.
+		if (Eval.Rule && !Eval.Rule->OutputTags.IsEmpty())
+		{
+			// Use the first OutputTag as the slot routing tag
+			auto TagIt = Eval.Rule->OutputTags.CreateConstIterator();
+			Pending.SlotTag = *TagIt;
+		}
+		else
+		{
+			Pending.SlotTag = SlotTag;
+		}
+
+		Pending.EffectiveWeight = Eval.EffectiveWeight;
+
+		// Capture the band's modifiers by value for deferred application
+		TArray<FInstancedStruct> CapturedBandModifiers = Eval.Band->Modifiers;
+		TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
+		TArray<float> CapturedQualityMults = IngredientQualityMults;
+
+		Pending.ApplyFn = [CapturedBandModifiers = MoveTemp(CapturedBandModifiers),
+			CapturedIngredients = MoveTemp(CapturedIngredients),
+			CapturedQualityMults = MoveTemp(CapturedQualityMults),
+			BandEligibilityQuality](FArcItemSpec& OutSpec)
+		{
+			for (const FInstancedStruct& ModStruct : CapturedBandModifiers)
+			{
+				const FArcRecipeOutputModifier* SubMod = ModStruct.GetPtr<FArcRecipeOutputModifier>();
+				if (SubMod)
+				{
+					SubMod->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, BandEligibilityQuality);
+				}
+			}
+		};
+
+		Result.Add(MoveTemp(Pending));
+	}
+
+	return Result;
 }

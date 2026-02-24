@@ -28,6 +28,7 @@
 
 class UArcCraftStationComponent;
 class UArcItemsStoreComponent;
+class UArcCraftVisEntityComponent;
 
 /**
  * Base instanced struct for crafted item delivery.
@@ -95,4 +96,32 @@ public:
 		const UObject* Instigator) const override;
 
 	virtual ~FArcCraftOutputDelivery_ToInstigator() override = default;
+};
+
+/**
+ * Stores crafted items in the entity's FArcCraftOutputFragment.
+ * When the actor is alive, items also appear in the actor's output store
+ * (synced by UArcCraftVisEntityComponent). When the actor is despawned,
+ * items persist in the entity fragment.
+ *
+ * The tick processor writes directly to FArcCraftOutputFragment and does NOT
+ * use this delivery type — it only operates on entity data.
+ * This delivery is used by UArcCraftStationComponent when the actor is alive.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage"))
+struct ARCCRAFT_API FArcCraftOutputDelivery_EntityStore : public FArcCraftOutputDelivery
+{
+	GENERATED_BODY()
+
+public:
+	virtual bool DeliverOutput(
+		UArcCraftStationComponent* Station,
+		const FArcItemSpec& OutputSpec,
+		const UObject* Instigator) const override;
+
+	virtual ~FArcCraftOutputDelivery_EntityStore() override = default;
+
+private:
+	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
+	UArcItemsStoreComponent* GetOutputStore(const UArcCraftStationComponent* Station) const;
 };

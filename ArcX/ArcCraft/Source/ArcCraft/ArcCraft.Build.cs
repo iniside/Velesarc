@@ -51,7 +51,10 @@ public class ArcCraft : ModuleRules
 				"StructUtils",
 				"Chooser",
 				"XmlParser",
-				"SlateIM"
+				"SlateIM",
+				"MassEntity",
+				"MassCommon",
+				"ArcMass"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

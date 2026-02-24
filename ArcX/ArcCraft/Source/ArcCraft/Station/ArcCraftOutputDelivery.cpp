@@ -22,6 +22,7 @@
 #include "ArcCraft/Station/ArcCraftOutputDelivery.h"
 
 #include "ArcCoreUtils.h"
+#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
 #include "Items/ArcItemId.h"
 #include "Items/ArcItemsStoreComponent.h"
@@ -84,6 +85,58 @@ bool FArcCraftOutputDelivery_ToInstigator::DeliverOutput(
 	}
 
 	UArcItemsStoreComponent* Store = Arcx::Utils::GetComponent(InstigatorActor, ItemsStoreClass);
+	if (!Store)
+	{
+		return false;
+	}
+
+	Store->AddItem(OutputSpec, FArcItemId::InvalidId);
+	return true;
+}
+
+// -------------------------------------------------------------------
+// FArcCraftOutputDelivery_EntityStore
+// -------------------------------------------------------------------
+
+UArcCraftVisEntityComponent* FArcCraftOutputDelivery_EntityStore::GetVisComponent(
+	const UArcCraftStationComponent* Station) const
+{
+	if (!Station || !Station->GetOwner())
+	{
+		return nullptr;
+	}
+	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
+}
+
+UArcItemsStoreComponent* FArcCraftOutputDelivery_EntityStore::GetOutputStore(
+	const UArcCraftStationComponent* Station) const
+{
+	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
+	if (!VisComp || !VisComp->OutputStoreClass || !Station->GetOwner())
+	{
+		return nullptr;
+	}
+
+	TArray<UArcItemsStoreComponent*> Stores;
+	Station->GetOwner()->GetComponents<UArcItemsStoreComponent>(Stores);
+	for (UArcItemsStoreComponent* Store : Stores)
+	{
+		if (Store && Store->IsA(VisComp->OutputStoreClass))
+		{
+			return Store;
+		}
+	}
+	return nullptr;
+}
+
+bool FArcCraftOutputDelivery_EntityStore::DeliverOutput(
+	UArcCraftStationComponent* Station,
+	const FArcItemSpec& OutputSpec,
+	const UObject* Instigator) const
+{
+	// When the actor is alive, deliver to the output store.
+	// UArcCraftVisEntityComponent will sync it back to the entity fragment on deactivation.
+	UArcItemsStoreComponent* Store = GetOutputStore(Station);
 	if (!Store)
 	{
 		return false;
