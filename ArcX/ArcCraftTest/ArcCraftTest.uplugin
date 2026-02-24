@@ -38,6 +38,10 @@
 		{
 			"Name": "CQTest",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcJson",
+			"Enabled": true
 		}
 	]
 }

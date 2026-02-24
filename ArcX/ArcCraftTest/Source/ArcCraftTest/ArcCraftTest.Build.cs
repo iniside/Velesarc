@@ -45,6 +45,7 @@ public class ArcCraftTest : ModuleRules
 				, "StructUtils"
 				, "ModularGameplay"
 				, "GameFeatures"
+				, "ArcJson"
 			}
 			);
 		if (Target.bBuildEditor)

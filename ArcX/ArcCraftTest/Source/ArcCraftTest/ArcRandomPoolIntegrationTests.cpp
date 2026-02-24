@@ -27,6 +27,7 @@
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
 #include "Items/ArcItemData.h"
+#include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
 
@@ -488,9 +489,13 @@ TEST_CLASS(RandomPool_SimpleRandom_Eligibility, "ArcCraft.RandomPool.Integration
 		FInstancedStruct Mode = RandomPoolTestHelpers::MakeSimpleRandomMode(/*MaxSelections=*/ 3, /*bAllowDuplicates=*/ false);
 
 		// Provide Metal ingredient only => entries 0,1,2 eligible (3 total), entries 3,4 not
-		FArcItemData MetalItem;
-		MetalItem.ItemAggregatedTags.AddTag(TAG_PoolTest_Resource_Metal);
-		TArray<const FArcItemData*> Ingredients = { &MetalItem };
+		UArcItemDefinition* MetalDef = NewObject<UArcItemDefinition>(
+			GetTransientPackage(), TEXT("TestItem_PoolMetal"), RF_Transient);
+		MetalDef->RegenerateItemId();
+		TSharedPtr<FArcItemData> MetalItem = FArcItemData::NewFromSpec(
+			FArcItemSpec().SetItemDefinitionAsset(MetalDef));
+		MetalItem->ItemAggregatedTags.AddTag(TAG_PoolTest_Resource_Metal);
+		TArray<const FArcItemData*> Ingredients = { MetalItem.Get() };
 		TArray<float> QualityMults = { 1.0f };
 
 		TMap<int32, int32> StatCounts;

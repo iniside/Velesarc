@@ -31,8 +31,10 @@
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
 #include "Items/ArcItemData.h"
+#include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
+#include "Items/Fragments/ArcItemFragment_Tags.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcCraftIntegrationTest, Log, All);
 
@@ -50,6 +52,31 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntTest_Recipe_Weapon, "Recipe.Weapon");
 
 namespace IntegrationTestHelpers
 {
+	/**
+	 * Create a properly initialized FArcItemData with the given tags.
+	 * Creates a unique transient UArcItemDefinition per item with an
+	 * FArcItemFragment_Tags fragment so that Build() can read tags via
+	 * ArcItemsHelper::GetFragment<FArcItemFragment_Tags>().
+	 * Also sets ItemAggregatedTags for code paths that read tags from there
+	 * (e.g. quality tier evaluation).
+	 */
+	TSharedPtr<FArcItemData> MakeTestItem(const FGameplayTagContainer& AggregatedTags)
+	{
+		UArcItemDefinition* Def = NewObject<UArcItemDefinition>(
+			GetTransientPackage(), NAME_None, RF_Transient);
+		Def->RegenerateItemId();
+
+		FArcItemFragment_Tags TagsFragment;
+		TagsFragment.ItemTags = AggregatedTags;
+		Def->AddFragment(TagsFragment);
+
+		FArcItemSpec Spec;
+		Spec.SetItemDefinitionAsset(Def);
+		TSharedPtr<FArcItemData> Item = FArcItemData::NewFromSpec(Spec);
+		Item->ItemAggregatedTags = AggregatedTags;
+		return Item;
+	}
+
 	/** Create a transient property table. */
 	UArcMaterialPropertyTable* CreateTransientTable()
 	{
@@ -676,12 +703,15 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		}
 
 		// Simulate crafting with Metal+Gem ingredients
-		FArcItemData ItemA;
-		ItemA.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		FArcItemData ItemB;
-		ItemB.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Gem_Ruby);
+		FGameplayTagContainer TagsA;
+		TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
 
-		TArray<const FArcItemData*> Ingredients = { &ItemA, &ItemB };
+		FGameplayTagContainer TagsB;
+		TagsB.AddTag(TAG_IntTest_Resource_Gem_Ruby);
+		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+
+		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
 		TArray<float> QualityMults = { 1.3f, 1.5f };
 		const float AvgQuality = 1.4f;
 
@@ -737,13 +767,23 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		Table->Rules.Add(Rule);
 
 		// 4 ingredients, base=2 => 2 extra => +1.0 weight bonus
-		FArcItemData ItemA, ItemB, ItemC, ItemD;
-		ItemA.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		ItemB.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal);
-		ItemC.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal);
-		ItemD.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal);
+		FGameplayTagContainer TagsA;
+		TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
 
-		TArray<const FArcItemData*> Ingredients = { &ItemA, &ItemB, &ItemC, &ItemD };
+		FGameplayTagContainer TagsB;
+		TagsB.AddTag(TAG_IntTest_Resource_Metal);
+		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+
+		FGameplayTagContainer TagsC;
+		TagsC.AddTag(TAG_IntTest_Resource_Metal);
+		TSharedPtr<FArcItemData> ItemC = IntegrationTestHelpers::MakeTestItem(TagsC);
+
+		FGameplayTagContainer TagsD;
+		TagsD.AddTag(TAG_IntTest_Resource_Metal);
+		TSharedPtr<FArcItemData> ItemD = IntegrationTestHelpers::MakeTestItem(TagsD);
+
+		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get(), ItemC.Get(), ItemD.Get() };
 		TArray<float> QualityMults = { 1.0f, 1.0f, 1.0f, 1.0f };
 		const float AvgQuality = 2.5f;
 
@@ -809,10 +849,11 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 
 		// Test with only Metal — should NOT fire
 		{
-			FArcItemData ItemA;
-			ItemA.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+			FGameplayTagContainer TagsA;
+			TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
+			TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
 
-			TArray<const FArcItemData*> Ingredients = { &ItemA };
+			TArray<const FArcItemData*> Ingredients = { ItemA.Get() };
 			TArray<float> QualityMults = { 1.0f };
 
 			FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -825,12 +866,15 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 
 		// Test with Metal + Gem — SHOULD fire
 		{
-			FArcItemData ItemA;
-			ItemA.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-			FArcItemData ItemB;
-			ItemB.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Gem_Ruby);
+			FGameplayTagContainer TagsA;
+			TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
+			TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
 
-			TArray<const FArcItemData*> Ingredients = { &ItemA, &ItemB };
+			FGameplayTagContainer TagsB;
+			TagsB.AddTag(TAG_IntTest_Resource_Gem_Ruby);
+			TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+
+			TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
 			TArray<float> QualityMults = { 1.0f, 1.0f };
 
 			FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -900,12 +944,15 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		}
 
 		// Craft with Metal + Gem => all 3 rules should fire
-		FArcItemData ItemA;
-		ItemA.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		FArcItemData ItemB;
-		ItemB.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Gem_Ruby);
+		FGameplayTagContainer TagsA;
+		TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
 
-		TArray<const FArcItemData*> Ingredients = { &ItemA, &ItemB };
+		FGameplayTagContainer TagsB;
+		TagsB.AddTag(TAG_IntTest_Resource_Gem_Ruby);
+		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+
+		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
 		TArray<float> QualityMults = { 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -976,12 +1023,15 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			Table->Rules.Add(Rule);
 		}
 
-		FArcItemData ItemA;
-		ItemA.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal);
-		FArcItemData ItemB;
-		ItemB.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Gem);
+		FGameplayTagContainer TagsA;
+		TagsA.AddTag(TAG_IntTest_Resource_Metal);
+		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
 
-		TArray<const FArcItemData*> Ingredients = { &ItemA, &ItemB };
+		FGameplayTagContainer TagsB;
+		TagsB.AddTag(TAG_IntTest_Resource_Gem);
+		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+
+		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
 		TArray<float> QualityMults = { 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -1865,18 +1915,16 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
 		// Two crude iron items
-		FArcItemData CrudeIron1;
-		CrudeIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CrudeIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Crude);
+		FGameplayTagContainer CrudeIronTags;
+		CrudeIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		CrudeIronTags.AddTag(TAG_IntTest_Material_Tier_Crude);
+		TSharedPtr<FArcItemData> CrudeIron1 = IntegrationTestHelpers::MakeTestItem(CrudeIronTags);
+		TSharedPtr<FArcItemData> CrudeIron2 = IntegrationTestHelpers::MakeTestItem(CrudeIronTags);
 
-		FArcItemData CrudeIron2;
-		CrudeIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CrudeIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Crude);
-
-		TArray<FArcItemData*> Items = { &CrudeIron1, &CrudeIron2 };
+		TArray<FArcItemData*> Items = { CrudeIron1.Get(), CrudeIron2.Get() };
 
 		// Verify quality evaluation
-		const float QMult = TierTable->EvaluateQuality(CrudeIron1.GetItemAggregatedTags());
+		const float QMult = TierTable->EvaluateQuality(CrudeIron1->GetItemAggregatedTags());
 		ASSERT_THAT(IsNear(0.6f, QMult, 0.001f,
 			TEXT("Crude tier should evaluate to 0.6 quality multiplier")));
 
@@ -1919,18 +1967,16 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData CommonIron1;
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		FGameplayTagContainer CommonIronTags;
+		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
 
-		FArcItemData CommonIron2;
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
-
-		TArray<FArcItemData*> Items = { &CommonIron1, &CommonIron2 };
+		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get() };
 
 		// Verify tier evaluation
-		ASSERT_THAT(IsNear(1.0f, TierTable->EvaluateQuality(CommonIron1.GetItemAggregatedTags()), 0.001f));
+		ASSERT_THAT(IsNear(1.0f, TierTable->EvaluateQuality(CommonIron1->GetItemAggregatedTags()), 0.001f));
 
 		TSet<int32> ObservedBands;
 		TMap<int32, int32> BandCounts;
@@ -1976,20 +2022,22 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData FineIron;
-		FineIron.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		FineIron.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Fine);
+		FGameplayTagContainer FineIronTags;
+		FineIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		FineIronTags.AddTag(TAG_IntTest_Material_Tier_Fine);
+		TSharedPtr<FArcItemData> FineIron = IntegrationTestHelpers::MakeTestItem(FineIronTags);
 
-		FArcItemData MasterworkIron;
-		MasterworkIron.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		MasterworkIron.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		FGameplayTagContainer MasterworkIronTags;
+		MasterworkIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		MasterworkIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		TSharedPtr<FArcItemData> MasterworkIron = IntegrationTestHelpers::MakeTestItem(MasterworkIronTags);
 
-		TArray<FArcItemData*> Items = { &FineIron, &MasterworkIron };
+		TArray<FArcItemData*> Items = { FineIron.Get(), MasterworkIron.Get() };
 
 		// Verify per-item quality
-		ASSERT_THAT(IsNear(1.4f, TierTable->EvaluateQuality(FineIron.GetItemAggregatedTags()), 0.001f,
+		ASSERT_THAT(IsNear(1.4f, TierTable->EvaluateQuality(FineIron->GetItemAggregatedTags()), 0.001f,
 			TEXT("Fine tier should evaluate to 1.4")));
-		ASSERT_THAT(IsNear(2.0f, TierTable->EvaluateQuality(MasterworkIron.GetItemAggregatedTags()), 0.001f,
+		ASSERT_THAT(IsNear(2.0f, TierTable->EvaluateQuality(MasterworkIron->GetItemAggregatedTags()), 0.001f,
 			TEXT("Masterwork tier should evaluate to 2.0")));
 
 		TSet<int32> ObservedBands;
@@ -2036,17 +2084,15 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData LegIron1;
-		LegIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		LegIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Legendary);
+		FGameplayTagContainer LegIronTags;
+		LegIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		LegIronTags.AddTag(TAG_IntTest_Material_Tier_Legendary);
+		TSharedPtr<FArcItemData> LegIron1 = IntegrationTestHelpers::MakeTestItem(LegIronTags);
+		TSharedPtr<FArcItemData> LegIron2 = IntegrationTestHelpers::MakeTestItem(LegIronTags);
 
-		FArcItemData LegIron2;
-		LegIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		LegIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Legendary);
+		TArray<FArcItemData*> Items = { LegIron1.Get(), LegIron2.Get() };
 
-		TArray<FArcItemData*> Items = { &LegIron1, &LegIron2 };
-
-		ASSERT_THAT(IsNear(3.0f, TierTable->EvaluateQuality(LegIron1.GetItemAggregatedTags()), 0.001f));
+		ASSERT_THAT(IsNear(3.0f, TierTable->EvaluateQuality(LegIron1->GetItemAggregatedTags()), 0.001f));
 
 		TSet<int32> ObservedBands;
 		TMap<int32, int32> BandCounts;
@@ -2098,17 +2144,15 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
 		// 4 Common iron items (2 base + 2 extra)
-		FArcItemData CommonIron1, CommonIron2, CommonIron3, CommonIron4;
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		CommonIron3.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron3.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		CommonIron4.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron4.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		FGameplayTagContainer CommonIronTags;
+		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		TSharedPtr<FArcItemData> CommonIron3 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		TSharedPtr<FArcItemData> CommonIron4 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { &CommonIron1, &CommonIron2, &CommonIron3, &CommonIron4 };
+		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get(), CommonIron3.Get(), CommonIron4.Get() };
 
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(
 			PropTable, TierTable, Items,
@@ -2172,13 +2216,13 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData CommonIron1, CommonIron2;
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		FGameplayTagContainer CommonIronTags;
+		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { &CommonIron1, &CommonIron2 };
+		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get() };
 
 		TSet<int32> ObservedBands;
 		for (int32 Run = 0; Run < 100; ++Run)
@@ -2222,19 +2266,22 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData FineIron;
-		FineIron.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		FineIron.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Fine);
+		FGameplayTagContainer FineIronTags;
+		FineIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		FineIronTags.AddTag(TAG_IntTest_Material_Tier_Fine);
+		TSharedPtr<FArcItemData> FineIron = IntegrationTestHelpers::MakeTestItem(FineIronTags);
 
-		FArcItemData CommonIron;
-		CommonIron.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		FGameplayTagContainer CommonIronTags;
+		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		TSharedPtr<FArcItemData> CommonIron = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
 
-		FArcItemData MasterworkIron;
-		MasterworkIron.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		MasterworkIron.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		FGameplayTagContainer MasterworkIronTags;
+		MasterworkIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		MasterworkIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		TSharedPtr<FArcItemData> MasterworkIron = IntegrationTestHelpers::MakeTestItem(MasterworkIronTags);
 
-		TArray<FArcItemData*> Items = { &FineIron, &CommonIron, &MasterworkIron };
+		TArray<FArcItemData*> Items = { FineIron.Get(), CommonIron.Get(), MasterworkIron.Get() };
 
 		// Single run to verify math
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(
@@ -2299,18 +2346,19 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 
 		// Item has both Fine and Masterwork tier tags
-		FArcItemData MultiTierItem;
-		MultiTierItem.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		MultiTierItem.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Fine);
-		MultiTierItem.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		FGameplayTagContainer MultiTierTags;
+		MultiTierTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		MultiTierTags.AddTag(TAG_IntTest_Material_Tier_Fine);
+		MultiTierTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		TSharedPtr<FArcItemData> MultiTierItem = IntegrationTestHelpers::MakeTestItem(MultiTierTags);
 
 		// FindBestTierTag should find Masterwork (TierValue=3) over Fine (TierValue=2)
-		const FGameplayTag BestTag = TierTable->FindBestTierTag(MultiTierItem.GetItemAggregatedTags());
+		const FGameplayTag BestTag = TierTable->FindBestTierTag(MultiTierItem->GetItemAggregatedTags());
 		ASSERT_THAT(IsTrue(BestTag == TAG_IntTest_Material_Tier_Masterwork,
 			TEXT("Masterwork (TierValue=3) should win over Fine (TierValue=2)")));
 
 		// Quality should be Masterwork's 2.0, not Fine's 1.4
-		const float Quality = TierTable->EvaluateQuality(MultiTierItem.GetItemAggregatedTags());
+		const float Quality = TierTable->EvaluateQuality(MultiTierItem->GetItemAggregatedTags());
 		ASSERT_THAT(IsNear(2.0f, Quality, 0.001f,
 			TEXT("Quality should be Masterwork's 2.0")));
 
@@ -2327,22 +2375,24 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 	{
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 
-		FArcItemData UntieredItem;
-		UntieredItem.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		FGameplayTagContainer UntieredTags;
+		UntieredTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		// No tier tag added
+		TSharedPtr<FArcItemData> UntieredItem = IntegrationTestHelpers::MakeTestItem(UntieredTags);
 
-		const float Quality = TierTable->EvaluateQuality(UntieredItem.GetItemAggregatedTags());
+		const float Quality = TierTable->EvaluateQuality(UntieredItem->GetItemAggregatedTags());
 		ASSERT_THAT(IsNear(1.0f, Quality, 0.001f,
 			TEXT("No matching tier tag should return default quality 1.0")));
 
 		// Craft with one tiered and one untiered item
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData MasterworkIron;
-		MasterworkIron.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		MasterworkIron.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		FGameplayTagContainer MasterworkIronTags;
+		MasterworkIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		MasterworkIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		TSharedPtr<FArcItemData> MasterworkIron = IntegrationTestHelpers::MakeTestItem(MasterworkIronTags);
 
-		TArray<FArcItemData*> Items = { &MasterworkIron, &UntieredItem };
+		TArray<FArcItemData*> Items = { MasterworkIron.Get(), UntieredItem.Get() };
 
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(PropTable, TierTable, Items);
 
@@ -2373,13 +2423,13 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcQualityTierTable* TierTable = RealisticQualityHelpers::CreateTierTable();
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 
-		FArcItemData MWIron1, MWIron2;
-		MWIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		MWIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
-		MWIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		MWIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		FGameplayTagContainer MWIronTags;
+		MWIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		MWIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
+		TSharedPtr<FArcItemData> MWIron1 = IntegrationTestHelpers::MakeTestItem(MWIronTags);
+		TSharedPtr<FArcItemData> MWIron2 = IntegrationTestHelpers::MakeTestItem(MWIronTags);
 
-		TArray<FArcItemData*> Items = { &MWIron1, &MWIron2 };
+		TArray<FArcItemData*> Items = { MWIron1.Get(), MWIron2.Get() };
 
 		// Expected stat values at BandEligQ=2.0 for each band:
 		// Brittle:    5  * (1 + (2-1)*1) = 5  * 2 = 10
@@ -2433,13 +2483,13 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		UArcMaterialPropertyTable* PropTable = RealisticQualityHelpers::CreateWeaponTable();
 		// Table has ExtraTimeWeightBonusCap = 0.5
 
-		FArcItemData CommonIron1, CommonIron2;
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron1.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		CommonIron2.ItemAggregatedTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		FGameplayTagContainer CommonIronTags;
+		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
+		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
+		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { &CommonIron1, &CommonIron2 };
+		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get() };
 
 		// Pass a huge time bonus — should be capped
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(
