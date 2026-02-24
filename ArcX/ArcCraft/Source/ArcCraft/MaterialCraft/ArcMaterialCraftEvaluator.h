@@ -22,13 +22,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 
 struct FArcItemSpec;
 struct FArcItemData;
 struct FArcMaterialPropertyRule;
 struct FArcMaterialQualityBand;
 struct FArcMaterialCraftContext;
-struct FArcMaterialModifierSlotConfig;
 class UArcMaterialPropertyTable;
 
 /**
@@ -52,8 +52,7 @@ struct FArcMaterialRuleEvaluation
  * Flow:
  *  1. ComputeQualityAndWeightBonus() — separate eligibility quality from weight bonus
  *  2. EvaluateRules() — match rules using per-slot tag union, select bands with separated quality/weight
- *  3. FilterBySlotConfig() — optional: limit evaluations per modifier slot type
- *  4. ApplyEvaluations() — apply selected band modifiers to the output item
+ *  3. ApplyEvaluations() — apply selected band modifiers to the output item
  */
 class ARCCRAFT_API FArcMaterialCraftEvaluator
 {
@@ -78,23 +77,14 @@ public:
 		const FArcMaterialCraftContext& InContext);
 
 	/**
-	 * Filter evaluations through modifier slot configs.
-	 * Rules' OutputTags are matched to SlotTag to determine routing.
-	 * If SlotConfigs is empty, all evaluations pass through unchanged.
-	 */
-	static TArray<FArcMaterialRuleEvaluation> FilterBySlotConfig(
-		const TArray<FArcMaterialRuleEvaluation>& Evaluations,
-		const TArray<FArcMaterialModifierSlotConfig>& SlotConfigs);
-
-	/**
 	 * Apply all evaluated rule/band results to the output item spec.
-	 * Each selected band's modifiers are applied with the evaluation's quality.
+	 * Each selected band's modifiers (FArcCraftModifier) are applied with the evaluation's quality
+	 * and the aggregated ingredient tags.
 	 */
 	static void ApplyEvaluations(
 		const TArray<FArcMaterialRuleEvaluation>& Evaluations,
 		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
-		const TArray<float>& IngredientQualityMults,
+		const FGameplayTagContainer& AggregatedIngredientTags,
 		float BandEligibilityQuality);
 
 private:

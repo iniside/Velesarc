@@ -36,7 +36,7 @@ FArcMaterialCraftContext FArcMaterialCraftContext::Build(
 	FArcMaterialCraftContext Context;
 
 	// Build per-slot tags using FArcItemFragment_Tags::ItemTags (not GetItemAggregatedTags)
-	Context.PerSlotTags.SetNum(ConsumedIngredients.Num());
+	Context.PerSlotTags.Reserve(ConsumedIngredients.Num());
 	for (int32 Idx = 0; Idx < ConsumedIngredients.Num(); ++Idx)
 	{
 		if (const FArcItemData* Ingredient = ConsumedIngredients[Idx])

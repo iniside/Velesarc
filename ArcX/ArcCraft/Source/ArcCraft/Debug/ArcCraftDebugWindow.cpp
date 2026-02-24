@@ -28,9 +28,10 @@
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialOutputModifier.h"
-#include "ArcCraft/MaterialCraft/ArcMaterialModifierSlotConfig.h"
-
-;
+#include "ArcCraft/Shared/ArcCraftModifier.h"
+#include "Items/ArcItemTypes.h"
+#include "GameplayEffect.h"
+#include "Abilities/GameplayAbility.h"
 
 // -------------------------------------------------------------------
 // Constructor
@@ -39,7 +40,7 @@
 FArcCraftDebugWindow::FArcCraftDebugWindow()
 	: FSlateIMWindowBase(
 		TEXT("Arc Craft Debug"),
-		FVector2f(1000.f, 700.f),
+		FVector2f(1400.f, 700.f),
 		TEXT("Arc.Craft.Debug"),
 		TEXT("Toggle the Arc Craft debug window"))
 {
@@ -1015,132 +1016,163 @@ void FArcCraftDebugWindow::DrawMaterialPreviewTab()
 	{
 		SlateIM::Padding(FMargin(4.f));
 		SlateIM::Fill();
-		SlateIM::BeginScrollBox();
+
+		// Recipe selector (always visible at top)
+		DrawMaterialRecipeSelector();
+
+		// Only show the rest if a recipe with material modifier is selected
+		if (SelectedMaterialRecipeIndex >= 0 &&
+			SelectedMaterialRecipeIndex < FilteredMaterialRecipeToSourceIndex.Num())
 		{
-			// Recipe selector
-			DrawMaterialRecipeSelector();
-
-			// Only show the rest if a recipe with material modifier is selected
-			if (SelectedMaterialRecipeIndex >= 0 &&
-				SelectedMaterialRecipeIndex < FilteredMaterialRecipeToSourceIndex.Num())
+			int32 SourceIdx = FilteredMaterialRecipeToSourceIndex[SelectedMaterialRecipeIndex];
+			if (SourceIdx >= 0 && SourceIdx < CachedMaterialRecipes.Num())
 			{
-				int32 SourceIdx = FilteredMaterialRecipeToSourceIndex[SelectedMaterialRecipeIndex];
-				if (SourceIdx >= 0 && SourceIdx < CachedMaterialRecipes.Num())
+				UArcRecipeDefinition* Recipe = Cast<UArcRecipeDefinition>(
+					CachedMaterialRecipes[SourceIdx].GetAsset());
+
+				if (Recipe)
 				{
-					UArcRecipeDefinition* Recipe = Cast<UArcRecipeDefinition>(
-						CachedMaterialRecipes[SourceIdx].GetAsset());
-
-					if (Recipe)
+					// Find the material properties modifier
+					const FArcRecipeOutputModifier_MaterialProperties* MatMod = nullptr;
+					for (const FInstancedStruct& Modifier : Recipe->OutputModifiers)
 					{
-						// Find the material properties modifier
-						const FArcRecipeOutputModifier_MaterialProperties* MatMod = nullptr;
-						for (const FInstancedStruct& Modifier : Recipe->OutputModifiers)
-						{
-							MatMod = Modifier.GetPtr<FArcRecipeOutputModifier_MaterialProperties>();
-							if (MatMod)
-							{
-								break;
-							}
-						}
-
+						MatMod = Modifier.GetPtr<FArcRecipeOutputModifier_MaterialProperties>();
 						if (MatMod)
 						{
-							UArcMaterialPropertyTable* Table = MatMod->PropertyTable.LoadSynchronous();
+							break;
+						}
+					}
 
-							SlateIM::Spacer(FVector2D(0.0, 8.0));
-							DrawSimulatedIngredients();
+					if (MatMod)
+					{
+						UArcMaterialPropertyTable* Table = MatMod->PropertyTable.LoadSynchronous();
 
-							// Build context and evaluate
-							if (bEvaluationDirty && Table)
+						SlateIM::Spacer(FVector2D(0.0, 8.0));
+						DrawSimulatedIngredients();
+
+						// Build context and evaluate
+						if (bEvaluationDirty && Table)
+						{
+							// Build simulated context
+							TArray<const FArcItemData*> SimIngredients;
+							TArray<float> QualityMults;
+							float AvgQuality = 1.0f;
+
+							// For simulation, we create placeholder data
+							// The quality is either from override or default 1.0
+							int32 SlotCount = Recipe->GetIngredientCount();
+							for (int32 i = 0; i < SlotCount; ++i)
 							{
-								// Build simulated context
-								TArray<const FArcItemData*> SimIngredients;
-								TArray<float> QualityMults;
-								float AvgQuality = 1.0f;
-
-								// For simulation, we create placeholder data
-								// The quality is either from override or default 1.0
-								int32 SlotCount = Recipe->GetIngredientCount();
-								for (int32 i = 0; i < SlotCount; ++i)
-								{
-									SimIngredients.Add(nullptr); // Simplified: no actual item data
-									QualityMults.Add(1.0f);
-								}
-
-								AvgQuality = bUseQualityOverride ? QualityOverride : 1.0f;
-
-								CachedMaterialContext = FArcMaterialCraftContext::Build(
-									SimIngredients,
-									QualityMults,
-									AvgQuality,
-									MatMod->RecipeTags,
-									MatMod->BaseIngredientCount,
-									MatMod->ExtraCraftTimeBonus);
-
-								FArcMaterialCraftEvaluator::ComputeQualityAndWeightBonus(Table, CachedMaterialContext);
-
-								if (bUseQualityOverride)
-								{
-									CachedMaterialContext.BandEligibilityQuality = QualityOverride;
-								}
-
-								CachedEvaluations = FArcMaterialCraftEvaluator::EvaluateRules(Table, CachedMaterialContext);
-								bEvaluationDirty = false;
+								SimIngredients.Add(nullptr); // Simplified: no actual item data
+								QualityMults.Add(1.0f);
 							}
 
-							SlateIM::Spacer(FVector2D(0.0, 8.0));
+							AvgQuality = bUseQualityOverride ? QualityOverride : 1.0f;
 
-							// Quality override slider
-							SlateIM::Padding(FMargin(4.f));
-							SlateIM::BeginHorizontalStack();
+							CachedMaterialContext = FArcMaterialCraftContext::Build(
+								SimIngredients,
+								QualityMults,
+								AvgQuality,
+								MatMod->RecipeTags,
+								MatMod->BaseIngredientCount,
+								MatMod->ExtraCraftTimeBonus);
+
+							FArcMaterialCraftEvaluator::ComputeQualityAndWeightBonus(Table, CachedMaterialContext);
+
+							if (bUseQualityOverride)
 							{
-								if (SlateIM::CheckBox(TEXT("Quality Override"), bUseQualityOverride))
-								{
-									bEvaluationDirty = true;
-								}
-
-								if (bUseQualityOverride)
-								{
-									SlateIM::Padding(FMargin(8.f, 0.f));
-									SlateIM::MinWidth(200.f);
-									if (SlateIM::Slider(QualityOverride, 0.0f, 5.0f, 0.1f))
-									{
-										bEvaluationDirty = true;
-									}
-									SlateIM::Padding(FMargin(4.f, 0.f));
-									SlateIM::Text(*FString::Printf(TEXT("%.2f"), QualityOverride));
-								}
+								CachedMaterialContext.BandEligibilityQuality = QualityOverride;
 							}
-							SlateIM::EndHorizontalStack();
 
-							// Re-roll button
-							SlateIM::Padding(FMargin(4.f));
-							if (SlateIM::Button(TEXT("Re-roll")))
+							CachedEvaluations = FArcMaterialCraftEvaluator::EvaluateRules(Table, CachedMaterialContext);
+							bEvaluationDirty = false;
+						}
+
+						SlateIM::Spacer(FVector2D(0.0, 8.0));
+
+						// Quality override slider
+						SlateIM::Padding(FMargin(4.f));
+						SlateIM::BeginHorizontalStack();
+						{
+							if (SlateIM::CheckBox(TEXT("Quality Override"), bUseQualityOverride))
 							{
 								bEvaluationDirty = true;
+								bSimulationDirty = true;
 							}
 
-							SlateIM::Spacer(FVector2D(0.0, 8.0));
-
-							// Context display
-							DrawMaterialContextDisplay(CachedMaterialContext);
-
-							// Rule evaluations
-							if (Table)
+							if (bUseQualityOverride)
 							{
-								SlateIM::Spacer(FVector2D(0.0, 8.0));
-								DrawRuleEvaluations(Table, CachedMaterialContext);
+								SlateIM::Padding(FMargin(8.f, 0.f));
+								SlateIM::MinWidth(200.f);
+								if (SlateIM::Slider(QualityOverride, 0.0f, 5.0f, 0.1f))
+								{
+									bEvaluationDirty = true;
+									bSimulationDirty = true;
+								}
+								SlateIM::Padding(FMargin(4.f, 0.f));
+								SlateIM::Text(*FString::Printf(TEXT("%.2f"), QualityOverride));
 							}
-
-							// Output preview
-							SlateIM::Spacer(FVector2D(0.0, 8.0));
-							DrawOutputPreview();
 						}
+						SlateIM::EndHorizontalStack();
+
+						// Re-roll button
+						SlateIM::Padding(FMargin(4.f));
+						if (SlateIM::Button(TEXT("Re-roll")))
+						{
+							bEvaluationDirty = true;
+						}
+
+						SlateIM::Spacer(FVector2D(0.0, 8.0));
+
+						// Two-column layout: left = evaluation details, right = simulation
+						SlateIM::BeginHorizontalStack();
+						{
+							// Left column: evaluation details
+							SlateIM::MinWidth(580.f);
+							SlateIM::Fill();
+							SlateIM::HAlign(HAlign_Fill);
+							SlateIM::VAlign(VAlign_Fill);
+							SlateIM::BeginVerticalStack();
+							{
+								SlateIM::Fill();
+								SlateIM::BeginScrollBox();
+								{
+									// Context display
+									DrawMaterialContextDisplay(CachedMaterialContext);
+
+									// Rule evaluations
+									if (Table)
+									{
+										SlateIM::Spacer(FVector2D(0.0, 8.0));
+										DrawRuleEvaluations(Table, CachedMaterialContext);
+									}
+
+									// Output preview
+									SlateIM::Spacer(FVector2D(0.0, 8.0));
+									DrawOutputPreview();
+								}
+								SlateIM::EndScrollBox();
+							}
+							SlateIM::EndVerticalStack();
+
+							// Right column: simulation panel
+							SlateIM::MinWidth(380.f);
+							SlateIM::BeginVerticalStack();
+							{
+								SlateIM::Fill();
+								SlateIM::BeginScrollBox();
+								{
+									DrawSimulationPanel(Table, CachedMaterialContext);
+								}
+								SlateIM::EndScrollBox();
+							}
+							SlateIM::EndVerticalStack();
+						}
+						SlateIM::EndHorizontalStack();
 					}
 				}
 			}
 		}
-		SlateIM::EndScrollBox();
 	}
 	SlateIM::EndVerticalStack();
 }
@@ -1157,6 +1189,7 @@ void FArcCraftDebugWindow::DrawMaterialRecipeSelector()
 			RefreshMaterialRecipes();
 			SelectedMaterialRecipeIndex = -1;
 			bEvaluationDirty = true;
+			bSimulationDirty = true;
 		}
 
 		SlateIM::Padding(FMargin(4.f, 0.f));
@@ -1177,6 +1210,7 @@ void FArcCraftDebugWindow::DrawMaterialRecipeSelector()
 			}
 			SelectedMaterialRecipeIndex = -1;
 			bEvaluationDirty = true;
+			bSimulationDirty = true;
 		}
 	}
 	SlateIM::EndHorizontalStack();
@@ -1202,6 +1236,7 @@ void FArcCraftDebugWindow::DrawMaterialRecipeSelector()
 	if (SelectedMaterialRecipeIndex != PrevIndex)
 	{
 		bEvaluationDirty = true;
+		bSimulationDirty = true;
 		SimulatedIngredientDefIndices.Reset();
 	}
 }
@@ -1498,6 +1533,104 @@ void FArcCraftDebugWindow::DrawBandProbabilities(
 		SlateIM::EndTableBody();
 	}
 	SlateIM::EndTable();
+
+	// Show modifier details for each eligible band
+	for (int32 EligIdx = 0; EligIdx < EligibleIndices.Num(); ++EligIdx)
+	{
+		int32 BandIdx = EligibleIndices[EligIdx];
+		const FArcMaterialQualityBand& Band = Bands[BandIdx];
+		FString BandName = Band.BandName.IsEmpty()
+			? FString::Printf(TEXT("Band %d"), BandIdx)
+			: Band.BandName.ToString();
+
+		SlateIM::Padding(FMargin(8.f, 2.f));
+		SlateIM::Text(*FString::Printf(TEXT("Modifiers in %s:"), *BandName));
+		DrawBandModifierDetails(Band, BandEligQ);
+	}
+}
+
+void FArcCraftDebugWindow::DrawBandModifierDetails(
+	const FArcMaterialQualityBand& Band,
+	float BandEligQ)
+{
+	if (Band.Modifiers.Num() == 0)
+	{
+		SlateIM::Padding(FMargin(16.f, 2.f));
+		SlateIM::Text(TEXT("(no modifiers)"));
+		return;
+	}
+
+	for (int32 ModIdx = 0; ModIdx < Band.Modifiers.Num(); ++ModIdx)
+	{
+		const FInstancedStruct& ModStruct = Band.Modifiers[ModIdx];
+		if (!ModStruct.IsValid())
+		{
+			continue;
+		}
+
+		const FArcCraftModifier* BaseMod = ModStruct.GetPtr<FArcCraftModifier>();
+		if (!BaseMod)
+		{
+			continue;
+		}
+
+		SlateIM::Padding(FMargin(16.f, 2.f));
+
+		// Determine type name
+		const UScriptStruct* Struct = ModStruct.GetScriptStruct();
+		FString TypeName = GetNameSafe(Struct);
+		// Clean up struct names for display
+		if (TypeName.StartsWith(TEXT("ArcCraftModifier_")))
+		{
+			TypeName = TypeName.RightChop(17); // "Stats", "Abilities", "Effects"
+		}
+
+		// Quality gate check
+		const bool bPassesQualityGate = (BaseMod->MinQualityThreshold <= 0.0f) || (BandEligQ >= BaseMod->MinQualityThreshold);
+		FString QualityStatus = bPassesQualityGate ? TEXT("PASS") : TEXT("FAIL");
+
+		SlateIM::Text(*FString::Printf(TEXT("[%d] %s  |  QualityGate: %s (min: %.2f)  |  QScale: %.2f  |  Weight: %.2f"),
+			ModIdx, *TypeName, *QualityStatus, BaseMod->MinQualityThreshold, BaseMod->QualityScalingFactor, BaseMod->Weight));
+
+		if (!BaseMod->TriggerTags.IsEmpty())
+		{
+			SlateIM::Padding(FMargin(24.f, 0.f));
+			SlateIM::Text(*FString::Printf(TEXT("TriggerTags: %s  (N/A in preview)"), *BaseMod->TriggerTags.ToString()));
+		}
+
+		// Type-specific details
+		if (const FArcCraftModifier_Stats* StatsMod = ModStruct.GetPtr<FArcCraftModifier_Stats>())
+		{
+			const float QualityScale = 1.0f + (BandEligQ - 1.0f) * StatsMod->QualityScalingFactor;
+			for (const FArcItemAttributeStat& Stat : StatsMod->BaseStats)
+			{
+				const float BaseVal = Stat.Value.GetValue();
+				const float ScaledVal = BaseVal * QualityScale;
+				FString AttrName = Stat.Attribute.IsValid() ? Stat.Attribute.GetName() : TEXT("(none)");
+				SlateIM::Padding(FMargin(24.f, 0.f));
+				SlateIM::Text(*FString::Printf(TEXT("  %s: %.2f -> %.2f (x%.3f)"),
+					*AttrName, BaseVal, ScaledVal, QualityScale));
+			}
+		}
+		else if (const FArcCraftModifier_Abilities* AbilMod = ModStruct.GetPtr<FArcCraftModifier_Abilities>())
+		{
+			for (const FArcAbilityEntry& Entry : AbilMod->AbilitiesToGrant)
+			{
+				SlateIM::Padding(FMargin(24.f, 0.f));
+				SlateIM::Text(*FString::Printf(TEXT("  Ability: %s"),
+					*GetNameSafe(Entry.GrantedAbility)));
+			}
+		}
+		else if (const FArcCraftModifier_Effects* EffMod = ModStruct.GetPtr<FArcCraftModifier_Effects>())
+		{
+			for (const TSubclassOf<UGameplayEffect>& EffClass : EffMod->EffectsToGrant)
+			{
+				SlateIM::Padding(FMargin(24.f, 0.f));
+				SlateIM::Text(*FString::Printf(TEXT("  Effect: %s"),
+					*GetNameSafe(EffClass.Get())));
+			}
+		}
+	}
 }
 
 void FArcCraftDebugWindow::DrawOutputPreview()
@@ -1531,24 +1664,242 @@ void FArcCraftDebugWindow::DrawOutputPreview()
 			: Eval.Band->BandName.ToString();
 
 		SlateIM::Padding(FMargin(4.f));
-		SlateIM::Text(*FString::Printf(TEXT("  %s -> %s"), *RuleName, *BandName));
-
-		// Show modifiers on this band
-		if (Eval.Band->Modifiers.Num() > 0)
+		SlateIM::BeginBorder(TEXT("ToolPanel.GroupBorder"));
 		{
-			for (int32 ModIdx = 0; ModIdx < Eval.Band->Modifiers.Num(); ++ModIdx)
+			SlateIM::Text(*FString::Printf(TEXT("%s -> %s  (EffWeight: %.3f)"),
+				*RuleName, *BandName, Eval.EffectiveWeight));
+			DrawBandModifierDetails(*Eval.Band, Eval.BandEligibilityQuality);
+		}
+		SlateIM::EndBorder();
+	}
+}
+
+void FArcCraftDebugWindow::RunMonteCarloSimulation(
+	const UArcMaterialPropertyTable* Table,
+	const FArcMaterialCraftContext& Context)
+{
+	SimulationResults.Reset();
+
+	if (!Table || Table->Rules.Num() == 0)
+	{
+		return;
+	}
+
+	// Map: "RuleIdx_BandIdx" -> index in SimulationResults
+	TMap<FString, int32> ResultMap;
+
+	for (int32 Iter = 0; Iter < SimulationIterations; ++Iter)
+	{
+		TArray<FArcMaterialRuleEvaluation> Evals = FArcMaterialCraftEvaluator::EvaluateRules(Table, Context);
+
+		for (const FArcMaterialRuleEvaluation& Eval : Evals)
+		{
+			if (!Eval.Band || !Eval.Rule)
 			{
-				const FInstancedStruct& Modifier = Eval.Band->Modifiers[ModIdx];
-				if (Modifier.IsValid())
+				continue;
+			}
+
+			FString Key = FString::Printf(TEXT("%d_%d"), Eval.RuleIndex, Eval.SelectedBandIndex);
+			int32* ExistingIdx = ResultMap.Find(Key);
+
+			if (ExistingIdx)
+			{
+				FArcCraftSimBandResult& Result = SimulationResults[*ExistingIdx];
+				Result.HitCount++;
+
+				// Accumulate stat values
+				for (const FInstancedStruct& ModStruct : Eval.Band->Modifiers)
 				{
-					const UScriptStruct* Struct = Modifier.GetScriptStruct();
-					SlateIM::Text(*FString::Printf(TEXT("    Modifier: %s"), *GetNameSafe(Struct)));
+					if (const FArcCraftModifier_Stats* StatsMod = ModStruct.GetPtr<FArcCraftModifier_Stats>())
+					{
+						const float QualityScale = 1.0f + (Eval.BandEligibilityQuality - 1.0f) * StatsMod->QualityScalingFactor;
+						for (const FArcItemAttributeStat& Stat : StatsMod->BaseStats)
+						{
+							FString AttrName = Stat.Attribute.IsValid() ? Stat.Attribute.GetName() : TEXT("(none)");
+							float& Accumulated = Result.AccumulatedStatValues.FindOrAdd(AttrName);
+							Accumulated += Stat.Value.GetValue() * QualityScale;
+						}
+					}
+				}
+			}
+			else
+			{
+				FArcCraftSimBandResult NewResult;
+				NewResult.RuleIndex = Eval.RuleIndex;
+				NewResult.BandIndex = Eval.SelectedBandIndex;
+				NewResult.HitCount = 1;
+
+				NewResult.RuleName = Eval.Rule->RuleName.IsEmpty()
+					? FString::Printf(TEXT("Rule %d"), Eval.RuleIndex)
+					: Eval.Rule->RuleName.ToString();
+
+				NewResult.BandName = Eval.Band->BandName.IsEmpty()
+					? FString::Printf(TEXT("Band %d"), Eval.SelectedBandIndex)
+					: Eval.Band->BandName.ToString();
+
+				// Build modifier summary
+				int32 StatsCount = 0, AbilCount = 0, EffCount = 0;
+				for (const FInstancedStruct& ModStruct : Eval.Band->Modifiers)
+				{
+					if (ModStruct.GetPtr<FArcCraftModifier_Stats>()) StatsCount++;
+					else if (ModStruct.GetPtr<FArcCraftModifier_Abilities>()) AbilCount++;
+					else if (ModStruct.GetPtr<FArcCraftModifier_Effects>()) EffCount++;
+				}
+				TArray<FString> Parts;
+				if (StatsCount > 0) Parts.Add(FString::Printf(TEXT("%d Stats"), StatsCount));
+				if (AbilCount > 0) Parts.Add(FString::Printf(TEXT("%d Abil"), AbilCount));
+				if (EffCount > 0) Parts.Add(FString::Printf(TEXT("%d Eff"), EffCount));
+				NewResult.ModifierSummary = Parts.Num() > 0 ? FString::Join(Parts, TEXT(", ")) : TEXT("(none)");
+
+				// Accumulate initial stat values
+				for (const FInstancedStruct& ModStruct : Eval.Band->Modifiers)
+				{
+					if (const FArcCraftModifier_Stats* StatsMod = ModStruct.GetPtr<FArcCraftModifier_Stats>())
+					{
+						const float QualityScale = 1.0f + (Eval.BandEligibilityQuality - 1.0f) * StatsMod->QualityScalingFactor;
+						for (const FArcItemAttributeStat& Stat : StatsMod->BaseStats)
+						{
+							FString AttrName = Stat.Attribute.IsValid() ? Stat.Attribute.GetName() : TEXT("(none)");
+							float& Accumulated = NewResult.AccumulatedStatValues.FindOrAdd(AttrName);
+							Accumulated += Stat.Value.GetValue() * QualityScale;
+						}
+					}
+				}
+
+				int32 NewIdx = SimulationResults.Add(MoveTemp(NewResult));
+				ResultMap.Add(Key, NewIdx);
+			}
+		}
+	}
+
+	// Sort by rule index, then by hit count descending
+	SimulationResults.Sort([](const FArcCraftSimBandResult& A, const FArcCraftSimBandResult& B)
+	{
+		if (A.RuleIndex != B.RuleIndex)
+		{
+			return A.RuleIndex < B.RuleIndex;
+		}
+		return A.HitCount > B.HitCount;
+	});
+
+	bSimulationDirty = false;
+}
+
+void FArcCraftDebugWindow::DrawSimulationPanel(
+	const UArcMaterialPropertyTable* Table,
+	const FArcMaterialCraftContext& Context)
+{
+	SlateIM::Text(TEXT("--- Monte Carlo Simulation ---"));
+
+	if (!Table)
+	{
+		SlateIM::Padding(FMargin(8.f, 2.f));
+		SlateIM::Text(TEXT("(no table selected)"));
+		return;
+	}
+
+	// Iteration count slider
+	SlateIM::Padding(FMargin(4.f));
+	SlateIM::BeginHorizontalStack();
+	{
+		SlateIM::Text(TEXT("Iterations: "));
+		SlateIM::MinWidth(160.f);
+		float FloatIter = static_cast<float>(SimulationIterations);
+		if (SlateIM::Slider(FloatIter, 100.0f, 5000.0f, 100.0f))
+		{
+			SimulationIterations = static_cast<int32>(FloatIter);
+			bSimulationDirty = true;
+		}
+		SlateIM::Padding(FMargin(4.f, 0.f));
+		SlateIM::Text(*FString::Printf(TEXT("%d"), SimulationIterations));
+	}
+	SlateIM::EndHorizontalStack();
+
+	// Simulate button
+	SlateIM::Padding(FMargin(4.f));
+	if (SlateIM::Button(TEXT("Simulate")))
+	{
+		RunMonteCarloSimulation(Table, Context);
+	}
+
+	if (SimulationResults.Num() == 0)
+	{
+		SlateIM::Padding(FMargin(8.f, 2.f));
+		SlateIM::Text(TEXT("Click 'Simulate' to run."));
+		return;
+	}
+
+	SlateIM::Spacer(FVector2D(0.0, 4.0));
+	SlateIM::Text(*FString::Printf(TEXT("Results (%d unique rule+band combinations):"), SimulationResults.Num()));
+
+	// Results table
+	SlateIM::BeginTable();
+	{
+		SlateIM::BeginTableHeader();
+		{
+			SlateIM::InitialTableColumnWidth(100.f);
+			SlateIM::AddTableColumn(TEXT("Rule"), TEXT("Rule"));
+			SlateIM::InitialTableColumnWidth(90.f);
+			SlateIM::AddTableColumn(TEXT("Band"), TEXT("Band"));
+			SlateIM::InitialTableColumnWidth(90.f);
+			SlateIM::AddTableColumn(TEXT("Modifiers"), TEXT("Modifiers"));
+			SlateIM::InitialTableColumnWidth(80.f);
+			SlateIM::AddTableColumn(TEXT("Prob %"), TEXT("Prob %"));
+			SlateIM::InitialTableColumnWidth(120.f);
+			SlateIM::AddTableColumn(TEXT("Avg Stats"), TEXT("Avg Stats"));
+		}
+		SlateIM::EndTableHeader();
+
+		SlateIM::BeginTableBody();
+		{
+			for (const FArcCraftSimBandResult& Result : SimulationResults)
+			{
+				float Probability = (static_cast<float>(Result.HitCount) / static_cast<float>(SimulationIterations)) * 100.0f;
+
+				// Rule
+				if (SlateIM::NextTableCell())
+				{
+					SlateIM::Text(*Result.RuleName);
+				}
+
+				// Band
+				if (SlateIM::NextTableCell())
+				{
+					SlateIM::Text(*Result.BandName);
+				}
+
+				// Modifiers
+				if (SlateIM::NextTableCell())
+				{
+					SlateIM::Text(*Result.ModifierSummary);
+				}
+
+				// Probability
+				if (SlateIM::NextTableCell())
+				{
+					SlateIM::ProgressBar(Probability / 100.0f);
+					SlateIM::Text(*FString::Printf(TEXT("%.1f%%"), Probability));
+				}
+
+				// Average stats
+				if (SlateIM::NextTableCell())
+				{
+					if (Result.AccumulatedStatValues.Num() > 0)
+					{
+						for (const auto& Pair : Result.AccumulatedStatValues)
+						{
+							float AvgVal = Pair.Value / static_cast<float>(Result.HitCount);
+							SlateIM::Text(*FString::Printf(TEXT("%s: %.2f"), *Pair.Key, AvgVal));
+						}
+					}
+					else
+					{
+						SlateIM::Text(TEXT("-"));
+					}
 				}
 			}
 		}
-		else
-		{
-			SlateIM::Text(TEXT("    (no modifiers on this band)"));
-		}
+		SlateIM::EndTableBody();
 	}
+	SlateIM::EndTable();
 }

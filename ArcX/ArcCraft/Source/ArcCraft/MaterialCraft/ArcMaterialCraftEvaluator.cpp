@@ -22,10 +22,9 @@
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftEvaluator.h"
 
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftContext.h"
-#include "ArcCraft/MaterialCraft/ArcMaterialModifierSlotConfig.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
-#include "ArcCraft/Recipe/ArcRecipeOutput.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
 #include "Items/ArcItemSpec.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcMaterialCraft, Log, All);
@@ -62,7 +61,8 @@ bool FArcMaterialCraftEvaluator::DoesRuleMatch(
 	const FArcMaterialPropertyRule& Rule,
 	const FArcMaterialCraftContext& Context)
 {
-	// Check tag query against union of per-slot tags
+	// Check tag query against union of per-slot tags.
+	// Empty tag query = always matches (no tag requirement).
 	if (!Rule.TagQuery.IsEmpty())
 	{
 		FGameplayTagContainer CombinedTags;
@@ -70,16 +70,16 @@ bool FArcMaterialCraftEvaluator::DoesRuleMatch(
 		{
 			CombinedTags.AppendTags(SlotTags);
 		}
-
+		
+		if (CombinedTags.IsEmpty())
+		{
+			return true;
+		}
+		
 		if (!Rule.TagQuery.Matches(CombinedTags))
 		{
 			return false;
 		}
-	}
-	else
-	{
-		// Empty tag query never matches (validated in IsDataValid as a warning)
-		return false;
 	}
 
 	// Check required recipe tags
@@ -229,110 +229,95 @@ TArray<FArcMaterialRuleEvaluation> FArcMaterialCraftEvaluator::EvaluateRules(
 			+ FMath::Max(0.0f, BandEligQ - 1.0f) * InTable->BudgetPerQuality;
 	}
 
-	// 5. Select bands for each matching rule
+	// 5. Select bands for each matching rule (one band per rule)
 	for (const FMatchedRule& Matched : MatchedRules)
 	{
 		const FArcMaterialPropertyRule& Rule = InTable->Rules[Matched.RuleIndex];
 		const TArray<FArcMaterialQualityBand>& Bands = Rule.GetEffectiveQualityBands();
 
-		for (int32 Contribution = 0; Contribution < Rule.MaxContributions; ++Contribution)
+		if (Bands.Num() == 0)
 		{
-			if (Bands.Num() == 0)
-			{
-				continue;
-			}
+			continue;
+		}
 
-			const int32 BandIdx = SelectBandFromRule(Bands, BandEligQ, WeightBonus);
-			if (BandIdx == INDEX_NONE)
-			{
-				continue;
-			}
+		const int32 BandIdx = SelectBandFromRule(Bands, BandEligQ, WeightBonus);
+		if (BandIdx == INDEX_NONE)
+		{
+			continue;
+		}
 
-			// Compute effective weight for this selection (for slot filtering)
-			const FArcMaterialQualityBand& SelectedBand = Bands[BandIdx];
-			const float QualityAboveMin = FMath::Max(0.0f, BandEligQ - SelectedBand.MinQuality);
-			const float EffWeight = SelectedBand.BaseWeight
-				* (1.0f + (QualityAboveMin + WeightBonus) * SelectedBand.QualityWeightBias);
+		// Compute effective weight for this selection
+		const FArcMaterialQualityBand& SelectedBand = Bands[BandIdx];
+		const float QualityAboveMin = FMath::Max(0.0f, BandEligQ - SelectedBand.MinQuality);
+		const float EffWeight = SelectedBand.BaseWeight
+			* (1.0f + (QualityAboveMin + WeightBonus) * SelectedBand.QualityWeightBias);
 
-			// Budget check: band cost = (bandIndex + 1)
-			if (bUseBudget)
+		// Budget check: band cost = (bandIndex + 1)
+		if (bUseBudget)
+		{
+			const float BandCost = static_cast<float>(BandIdx + 1);
+			if (BandCost > RemainingBudget)
 			{
-				const float BandCost = static_cast<float>(BandIdx + 1);
-				if (BandCost > RemainingBudget)
+				// Try to select a cheaper band instead
+				TArray<int32> EligibleIndices;
+				TArray<float> Weights;
+				GetEligibleBands(Bands, BandEligQ, WeightBonus, EligibleIndices, Weights);
+
+				// Filter to affordable bands
+				TArray<int32> AffordableIndices;
+				TArray<float> AffordableWeights;
+				float AffordableTotalWeight = 0.0f;
+
+				for (int32 i = 0; i < EligibleIndices.Num(); ++i)
 				{
-					// Try to select a cheaper band instead
-					TArray<int32> EligibleIndices;
-					TArray<float> Weights;
-					GetEligibleBands(Bands, BandEligQ, WeightBonus, EligibleIndices, Weights);
-
-					// Filter to affordable bands
-					TArray<int32> AffordableIndices;
-					TArray<float> AffordableWeights;
-					float AffordableTotalWeight = 0.0f;
-
-					for (int32 i = 0; i < EligibleIndices.Num(); ++i)
+					const float Cost = static_cast<float>(EligibleIndices[i] + 1);
+					if (Cost <= RemainingBudget)
 					{
-						const float Cost = static_cast<float>(EligibleIndices[i] + 1);
-						if (Cost <= RemainingBudget)
-						{
-							AffordableIndices.Add(EligibleIndices[i]);
-							AffordableWeights.Add(Weights[i]);
-							AffordableTotalWeight += Weights[i];
-						}
+						AffordableIndices.Add(EligibleIndices[i]);
+						AffordableWeights.Add(Weights[i]);
+						AffordableTotalWeight += Weights[i];
 					}
-
-					if (AffordableIndices.Num() == 0 || AffordableTotalWeight <= 0.0f)
-					{
-						continue; // Nothing affordable, skip this contribution
-					}
-
-					// Weighted random among affordable bands
-					const float Roll = FMath::FRandRange(0.0f, AffordableTotalWeight);
-					float Accum = 0.0f;
-					int32 AffordableBandIdx = AffordableIndices.Last();
-					for (int32 i = 0; i < AffordableIndices.Num(); ++i)
-					{
-						Accum += AffordableWeights[i];
-						if (Roll <= Accum)
-						{
-							AffordableBandIdx = AffordableIndices[i];
-							break;
-						}
-					}
-
-					RemainingBudget -= static_cast<float>(AffordableBandIdx + 1);
-
-					const FArcMaterialQualityBand& AffBand = Bands[AffordableBandIdx];
-					const float AffQAboveMin = FMath::Max(0.0f, BandEligQ - AffBand.MinQuality);
-					const float AffEffWeight = AffBand.BaseWeight
-						* (1.0f + (AffQAboveMin + WeightBonus) * AffBand.QualityWeightBias);
-
-					FArcMaterialRuleEvaluation Eval;
-					Eval.RuleIndex = Matched.RuleIndex;
-					Eval.SelectedBandIndex = AffordableBandIdx;
-					Eval.BandEligibilityQuality = BandEligQ;
-					Eval.EffectiveWeight = AffEffWeight;
-					Eval.Rule = &Rule;
-					Eval.Band = &AffBand;
-					Evaluations.Add(Eval);
 				}
-				else
+
+				if (AffordableIndices.Num() == 0 || AffordableTotalWeight <= 0.0f)
 				{
-					RemainingBudget -= static_cast<float>(BandIdx + 1);
-
-					FArcMaterialRuleEvaluation Eval;
-					Eval.RuleIndex = Matched.RuleIndex;
-					Eval.SelectedBandIndex = BandIdx;
-					Eval.BandEligibilityQuality = BandEligQ;
-					Eval.EffectiveWeight = EffWeight;
-					Eval.Rule = &Rule;
-					Eval.Band = &SelectedBand;
-					Evaluations.Add(Eval);
+					continue; // Nothing affordable, skip this rule
 				}
+
+				// Weighted random among affordable bands
+				const float Roll = FMath::FRandRange(0.0f, AffordableTotalWeight);
+				float Accum = 0.0f;
+				int32 AffordableBandIdx = AffordableIndices.Last();
+				for (int32 i = 0; i < AffordableIndices.Num(); ++i)
+				{
+					Accum += AffordableWeights[i];
+					if (Roll <= Accum)
+					{
+						AffordableBandIdx = AffordableIndices[i];
+						break;
+					}
+				}
+
+				RemainingBudget -= static_cast<float>(AffordableBandIdx + 1);
+
+				const FArcMaterialQualityBand& AffBand = Bands[AffordableBandIdx];
+				const float AffQAboveMin = FMath::Max(0.0f, BandEligQ - AffBand.MinQuality);
+				const float AffEffWeight = AffBand.BaseWeight
+					* (1.0f + (AffQAboveMin + WeightBonus) * AffBand.QualityWeightBias);
+
+				FArcMaterialRuleEvaluation Eval;
+				Eval.RuleIndex = Matched.RuleIndex;
+				Eval.SelectedBandIndex = AffordableBandIdx;
+				Eval.BandEligibilityQuality = BandEligQ;
+				Eval.EffectiveWeight = AffEffWeight;
+				Eval.Rule = &Rule;
+				Eval.Band = &AffBand;
+				Evaluations.Add(Eval);
 			}
 			else
 			{
-				// No budget — just add the evaluation
+				RemainingBudget -= static_cast<float>(BandIdx + 1);
+
 				FArcMaterialRuleEvaluation Eval;
 				Eval.RuleIndex = Matched.RuleIndex;
 				Eval.SelectedBandIndex = BandIdx;
@@ -342,6 +327,18 @@ TArray<FArcMaterialRuleEvaluation> FArcMaterialCraftEvaluator::EvaluateRules(
 				Eval.Band = &SelectedBand;
 				Evaluations.Add(Eval);
 			}
+		}
+		else
+		{
+			// No budget — just add the evaluation
+			FArcMaterialRuleEvaluation Eval;
+			Eval.RuleIndex = Matched.RuleIndex;
+			Eval.SelectedBandIndex = BandIdx;
+			Eval.BandEligibilityQuality = BandEligQ;
+			Eval.EffectiveWeight = EffWeight;
+			Eval.Rule = &Rule;
+			Eval.Band = &SelectedBand;
+			Evaluations.Add(Eval);
 		}
 	}
 
@@ -354,118 +351,13 @@ TArray<FArcMaterialRuleEvaluation> FArcMaterialCraftEvaluator::EvaluateRules(
 }
 
 // -------------------------------------------------------------------
-// FilterBySlotConfig
-// -------------------------------------------------------------------
-
-TArray<FArcMaterialRuleEvaluation> FArcMaterialCraftEvaluator::FilterBySlotConfig(
-	const TArray<FArcMaterialRuleEvaluation>& Evaluations,
-	const TArray<FArcMaterialModifierSlotConfig>& SlotConfigs)
-{
-	if (SlotConfigs.Num() == 0)
-	{
-		return Evaluations; // No filtering
-	}
-
-	// Group evaluations by slot tag
-	TMap<FGameplayTag, TArray<int32>> SlotToEvaluationIndices;
-	TArray<int32> UnslottedIndices;
-
-	for (int32 EvalIdx = 0; EvalIdx < Evaluations.Num(); ++EvalIdx)
-	{
-		const FArcMaterialRuleEvaluation& Eval = Evaluations[EvalIdx];
-		if (!Eval.Rule)
-		{
-			UnslottedIndices.Add(EvalIdx);
-			continue;
-		}
-
-		bool bMatchedSlot = false;
-		for (const FArcMaterialModifierSlotConfig& SlotConfig : SlotConfigs)
-		{
-			if (Eval.Rule->OutputTags.HasTag(SlotConfig.SlotTag))
-			{
-				SlotToEvaluationIndices.FindOrAdd(SlotConfig.SlotTag).Add(EvalIdx);
-				bMatchedSlot = true;
-				break; // Each evaluation goes to at most one slot
-			}
-		}
-
-		if (!bMatchedSlot)
-		{
-			UnslottedIndices.Add(EvalIdx);
-		}
-	}
-
-	// Filter each slot
-	TArray<FArcMaterialRuleEvaluation> FilteredEvaluations;
-
-	for (const FArcMaterialModifierSlotConfig& SlotConfig : SlotConfigs)
-	{
-		const TArray<int32>* Indices = SlotToEvaluationIndices.Find(SlotConfig.SlotTag);
-		if (!Indices || Indices->Num() == 0)
-		{
-			continue;
-		}
-
-		if (SlotConfig.MaxCount <= 0
-			|| SlotConfig.SelectionMode == EArcModifierSlotSelection::All
-			|| Indices->Num() <= SlotConfig.MaxCount)
-		{
-			// All pass through
-			for (const int32 Idx : *Indices)
-			{
-				FilteredEvaluations.Add(Evaluations[Idx]);
-			}
-		}
-		else
-		{
-			// Need to select MaxCount from the candidates
-			TArray<int32> SortedIndices = *Indices;
-
-			if (SlotConfig.SelectionMode == EArcModifierSlotSelection::HighestWeight)
-			{
-				SortedIndices.Sort([&Evaluations](int32 A, int32 B)
-				{
-					return Evaluations[A].EffectiveWeight > Evaluations[B].EffectiveWeight;
-				});
-				SortedIndices.SetNum(SlotConfig.MaxCount);
-			}
-			else // Random
-			{
-				// Fisher-Yates shuffle and take first MaxCount
-				for (int32 i = SortedIndices.Num() - 1; i > 0; --i)
-				{
-					const int32 j = FMath::RandRange(0, i);
-					SortedIndices.Swap(i, j);
-				}
-				SortedIndices.SetNum(SlotConfig.MaxCount);
-			}
-
-			for (const int32 Idx : SortedIndices)
-			{
-				FilteredEvaluations.Add(Evaluations[Idx]);
-			}
-		}
-	}
-
-	// Add unslotted evaluations (those whose rules don't match any slot config)
-	for (const int32 Idx : UnslottedIndices)
-	{
-		FilteredEvaluations.Add(Evaluations[Idx]);
-	}
-
-	return FilteredEvaluations;
-}
-
-// -------------------------------------------------------------------
 // ApplyEvaluations
 // -------------------------------------------------------------------
 
 void FArcMaterialCraftEvaluator::ApplyEvaluations(
 	const TArray<FArcMaterialRuleEvaluation>& Evaluations,
 	FArcItemSpec& OutItemSpec,
-	const TArray<const FArcItemData*>& ConsumedIngredients,
-	const TArray<float>& IngredientQualityMults,
+	const FGameplayTagContainer& AggregatedIngredientTags,
 	float BandEligibilityQuality)
 {
 	for (const FArcMaterialRuleEvaluation& Eval : Evaluations)
@@ -483,13 +375,13 @@ void FArcMaterialCraftEvaluator::ApplyEvaluations(
 			Eval.BandEligibilityQuality,
 			Eval.EffectiveWeight);
 
-		// Apply each modifier in the selected band
+		// Apply each terminal modifier in the selected band
 		for (const FInstancedStruct& ModifierStruct : Eval.Band->Modifiers)
 		{
-			const FArcRecipeOutputModifier* Modifier = ModifierStruct.GetPtr<FArcRecipeOutputModifier>();
+			const FArcCraftModifier* Modifier = ModifierStruct.GetPtr<FArcCraftModifier>();
 			if (Modifier)
 			{
-				Modifier->ApplyToOutput(OutItemSpec, ConsumedIngredients, IngredientQualityMults, BandEligibilityQuality);
+				Modifier->Apply(OutItemSpec, AggregatedIngredientTags, BandEligibilityQuality);
 			}
 		}
 	}

@@ -201,7 +201,7 @@ bool UArcRandomPoolJsonLoader::ParseJson(const nlohmann::json& JsonObj, UArcRand
 				for (const auto& ModObj : EntryObj["modifiers"])
 				{
 					FInstancedStruct ModStruct;
-					if (ArcCraftJsonUtils::ParseOutputModifier(ModObj, ModStruct))
+					if (ArcCraftJsonUtils::ParseCraftModifier(ModObj, ModStruct))
 					{
 						Entry.Modifiers.Add(MoveTemp(ModStruct));
 					}

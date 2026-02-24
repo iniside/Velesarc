@@ -153,10 +153,10 @@ struct ARCCRAFT_API FArcRandomPoolEntry
 
 	// ---- Modifiers ----
 
-	/** Output modifiers to apply when this entry is selected.
-	 *  Uses the same instanced struct pattern as UArcRecipeDefinition::OutputModifiers. */
+	/** Terminal modifiers to apply when this entry is selected.
+	 *  Only Stats, Abilities, and Effects modifiers are allowed here. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Entry|Modifiers",
-		meta = (BaseStruct = "/Script/ArcCraft.ArcRecipeOutputModifier", ExcludeBaseStruct))
+		meta = (BaseStruct = "/Script/ArcCraft.ArcCraftModifier", ExcludeBaseStruct))
 	TArray<FInstancedStruct> Modifiers;
 };
 

@@ -108,7 +108,6 @@ void UArcMaterialPropertyTable::ExportToJson()
 
 		RuleObj["name"] = TCHAR_TO_UTF8(*Rule.RuleName.ToString());
 		RuleObj["priority"] = Rule.Priority;
-		RuleObj["maxContributions"] = Rule.MaxContributions;
 
 		if (!Rule.QualityBandPreset.IsNull())
 		{
@@ -187,7 +186,7 @@ EDataValidationResult UArcMaterialPropertyTable::IsDataValid(FDataValidationCont
 		if (Rule.TagQuery.IsEmpty())
 		{
 			Context.AddWarning(FText::FromString(
-				FString::Printf(TEXT("%s: TagQuery is empty — rule will never match."), *RuleName)));
+				FString::Printf(TEXT("%s: TagQuery is empty — rule will always match (no tag filter)."), *RuleName)));
 		}
 
 		// Validate effective quality bands (inline or from preset)
@@ -237,13 +236,6 @@ EDataValidationResult UArcMaterialPropertyTable::IsDataValid(FDataValidationCont
 			}
 		}
 
-		if (Rule.MaxContributions < 1)
-		{
-			Context.AddError(FText::FromString(
-				FString::Printf(TEXT("%s: MaxContributions must be >= 1 (got %d)."),
-					*RuleName, Rule.MaxContributions)));
-			Result = EDataValidationResult::Invalid;
-		}
 	}
 
 	if (BaseBandBudget < 0.0f)

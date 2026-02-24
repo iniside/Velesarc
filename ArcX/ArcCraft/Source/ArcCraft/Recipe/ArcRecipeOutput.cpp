@@ -24,8 +24,10 @@
 #include "Chooser.h"
 #include "IObjectChooser.h"
 #include "Items/ArcItemData.h"
+#include "Items/ArcItemsHelpers.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
+#include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
 #include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
@@ -33,6 +35,7 @@
 #include "ArcCraft/Recipe/ArcRandomModifierEntry.h"
 #include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
 
 // -------------------------------------------------------------------
 // FArcRecipeOutputModifier (base)
@@ -59,7 +62,7 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier::Evaluate(
 	// Capture a copy of the parameters needed for deferred application.
 	FArcCraftPendingModifier Pending;
 	Pending.SlotTag = SlotTag;
-	Pending.EffectiveWeight = AverageQuality;
+	Pending.EffectiveWeight = Weight > 0.0f ? Weight * AverageQuality : AverageQuality;
 
 	// SAFETY: Self points into Recipe->OutputModifiers (FInstancedStruct array) which must
 	// outlive this lambda. This lambda is consumed within BuildOutputSpec before the recipe
@@ -129,9 +132,15 @@ static bool HasTriggerTagsInIngredients(
 {
 	for (const FArcItemData* Ingredient : ConsumedIngredients)
 	{
-		if (Ingredient && Ingredient->GetItemAggregatedTags().HasAll(TriggerTags))
+		if (Ingredient)
 		{
-			return true;
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient))
+			{
+				if (TagsFrag->AssetTags.HasAll(TriggerTags))
+				{
+					return true;
+				}
+			}
 		}
 	}
 	return false;
@@ -143,12 +152,19 @@ void FArcRecipeOutputModifier_Abilities::ApplyToOutput(
 	const TArray<float>& IngredientQualityMults,
 	float AverageQuality) const
 {
-	if (TriggerTags.IsEmpty() || AbilitiesToGrant.Num() == 0)
+	if (AbilitiesToGrant.Num() == 0)
 	{
 		return;
 	}
 
-	if (!HasTriggerTagsInIngredients(TriggerTags, ConsumedIngredients))
+	// Quality gate
+	if (MinQualityThreshold > 0.0f && AverageQuality < MinQualityThreshold)
+	{
+		return;
+	}
+
+	// Trigger tag check (empty = always match)
+	if (!TriggerTags.IsEmpty() && !HasTriggerTagsInIngredients(TriggerTags, ConsumedIngredients))
 	{
 		return;
 	}
@@ -168,17 +184,19 @@ void FArcRecipeOutputModifier_Effects::ApplyToOutput(
 	const TArray<float>& IngredientQualityMults,
 	float AverageQuality) const
 {
-	if (TriggerTags.IsEmpty() || EffectsToGrant.Num() == 0)
+	if (EffectsToGrant.Num() == 0)
 	{
 		return;
 	}
 
-	if (!HasTriggerTagsInIngredients(TriggerTags, ConsumedIngredients))
-	{
-		return;
-	}
-
+	// Quality gate
 	if (MinQualityThreshold > 0.0f && AverageQuality < MinQualityThreshold)
+	{
+		return;
+	}
+
+	// Trigger tag check (empty = always match)
+	if (!TriggerTags.IsEmpty() && !HasTriggerTagsInIngredients(TriggerTags, ConsumedIngredients))
 	{
 		return;
 	}
@@ -294,7 +312,10 @@ void FArcRecipeOutputModifier_Random::ApplyToOutput(
 	{
 		if (const FArcItemData* ItemData = ConsumedIngredients[Idx])
 		{
-			CraftContext.IngredientTags.AppendTags(ItemData->GetItemAggregatedTags());
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(ItemData))
+			{
+				CraftContext.IngredientTags.AppendTags(TagsFrag->AssetTags);
+			}
 		}
 		if (IngredientQualityMults.IsValidIndex(Idx))
 		{
@@ -348,30 +369,26 @@ void FArcRecipeOutputModifier_Random::ApplyToOutput(
 
 		AlreadySelected.Add(SelectedEntry);
 
-		// 5. Apply the entry's modifiers to the output spec
+		// 5. Compute effective quality incorporating the entry's ValueScale and ValueSkew.
+		float EffectiveQuality = AverageQuality;
+		if (SelectedEntry->bScaleByQuality)
+		{
+			EffectiveQuality *= SelectedEntry->ValueScale;
+			EffectiveQuality += SelectedEntry->ValueSkew;
+		}
+		else
+		{
+			EffectiveQuality = SelectedEntry->ValueScale + SelectedEntry->ValueSkew;
+		}
+
+		// 6. Apply the entry's terminal modifiers to the output spec
 		for (const FInstancedStruct& ModifierStruct : SelectedEntry->Modifiers)
 		{
-			const FArcRecipeOutputModifier* SubModifier = ModifierStruct.GetPtr<FArcRecipeOutputModifier>();
-			if (!SubModifier)
+			const FArcCraftModifier* SubModifier = ModifierStruct.GetPtr<FArcCraftModifier>();
+			if (SubModifier)
 			{
-				continue;
+				SubModifier->Apply(OutItemSpec, CraftContext.IngredientTags, EffectiveQuality);
 			}
-
-			// Compute effective quality incorporating the entry's ValueScale and ValueSkew.
-			// This lets the random modifier entry bias how strongly quality affects the result.
-			float EffectiveQuality = AverageQuality;
-			if (SelectedEntry->bScaleByQuality)
-			{
-				EffectiveQuality *= SelectedEntry->ValueScale;
-				EffectiveQuality += SelectedEntry->ValueSkew;
-			}
-			else
-			{
-				// Apply scale/skew as a fixed value independent of quality
-				EffectiveQuality = SelectedEntry->ValueScale + SelectedEntry->ValueSkew;
-			}
-
-			SubModifier->ApplyToOutput(OutItemSpec, ConsumedIngredients, IngredientQualityMults, EffectiveQuality);
 		}
 	}
 }
@@ -401,7 +418,10 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_Random::Evaluate(
 	{
 		if (const FArcItemData* ItemData = ConsumedIngredients[Idx])
 		{
-			CraftContext.IngredientTags.AppendTags(ItemData->GetItemAggregatedTags());
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(ItemData))
+			{
+				CraftContext.IngredientTags.AppendTags(TagsFrag->AssetTags);
+			}
 		}
 		if (IngredientQualityMults.IsValidIndex(Idx))
 		{
@@ -469,22 +489,20 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_Random::Evaluate(
 		Pending.SlotTag = SlotTag;
 		Pending.EffectiveWeight = EffectiveQuality;
 
-		// Capture the entry's modifiers for deferred application
+		// Capture the entry's modifiers and aggregated tags for deferred application
 		TArray<FInstancedStruct> CapturedModifiers = SelectedEntry->Modifiers;
-		TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
-		TArray<float> CapturedQualityMults = IngredientQualityMults;
+		FGameplayTagContainer CapturedTags = CraftContext.IngredientTags;
 
 		Pending.ApplyFn = [CapturedModifiers = MoveTemp(CapturedModifiers),
-			CapturedIngredients = MoveTemp(CapturedIngredients),
-			CapturedQualityMults = MoveTemp(CapturedQualityMults),
+			CapturedTags = MoveTemp(CapturedTags),
 			EffectiveQuality](FArcItemSpec& OutSpec)
 		{
 			for (const FInstancedStruct& ModStruct : CapturedModifiers)
 			{
-				const FArcRecipeOutputModifier* SubMod = ModStruct.GetPtr<FArcRecipeOutputModifier>();
+				const FArcCraftModifier* SubMod = ModStruct.GetPtr<FArcCraftModifier>();
 				if (SubMod)
 				{
-					SubMod->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, EffectiveQuality);
+					SubMod->Apply(OutSpec, CapturedTags, EffectiveQuality);
 				}
 			}
 		};
@@ -507,7 +525,10 @@ static FGameplayTagContainer AggregateIngredientTags(
 	{
 		if (Ingredient)
 		{
-			AggregatedTags.AppendTags(Ingredient->GetItemAggregatedTags());
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient))
+			{
+				AggregatedTags.AppendTags(TagsFrag->AssetTags);
+			}
 		}
 	}
 	return AggregatedTags;
@@ -667,10 +688,10 @@ void FArcRecipeOutputModifier_RandomPool::ApplyToOutput(
 
 		for (const FInstancedStruct& ModifierStruct : Entry.Modifiers)
 		{
-			const FArcRecipeOutputModifier* SubModifier = ModifierStruct.GetPtr<FArcRecipeOutputModifier>();
+			const FArcCraftModifier* SubModifier = ModifierStruct.GetPtr<FArcCraftModifier>();
 			if (SubModifier)
 			{
-				SubModifier->ApplyToOutput(OutItemSpec, ConsumedIngredients, IngredientQualityMults, EffectiveQual);
+				SubModifier->Apply(OutItemSpec, IngredientTags, EffectiveQual);
 			}
 		}
 	}
@@ -749,22 +770,20 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_RandomPool::Evaluate(
 		Pending.SlotTag = SlotTag;
 		Pending.EffectiveWeight = EffectiveQual;
 
-		// Capture the entry's modifiers for deferred application
+		// Capture the entry's modifiers and aggregated tags for deferred application
 		TArray<FInstancedStruct> CapturedModifiers = Entry.Modifiers;
-		TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
-		TArray<float> CapturedQualityMults = IngredientQualityMults;
+		FGameplayTagContainer CapturedTags = IngredientTags;
 
 		Pending.ApplyFn = [CapturedModifiers = MoveTemp(CapturedModifiers),
-			CapturedIngredients = MoveTemp(CapturedIngredients),
-			CapturedQualityMults = MoveTemp(CapturedQualityMults),
+			CapturedTags = MoveTemp(CapturedTags),
 			EffectiveQual](FArcItemSpec& OutSpec)
 		{
 			for (const FInstancedStruct& ModStruct : CapturedModifiers)
 			{
-				const FArcRecipeOutputModifier* SubMod = ModStruct.GetPtr<FArcRecipeOutputModifier>();
+				const FArcCraftModifier* SubMod = ModStruct.GetPtr<FArcCraftModifier>();
 				if (SubMod)
 				{
-					SubMod->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, EffectiveQual);
+					SubMod->Apply(OutSpec, CapturedTags, EffectiveQual);
 				}
 			}
 		};

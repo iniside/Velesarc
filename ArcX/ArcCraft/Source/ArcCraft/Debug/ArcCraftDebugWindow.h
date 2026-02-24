@@ -13,6 +13,21 @@ class UArcMaterialPropertyTable;
 class UArcItemsStoreComponent;
 class UArcItemDefinition;
 struct FArcItemData;
+struct FArcMaterialQualityBand;
+
+/** Result of Monte Carlo simulation for a single rule+band combination. */
+struct FArcCraftSimBandResult
+{
+	FString RuleName;
+	FString BandName;
+	int32 RuleIndex = INDEX_NONE;
+	int32 BandIndex = INDEX_NONE;
+	int32 HitCount = 0;
+	/** Modifier summary string (e.g., "2 Stats, 1 Ability"). */
+	FString ModifierSummary;
+	/** Accumulated quality-scaled stat values for averaging: AttrName -> SumOfValues. */
+	TMap<FString, float> AccumulatedStatValues;
+};
 
 /**
  * SlateIM debug window for inspecting and testing the ArcCraft crafting system.
@@ -89,7 +104,10 @@ private:
 	void DrawMaterialContextDisplay(const FArcMaterialCraftContext& Context);
 	void DrawRuleEvaluations(const UArcMaterialPropertyTable* Table, const FArcMaterialCraftContext& Context);
 	void DrawBandProbabilities(const FArcMaterialPropertyRule& Rule, float BandEligQ, float WeightBonus);
+	void DrawBandModifierDetails(const FArcMaterialQualityBand& Band, float BandEligQ);
 	void DrawOutputPreview();
+	void DrawSimulationPanel(const UArcMaterialPropertyTable* Table, const FArcMaterialCraftContext& Context);
+	void RunMonteCarloSimulation(const UArcMaterialPropertyTable* Table, const FArcMaterialCraftContext& Context);
 
 	// Material recipe list (recipes with FArcRecipeOutputModifier_MaterialProperties)
 	TArray<FAssetData> CachedMaterialRecipes;
@@ -111,6 +129,11 @@ private:
 	FArcMaterialCraftContext CachedMaterialContext;
 	TArray<FArcMaterialRuleEvaluation> CachedEvaluations;
 	bool bEvaluationDirty = true;
+
+	// Monte Carlo simulation
+	int32 SimulationIterations = 500;
+	TArray<FArcCraftSimBandResult> SimulationResults;
+	bool bSimulationDirty = true;
 
 	// ---- Helpers ----
 

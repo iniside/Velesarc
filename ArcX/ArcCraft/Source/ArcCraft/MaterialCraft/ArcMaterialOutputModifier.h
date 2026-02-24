@@ -23,7 +23,6 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "ArcCraft/MaterialCraft/ArcMaterialModifierSlotConfig.h"
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
 
 #include "ArcMaterialOutputModifier.generated.h"
@@ -45,7 +44,7 @@ class UArcMaterialPropertyTable;
  *  - Quality bands with weighted random selection biased by quality
  *  - Extra-ingredient remedy: more materials = higher weight bias (not tier jump)
  *  - Extra-time remedy: designer-configured weight bonus
- *  - Modifier slot configs: limit how many modifiers of each type apply
+ *  - Recipe-level slot configs for limiting modifier counts
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Material Properties"))
 struct ARCCRAFT_API FArcRecipeOutputModifier_MaterialProperties : public FArcRecipeOutputModifier
@@ -78,13 +77,6 @@ public:
 	 *  If empty, rules with RequiredRecipeTags will not match. */
 	UPROPERTY(EditAnywhere, Category = "MaterialProperties")
 	FGameplayTagContainer RecipeTags;
-
-	/** Modifier slot configurations (per-MaterialProperties level).
-	 *  DEPRECATED: Prefer recipe-level ModifierSlots on UArcRecipeDefinition.
-	 *  When recipe-level slots are configured, this field is ignored.
-	 *  Kept for backward compatibility with the legacy direct-apply path. */
-	UPROPERTY(EditAnywhere, Category = "MaterialProperties|Slots")
-	TArray<FArcMaterialModifierSlotConfig> ModifierSlotConfigs;
 
 	virtual void ApplyToOutput(
 		FArcItemSpec& OutItemSpec,

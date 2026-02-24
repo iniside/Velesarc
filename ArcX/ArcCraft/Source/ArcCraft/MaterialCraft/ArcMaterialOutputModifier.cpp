@@ -26,7 +26,11 @@
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
 #include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
+#include "Items/ArcItemData.h"
+#include "Items/ArcItemsHelpers.h"
 #include "Items/ArcItemSpec.h"
+#include "Items/Fragments/ArcItemFragment_Tags.h"
 
 void FArcRecipeOutputModifier_MaterialProperties::ApplyToOutput(
 	FArcItemSpec& OutItemSpec,
@@ -61,18 +65,24 @@ void FArcRecipeOutputModifier_MaterialProperties::ApplyToOutput(
 		return;
 	}
 
-	// 5. Filter through slot configs (if configured)
-	if (ModifierSlotConfigs.Num() > 0)
+	// 5. Aggregate ingredient AssetTags for terminal modifier application
+	FGameplayTagContainer AggregatedTags;
+	for (const FArcItemData* Ingredient : ConsumedIngredients)
 	{
-		Evaluations = FArcMaterialCraftEvaluator::FilterBySlotConfig(Evaluations, ModifierSlotConfigs);
+		if (Ingredient)
+		{
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient))
+			{
+				AggregatedTags.AppendTags(TagsFrag->AssetTags);
+			}
+		}
 	}
 
 	// 6. Apply evaluated band modifiers to the output item
 	FArcMaterialCraftEvaluator::ApplyEvaluations(
 		Evaluations,
 		OutItemSpec,
-		ConsumedIngredients,
-		IngredientQualityMults,
+		AggregatedTags,
 		Context.BandEligibilityQuality);
 }
 
@@ -111,11 +121,20 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_MaterialProperties::Ev
 		return Result;
 	}
 
-	// NOTE: We do NOT call FilterBySlotConfig here.
-	// When the recipe uses recipe-level slots, the slot resolver handles filtering.
-	// The per-MaterialProperties ModifierSlotConfigs are only used in the legacy ApplyToOutput path.
+	// 5. Aggregate ingredient AssetTags for terminal modifier application
+	FGameplayTagContainer AggregatedTags;
+	for (const FArcItemData* Ingredient : ConsumedIngredients)
+	{
+		if (Ingredient)
+		{
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient))
+			{
+				AggregatedTags.AppendTags(TagsFrag->AssetTags);
+			}
+		}
+	}
 
-	// 5. Create one pending modifier per rule evaluation
+	// 6. Create one pending modifier per rule evaluation
 	const float BandEligibilityQuality = Context.BandEligibilityQuality;
 
 	for (const FArcMaterialRuleEvaluation& Eval : Evaluations)
@@ -142,22 +161,20 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_MaterialProperties::Ev
 
 		Pending.EffectiveWeight = Eval.EffectiveWeight;
 
-		// Capture the band's modifiers by value for deferred application
+		// Capture the band's modifiers and aggregated tags for deferred application
 		TArray<FInstancedStruct> CapturedBandModifiers = Eval.Band->Modifiers;
-		TArray<const FArcItemData*> CapturedIngredients = ConsumedIngredients;
-		TArray<float> CapturedQualityMults = IngredientQualityMults;
+		FGameplayTagContainer CapturedTags = AggregatedTags;
 
 		Pending.ApplyFn = [CapturedBandModifiers = MoveTemp(CapturedBandModifiers),
-			CapturedIngredients = MoveTemp(CapturedIngredients),
-			CapturedQualityMults = MoveTemp(CapturedQualityMults),
+			CapturedTags = MoveTemp(CapturedTags),
 			BandEligibilityQuality](FArcItemSpec& OutSpec)
 		{
 			for (const FInstancedStruct& ModStruct : CapturedBandModifiers)
 			{
-				const FArcRecipeOutputModifier* SubMod = ModStruct.GetPtr<FArcRecipeOutputModifier>();
+				const FArcCraftModifier* SubMod = ModStruct.GetPtr<FArcCraftModifier>();
 				if (SubMod)
 				{
-					SubMod->ApplyToOutput(OutSpec, CapturedIngredients, CapturedQualityMults, BandEligibilityQuality);
+					SubMod->Apply(OutSpec, CapturedTags, BandEligibilityQuality);
 				}
 			}
 		};

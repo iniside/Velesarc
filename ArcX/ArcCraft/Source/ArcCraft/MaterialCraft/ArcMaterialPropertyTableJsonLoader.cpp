@@ -141,11 +141,6 @@ bool UArcMaterialPropertyTableJsonLoader::ParseJson(const nlohmann::json& JsonOb
 				Rule.Priority = RuleObj["priority"].get<int32>();
 			}
 
-			if (RuleObj.contains("maxContributions"))
-			{
-				Rule.MaxContributions = RuleObj["maxContributions"].get<int32>();
-			}
-
 			// qualityBandPreset
 			if (RuleObj.contains("qualityBandPreset"))
 			{

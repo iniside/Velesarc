@@ -54,6 +54,25 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slot")
 	FGameplayTag SlotTag;
 
+	/** Minimum quality threshold. Only trigger if average quality >= this value. 0 = always. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
+	float MinQualityThreshold = 0.0f;
+
+	/** Tags that must ALL be present on any single consumed ingredient to trigger this modifier.
+	 *  Empty = always match (no tag requirement). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
+	FGameplayTagContainer TriggerTags;
+
+	/** Manual weight for selection priority among competing modifiers.
+	 *  Higher weight = more likely to be chosen during slot resolution. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier", meta = (ClampMin = "0.001"))
+	float Weight = 1.0f;
+
+	/** How much quality affects output values.
+	 *  0.0 = quality has no effect, 1.0 = linear scaling, 2.0 = double scaling. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
+	float QualityScalingFactor = 1.0f;
+
 	/**
 	 * Evaluate and apply this modifier to the output item spec.
 	 *
@@ -102,11 +121,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Stats")
 	TArray<FArcItemAttributeStat> BaseStats;
 
-	/** How much quality affects stats.
-	 *  0.0 = quality has no effect, 1.0 = linear scaling, 2.0 = double scaling. */
-	UPROPERTY(EditAnywhere, Category = "Stats")
-	float QualityScalingFactor = 1.0f;
-
 	virtual void ApplyToOutput(
 		FArcItemSpec& OutItemSpec,
 		const TArray<const FArcItemData*>& ConsumedIngredients,
@@ -123,11 +137,7 @@ struct ARCCRAFT_API FArcRecipeOutputModifier_Abilities : public FArcRecipeOutput
 	GENERATED_BODY()
 
 public:
-	/** Tags that must ALL be present on any single consumed ingredient to trigger this modifier. */
-	UPROPERTY(EditAnywhere, Category = "Abilities")
-	FGameplayTagContainer TriggerTags;
-
-	/** Abilities to grant when trigger tags are present. */
+	/** Abilities to grant when trigger conditions are met. */
 	UPROPERTY(EditAnywhere, Category = "Abilities")
 	TArray<FArcAbilityEntry> AbilitiesToGrant;
 
@@ -147,17 +157,9 @@ struct ARCCRAFT_API FArcRecipeOutputModifier_Effects : public FArcRecipeOutputMo
 	GENERATED_BODY()
 
 public:
-	/** Tags that must ALL be present on any single consumed ingredient to trigger this modifier. */
-	UPROPERTY(EditAnywhere, Category = "Effects")
-	FGameplayTagContainer TriggerTags;
-
-	/** Gameplay effects to grant. */
+	/** Gameplay effects to grant when trigger conditions are met. */
 	UPROPERTY(EditAnywhere, Category = "Effects")
 	TArray<TSubclassOf<UGameplayEffect>> EffectsToGrant;
-
-	/** Only grant if average quality multiplier exceeds this threshold. 0 = always grant. */
-	UPROPERTY(EditAnywhere, Category = "Effects")
-	float MinQualityThreshold = 0.0f;
 
 	virtual void ApplyToOutput(
 		FArcItemSpec& OutItemSpec,

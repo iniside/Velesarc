@@ -64,11 +64,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band|Selection")
 	float QualityWeightBias = 0.0f;
 
-	/** Modifiers to apply when this band is selected.
-	 *  Uses the same instanced struct pattern as recipe OutputModifiers.
-	 *  Typically contains FArcRecipeOutputModifier_Stats, _Abilities, _Effects, etc. */
+	/** Terminal modifiers to apply when this band is selected.
+	 *  Only Stats, Abilities, and Effects modifiers are allowed here. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band|Modifiers",
-		meta = (BaseStruct = "/Script/ArcCraft.ArcRecipeOutputModifier", ExcludeBaseStruct))
+		meta = (BaseStruct = "/Script/ArcCraft.ArcCraftModifier", ExcludeBaseStruct))
 	TArray<FInstancedStruct> Modifiers;
 };
 
@@ -107,11 +106,6 @@ public:
 	 *  When MaxActiveRules is set on the table, higher priority rules take precedence. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Matching")
 	int32 Priority = 0;
-
-	/** How many times this rule can contribute to the output per craft.
-	 *  For tag combos you typically want 1. For "per-instance" bonuses, higher. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Selection", meta = (ClampMin = 1))
-	int32 MaxContributions = 1;
 
 	/** Quality bands defined inline on this rule.
 	 *  Ignored if QualityBandPreset is set and loadable.

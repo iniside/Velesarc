@@ -29,9 +29,9 @@
 #include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialOutputModifier.h"
-#include "ArcCraft/MaterialCraft/ArcMaterialModifierSlotConfig.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
 #include "StructUtils/InstancedStruct.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcCraftJsonUtils, Log, All);
@@ -91,26 +91,6 @@ namespace
 		if (TypeStr == TEXT("Multiply"))  return EArcModType::Multiply;
 		if (TypeStr == TEXT("Division"))  return EArcModType::Division;
 		return EArcModType::Additive;
-	}
-
-	/** Map EArcModifierSlotSelection to string for serialization. */
-	FString SlotSelectionToString(EArcModifierSlotSelection InSelection)
-	{
-		switch (InSelection)
-		{
-		case EArcModifierSlotSelection::Random: return TEXT("Random");
-		case EArcModifierSlotSelection::All:    return TEXT("All");
-		case EArcModifierSlotSelection::HighestWeight:
-		default:                                return TEXT("HighestWeight");
-		}
-	}
-
-	/** Map string to EArcModifierSlotSelection for parsing. */
-	EArcModifierSlotSelection StringToSlotSelection(const FString& SelectionStr)
-	{
-		if (SelectionStr == TEXT("Random")) return EArcModifierSlotSelection::Random;
-		if (SelectionStr == TEXT("All"))    return EArcModifierSlotSelection::All;
-		return EArcModifierSlotSelection::HighestWeight;
 	}
 
 	/** Safely read a string from a JSON object field. Returns empty FString if not present or not a string. */
@@ -202,6 +182,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 
 	const FString TypeStr = GetJsonString(ModObj, "type");
 	const FGameplayTag SlotTag = ParseGameplayTag(GetJsonString(ModObj, "slotTag"));
+	const float MinQuality = GetJsonFloat(ModObj, "minQuality", 0.0f);
+	const float ModWeight = GetJsonFloat(ModObj, "weight", 1.0f);
+	const float QualityScaling = GetJsonFloat(ModObj, "qualityScaling", 1.0f);
+	const FGameplayTagContainer BaseTriggerTags = ModObj.contains("triggerTags") ? ParseGameplayTags(ModObj["triggerTags"]) : FGameplayTagContainer();
 
 	// ---- Stats ----
 	if (TypeStr == TEXT("Stats"))
@@ -209,7 +193,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_Stats>();
 		FArcRecipeOutputModifier_Stats& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Stats>();
 		Modifier.SlotTag = SlotTag;
-		Modifier.QualityScalingFactor = GetJsonFloat(ModObj, "qualityScaling", 1.0f);
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 
 		if (ModObj.contains("stats") && ModObj["stats"].is_array())
 		{
@@ -237,11 +224,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_Abilities>();
 		FArcRecipeOutputModifier_Abilities& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Abilities>();
 		Modifier.SlotTag = SlotTag;
-
-		if (ModObj.contains("triggerTags") && ModObj["triggerTags"].is_array())
-		{
-			Modifier.TriggerTags = ParseGameplayTags(ModObj["triggerTags"]);
-		}
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 
 		if (ModObj.contains("abilities") && ModObj["abilities"].is_array())
 		{
@@ -272,13 +258,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_Effects>();
 		FArcRecipeOutputModifier_Effects& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Effects>();
 		Modifier.SlotTag = SlotTag;
-
-		if (ModObj.contains("triggerTags") && ModObj["triggerTags"].is_array())
-		{
-			Modifier.TriggerTags = ParseGameplayTags(ModObj["triggerTags"]);
-		}
-
-		Modifier.MinQualityThreshold = GetJsonFloat(ModObj, "minQuality", 0.0f);
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 
 		if (ModObj.contains("effects") && ModObj["effects"].is_array())
 		{
@@ -305,6 +288,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_TransferStats>();
 		FArcRecipeOutputModifier_TransferStats& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_TransferStats>();
 		Modifier.SlotTag = SlotTag;
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 		Modifier.IngredientSlotIndex = GetJsonInt(ModObj, "ingredientSlot", 0);
 		Modifier.TransferScale = GetJsonFloat(ModObj, "transferScale", 1.0f);
 		Modifier.bScaleByQuality = GetJsonBool(ModObj, "scaleByQuality", true);
@@ -318,6 +305,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_Random>();
 		FArcRecipeOutputModifier_Random& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_Random>();
 		Modifier.SlotTag = SlotTag;
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 
 		const FString ChooserTableStr = GetJsonString(ModObj, "chooserTable");
 		if (!ChooserTableStr.IsEmpty())
@@ -339,6 +330,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_RandomPool>();
 		FArcRecipeOutputModifier_RandomPool& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_RandomPool>();
 		Modifier.SlotTag = SlotTag;
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 
 		const FString PoolDefStr = GetJsonString(ModObj, "poolDefinition");
 		if (!PoolDefStr.IsEmpty())
@@ -377,6 +372,10 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		OutModifier.InitializeAs<FArcRecipeOutputModifier_MaterialProperties>();
 		FArcRecipeOutputModifier_MaterialProperties& Modifier = OutModifier.GetMutable<FArcRecipeOutputModifier_MaterialProperties>();
 		Modifier.SlotTag = SlotTag;
+		Modifier.MinQualityThreshold = MinQuality;
+		Modifier.TriggerTags = BaseTriggerTags;
+		Modifier.Weight = ModWeight;
+		Modifier.QualityScalingFactor = QualityScaling;
 
 		const FString PropertyTableStr = GetJsonString(ModObj, "propertyTable");
 		if (!PropertyTableStr.IsEmpty())
@@ -391,28 +390,6 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		if (ModObj.contains("recipeTags") && ModObj["recipeTags"].is_array())
 		{
 			Modifier.RecipeTags = ParseGameplayTags(ModObj["recipeTags"]);
-		}
-
-		if (ModObj.contains("modifierSlots") && ModObj["modifierSlots"].is_array())
-		{
-			for (const auto& SlotObj : ModObj["modifierSlots"])
-			{
-				FArcMaterialModifierSlotConfig SlotConfig;
-
-				const FString SlotTagStr = GetJsonString(SlotObj, "tag");
-				if (!SlotTagStr.IsEmpty())
-				{
-					SlotConfig.SlotTag = FGameplayTag::RequestGameplayTag(FName(*SlotTagStr), false);
-				}
-
-				SlotConfig.MaxCount = FMath::Max(0, GetJsonInt(SlotObj, "maxCount", 1));
-				SlotConfig.SelectionMode = StringToSlotSelection(GetJsonString(SlotObj, "selection"));
-
-				if (SlotConfig.SlotTag.IsValid())
-				{
-					Modifier.ModifierSlotConfigs.Add(SlotConfig);
-				}
-			}
 		}
 
 		return true;
@@ -494,7 +471,7 @@ bool ArcCraftJsonUtils::ParseQualityBand(const nlohmann::json& BandObj, FArcMate
 		for (const auto& ModObj : BandObj["modifiers"])
 		{
 			FInstancedStruct ModifierStruct;
-			if (ParseOutputModifier(ModObj, ModifierStruct))
+			if (ParseCraftModifier(ModObj, ModifierStruct))
 			{
 				OutBand.Modifiers.Add(MoveTemp(ModifierStruct));
 			}
@@ -502,6 +479,99 @@ bool ArcCraftJsonUtils::ParseQualityBand(const nlohmann::json& BandObj, FArcMate
 	}
 
 	return true;
+}
+
+bool ArcCraftJsonUtils::ParseCraftModifier(const nlohmann::json& ModObj, FInstancedStruct& OutModifier)
+{
+	if (!ModObj.is_object()) return false;
+
+	const FString TypeStr = GetJsonString(ModObj, "type");
+
+	// Base fields shared by all craft modifiers
+	const float MinQuality = GetJsonFloat(ModObj, "minQuality", 0.0f);
+	const FGameplayTagContainer TriggerTags = ModObj.contains("triggerTags") ? ParseGameplayTags(ModObj["triggerTags"]) : FGameplayTagContainer();
+	const float ModWeight = GetJsonFloat(ModObj, "weight", 1.0f);
+	const float QualityScaling = GetJsonFloat(ModObj, "qualityScaling", 1.0f);
+
+	if (TypeStr == TEXT("Stats"))
+	{
+		OutModifier.InitializeAs<FArcCraftModifier_Stats>();
+		FArcCraftModifier_Stats& Mod = OutModifier.GetMutable<FArcCraftModifier_Stats>();
+		Mod.MinQualityThreshold = MinQuality;
+		Mod.TriggerTags = TriggerTags;
+		Mod.Weight = ModWeight;
+		Mod.QualityScalingFactor = QualityScaling;
+
+		if (ModObj.contains("stats") && ModObj["stats"].is_array())
+		{
+			for (const auto& StatObj : ModObj["stats"])
+			{
+				FArcItemAttributeStat Stat;
+				Stat.SetValue(GetJsonFloat(StatObj, "value", 0.0f));
+				Stat.Type = StringToModType(GetJsonString(StatObj, "modType"));
+				Mod.BaseStats.Add(Stat);
+			}
+		}
+		return true;
+	}
+
+	if (TypeStr == TEXT("Abilities"))
+	{
+		OutModifier.InitializeAs<FArcCraftModifier_Abilities>();
+		FArcCraftModifier_Abilities& Mod = OutModifier.GetMutable<FArcCraftModifier_Abilities>();
+		Mod.MinQualityThreshold = MinQuality;
+		Mod.TriggerTags = TriggerTags;
+		Mod.Weight = ModWeight;
+		Mod.QualityScalingFactor = QualityScaling;
+
+		if (ModObj.contains("abilities") && ModObj["abilities"].is_array())
+		{
+			for (const auto& AbilityObj : ModObj["abilities"])
+			{
+				FArcAbilityEntry Entry;
+				const FString ClassStr = GetJsonString(AbilityObj, "class");
+				if (!ClassStr.IsEmpty())
+				{
+					Entry.GrantedAbility = LoadClass<UGameplayAbility>(nullptr, *ClassStr);
+				}
+				const FString InputTagStr = GetJsonString(AbilityObj, "inputTag");
+				Entry.InputTag = ParseGameplayTag(InputTagStr);
+				Entry.bAddInputTag = Entry.InputTag.IsValid();
+				Mod.AbilitiesToGrant.Add(Entry);
+			}
+		}
+		return true;
+	}
+
+	if (TypeStr == TEXT("Effects"))
+	{
+		OutModifier.InitializeAs<FArcCraftModifier_Effects>();
+		FArcCraftModifier_Effects& Mod = OutModifier.GetMutable<FArcCraftModifier_Effects>();
+		Mod.MinQualityThreshold = MinQuality;
+		Mod.TriggerTags = TriggerTags;
+		Mod.Weight = ModWeight;
+		Mod.QualityScalingFactor = QualityScaling;
+
+		if (ModObj.contains("effects") && ModObj["effects"].is_array())
+		{
+			for (const auto& EffectObj : ModObj["effects"])
+			{
+				const FString ClassStr = GetJsonString(EffectObj, "class");
+				if (!ClassStr.IsEmpty())
+				{
+					TSubclassOf<UGameplayEffect> EffectClass = LoadClass<UGameplayEffect>(nullptr, *ClassStr);
+					if (EffectClass)
+					{
+						Mod.EffectsToGrant.Add(EffectClass);
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	UE_LOG(LogArcCraftJsonUtils, Warning, TEXT("Unknown craft modifier type: %s"), *TypeStr);
+	return false;
 }
 
 // -------------------------------------------------------------------
@@ -529,16 +599,20 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 {
 	nlohmann::json Obj = nlohmann::json::object();
 
+	auto SerializeBaseFields = [](nlohmann::json& Obj, const FArcRecipeOutputModifier* Base)
+	{
+		if (Base->SlotTag.IsValid()) { Obj["slotTag"] = TCHAR_TO_UTF8(*Base->SlotTag.ToString()); }
+		if (Base->MinQualityThreshold != 0.0f) { Obj["minQuality"] = Base->MinQualityThreshold; }
+		if (!Base->TriggerTags.IsEmpty()) { Obj["triggerTags"] = SerializeTagContainer(Base->TriggerTags); }
+		if (Base->Weight != 1.0f) { Obj["weight"] = Base->Weight; }
+		if (Base->QualityScalingFactor != 1.0f) { Obj["qualityScaling"] = Base->QualityScalingFactor; }
+	};
+
 	// ---- Stats ----
 	if (const FArcRecipeOutputModifier_Stats* Stats = Modifier.GetPtr<FArcRecipeOutputModifier_Stats>())
 	{
 		Obj["type"] = "Stats";
-		Obj["qualityScaling"] = Stats->QualityScalingFactor;
-
-		if (Stats->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*Stats->SlotTag.ToString());
-		}
+		SerializeBaseFields(Obj, Stats);
 
 		nlohmann::json StatsArray = nlohmann::json::array();
 		for (const FArcItemAttributeStat& Stat : Stats->BaseStats)
@@ -563,16 +637,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 	if (const FArcRecipeOutputModifier_Abilities* Abilities = Modifier.GetPtr<FArcRecipeOutputModifier_Abilities>())
 	{
 		Obj["type"] = "Abilities";
-
-		if (Abilities->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*Abilities->SlotTag.ToString());
-		}
-
-		if (!Abilities->TriggerTags.IsEmpty())
-		{
-			Obj["triggerTags"] = SerializeTagContainer(Abilities->TriggerTags);
-		}
+		SerializeBaseFields(Obj, Abilities);
 
 		nlohmann::json AbilitiesArray = nlohmann::json::array();
 		for (const FArcAbilityEntry& Entry : Abilities->AbilitiesToGrant)
@@ -600,21 +665,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 	if (const FArcRecipeOutputModifier_Effects* Effects = Modifier.GetPtr<FArcRecipeOutputModifier_Effects>())
 	{
 		Obj["type"] = "Effects";
-
-		if (Effects->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*Effects->SlotTag.ToString());
-		}
-
-		if (!Effects->TriggerTags.IsEmpty())
-		{
-			Obj["triggerTags"] = SerializeTagContainer(Effects->TriggerTags);
-		}
-
-		if (Effects->MinQualityThreshold != 0.0f)
-		{
-			Obj["minQuality"] = Effects->MinQualityThreshold;
-		}
+		SerializeBaseFields(Obj, Effects);
 
 		nlohmann::json EffectsArray = nlohmann::json::array();
 		for (const TSubclassOf<UGameplayEffect>& EffectClass : Effects->EffectsToGrant)
@@ -637,11 +688,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 	if (const FArcRecipeOutputModifier_TransferStats* Transfer = Modifier.GetPtr<FArcRecipeOutputModifier_TransferStats>())
 	{
 		Obj["type"] = "TransferStats";
-
-		if (Transfer->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*Transfer->SlotTag.ToString());
-		}
+		SerializeBaseFields(Obj, Transfer);
 
 		Obj["ingredientSlot"] = Transfer->IngredientSlotIndex;
 		Obj["transferScale"] = Transfer->TransferScale;
@@ -654,11 +701,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 	if (const FArcRecipeOutputModifier_Random* Random = Modifier.GetPtr<FArcRecipeOutputModifier_Random>())
 	{
 		Obj["type"] = "Random";
-
-		if (Random->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*Random->SlotTag.ToString());
-		}
+		SerializeBaseFields(Obj, Random);
 
 		if (!Random->ModifierChooserTable.IsNull())
 		{
@@ -677,11 +720,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 	if (const FArcRecipeOutputModifier_RandomPool* Pool = Modifier.GetPtr<FArcRecipeOutputModifier_RandomPool>())
 	{
 		Obj["type"] = "RandomPool";
-
-		if (Pool->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*Pool->SlotTag.ToString());
-		}
+		SerializeBaseFields(Obj, Pool);
 
 		if (!Pool->PoolDefinition.IsNull())
 		{
@@ -713,11 +752,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 	if (const FArcRecipeOutputModifier_MaterialProperties* MatProps = Modifier.GetPtr<FArcRecipeOutputModifier_MaterialProperties>())
 	{
 		Obj["type"] = "MaterialProperties";
-
-		if (MatProps->SlotTag.IsValid())
-		{
-			Obj["slotTag"] = TCHAR_TO_UTF8(*MatProps->SlotTag.ToString());
-		}
+		SerializeBaseFields(Obj, MatProps);
 
 		if (!MatProps->PropertyTable.IsNull())
 		{
@@ -733,30 +768,80 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 			Obj["recipeTags"] = SerializeTagContainer(MatProps->RecipeTags);
 		}
 
-		if (MatProps->ModifierSlotConfigs.Num() > 0)
-		{
-			nlohmann::json SlotsArray = nlohmann::json::array();
-			for (const FArcMaterialModifierSlotConfig& SlotConfig : MatProps->ModifierSlotConfigs)
-			{
-				nlohmann::json SlotObj = nlohmann::json::object();
-
-				if (SlotConfig.SlotTag.IsValid())
-				{
-					SlotObj["tag"] = TCHAR_TO_UTF8(*SlotConfig.SlotTag.ToString());
-				}
-
-				SlotObj["maxCount"] = SlotConfig.MaxCount;
-				SlotObj["selection"] = TCHAR_TO_UTF8(*SlotSelectionToString(SlotConfig.SelectionMode));
-
-				SlotsArray.push_back(SlotObj);
-			}
-			Obj["modifierSlots"] = SlotsArray;
-		}
-
 		return Obj;
 	}
 
 	UE_LOG(LogArcCraftJsonUtils, Warning, TEXT("SerializeOutputModifier: Unrecognized modifier type."));
+	return nlohmann::json();
+}
+
+nlohmann::json ArcCraftJsonUtils::SerializeCraftModifier(const FInstancedStruct& Modifier)
+{
+	nlohmann::json Obj = nlohmann::json::object();
+
+	auto SerializeCraftBaseFields = [](nlohmann::json& Out, const FArcCraftModifier* Base)
+	{
+		if (Base->MinQualityThreshold != 0.0f) { Out["minQuality"] = Base->MinQualityThreshold; }
+		if (!Base->TriggerTags.IsEmpty()) { Out["triggerTags"] = SerializeTagContainer(Base->TriggerTags); }
+		if (Base->Weight != 1.0f) { Out["weight"] = Base->Weight; }
+		if (Base->QualityScalingFactor != 1.0f) { Out["qualityScaling"] = Base->QualityScalingFactor; }
+	};
+
+	if (const FArcCraftModifier_Stats* Stats = Modifier.GetPtr<FArcCraftModifier_Stats>())
+	{
+		Obj["type"] = "Stats";
+		SerializeCraftBaseFields(Obj, Stats);
+
+		nlohmann::json StatsArray = nlohmann::json::array();
+		for (const FArcItemAttributeStat& Stat : Stats->BaseStats)
+		{
+			nlohmann::json StatObj = nlohmann::json::object();
+			StatObj["value"] = Stat.Value.GetValueAtLevel(0);
+			StatObj["modType"] = TCHAR_TO_UTF8(*ModTypeToString(Stat.Type));
+			if (Stat.Attribute.IsValid())
+			{
+				StatObj["attribute"] = TCHAR_TO_UTF8(*Stat.Attribute.GetName());
+			}
+			StatsArray.push_back(StatObj);
+		}
+		Obj["stats"] = StatsArray;
+		return Obj;
+	}
+
+	if (const FArcCraftModifier_Abilities* Abilities = Modifier.GetPtr<FArcCraftModifier_Abilities>())
+	{
+		Obj["type"] = "Abilities";
+		SerializeCraftBaseFields(Obj, Abilities);
+
+		nlohmann::json AbilitiesArray = nlohmann::json::array();
+		for (const FArcAbilityEntry& Entry : Abilities->AbilitiesToGrant)
+		{
+			nlohmann::json AbilityObj = nlohmann::json::object();
+			if (Entry.GrantedAbility) { AbilityObj["class"] = TCHAR_TO_UTF8(*Entry.GrantedAbility->GetPathName()); }
+			if (Entry.InputTag.IsValid()) { AbilityObj["inputTag"] = TCHAR_TO_UTF8(*Entry.InputTag.ToString()); }
+			AbilitiesArray.push_back(AbilityObj);
+		}
+		Obj["abilities"] = AbilitiesArray;
+		return Obj;
+	}
+
+	if (const FArcCraftModifier_Effects* Effects = Modifier.GetPtr<FArcCraftModifier_Effects>())
+	{
+		Obj["type"] = "Effects";
+		SerializeCraftBaseFields(Obj, Effects);
+
+		nlohmann::json EffectsArray = nlohmann::json::array();
+		for (const TSubclassOf<UGameplayEffect>& EffectClass : Effects->EffectsToGrant)
+		{
+			nlohmann::json EffectObj = nlohmann::json::object();
+			if (EffectClass) { EffectObj["class"] = TCHAR_TO_UTF8(*EffectClass->GetPathName()); }
+			EffectsArray.push_back(EffectObj);
+		}
+		Obj["effects"] = EffectsArray;
+		return Obj;
+	}
+
+	UE_LOG(LogArcCraftJsonUtils, Warning, TEXT("SerializeCraftModifier: Unrecognized modifier type."));
 	return nlohmann::json();
 }
 
@@ -807,7 +892,7 @@ nlohmann::json ArcCraftJsonUtils::SerializeQualityBand(const FArcMaterialQuality
 	nlohmann::json ModifiersArray = nlohmann::json::array();
 	for (const FInstancedStruct& ModifierStruct : Band.Modifiers)
 	{
-		nlohmann::json ModJson = SerializeOutputModifier(ModifierStruct);
+		nlohmann::json ModJson = SerializeCraftModifier(ModifierStruct);
 		if (!ModJson.is_null())
 		{
 			ModifiersArray.push_back(ModJson);

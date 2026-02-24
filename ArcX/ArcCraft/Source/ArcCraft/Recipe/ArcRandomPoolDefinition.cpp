@@ -27,7 +27,6 @@
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialOutputModifier.h"
-#include "ArcCraft/MaterialCraft/ArcMaterialModifierSlotConfig.h"
 #include "ArcCraft/Shared/ArcCraftJsonUtils.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Misc/FileHelper.h"
@@ -153,7 +152,7 @@ void UArcRandomPoolDefinition::ExportToJson()
 			nlohmann::json ModifiersArr = nlohmann::json::array();
 			for (const FInstancedStruct& ModStruct : Entry.Modifiers)
 			{
-				nlohmann::json ModJson = ArcCraftJsonUtils::SerializeOutputModifier(ModStruct);
+				nlohmann::json ModJson = ArcCraftJsonUtils::SerializeCraftModifier(ModStruct);
 				if (!ModJson.is_null())
 				{
 					ModifiersArr.push_back(ModJson);

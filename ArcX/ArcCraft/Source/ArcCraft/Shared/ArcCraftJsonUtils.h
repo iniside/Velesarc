@@ -26,6 +26,7 @@
 #include "ArcJsonIncludes.h"
 
 struct FInstancedStruct;
+struct FArcCraftModifier;
 struct FArcMaterialQualityBand;
 struct FGameplayTagQueryExpression;
 
@@ -87,6 +88,12 @@ namespace ArcCraftJsonUtils
 	 */
 	ARCCRAFT_API bool ParseQualityBand(const nlohmann::json& BandObj, FArcMaterialQualityBand& OutBand);
 
+	/**
+	 * Parse a JSON object into a terminal craft modifier (FArcCraftModifier subtype).
+	 * Only supports Stats, Abilities, Effects — used for quality band and pool entry modifiers.
+	 */
+	ARCCRAFT_API bool ParseCraftModifier(const nlohmann::json& ModObj, FInstancedStruct& OutModifier);
+
 	// -------------------------------------------------------------------
 	// Serialization (UE -> JSON)
 	// -------------------------------------------------------------------
@@ -105,6 +112,12 @@ namespace ArcCraftJsonUtils
 	 * @return JSON object, or null JSON if the modifier type is unrecognized.
 	 */
 	ARCCRAFT_API nlohmann::json SerializeOutputModifier(const FInstancedStruct& Modifier);
+
+	/**
+	 * Serialize a terminal craft modifier (FArcCraftModifier subtype) to JSON.
+	 * Only supports Stats, Abilities, Effects — used for quality band and pool entry modifiers.
+	 */
+	ARCCRAFT_API nlohmann::json SerializeCraftModifier(const FInstancedStruct& Modifier);
 
 	/**
 	 * Serialize a gameplay tag query to a JSON object.
