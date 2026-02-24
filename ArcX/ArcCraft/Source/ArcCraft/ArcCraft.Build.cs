@@ -54,7 +54,8 @@ public class ArcCraft : ModuleRules
 				"SlateIM",
 				"MassEntity",
 				"MassCommon",
-				"ArcMass"
+				"ArcMass",
+				"MassSpawner"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
