@@ -45,10 +45,10 @@ public:
 	FMassEntityHandle GetEntityHandle() const { return EntityHandle; }
 
 	/** Called by the activate processor after spawning this actor. */
-	void NotifyVisActorCreated(FMassEntityHandle InEntityHandle);
+	virtual void NotifyVisActorCreated(FMassEntityHandle InEntityHandle);
 
 	/** Called by the deactivate processor before destroying this actor. */
-	void NotifyVisActorPreDestroy();
+	virtual void NotifyVisActorPreDestroy();
 
 protected:
 	virtual void BeginPlay() override;

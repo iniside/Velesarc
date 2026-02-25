@@ -9,6 +9,7 @@
 #include "MassObserverProcessor.h"
 #include "MassProcessor.h"
 #include "Net/Iris/ReplicationSystem/NetRootObjectAdapter.h"
+#include "Net/Serialization/FastArraySerializer.h"
 #include "Net/UnrealNetwork.h"
 #include "Subsystems/WorldSubsystem.h"
 
@@ -98,10 +99,65 @@ struct TMassFragmentTraits<FArcMassReplicationConfigFragment> final
 };
 
 // ---------------------------------------------------------------------------
+// FastArray item — one entry per replicated entity.
+// ---------------------------------------------------------------------------
+
+USTRUCT()
+struct FArcMassReplicatedEntityItem : public FFastArraySerializerItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FArcMassNetId NetId;
+
+	/** Raw blob: all replicated fragments serialized back-to-back.
+	 *  Format: [FragmentTypePathHash:uint32][DataSize:int32][Data...] per fragment. */
+	UPROPERTY()
+	TArray<uint8> Payload;
+};
+
+// ---------------------------------------------------------------------------
+// FastArray serializer — wraps the item array and routes callbacks.
+// ---------------------------------------------------------------------------
+
+USTRUCT()
+struct FArcMassReplicatedEntityArray : public FFastArraySerializer
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<FArcMassReplicatedEntityItem> Items;
+
+	bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParms)
+	{
+		return FFastArraySerializer::FastArrayDeltaSerialize<FArcMassReplicatedEntityItem, FArcMassReplicatedEntityArray>(Items, DeltaParms, *this);
+	}
+
+	// Client callbacks — implemented in cpp, forwarded to subsystem.
+	void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
+	void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize);
+	void PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize);
+
+	/** Backpointer to owning proxy — set after construction. */
+	UPROPERTY(NotReplicated)
+	TObjectPtr<UArcMassReplicationProxy> OwnerProxy = nullptr;
+};
+
+template<>
+struct TStructOpsTypeTraits<FArcMassReplicatedEntityArray> : public TStructOpsTypeTraitsBase2<FArcMassReplicatedEntityArray>
+{
+	enum
+	{
+		WithNetDeltaSerializer = true,
+	};
+};
+
+// ---------------------------------------------------------------------------
 // UArcMassReplicationProxy
-// Lightweight UObject (not AActor) that carries a single Mass entity's
-// replicated data through Iris via FNetRootObjectAdapter.
-// One proxy per replicated entity. Created on server, replicated to clients.
+// Lightweight UObject (not AActor) that carries multiple Mass entities'
+// replicated data through Iris via FNetRootObjectAdapter + FastArray.
+// One proxy can handle many entities. Future: spatial partitioning via
+// multiple proxies.
 // ---------------------------------------------------------------------------
 
 UCLASS(NotBlueprintable)
@@ -110,16 +166,14 @@ class ARCMASS_API UArcMassReplicationProxy : public UObject
 	GENERATED_BODY()
 
 public:
+	UArcMassReplicationProxy();
+
 	virtual bool IsSupportedForNetworking() const override { return true; }
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/** The replicated entity array. */
 	UPROPERTY(Replicated)
-	FArcMassNetId NetId;
-
-	/** Raw blob: all replicated fragments serialized back-to-back.
-	 *  Format: [FragmentTypePathHash:uint32][DataSize:int32][Data...] per fragment. */
-	UPROPERTY(Replicated)
-	TArray<uint8> Payload;
+	FArcMassReplicatedEntityArray ReplicatedEntities;
 
 	/** Start replicating this proxy through Iris. Server only. */
 	void StartReplication(ULevel* Level);
@@ -128,6 +182,17 @@ public:
 	void StopReplication();
 
 	bool IsReplicating() const { return Adapter.IsReplicating(); }
+
+	// -- Server helpers -------------------------------------------------------
+
+	/** Find item index by NetId, or INDEX_NONE. */
+	int32 FindItemIndex(FArcMassNetId NetId) const;
+
+	/** Add or update an entity's payload. */
+	void SetEntityPayload(FArcMassNetId NetId, TArray<uint8>&& Payload);
+
+	/** Remove an entity from the array. */
+	void RemoveEntity(FArcMassNetId NetId);
 
 private:
 	UE::Net::FNetRootObjectAdapter Adapter{UE::Net::FRootObjectSettings{.bIsAlwaysRelevant = true}};
@@ -151,10 +216,10 @@ public:
 	/** Allocate the next unique NetId. Server only. */
 	FArcMassNetId AllocateNetId();
 
-	/** Register an entity with its NetId and create a replication proxy. */
+	/** Register an entity with its NetId. */
 	void RegisterEntity(FArcMassNetId NetId, FMassEntityHandle Entity);
 
-	/** Unregister an entity and destroy its proxy. */
+	/** Unregister an entity. */
 	void UnregisterEntity(FArcMassNetId NetId);
 
 	// -- Lookup ---------------------------------------------------------------
@@ -165,10 +230,10 @@ public:
 	/** Resolve a local entity handle to its NetId. */
 	FArcMassNetId FindNetId(FMassEntityHandle Entity) const;
 
-	/** Get the replication proxy for a given NetId. Server only. */
-	UArcMassReplicationProxy* FindProxy(FArcMassNetId NetId) const;
+	/** Get the replication proxy. Created lazily on server. */
+	UArcMassReplicationProxy* GetOrCreateProxy();
 
-	// -- Client callbacks -----------------------------------------------------
+	// -- Client callbacks from FastArray --------------------------------------
 
 	void OnClientEntityAdded(FArcMassNetId NetId, const TArray<uint8>& Payload);
 	void OnClientEntityChanged(FArcMassNetId NetId, const TArray<uint8>& Payload);
@@ -184,7 +249,7 @@ private:
 	TMap<FMassEntityHandle, FArcMassNetId> EntityToNetId;
 
 	UPROPERTY()
-	TMap<uint32, TObjectPtr<UArcMassReplicationProxy>> Proxies;
+	TObjectPtr<UArcMassReplicationProxy> Proxy = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -210,7 +275,7 @@ private:
 
 // ---------------------------------------------------------------------------
 // UArcMassReplicationCollectProcessor
-// Server-side: serializes replicated fragments into proxy payloads.
+// Server-side: serializes replicated fragments into proxy FastArray.
 // ---------------------------------------------------------------------------
 
 UCLASS()

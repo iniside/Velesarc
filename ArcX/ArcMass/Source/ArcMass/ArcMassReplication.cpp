@@ -118,14 +118,93 @@ void DeserializeEntityPayload(
 } // namespace ArcMassReplicationPrivate
 
 // ---------------------------------------------------------------------------
+// FArcMassReplicatedEntityArray — FastArray client callbacks
+// ---------------------------------------------------------------------------
+
+void FArcMassReplicatedEntityArray::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize)
+{
+	if (!OwnerProxy)
+	{
+		return;
+	}
+
+	UWorld* World = OwnerProxy->GetWorld();
+	UArcMassReplicationSubsystem* Subsystem = World ? World->GetSubsystem<UArcMassReplicationSubsystem>() : nullptr;
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	for (int32 Idx : RemovedIndices)
+	{
+		if (Items.IsValidIndex(Idx))
+		{
+			Subsystem->OnClientEntityRemoved(Items[Idx].NetId);
+		}
+	}
+}
+
+void FArcMassReplicatedEntityArray::PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize)
+{
+	if (!OwnerProxy)
+	{
+		return;
+	}
+
+	UWorld* World = OwnerProxy->GetWorld();
+	UArcMassReplicationSubsystem* Subsystem = World ? World->GetSubsystem<UArcMassReplicationSubsystem>() : nullptr;
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	for (int32 Idx : AddedIndices)
+	{
+		if (Items.IsValidIndex(Idx))
+		{
+			const FArcMassReplicatedEntityItem& Item = Items[Idx];
+			Subsystem->OnClientEntityAdded(Item.NetId, Item.Payload);
+		}
+	}
+}
+
+void FArcMassReplicatedEntityArray::PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize)
+{
+	if (!OwnerProxy)
+	{
+		return;
+	}
+
+	UWorld* World = OwnerProxy->GetWorld();
+	UArcMassReplicationSubsystem* Subsystem = World ? World->GetSubsystem<UArcMassReplicationSubsystem>() : nullptr;
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	for (int32 Idx : ChangedIndices)
+	{
+		if (Items.IsValidIndex(Idx))
+		{
+			const FArcMassReplicatedEntityItem& Item = Items[Idx];
+			Subsystem->OnClientEntityChanged(Item.NetId, Item.Payload);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // UArcMassReplicationProxy
 // ---------------------------------------------------------------------------
+
+UArcMassReplicationProxy::UArcMassReplicationProxy()
+{
+	ReplicatedEntities.OwnerProxy = this;
+}
 
 void UArcMassReplicationProxy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(UArcMassReplicationProxy, NetId);
-	DOREPLIFETIME(UArcMassReplicationProxy, Payload);
+	DOREPLIFETIME(UArcMassReplicationProxy, ReplicatedEntities);
 }
 
 void UArcMassReplicationProxy::StartReplication(ULevel* Level)
@@ -143,6 +222,48 @@ void UArcMassReplicationProxy::StopReplication()
 	Adapter.DeinitAdapter();
 }
 
+int32 UArcMassReplicationProxy::FindItemIndex(FArcMassNetId NetId) const
+{
+	for (int32 i = 0; i < ReplicatedEntities.Items.Num(); ++i)
+	{
+		if (ReplicatedEntities.Items[i].NetId == NetId)
+		{
+			return i;
+		}
+	}
+	return INDEX_NONE;
+}
+
+void UArcMassReplicationProxy::SetEntityPayload(FArcMassNetId NetId, TArray<uint8>&& Payload)
+{
+	int32 Idx = FindItemIndex(NetId);
+	if (Idx != INDEX_NONE)
+	{
+		// Update existing
+		FArcMassReplicatedEntityItem& Item = ReplicatedEntities.Items[Idx];
+		Item.Payload = MoveTemp(Payload);
+		ReplicatedEntities.MarkItemDirty(Item);
+	}
+	else
+	{
+		// Add new
+		FArcMassReplicatedEntityItem& NewItem = ReplicatedEntities.Items.AddDefaulted_GetRef();
+		NewItem.NetId = NetId;
+		NewItem.Payload = MoveTemp(Payload);
+		ReplicatedEntities.MarkItemDirty(NewItem);
+	}
+}
+
+void UArcMassReplicationProxy::RemoveEntity(FArcMassNetId NetId)
+{
+	int32 Idx = FindItemIndex(NetId);
+	if (Idx != INDEX_NONE)
+	{
+		ReplicatedEntities.Items.RemoveAtSwap(Idx);
+		ReplicatedEntities.MarkArrayDirty();
+	}
+}
+
 // ---------------------------------------------------------------------------
 // UArcMassReplicationSubsystem
 // ---------------------------------------------------------------------------
@@ -155,15 +276,11 @@ void UArcMassReplicationSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 
 void UArcMassReplicationSubsystem::Deinitialize()
 {
-	// Stop replication on all proxies
-	for (auto& [Id, Proxy] : Proxies)
+	if (Proxy && Proxy->IsReplicating())
 	{
-		if (Proxy && Proxy->IsReplicating())
-		{
-			Proxy->StopReplication();
-		}
+		Proxy->StopReplication();
 	}
-	Proxies.Empty();
+	Proxy = nullptr;
 
 	NetIdToEntity.Empty();
 	EntityToNetId.Empty();
@@ -180,20 +297,6 @@ void UArcMassReplicationSubsystem::RegisterEntity(FArcMassNetId NetId, FMassEnti
 	check(NetId.IsValid());
 	NetIdToEntity.Add(NetId, Entity);
 	EntityToNetId.Add(Entity, NetId);
-
-	UWorld* World = GetWorld();
-	if (!World || World->GetNetMode() == NM_Client)
-	{
-		return;
-	}
-
-	// Create a replication proxy for this entity (server only)
-	UArcMassReplicationProxy* Proxy = NewObject<UArcMassReplicationProxy>(this);
-	Proxy->NetId = NetId;
-	Proxies.Add(NetId.GetValue(), Proxy);
-
-	ULevel* Level = World->PersistentLevel;
-	Proxy->StartReplication(Level);
 }
 
 void UArcMassReplicationSubsystem::UnregisterEntity(FArcMassNetId NetId)
@@ -204,15 +307,10 @@ void UArcMassReplicationSubsystem::UnregisterEntity(FArcMassNetId NetId)
 		NetIdToEntity.Remove(NetId);
 	}
 
-	if (TObjectPtr<UArcMassReplicationProxy>* ProxyPtr = Proxies.Find(NetId.GetValue()))
+	// Remove from the proxy's FastArray
+	if (Proxy)
 	{
-		UArcMassReplicationProxy* Proxy = *ProxyPtr;
-		if (Proxy)
-		{
-			Proxy->StopReplication();
-			Proxy->MarkAsGarbage();
-		}
-		Proxies.Remove(NetId.GetValue());
+		Proxy->RemoveEntity(NetId);
 	}
 }
 
@@ -228,10 +326,23 @@ FArcMassNetId UArcMassReplicationSubsystem::FindNetId(FMassEntityHandle Entity) 
 	return Found ? *Found : FArcMassNetId();
 }
 
-UArcMassReplicationProxy* UArcMassReplicationSubsystem::FindProxy(FArcMassNetId NetId) const
+UArcMassReplicationProxy* UArcMassReplicationSubsystem::GetOrCreateProxy()
 {
-	const TObjectPtr<UArcMassReplicationProxy>* Found = Proxies.Find(NetId.GetValue());
-	return Found ? *Found : nullptr;
+	if (Proxy)
+	{
+		return Proxy;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_Client)
+	{
+		return nullptr;
+	}
+
+	Proxy = NewObject<UArcMassReplicationProxy>(this);
+	Proxy->StartReplication(World->PersistentLevel);
+
+	return Proxy;
 }
 
 void UArcMassReplicationSubsystem::OnClientEntityAdded(FArcMassNetId NetId, const TArray<uint8>& Payload)
@@ -385,10 +496,16 @@ void UArcMassReplicationCollectProcessor::Execute(FMassEntityManager& EntityMana
 		return;
 	}
 
-	// Serialize each entity's replicated fragments into its proxy.
+	UArcMassReplicationProxy* Proxy = Subsystem->GetOrCreateProxy();
+	if (!Proxy)
+	{
+		return;
+	}
+
+	// Serialize each entity's replicated fragments into the proxy's FastArray.
 	// Simplest approach: full re-serialize every tick.
 	EntityQuery.ForEachEntityChunk(EntityManager, Context,
-		[&EntityManager, Subsystem](FMassExecutionContext& Context)
+		[&EntityManager, Proxy](FMassExecutionContext& Context)
 		{
 			const int32 NumEntities = Context.GetNumEntities();
 			TConstArrayView<FArcMassNetIdFragment> NetIdList = Context.GetFragmentView<FArcMassNetIdFragment>();
@@ -401,12 +518,6 @@ void UArcMassReplicationCollectProcessor::Execute(FMassEntityManager& EntityMana
 					continue;
 				}
 
-				UArcMassReplicationProxy* Proxy = Subsystem->FindProxy(NetIdFragment.NetId);
-				if (!Proxy)
-				{
-					continue;
-				}
-
 				FMassEntityHandle Entity = Context.GetEntity(Idx);
 				const FArcMassReplicationConfigFragment* Config =
 					EntityManager.GetConstSharedFragmentDataPtr<FArcMassReplicationConfigFragment>(Entity);
@@ -415,7 +526,9 @@ void UArcMassReplicationCollectProcessor::Execute(FMassEntityManager& EntityMana
 					continue;
 				}
 
-				ArcMassReplicationPrivate::SerializeEntityPayload(EntityManager, Entity, *Config, Proxy->Payload);
+				TArray<uint8> Payload;
+				ArcMassReplicationPrivate::SerializeEntityPayload(EntityManager, Entity, *Config, Payload);
+				Proxy->SetEntityPayload(NetIdFragment.NetId, MoveTemp(Payload));
 			}
 		});
 }
