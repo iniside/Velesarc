@@ -10,6 +10,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "imgui.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "Engine/Engine.h"
 #include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
 #include "Items/Fragments/ArcItemFragment_GrantedPassiveAbilities.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
@@ -23,7 +24,7 @@ void FArcItemInstanceDebugger::DrawAbilityEffectsToApply(const FArcItemData* InI
 	
 	if (InInstance->GetScriptStruct()->IsChildOf(FArcItemInstance_EffectToApply::StaticStruct()))
 	{
-		const FArcItemFragment_AbilityEffectsToApply* Fragment = ArcItems::FindFragment<FArcItemFragment_AbilityEffectsToApply>(InItemData);
+		const FArcItemFragment_AbilityEffectsToApply* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_AbilityEffectsToApply>(InItemData);
 	
 		if (ImGui::TreeNode("Fragment"))
 		{
@@ -88,7 +89,7 @@ void FArcItemInstanceDebugger::DrawGrantedPassiveAbilities(const FArcItemData* I
 	
 	if (InInstance->GetScriptStruct()->IsChildOf(FArcItemInstance_GrantedPassiveAbilities::StaticStruct()))
 	{
-		const FArcItemFragment_GrantedPassiveAbilities* Fragment = ArcItems::FindFragment<FArcItemFragment_GrantedPassiveAbilities>(InItemData);
+		const FArcItemFragment_GrantedPassiveAbilities* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_GrantedPassiveAbilities>(InItemData);
 	
 		if (ImGui::TreeNode("Granted Passive Abilities"))
 		{
@@ -117,7 +118,7 @@ void FArcItemInstanceDebugger::DrawGrantedEffects(const FArcItemData* InItemData
 	
 	if (InInstance->GetScriptStruct()->IsChildOf(FArcItemInstance_GrantedGameplayEffects::StaticStruct()))
 	{
-		const FArcItemFragment_GrantedGameplayEffects* Fragment = ArcItems::FindFragment<FArcItemFragment_GrantedGameplayEffects>(InItemData);
+		const FArcItemFragment_GrantedGameplayEffects* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_GrantedGameplayEffects>(InItemData);
 	
 		if (ImGui::TreeNode("Granted Effects"))
 		{
@@ -146,7 +147,7 @@ void FArcItemInstanceDebugger::DrawItemStats(const FArcItemData* InItemData, con
 
 	if (Instance->GetScriptStruct()->IsChildOf(FArcItemInstance_ItemStats::StaticStruct()))
 	{
-		const FArcItemFragment_ItemStats* Fragment = ArcItems::FindFragment<FArcItemFragment_ItemStats>(InItemData);
+		const FArcItemFragment_ItemStats* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_ItemStats>(InItemData);
 	
 		if (ImGui::TreeNode("Fragment"))
 		{
@@ -216,7 +217,7 @@ void FArcItemInstanceDebugger::DrawGrantedAbilities(const FArcItemData* InItemDa
 	
 	if (InInstance->GetScriptStruct()->IsChildOf(FArcItemInstance_GrantedAbilities::StaticStruct()))
 	{
-		const FArcItemFragment_GrantedAbilities* Fragment = ArcItems::FindFragment<FArcItemFragment_GrantedAbilities>(InItemData);
+		const FArcItemFragment_GrantedAbilities* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_GrantedAbilities>(InItemData);
 		if (ImGui::TreeNode("Fragment"))
 		{
 			const TArray<FArcAbilityEntry>& GrantedAbilities = Fragment->Abilities;

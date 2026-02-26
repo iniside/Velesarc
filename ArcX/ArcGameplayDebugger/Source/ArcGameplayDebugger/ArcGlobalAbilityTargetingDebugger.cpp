@@ -4,6 +4,8 @@
 #include "StateTreePropertyBindings.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "Engine/AssetManager.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 

@@ -1,4 +1,6 @@
-﻿#include "ArcEquipmentDebugger.h"
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#include "ArcEquipmentDebugger.h"
 
 #include "imgui.h"
 #include "Commands/ArcEquipItemCommand.h"
@@ -11,20 +13,17 @@
 
 void FArcEquipmentDebugger::Initialize()
 {
+	SelectedSlotIdx = -1;
 }
 
 void FArcEquipmentDebugger::Uninitialize()
 {
+	SelectedSlotIdx = -1;
 }
 
 void FArcEquipmentDebugger::Draw()
 {
-	if (!GEngine)
-	{
-		return;
-	}
-	
-	if (!GEngine->GameViewport)
+	if (!GEngine || !GEngine->GameViewport)
 	{
 		return;
 	}
@@ -36,102 +35,355 @@ void FArcEquipmentDebugger::Draw()
 	}
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
-	if (!PC)
+	if (!PC || !PC->PlayerState)
 	{
 		return;
 	}
 
-	if (!PC->PlayerState)
-	{
-		return;
-	}
-
-	APlayerState* PS = PC->PlayerState;
-	
-	TArray<UArcItemsStoreComponent*> ItemsStores;
-	PS->GetComponents<UArcItemsStoreComponent>(ItemsStores);
-
-	TArray<FString> ItemStoreNames;
-	Algo::Transform(ItemsStores, ItemStoreNames, [](const UArcItemsStoreComponent* Store){
-		return Store ? FString::Printf(TEXT("Add to %s"), *Store->GetName()) : FString(TEXT("Invalid Store"));
-	});
-
-	UArcEquipmentComponent* EquipmentComponent = PS->FindComponentByClass<UArcEquipmentComponent>();
+	UArcEquipmentComponent* EquipmentComponent = PC->PlayerState->FindComponentByClass<UArcEquipmentComponent>();
 	if (!EquipmentComponent)
 	{
 		return;
 	}
 
-	const TArray<FArcEquipmentSlot>& EquipmentSlots = EquipmentComponent->GetEquipmentSlots();
-	if (EquipmentSlots.Num() == 0)
+	ImGui::SetNextWindowSize(ImVec2(520, 600), ImGuiCond_FirstUseEver);
+	if (!ImGui::Begin("Equipment Debugger", &bShow))
 	{
+		ImGui::End();
 		return;
 	}
 
-	ImGui::Begin("Equipment");
-	for (int32 Idx = 0; Idx < EquipmentSlots.Num(); ++Idx)
+	DrawOverview(PC, EquipmentComponent);
+
+	ImGui::Separator();
+
+	DrawItemsStoreInfo(EquipmentComponent);
+
+	ImGui::End();
+}
+
+void FArcEquipmentDebugger::DrawOverview(APlayerController* PC, UArcEquipmentComponent* EquipmentComponent)
+{
+	UArcItemsStoreComponent* EquipmentItemsStore = EquipmentComponent->GetItemsStore();
+	const TArray<FArcEquipmentSlot>& EquipmentSlots = EquipmentComponent->GetEquipmentSlots();
+
+	// Header info
+	const UArcEquipmentSlotPreset* Preset = EquipmentComponent->GetEquipmentSlotPreset();
+	if (Preset)
 	{
-		const FArcEquipmentSlot& EquipmentSlot = EquipmentSlots[Idx];
-		if (!EquipmentSlot.SlotId.IsValid())
-		{
-			continue;
-		}
-		
-		if (ImGui::TreeNode(TCHAR_TO_ANSI(*EquipmentSlot.SlotId.ToString())))
-		{
-			UArcItemsStoreComponent* EquipmentItemsStore = EquipmentComponent->GetItemsStore();
-			const bool bIsSlotLocked = EquipmentItemsStore->IsSlotLocked(EquipmentSlot.SlotId);
-			FString SlotLocked = bIsSlotLocked ? TEXT("Slot (Locked)") : TEXT("Slot (Unlocked)");
+		ImGui::Text("Preset: %s", TCHAR_TO_ANSI(*GetNameSafe(Preset)));
+	}
+	ImGui::Text("Items Store: %s", TCHAR_TO_ANSI(*GetNameSafe(EquipmentItemsStore)));
+	ImGui::Text("Items Store Class: %s", TCHAR_TO_ANSI(*GetNameSafe(EquipmentComponent->GetItemsStoreClass())));
+	ImGui::Text("Slots: %d", EquipmentSlots.Num());
 
-			ImGui::Text(TCHAR_TO_ANSI(*SlotLocked));
-			if (ImGui::Button("Unequip"))
+	ImGui::Spacing();
+
+	if (EquipmentSlots.Num() == 0)
+	{
+		ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "No equipment slots configured.");
+		return;
+	}
+
+	// Equipment slots table
+	const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp;
+	if (ImGui::BeginTable("SlotsTable", 5, TableFlags))
+	{
+		ImGui::TableSetupColumn("Slot", ImGuiTableColumnFlags_None, 2.0f);
+		ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.0f);
+		ImGui::TableSetupColumn("Equipped Item", ImGuiTableColumnFlags_None, 2.5f);
+		ImGui::TableSetupColumn("Equip", ImGuiTableColumnFlags_None, 2.5f);
+		ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_None, 1.5f);
+		ImGui::TableHeadersRow();
+
+		for (int32 Idx = 0; Idx < EquipmentSlots.Num(); ++Idx)
+		{
+			const FArcEquipmentSlot& Slot = EquipmentSlots[Idx];
+			if (!Slot.SlotId.IsValid())
 			{
-				Arcx::SendServerCommand<FArcUnequipItemCommand>(PC, EquipmentComponent, EquipmentSlot.SlotId);
+				continue;
 			}
 
-			const FArcItemData* ExistingItem = EquipmentItemsStore->GetItemFromSlot(EquipmentSlot.SlotId);
-			FString PreviewText = "Select Item to Equip";
-			if (ExistingItem)
+			ImGui::PushID(Idx);
+			ImGui::TableNextRow();
+
+			// Slot ID
+			ImGui::TableNextColumn();
+			FString SlotName = Slot.SlotId.ToString();
+			// Strip the common prefix for readability
+			SlotName.RemoveFromStart(TEXT("SlotId."));
+			bool bSelected = (SelectedSlotIdx == Idx);
+			if (ImGui::Selectable(TCHAR_TO_ANSI(*SlotName), bSelected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
 			{
-				PreviewText = GetNameSafe(ExistingItem->GetItemDefinition());
+				SelectedSlotIdx = bSelected ? -1 : Idx;
 			}
-			if (ImGui::BeginCombo("EquipmentTable", TCHAR_TO_ANSI(*PreviewText)))
+
+			// Status
+			ImGui::TableNextColumn();
+			const bool bIsLocked = EquipmentItemsStore && EquipmentItemsStore->IsSlotLocked(Slot.SlotId);
+			if (bIsLocked)
 			{
-				TArray<const FArcItemData*> Items = EquipmentComponent->GetItemsFromStoreForSlot(EquipmentSlot.SlotId);
-				for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
+				ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Locked");
+			}
+			else
+			{
+				ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "Open");
+			}
+
+			// Equipped Item
+			ImGui::TableNextColumn();
+			const FArcItemData* ExistingItem = EquipmentItemsStore ? EquipmentItemsStore->GetItemFromSlot(Slot.SlotId) : nullptr;
+			if (ExistingItem && ExistingItem->GetItemDefinition())
+			{
+				ImGui::Text("%s", TCHAR_TO_ANSI(*GetNameSafe(ExistingItem->GetItemDefinition())));
+			}
+			else
+			{
+				ImGui::TextDisabled("Empty");
+			}
+
+			// Equip combo
+			ImGui::TableNextColumn();
+			FString ComboLabel = FString::Printf(TEXT("##EquipCombo_%d"), Idx);
+			FString PreviewText = ExistingItem ? GetNameSafe(ExistingItem->GetItemDefinition()) : TEXT("Select Item...");
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			if (ImGui::BeginCombo(TCHAR_TO_ANSI(*ComboLabel), TCHAR_TO_ANSI(*PreviewText)))
+			{
+				TArray<const FArcItemData*> Items = EquipmentComponent->GetItemsFromStoreForSlot(Slot.SlotId);
+				for (const FArcItemData* ItemData : Items)
 				{
-					const FArcItemData* ItemData = Items[ItemIdx];
 					if (!ItemData || !ItemData->GetItemDefinition())
 					{
 						continue;
 					}
 
-					FString ItemName = GetNameSafe(ItemData->GetItemDefinition());
-					
 					ImGui::PushID(TCHAR_TO_ANSI(*ItemData->GetItemId().ToString()));
-					FString ItemDisplayName = FString::Printf(TEXT("Equip (%s)"), *ItemName);
-					if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemDisplayName)))
+					FString ItemLabel = FString::Printf(TEXT("%s (x%d L%d)"),
+						*GetNameSafe(ItemData->GetItemDefinition()),
+						ItemData->GetStacks(),
+						ItemData->GetLevel());
+					if (ImGui::Selectable(TCHAR_TO_ANSI(*ItemLabel)))
 					{
 						Arcx::SendServerCommand<FArcEquipItemCommand>(PC,
-							EquipmentComponent->GetItemsStore(), EquipmentComponent, ItemData->GetItemId(), EquipmentSlot.SlotId);
+							EquipmentComponent->GetItemsStore(), EquipmentComponent,
+							ItemData->GetItemId(), Slot.SlotId);
 					}
 					ImGui::PopID();
 				}
 				ImGui::EndCombo();
 			}
 
+			// Actions
+			ImGui::TableNextColumn();
 			if (ExistingItem)
 			{
-				FString ItemId = FString::Printf(TEXT("ItemId: %s"), *ExistingItem->GetItemId().ToString());
-				ImGui::Text(TCHAR_TO_ANSI(*ItemId));
-
-				FString ItemsStore = FString::Printf(TEXT("ItemsStore: %s"), *GetNameSafe(ExistingItem->GetItemsStoreComponent()));
-				ImGui::Text(TCHAR_TO_ANSI(*ItemsStore));
+				FString UnequipLabel = FString::Printf(TEXT("Unequip##%d"), Idx);
+				if (ImGui::SmallButton(TCHAR_TO_ANSI(*UnequipLabel)))
+				{
+					Arcx::SendServerCommand<FArcUnequipItemCommand>(PC, EquipmentComponent, Slot.SlotId);
+				}
 			}
-			
-			ImGui::TreePop();
+
+			ImGui::PopID();
 		}
+
+		ImGui::EndTable();
 	}
 
-	ImGui::End();
+	// Slot details panel
+	if (SelectedSlotIdx >= 0 && SelectedSlotIdx < EquipmentSlots.Num())
+	{
+		ImGui::Spacing();
+		DrawSlotDetails(PC, EquipmentComponent, SelectedSlotIdx);
+	}
+}
+
+void FArcEquipmentDebugger::DrawSlotDetails(APlayerController* PC, UArcEquipmentComponent* EquipmentComponent, int32 SlotIdx)
+{
+	const TArray<FArcEquipmentSlot>& EquipmentSlots = EquipmentComponent->GetEquipmentSlots();
+	const FArcEquipmentSlot& Slot = EquipmentSlots[SlotIdx];
+	UArcItemsStoreComponent* EquipmentItemsStore = EquipmentComponent->GetItemsStore();
+
+	FString HeaderText = FString::Printf(TEXT("Slot Details: %s"), *Slot.SlotId.ToString());
+	if (ImGui::CollapsingHeader(TCHAR_TO_ANSI(*HeaderText), ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::Indent();
+
+		// Slot configuration
+		if (ImGui::TreeNodeEx("Slot Configuration", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (Slot.RequiredTags.Num() > 0)
+			{
+				ImGui::Text("Required Tags: %s", TCHAR_TO_ANSI(*Slot.RequiredTags.ToStringSimple()));
+			}
+			else
+			{
+				ImGui::TextDisabled("Required Tags: None");
+			}
+
+			if (Slot.IgnoreTags.Num() > 0)
+			{
+				ImGui::Text("Ignore Tags: %s", TCHAR_TO_ANSI(*Slot.IgnoreTags.ToStringSimple()));
+			}
+			else
+			{
+				ImGui::TextDisabled("Ignore Tags: None");
+			}
+
+			if (Slot.OwnerRequiredTags.Num() > 0)
+			{
+				ImGui::Text("Owner Required Tags: %s", TCHAR_TO_ANSI(*Slot.OwnerRequiredTags.ToStringSimple()));
+			}
+
+			if (Slot.OwnerIgnoreTags.Num() > 0)
+			{
+				ImGui::Text("Owner Ignore Tags: %s", TCHAR_TO_ANSI(*Slot.OwnerIgnoreTags.ToStringSimple()));
+			}
+
+			if (Slot.CustomCondition.IsValid())
+			{
+				ImGui::Text("Custom Condition: %s", TCHAR_TO_ANSI(*GetNameSafe(Slot.CustomCondition.GetScriptStruct())));
+			}
+			else
+			{
+				ImGui::TextDisabled("Custom Condition: None");
+			}
+
+			ImGui::TreePop();
+		}
+
+		// Equipped item details
+		const FArcItemData* ExistingItem = EquipmentItemsStore ? EquipmentItemsStore->GetItemFromSlot(Slot.SlotId) : nullptr;
+		if (ExistingItem && ImGui::TreeNodeEx("Equipped Item", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Text("Definition: %s", TCHAR_TO_ANSI(*GetNameSafe(ExistingItem->GetItemDefinition())));
+			ImGui::Text("ItemId: %s", TCHAR_TO_ANSI(*ExistingItem->GetItemId().ToString()));
+			ImGui::Text("Level: %d", ExistingItem->GetLevel());
+			ImGui::Text("Stacks: %d", ExistingItem->GetStacks());
+			ImGui::Text("Slot: %s", TCHAR_TO_ANSI(*ExistingItem->GetSlotId().ToString()));
+			ImGui::Text("Store: %s", TCHAR_TO_ANSI(*GetNameSafe(ExistingItem->GetItemsStoreComponent())));
+
+			if (ExistingItem->GetItemAggregatedTags().Num() > 0)
+			{
+				ImGui::Text("Aggregated Tags: %s", TCHAR_TO_ANSI(*ExistingItem->GetItemAggregatedTags().ToStringSimple()));
+			}
+
+			if (ExistingItem->DynamicTags.Num() > 0)
+			{
+				ImGui::Text("Dynamic Tags: %s", TCHAR_TO_ANSI(*ExistingItem->DynamicTags.ToStringSimple()));
+			}
+
+			if (ExistingItem->GetAttachedItems().Num() > 0)
+			{
+				if (ImGui::TreeNode("Attachments"))
+				{
+					for (const FArcItemId& AttachId : ExistingItem->GetAttachedItems())
+					{
+						const FArcItemData* AttachedItem = EquipmentItemsStore ? EquipmentItemsStore->GetItemPtr(AttachId) : nullptr;
+						if (AttachedItem)
+						{
+							ImGui::BulletText("[%s] %s",
+								TCHAR_TO_ANSI(*AttachedItem->GetAttachSlot().ToString()),
+								TCHAR_TO_ANSI(*GetNameSafe(AttachedItem->GetItemDefinition())));
+						}
+						else
+						{
+							ImGui::BulletText("%s (not resolved)", TCHAR_TO_ANSI(*AttachId.ToString()));
+						}
+					}
+					ImGui::TreePop();
+				}
+			}
+
+			// Unequip button
+			ImGui::Spacing();
+			if (ImGui::Button("Unequip"))
+			{
+				Arcx::SendServerCommand<FArcUnequipItemCommand>(PC, EquipmentComponent, Slot.SlotId);
+			}
+
+			ImGui::TreePop();
+		}
+		else if (!ExistingItem)
+		{
+			ImGui::TextDisabled("No item equipped in this slot.");
+		}
+
+		ImGui::Unindent();
+	}
+}
+
+void FArcEquipmentDebugger::DrawItemsStoreInfo(UArcEquipmentComponent* EquipmentComponent)
+{
+	UArcItemsStoreComponent* ItemsStore = EquipmentComponent->GetItemsStore();
+	if (!ItemsStore)
+	{
+		ImGui::TextDisabled("No Items Store available.");
+		return;
+	}
+
+	FString Header = FString::Printf(TEXT("Backing Store: %s (%d items)"),
+		*GetNameSafe(ItemsStore), ItemsStore->GetItemNum());
+	if (ImGui::CollapsingHeader(TCHAR_TO_ANSI(*Header)))
+	{
+		TArray<const FArcItemData*> AllItems = ItemsStore->GetItems();
+		if (AllItems.Num() == 0)
+		{
+			ImGui::TextDisabled("Store is empty.");
+			return;
+		}
+
+		const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp;
+		if (ImGui::BeginTable("StoreItemsTable", 5, TableFlags))
+		{
+			ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_None, 3.0f);
+			ImGui::TableSetupColumn("Stacks", ImGuiTableColumnFlags_None, 0.8f);
+			ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_None, 0.8f);
+			ImGui::TableSetupColumn("Slot", ImGuiTableColumnFlags_None, 2.0f);
+			ImGui::TableSetupColumn("Locked", ImGuiTableColumnFlags_None, 0.8f);
+			ImGui::TableHeadersRow();
+
+			for (const FArcItemData* Item : AllItems)
+			{
+				if (!Item)
+				{
+					continue;
+				}
+
+				ImGui::TableNextRow();
+
+				ImGui::TableNextColumn();
+				ImGui::Text("%s", TCHAR_TO_ANSI(*GetNameSafe(Item->GetItemDefinition())));
+
+				ImGui::TableNextColumn();
+				ImGui::Text("%d", Item->GetStacks());
+
+				ImGui::TableNextColumn();
+				ImGui::Text("%d", Item->GetLevel());
+
+				ImGui::TableNextColumn();
+				if (Item->GetSlotId().IsValid())
+				{
+					ImGui::Text("%s", TCHAR_TO_ANSI(*Item->GetSlotId().ToString()));
+				}
+				else
+				{
+					ImGui::TextDisabled("-");
+				}
+
+				ImGui::TableNextColumn();
+				bool bItemLocked = ItemsStore->IsItemLocked(Item->GetItemId());
+				if (bItemLocked)
+				{
+					ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Yes");
+				}
+				else
+				{
+					ImGui::TextDisabled("No");
+				}
+			}
+
+			ImGui::EndTable();
+		}
+	}
 }

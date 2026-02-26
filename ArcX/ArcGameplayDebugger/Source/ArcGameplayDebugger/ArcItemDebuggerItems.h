@@ -1,5 +1,13 @@
-﻿#pragma once
-#include "ArcItemDebuggerCreateItemSpec.h"
+#pragma once
+
+#include "AssetRegistry/AssetData.h"
+#include "GameplayTagContainer.h"
+
+class UArcItemsStoreComponent;
+class UArcItemDefinition;
+class UArcQuickBarComponent;
+struct FArcItemData;
+struct FArcItemId;
 
 class FArcDebuggerItems
 {
@@ -9,10 +17,41 @@ public:
 	void Draw();
 
 	bool bShow = false;
-	int32 SelectedItemStoreIndex = -1;
 
-	TArray<FAssetData> ItemDefinitions;
-	TArray<FString> ItemList;
+private:
+	void DrawItemsTab();
+	void DrawStoreSelector();
+	void DrawItemsList();
+	void DrawAddItemPanel();
+	void DrawItemDetail(const FArcItemData* Item);
+	void DrawInstancedDataTree(const FArcItemData* Item);
 
-	FArcItemDebuggerItemSpecCreator ItemSpecCreator;
+	void DrawQuickBarTab();
+	void DrawQuickBarSlots(UArcQuickBarComponent* QuickBar, int32 BarIndex);
+
+	TArray<UArcItemsStoreComponent*> GetPlayerStores() const;
+	TArray<UArcQuickBarComponent*> GetPlayerQuickBars() const;
+	void RefreshItemDefinitions();
+
+	// Items tab state
+	TWeakObjectPtr<UArcItemsStoreComponent> SelectedStore;
+	int32 SelectedStoreIndex = 0;
+	int32 SelectedItemIndex = -1;
+
+	// Add item panel
+	bool bShowAddItemPanel = false;
+	TArray<FAssetData> CachedItemDefinitions;
+	TArray<FString> CachedItemDefinitionNames;
+	int32 SelectedDefinitionIndex = 0;
+	char FilterBuf[256] = {};
+
+	// Slot assignment
+	char SlotTagBuf[256] = {};
+
+	// QuickBar tab state
+	TWeakObjectPtr<UArcQuickBarComponent> SelectedQuickBar;
+	int32 SelectedQuickBarCompIndex = 0;
+	int32 SelectedBarIndex = 0;
+	int32 SelectedQuickBarSlotIndex = -1;
+	char QuickBarAssignFilterBuf[256] = {};
 };

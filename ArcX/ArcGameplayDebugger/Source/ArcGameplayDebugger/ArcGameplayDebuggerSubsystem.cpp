@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "ImGuiConfig.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Engine/World.h"
 #include "Items/Fragments/ArcItemFragment_AbilityEffectsToApply.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Kismet/GameplayStatics.h"
@@ -118,7 +119,7 @@ ETickableTickType UArcGameplayDebuggerSubsystem::GetTickableTickType() const
 
 bool UArcGameplayDebuggerSubsystem::IsTickable() const
 {
-	return CVarArcDebugDraw.GetValueOnGameThread();
+	return true;
 }
 
 void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
@@ -265,40 +266,6 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ImGui::EndMenu();
 				}
 
-				// Sim proxies ability systems. They have less info available, so I will separate them into different windows.
-				if (ImGui::BeginMenu("Proxy Ability System"))
-				{
-					if (ImGui::MenuItem("Gameplay Effects"))
-					{
-						if (ProxyGameplayEffectDebugger.bShow == false)
-						{
-							ProxyGameplayEffectDebugger.bShow = true;
-							ProxyGameplayEffectDebugger.Initialize();
-						}
-						else
-						{
-							ProxyGameplayEffectDebugger.bShow = false;
-							ProxyGameplayEffectDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Attributes"))
-					{
-						if (ProxyAttributeSetDebugger.bShow == false)
-						{
-							ProxyAttributeSetDebugger.bShow = true;
-							ProxyAttributeSetDebugger.Initialize();
-						}
-						else
-						{
-							ProxyAttributeSetDebugger.bShow = false;
-							ProxyAttributeSetDebugger.Uninitialize();
-						}
-					}
-	
-					ImGui::EndMenu();
-				}
-
 				if (ImGui::BeginMenu("Arc Gun"))
 				{
 					if (ImGui::MenuItem("Debugger"))
@@ -314,7 +281,83 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 							ArcGunDebugger.Uninitialize();
 						}
 					}
-	
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Tools"))
+				{
+					if (ImGui::MenuItem("Gameplay Tag Tree"))
+					{
+						if (GameplayTagTreeWidget.bShow == false)
+						{
+							GameplayTagTreeWidget.bShow = true;
+							GameplayTagTreeWidget.Initialize();
+						}
+						else
+						{
+							GameplayTagTreeWidget.bShow = false;
+							GameplayTagTreeWidget.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Arc Builder"))
+				{
+					if (ImGui::MenuItem("Builder Debug"))
+					{
+						if (BuilderDebugger.bShow == false)
+						{
+							BuilderDebugger.bShow = true;
+							BuilderDebugger.Initialize();
+						}
+						else
+						{
+							BuilderDebugger.bShow = false;
+							BuilderDebugger.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Mass"))
+				{
+					if (ImGui::MenuItem("Entity Debugger"))
+					{
+						if (MassEntityDebugger.bShow == false)
+						{
+							MassEntityDebugger.bShow = true;
+							MassEntityDebugger.Initialize();
+						}
+						else
+						{
+							MassEntityDebugger.bShow = false;
+							MassEntityDebugger.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Arc Craft"))
+				{
+					if (ImGui::MenuItem("Craft Debug"))
+					{
+						if (CraftDebugger.bShow == false)
+						{
+							CraftDebugger.bShow = true;
+							CraftDebugger.Initialize();
+						}
+						else
+						{
+							CraftDebugger.bShow = false;
+							CraftDebugger.Uninitialize();
+						}
+					}
+
 					ImGui::EndMenu();
 				}
 				
@@ -352,17 +395,25 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					GlobalTargetingDebugger.Draw();
 				}
-				if (ProxyGameplayEffectDebugger.bShow)
-				{
-					ProxyGameplayEffectDebugger.Draw();
-				}
-				if (ProxyAttributeSetDebugger.bShow)
-				{
-					ProxyAttributeSetDebugger.Draw();
-				}
 				if (ArcGunDebugger.bShow)
 				{
 					ArcGunDebugger.Draw();
+				}
+				if (BuilderDebugger.bShow)
+				{
+					BuilderDebugger.Draw();
+				}
+				if (CraftDebugger.bShow)
+				{
+					CraftDebugger.Draw();
+				}
+				if (GameplayTagTreeWidget.bShow)
+				{
+					GameplayTagTreeWidget.Draw();
+				}
+				if (MassEntityDebugger.bShow)
+				{
+					MassEntityDebugger.Draw();
 				}
 				if (bDrawDebug)
 				{

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "ArcAttributesDebugger.h"
+#include "ArcBuilderDebugger.h"
 #include "ArcEquipmentDebugger.h"
 #include "ArcGameplayAbilitiesDebugger.h"
 #include "ArcGameplayEffectsDebugger.h"
@@ -11,9 +12,11 @@
 #include "ArcGunDebugger.h"
 #include "ArcItemAttachmentDebugger.h"
 #include "ArcItemDebuggerItems.h"
-#include "ArcProxyAttributeSetDebugger.h"
-#include "ArcProxyGameplayEffectDebugger.h"
 #include "ArcQuickBarDebugger.h"
+#include "ArcCraftImGuiDebugger.h"
+#include "ArcGameplayTagTreeWidget.h"
+#include "ArcMassEntityDebugger.h"
+#include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
 
@@ -37,11 +40,16 @@ private:
 	FArcAttributesDebugger AttributesDebugger; 
 	FArcGlobalAbilityTargetingDebugger GlobalTargetingDebugger;
 
-	FArcProxyGameplayEffectDebugger ProxyGameplayEffectDebugger; 
-	FArcProxyAttributeSetDebugger ProxyAttributeSetDebugger;
-
 	FArcGunDebugger ArcGunDebugger;
-	
+
+	FArcBuilderDebugger BuilderDebugger;
+
+	FArcCraftImGuiDebugger CraftDebugger;
+
+	FArcGameplayTagTreeWidget GameplayTagTreeWidget;
+
+	FArcMassEntityDebugger MassEntityDebugger;
+
 	void Toggle();
 	
 public:

@@ -1,4 +1,6 @@
-﻿#pragma once
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
 
 class FArcEquipmentDebugger
 {
@@ -9,5 +11,10 @@ public:
 
 	bool bShow = false;
 
-	int32 SelectedItemStoreIndex = -1;
+private:
+	void DrawOverview(class APlayerController* PC, class UArcEquipmentComponent* EquipmentComponent);
+	void DrawSlotDetails(class APlayerController* PC, class UArcEquipmentComponent* EquipmentComponent, int32 SlotIdx);
+	void DrawItemsStoreInfo(class UArcEquipmentComponent* EquipmentComponent);
+
+	int32 SelectedSlotIdx = -1;
 };

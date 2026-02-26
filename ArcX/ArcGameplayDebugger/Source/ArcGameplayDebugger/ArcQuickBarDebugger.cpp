@@ -161,7 +161,7 @@ void FArcQuickBarDebugger::Draw()
 								QuickBars[BarIdx].BarId, QuickBars[BarIdx].Slots[QuickSlotIdx].QuickBarSlotId, false);
 						}
 
-						const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItems::FindInstance<FArcItemInstance_GrantedAbilities>(ItemData);
+						const FArcItemInstance_GrantedAbilities* GrantedAbilities = ArcItemsHelper::FindInstance<FArcItemInstance_GrantedAbilities>(ItemData);
 						if (GrantedAbilities)
 						{
 							if (ImGui::TreeNode("Granted Abilities"))
@@ -192,7 +192,7 @@ void FArcQuickBarDebugger::Draw()
 					{
 						for (const FArcItemData* Item : Items)
 						{
-							if (const FArcItemFragment_Tags* Tags = ArcItems::FindFragment<FArcItemFragment_Tags>(Item))
+							if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::FindFragment<FArcItemFragment_Tags>(Item))
 							{
 								if (Tags->ItemTags.HasAll(QuickBars[BarIdx].ItemRequiredTags))
 								{
