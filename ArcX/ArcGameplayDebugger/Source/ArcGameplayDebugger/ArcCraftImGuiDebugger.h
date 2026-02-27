@@ -77,6 +77,17 @@ private:
 	int32 SelectedTransferItemIndex = 0;
 	char TransferFilterBuf[256] = {};
 
+	// ---- Transfer panel: source store selection ----
+
+	struct FCachedStoreInfo
+	{
+		TWeakObjectPtr<UArcItemsStoreComponent> Store;
+		FString OwnerName;
+		FString StoreName;
+	};
+	TArray<FCachedStoreInfo> CachedTransferStores;
+	int32 SelectedTransferStoreIndex = 0;
+
 	// ---- Tab: Recipes ----
 
 	void DrawRecipesTab();
@@ -129,6 +140,7 @@ private:
 	void RefreshStations();
 	void RefreshRecipeDefinitions();
 	void RefreshTransferItemDefinitions();
+	void RefreshTransferStores();
 	void RefreshMaterialRecipes();
 	UArcItemsStoreComponent* GetLocalPlayerItemStore() const;
 	APlayerController* GetLocalPlayerController() const;

@@ -224,11 +224,11 @@ void FArcBuilderDebugger::DrawPlacementControls(UArcBuilderComponent* BuilderCom
 
 void FArcBuilderDebugger::DrawDefinitionsList(UArcBuilderComponent* BuilderComp)
 {
-	const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
+	const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit ;
 	if (ImGui::BeginTable("DefsTable", 2, TableFlags))
 	{
-		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_None, 3.0f);
-		ImGui::TableSetupColumn("##Actions", ImGuiTableColumnFlags_WidthFixed, 50.f);
+		ImGui::TableSetupColumn("Name");
+		ImGui::TableSetupColumn("##Actions");
 		ImGui::TableSetupScrollFreeze(0, 1);
 		ImGui::TableHeadersRow();
 

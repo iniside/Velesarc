@@ -43,8 +43,10 @@ public class ArcGameplayDebugger : ModuleRules
 				"MassSpawner",
 				"MassCommon",
 				"MassActors",
-				"MassAIBehavior"
-				
+				"MassAIBehavior",
+				"StateTreeModule",
+				"ArcMass"
+
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

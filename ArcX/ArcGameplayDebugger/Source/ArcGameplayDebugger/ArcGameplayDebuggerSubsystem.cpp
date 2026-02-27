@@ -323,7 +323,40 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ImGui::EndMenu();
 				}
 
-				if (ImGui::BeginMenu("Mass"))
+				if (ImGui::BeginMenu("AI"))
+				{
+					if (ImGui::MenuItem("AI Debugger"))
+					{
+						if (AIDebugger.bShow == false)
+						{
+							AIDebugger.bShow = true;
+							AIDebugger.Initialize();
+						}
+						else
+						{
+							AIDebugger.bShow = false;
+							AIDebugger.Uninitialize();
+						}
+					}
+
+					if (ImGui::MenuItem("Perception Debugger"))
+					{
+						if (PerceptionDebugger.bShow == false)
+						{
+							PerceptionDebugger.bShow = true;
+							PerceptionDebugger.Initialize();
+						}
+						else
+						{
+							PerceptionDebugger.bShow = false;
+							PerceptionDebugger.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Arc Mass"))
 				{
 					if (ImGui::MenuItem("Entity Debugger"))
 					{
@@ -336,6 +369,20 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 						{
 							MassEntityDebugger.bShow = false;
 							MassEntityDebugger.Uninitialize();
+						}
+					}
+
+					if (ImGui::MenuItem("Arc Entity Visualization"))
+					{
+						if (VisEntityDebugger.bShow == false)
+						{
+							VisEntityDebugger.bShow = true;
+							VisEntityDebugger.Initialize();
+						}
+						else
+						{
+							VisEntityDebugger.bShow = false;
+							VisEntityDebugger.Uninitialize();
 						}
 					}
 
@@ -414,6 +461,18 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				if (MassEntityDebugger.bShow)
 				{
 					MassEntityDebugger.Draw();
+				}
+				if (AIDebugger.bShow)
+				{
+					AIDebugger.Draw();
+				}
+				if (PerceptionDebugger.bShow)
+				{
+					PerceptionDebugger.Draw();
+				}
+				if (VisEntityDebugger.bShow)
+				{
+					VisEntityDebugger.Draw();
 				}
 				if (bDrawDebug)
 				{

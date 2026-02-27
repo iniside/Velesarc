@@ -15,7 +15,10 @@
 #include "ArcQuickBarDebugger.h"
 #include "ArcCraftImGuiDebugger.h"
 #include "ArcGameplayTagTreeWidget.h"
+#include "ArcAIDebugger.h"
+#include "ArcPerceptionDebugger.h"
 #include "ArcMassEntityDebugger.h"
+#include "ArcVisEntityDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -49,6 +52,12 @@ private:
 	FArcGameplayTagTreeWidget GameplayTagTreeWidget;
 
 	FArcMassEntityDebugger MassEntityDebugger;
+
+	FArcAIDebugger AIDebugger;
+
+	FArcPerceptionDebugger PerceptionDebugger;
+
+	FArcVisEntityDebugger VisEntityDebugger;
 
 	void Toggle();
 	

@@ -31,8 +31,11 @@
 #include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 #include "Items/ArcItemTypes.h"
+#include "Items/ArcItemsArray.h"
 #include "GameplayEffect.h"
 #include "Abilities/GameplayAbility.h"
+#include "ArcCraft/Commands/ArcDepositItemToCraftStationCommand.h"
+#include "Commands/ArcReplicatedCommandHelpers.h"
 
 // -------------------------------------------------------------------
 // Helpers
@@ -126,6 +129,89 @@ void FArcCraftImGuiDebugger::RefreshTransferItemDefinitions()
 	for (const FAssetData& AssetData : TransferItemDefinitions)
 	{
 		TransferItemNames.Add(AssetData.AssetName.ToString());
+	}
+}
+
+void FArcCraftImGuiDebugger::RefreshTransferStores()
+{
+	CachedTransferStores.Reset();
+	SelectedTransferStoreIndex = 0;
+
+	if (!World.IsValid())
+	{
+		World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
+		if (!World.IsValid())
+		{
+			return;
+		}
+	}
+
+	// Collect player-related stores (pawn, controller, player state)
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (PC)
+	{
+		TArray<AActor*> PlayerActors;
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			PlayerActors.Add(Pawn);
+		}
+		PlayerActors.Add(PC);
+		if (APlayerState* PS = PC->GetPlayerState<APlayerState>())
+		{
+			PlayerActors.Add(PS);
+		}
+
+		for (AActor* Actor : PlayerActors)
+		{
+			if (!Actor)
+			{
+				continue;
+			}
+
+			TArray<UArcItemsStoreComponent*> Stores;
+			Actor->GetComponents<UArcItemsStoreComponent>(Stores);
+			for (UArcItemsStoreComponent* Store : Stores)
+			{
+				FCachedStoreInfo Info;
+				Info.Store = Store;
+				Info.OwnerName = Actor->GetName();
+				Info.StoreName = Store->GetClass()->GetName();
+				CachedTransferStores.Add(MoveTemp(Info));
+			}
+		}
+	}
+
+	// Collect stores from world actors that are NOT on craft stations
+	for (TActorIterator<AActor> It(World.Get()); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		// Skip actors that have a crafting station component (those are destinations, not sources)
+		if (Actor->FindComponentByClass<UArcCraftStationComponent>())
+		{
+			continue;
+		}
+
+		// Skip player actors (already added above)
+		if (PC && (Actor == PC || Actor == PC->GetPawn() || Actor == PC->GetPlayerState<APlayerState>()))
+		{
+			continue;
+		}
+
+		TArray<UArcItemsStoreComponent*> Stores;
+		Actor->GetComponents<UArcItemsStoreComponent>(Stores);
+		for (UArcItemsStoreComponent* Store : Stores)
+		{
+			FCachedStoreInfo Info;
+			Info.Store = Store;
+			Info.OwnerName = Actor->GetName();
+			Info.StoreName = Store->GetClass()->GetName();
+			CachedTransferStores.Add(MoveTemp(Info));
+		}
 	}
 }
 
@@ -353,7 +439,7 @@ void FArcCraftImGuiDebugger::DrawStationList()
 			}
 
 			ImGui::TableSetColumnIndex(1);
-			ImGui::Text("%d", Station->GetQueue().Num());
+			ImGui::Text("%d", Station->GetLiveQueue().Num());
 		}
 
 		ImGui::EndTable();
@@ -392,7 +478,15 @@ void FArcCraftImGuiDebugger::DrawCraftQueue(UArcCraftStationComponent* Station)
 {
 	ImGui::SeparatorText("Craft Queue");
 
-	const TArray<FArcCraftQueueEntry>& Queue = Station->GetQueue();
+	const bool bEntityBacked = Station->IsEntityBacked();
+	if (bEntityBacked)
+	{
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "(Entity-backed)");
+	}
+
+	// Use GetLiveQueue() to read from entity fragment when entity-backed
+	TArray<FArcCraftQueueEntry> Queue = Station->GetLiveQueue();
 
 	if (Queue.Num() == 0)
 	{
@@ -519,9 +613,16 @@ void FArcCraftImGuiDebugger::DrawTransferItemsPanel(UArcCraftStationComponent* S
 	if (ImGui::Button(bShowTransferPanel ? "Hide" : "Show"))
 	{
 		bShowTransferPanel = !bShowTransferPanel;
-		if (bShowTransferPanel && TransferItemDefinitions.Num() == 0)
+		if (bShowTransferPanel)
 		{
-			RefreshTransferItemDefinitions();
+			if (CachedTransferStores.Num() == 0)
+			{
+				RefreshTransferStores();
+			}
+			if (TransferItemDefinitions.Num() == 0)
+			{
+				RefreshTransferItemDefinitions();
+			}
 		}
 	}
 
@@ -532,56 +633,104 @@ void FArcCraftImGuiDebugger::DrawTransferItemsPanel(UArcCraftStationComponent* S
 
 	ImGui::Indent();
 
-	// Option 1: Transfer from player store
-	UArcItemsStoreComponent* PlayerStore = GetLocalPlayerItemStore();
-	if (PlayerStore)
+	// ---- Source store selector ----
+	ImGui::Text("Source Store:");
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Refresh Stores"))
 	{
-		ImGui::Text("Player Store Items:");
+		RefreshTransferStores();
+	}
 
-		TArray<const FArcItemData*> Items = PlayerStore->GetItems();
-		if (Items.Num() == 0)
-		{
-			ImGui::TextDisabled("(no items in player store)");
-		}
-		else
-		{
-			if (ImGui::BeginChild("PlayerStoreItems", ImVec2(0.f, 150.f), ImGuiChildFlags_Borders))
-			{
-				for (int32 i = 0; i < Items.Num(); ++i)
-				{
-					const FArcItemData* Item = Items[i];
-					if (!Item)
-					{
-						continue;
-					}
-
-					const UArcItemDefinition* Def = Item->GetItemDefinition();
-					ImGui::Text("%s (L%d x%d)",
-						TCHAR_TO_ANSI(*GetNameSafe(Def)), Item->GetLevel(), Item->GetStacks());
-
-					ImGui::SameLine();
-					ImGui::PushID(i);
-					if (ImGui::SmallButton("Deposit"))
-					{
-						APlayerController* PC = GetLocalPlayerController();
-						FArcItemSpec Spec = FArcItemSpec::NewItem(
-							const_cast<UArcItemDefinition*>(Def), Item->GetStacks(), Item->GetLevel());
-						Station->DepositItem(Spec, PC);
-					}
-					ImGui::PopID();
-				}
-			}
-			ImGui::EndChild();
-		}
+	if (CachedTransferStores.Num() == 0)
+	{
+		ImGui::TextDisabled("(no item stores found - click Refresh Stores)");
 	}
 	else
 	{
-		ImGui::Text("No player item store found.");
+		// Combo box for store selection
+		FString CurrentLabel = TEXT("(none)");
+		if (SelectedTransferStoreIndex >= 0 && SelectedTransferStoreIndex < CachedTransferStores.Num())
+		{
+			const FCachedStoreInfo& Info = CachedTransferStores[SelectedTransferStoreIndex];
+			CurrentLabel = FString::Printf(TEXT("%s - %s"), *Info.OwnerName, *Info.StoreName);
+		}
+
+		ImGui::SetNextItemWidth(350.f);
+		if (ImGui::BeginCombo("##StoreSelector", TCHAR_TO_ANSI(*CurrentLabel)))
+		{
+			for (int32 i = 0; i < CachedTransferStores.Num(); ++i)
+			{
+				const FCachedStoreInfo& Info = CachedTransferStores[i];
+				FString Label = FString::Printf(TEXT("%s - %s"), *Info.OwnerName, *Info.StoreName);
+				const bool bSelected = (SelectedTransferStoreIndex == i);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*Label), bSelected))
+				{
+					SelectedTransferStoreIndex = i;
+				}
+				if (bSelected)
+				{
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		// ---- Items in selected store ----
+		UArcItemsStoreComponent* SelectedStore = nullptr;
+		if (SelectedTransferStoreIndex >= 0 && SelectedTransferStoreIndex < CachedTransferStores.Num())
+		{
+			SelectedStore = CachedTransferStores[SelectedTransferStoreIndex].Store.Get();
+		}
+
+		if (SelectedStore)
+		{
+			TArray<const FArcItemData*> Items = SelectedStore->GetItems();
+			if (Items.Num() == 0)
+			{
+				ImGui::TextDisabled("(no items in selected store)");
+			}
+			else
+			{
+				if (ImGui::BeginChild("StoreItems", ImVec2(0.f, 150.f), ImGuiChildFlags_Borders))
+				{
+					for (int32 i = 0; i < Items.Num(); ++i)
+					{
+						const FArcItemData* Item = Items[i];
+						if (!Item)
+						{
+							continue;
+						}
+
+						const UArcItemDefinition* Def = Item->GetItemDefinition();
+						ImGui::Text("%s (L%d x%d)",
+							TCHAR_TO_ANSI(*GetNameSafe(Def)), Item->GetLevel(), Item->GetStacks());
+
+						ImGui::SameLine();
+						ImGui::PushID(i);
+						if (ImGui::SmallButton("Deposit"))
+						{
+							Arcx::SendServerCommand<FArcDepositItemToCraftStationCommand>(
+								Station,
+								SelectedStore,
+								Item->GetItemId(),
+								Station,
+								0);
+						}
+						ImGui::PopID();
+					}
+				}
+				ImGui::EndChild();
+			}
+		}
+		else
+		{
+			ImGui::TextDisabled("(selected store is no longer valid)");
+		}
 	}
 
 	ImGui::Spacing();
 
-	// Option 2: Spawn item from definition list
+	// ---- Spawn item from definition list (debug-only direct deposit) ----
 	ImGui::Text("Spawn from Definition:");
 
 	ImGui::Text("Filter:");
@@ -912,14 +1061,14 @@ void FArcCraftImGuiDebugger::DrawMaterialPreviewTab()
 	// Build context and evaluate
 	if (bEvaluationDirty && Table)
 	{
-		TArray<const FArcItemData*> SimIngredients;
+		TArray<FArcItemSpec> SimIngredients;
 		TArray<float> QualityMults;
 		float AvgQuality = 1.0f;
 
 		int32 SlotCount = Recipe->GetIngredientCount();
 		for (int32 i = 0; i < SlotCount; ++i)
 		{
-			SimIngredients.Add(nullptr);
+			SimIngredients.AddDefaulted();
 			QualityMults.Add(1.0f);
 		}
 

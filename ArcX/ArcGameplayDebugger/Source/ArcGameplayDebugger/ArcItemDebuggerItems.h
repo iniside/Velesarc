@@ -30,6 +30,7 @@ private:
 	void DrawQuickBarSlots(UArcQuickBarComponent* QuickBar, int32 BarIndex);
 
 	TArray<UArcItemsStoreComponent*> GetPlayerStores() const;
+	TArray<UArcItemsStoreComponent*> GetAllWorldStores() const;
 	TArray<UArcQuickBarComponent*> GetPlayerQuickBars() const;
 	void RefreshItemDefinitions();
 
@@ -37,6 +38,10 @@ private:
 	TWeakObjectPtr<UArcItemsStoreComponent> SelectedStore;
 	int32 SelectedStoreIndex = 0;
 	int32 SelectedItemIndex = -1;
+
+	// Transfer target state
+	TWeakObjectPtr<UArcItemsStoreComponent> TargetStore;
+	int32 TargetStoreIndex = -1;
 
 	// Add item panel
 	bool bShowAddItemPanel = false;

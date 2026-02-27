@@ -5,8 +5,10 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Commands/ArcAddItemToQuickBarCommand.h"
 #include "Commands/ArcDropItemCommand.h"
+#include "Commands/ArcMoveItemBetweenStoresCommand.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
 #include "Engine/Engine.h"
+#include "UObject/UObjectIterator.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -30,6 +32,8 @@ void FArcDebuggerItems::Uninitialize()
 	CachedItemDefinitions.Reset();
 	CachedItemDefinitionNames.Reset();
 	SelectedStore.Reset();
+	TargetStore.Reset();
+	TargetStoreIndex = -1;
 	SelectedQuickBar.Reset();
 }
 
@@ -73,6 +77,28 @@ TArray<UArcItemsStoreComponent*> FArcDebuggerItems::GetPlayerStores() const
 		for (UArcItemsStoreComponent* Comp : Components)
 		{
 			Result.AddUnique(Comp);
+		}
+	}
+
+	return Result;
+}
+
+TArray<UArcItemsStoreComponent*> FArcDebuggerItems::GetAllWorldStores() const
+{
+	TArray<UArcItemsStoreComponent*> Result;
+
+	UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
+	if (!World)
+	{
+		return Result;
+	}
+
+	for (TObjectIterator<UArcItemsStoreComponent> It; It; ++It)
+	{
+		UArcItemsStoreComponent* Comp = *It;
+		if (Comp && Comp->GetWorld() == World)
+		{
+			Result.Add(Comp);
 		}
 	}
 
@@ -207,16 +233,24 @@ void FArcDebuggerItems::DrawItemsTab()
 	}
 }
 
+static FString FormatStoreName(UArcItemsStoreComponent* Store)
+{
+	return FString::Printf(TEXT("%s (%s) [%d items]"),
+		*Store->GetName(),
+		*GetNameSafe(Store->GetOwner()),
+		Store->GetItemNum());
+}
+
 void FArcDebuggerItems::DrawStoreSelector()
 {
-	TArray<UArcItemsStoreComponent*> Stores = GetPlayerStores();
+	TArray<UArcItemsStoreComponent*> Stores = GetAllWorldStores();
 
-	ImGui::Text("Store:");
+	ImGui::Text("Source Store:");
 	ImGui::SameLine();
 
 	if (Stores.Num() == 0)
 	{
-		ImGui::TextDisabled("No stores found on local player");
+		ImGui::TextDisabled("No stores found in world");
 		return;
 	}
 
@@ -227,15 +261,20 @@ void FArcDebuggerItems::DrawStoreSelector()
 		SelectedStore = Stores[0];
 	}
 
-	// Build store names
-	FString PreviewStr = TEXT("Select Store");
-	if (Stores.IsValidIndex(SelectedStoreIndex))
+	// Validate index against current array
+	if (SelectedStore.IsValid())
 	{
-		UArcItemsStoreComponent* Store = Stores[SelectedStoreIndex];
-		PreviewStr = FString::Printf(TEXT("%s (%s) [%d items]"),
-			*Store->GetName(),
-			*GetNameSafe(Store->GetOwner()),
-			Store->GetItemNum());
+		int32 FoundIdx = Stores.IndexOfByKey(SelectedStore.Get());
+		if (FoundIdx != INDEX_NONE)
+		{
+			SelectedStoreIndex = FoundIdx;
+		}
+	}
+
+	FString PreviewStr = TEXT("Select Store");
+	if (Stores.IsValidIndex(SelectedStoreIndex) && SelectedStore.IsValid())
+	{
+		PreviewStr = FormatStoreName(Stores[SelectedStoreIndex]);
 	}
 
 	ImGui::SetNextItemWidth(400.f);
@@ -243,11 +282,7 @@ void FArcDebuggerItems::DrawStoreSelector()
 	{
 		for (int32 Idx = 0; Idx < Stores.Num(); Idx++)
 		{
-			UArcItemsStoreComponent* Store = Stores[Idx];
-			FString Name = FString::Printf(TEXT("%s (%s) [%d items]"),
-				*Store->GetName(),
-				*GetNameSafe(Store->GetOwner()),
-				Store->GetItemNum());
+			FString Name = FormatStoreName(Stores[Idx]);
 
 			if (ImGui::Selectable(TCHAR_TO_ANSI(*Name), SelectedStoreIndex == Idx))
 			{
@@ -257,6 +292,60 @@ void FArcDebuggerItems::DrawStoreSelector()
 			}
 		}
 		ImGui::EndCombo();
+	}
+
+	// Target store selector
+	ImGui::Text("Target Store:");
+	ImGui::SameLine();
+
+	// Validate target index
+	if (TargetStore.IsValid())
+	{
+		int32 FoundIdx = Stores.IndexOfByKey(TargetStore.Get());
+		if (FoundIdx != INDEX_NONE)
+		{
+			TargetStoreIndex = FoundIdx;
+		}
+		else
+		{
+			TargetStore.Reset();
+			TargetStoreIndex = -1;
+		}
+	}
+
+	FString TargetPreviewStr = TEXT("Select Target Store");
+	if (Stores.IsValidIndex(TargetStoreIndex) && TargetStore.IsValid())
+	{
+		TargetPreviewStr = FormatStoreName(Stores[TargetStoreIndex]);
+	}
+
+	ImGui::SetNextItemWidth(400.f);
+	if (ImGui::BeginCombo("##TargetStoreSelector", TCHAR_TO_ANSI(*TargetPreviewStr)))
+	{
+		// "None" option to clear target
+		if (ImGui::Selectable("(None)", TargetStoreIndex == -1))
+		{
+			TargetStoreIndex = -1;
+			TargetStore.Reset();
+		}
+
+		for (int32 Idx = 0; Idx < Stores.Num(); Idx++)
+		{
+			FString Name = FormatStoreName(Stores[Idx]);
+
+			if (ImGui::Selectable(TCHAR_TO_ANSI(*Name), TargetStoreIndex == Idx))
+			{
+				TargetStoreIndex = Idx;
+				TargetStore = Stores[Idx];
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	if (TargetStore.IsValid() && TargetStore == SelectedStore)
+	{
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1.f, 0.5f, 0.f, 1.f), "(same as source)");
 	}
 }
 
@@ -366,6 +455,30 @@ void FArcDebuggerItems::DrawItemsList()
 								Item->GetItemId(),
 								DropTransform,
 								0);
+						}
+					}
+				}
+			}
+
+			// Move button - only if target store is selected and different from source
+			if (TargetStore.IsValid() && TargetStore != SelectedStore)
+			{
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Move"))
+				{
+					UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
+					if (World)
+					{
+						Arcx::SendServerCommand<FArcMoveItemBetweenStoresCommand>(
+							World,
+							SelectedStore.Get(),
+							TargetStore.Get(),
+							Item->GetItemId(),
+							Item->GetStacks());
+
+						if (SelectedItemIndex >= Items.Num() - 1)
+						{
+							SelectedItemIndex = Items.Num() - 2;
 						}
 					}
 				}
