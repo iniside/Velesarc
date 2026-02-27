@@ -65,113 +65,65 @@ void UArcItemsStoreComponent::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 }
 
-void UArcItemsStoreComponent::LockItem(const FArcItemId& InItem)
+void UArcItemsStoreComponent::AddPendingItems(const TArray<FArcItemId>& Items)
 {
 	if (HasAuthority())
 	{
 		return;
 	}
 
-	LockedItems.Add(InItem);
-
-	UArcItemsSubsystem::Get(this)->BroadcastActorOnItemStateChanged(GetOwner(), this, InItem, true);
+	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
+	for (const FArcItemId& ItemId : Items)
+	{
+		PendingItems.Add(ItemId);
+		if (ItemsSubsystem)
+		{
+			ItemsSubsystem->BroadcastActorOnItemStateChanged(GetOwner(), this, ItemId, true);
+		}
+	}
 }
 
-void UArcItemsStoreComponent::UnlockItem(const FArcItemId& InItem)
+void UArcItemsStoreComponent::RemovePendingItems(const TArray<FArcItemId>& Items)
 {
 	if (HasAuthority())
-    {
-    	return;
-    }
-	
-	LockedItems.Remove(InItem);
+	{
+		return;
+	}
 
-	UArcItemsSubsystem::Get(this)->BroadcastActorOnItemStateChanged(GetOwner(), this, InItem, false);
+	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
+	for (const FArcItemId& ItemId : Items)
+	{
+		if (PendingItems.Remove(ItemId) > 0 && ItemsSubsystem)
+		{
+			ItemsSubsystem->BroadcastActorOnItemStateChanged(GetOwner(), this, ItemId, false);
+		}
+	}
 }
 
-bool UArcItemsStoreComponent::IsItemLocked(const FArcItemId& InItem) const
+void UArcItemsStoreComponent::RemovePendingItem(const FArcItemId& ItemId)
+{
+	if (HasAuthority())
+	{
+		return;
+	}
+
+	if (PendingItems.Remove(ItemId) > 0)
+	{
+		if (UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this))
+		{
+			ItemsSubsystem->BroadcastActorOnItemStateChanged(GetOwner(), this, ItemId, false);
+		}
+	}
+}
+
+bool UArcItemsStoreComponent::IsPending(const FArcItemId& ItemId) const
 {
 	if (HasAuthority())
 	{
 		return false;
 	}
 
-	return LockedItems.Contains(InItem);
-}
-
-void UArcItemsStoreComponent::LockSlot(const FGameplayTag& InSlot)
-{
-	if (HasAuthority())
-	{
-		return;
-	}
-	
-	LockedSlots.AddUnique(InSlot);
-	
-	UArcItemsSubsystem::Get(this)->BroadcastActorOnItemSlotStateChanged(GetOwner(), this, InSlot, true);
-}
-
-void UArcItemsStoreComponent::UnlockSlot(const FGameplayTag& InSlot)
-{
-	if (HasAuthority())
-    {
-    	return;
-    }
-	
-	LockedSlots.Remove(InSlot);
-	
-	UArcItemsSubsystem::Get(this)->BroadcastActorOnItemSlotStateChanged(GetOwner(), this, InSlot, false);
-}
-
-bool UArcItemsStoreComponent::IsSlotLocked(const FGameplayTag& InSlot) const
-{
-	if (HasAuthority())
-	{
-		return false;
-	}
-	
-	return LockedSlots.Contains(InSlot);
-}
-
-void UArcItemsStoreComponent::LockAttachmentSlot(const FArcItemId& OwnerId
-	, const FGameplayTag& InSlot)
-{
-	if (HasAuthority())
-	{
-		return;
-	}
-	
-	LockedAttachmentSlots.FindOrAdd(OwnerId).AddUnique(InSlot);
-
-	UArcItemsSubsystem::Get(this)->BroadcastActorOnItemAttachmentSlotStateChanged(GetOwner(), this, OwnerId, InSlot, true);
-}
-
-void UArcItemsStoreComponent::UnlockAttachmentSlot(const FArcItemId& OwnerId
-	, const FGameplayTag& InSlot)
-{
-	if (HasAuthority())
-	{
-		return;
-	}
-	
-	LockedAttachmentSlots.FindOrAdd(OwnerId).Remove(InSlot);
-	
-	UArcItemsSubsystem::Get(this)->BroadcastActorOnItemAttachmentSlotStateChanged(GetOwner(), this, OwnerId, InSlot, false);
-}
-
-bool UArcItemsStoreComponent::IsAttachmentSlotLocked(const FArcItemId& OwnerId, const FGameplayTag& InSlot) const
-{
-	if (HasAuthority())
-	{
-		return false;
-	}
-	
-	if (const TArray<FGameplayTag>* Array = LockedAttachmentSlots.Find(OwnerId))
-	{
-		return Array->Contains(InSlot);
-	}
-	
-	return false;
+	return PendingItems.Contains(ItemId);
 }
 
 const FArcItemData* UArcItemsStoreComponent::GetItemByDefinition(const UArcItemDefinition* InItemType)
@@ -614,12 +566,17 @@ void UArcItemsStoreComponent::MarkItemDirtyById(const FArcItemId& InItemId)
 		return;
 	}
 
+	if (FArcItemData* ItemData = GetItemPtr(InItemId))
+	{
+		ItemData->IncrementVersion();
+	}
+
 	ItemsArray.MarkItemDirtyHandle(InItemId);
 
 	//MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass
     //			, ItemsArray
     //			, this);
-	
+
 	GetOwner()->ForceNetUpdate();
 }
 

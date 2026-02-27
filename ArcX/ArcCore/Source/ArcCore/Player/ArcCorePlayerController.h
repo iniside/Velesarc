@@ -179,6 +179,9 @@ public:
 
 private:
 	TMap<FArcReplicatedCommandId, FArcCommandConfirmedDelegate> CommandResponses;
+
+	/** Tracks which items are pending per command, so we can clear them on failure RPC. */
+	TMap<FArcReplicatedCommandId, TArray<FArcItemId>> CommandPendingItems;
 	
 public:
 	bool SendReplicatedCommand(const FArcReplicatedCommandHandle& Command);

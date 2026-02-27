@@ -63,14 +63,18 @@ bool FArcAddItemToQuickBarCommand::CanSendCommand() const
 
 void FArcAddItemToQuickBarCommand::PreSendCommand()
 {
-	UArcItemsStoreComponent* ItemSlotComponent = QuickBarComponent->GetItemStoreComponent(QuickBar);
-	
-	//if (ItemSlotComponent->IsOnAnySlot(ItemId) == false)
-	//{
-	//	return;
-	//}
+	if (ItemsStoreComponent)
+	{
+		TArray<FArcItemId> Items;
+		GetPendingItems(Items);
+		ItemsStoreComponent->AddPendingItems(Items);
+		CaptureExpectedVersions(ItemsStoreComponent);
+	}
+}
 
-	ItemsStoreComponent->LockItem(ItemId);
+void FArcAddItemToQuickBarCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+{
+	OutItems.Add(ItemId);
 }
 
 bool FArcAddItemToQuickBarCommand::Execute()
@@ -174,7 +178,7 @@ bool FArcAddItemToQuickBarNoItemSlotCommand::CanSendCommand() const
 		return false;
 	}
 
-	if (SourceItemsStoreComponent && SourceItemsStoreComponent->IsItemLocked(ItemId))
+	if (SourceItemsStoreComponent && SourceItemsStoreComponent->IsPending(ItemId))
 	{
 		return false;
 	}
@@ -184,14 +188,24 @@ bool FArcAddItemToQuickBarNoItemSlotCommand::CanSendCommand() const
 
 void FArcAddItemToQuickBarNoItemSlotCommand::PreSendCommand()
 {
-	UArcItemsStoreComponent* ItemSlotComponent = QuickBarComponent->GetItemStoreComponent(QuickBar);
-
 	if (QuickBarComponent->GetNetMode() == ENetMode::NM_Client)
 	{
 		QuickBarComponent->SetLockQuickBar();
 		QuickBarComponent->LockQuickSlots(QuickBar, QuickSlot);
-		SourceItemsStoreComponent->LockItem(ItemId);
 	}
+
+	if (SourceItemsStoreComponent)
+	{
+		TArray<FArcItemId> Items;
+		GetPendingItems(Items);
+		SourceItemsStoreComponent->AddPendingItems(Items);
+		CaptureExpectedVersions(SourceItemsStoreComponent);
+	}
+}
+
+void FArcAddItemToQuickBarNoItemSlotCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+{
+	OutItems.Add(ItemId);
 }
 
 bool FArcAddItemToQuickBarNoItemSlotCommand::Execute()
@@ -358,7 +372,7 @@ bool FArcRemoveItemFromQuickSlotCommand::CanSendCommand() const
 	{
 		UArcItemsStoreComponent* ISC = QuickBarComponent->GetItemStoreComponent(QuickBar);
 	
-		if (ISC->IsItemLocked(QuickBarComponent->GetItemId(QuickBar, QuickSlot)))
+		if (ISC->IsPending(QuickBarComponent->GetItemId(QuickBar, QuickSlot)))
 		{
 			return false;
 		}

@@ -670,14 +670,7 @@ void FArcItemData::PreReplicatedRemove(const FArcItemsArray& InArraySerializer)
 	UArcCoreAssetManager::Get().RemoveLoadedAsset(ItemDefinition);
 	Spec = FArcItemSpec();
 
-	if (OwnerId.IsValid() == false && Slot.IsValid())
-	{
-		GetItemsStoreComponent()->UnlockSlot(Slot);
-	}
-	
-	GetItemsStoreComponent()->UnlockItem(ItemId);
-	GetItemsStoreComponent()->UnlockSlot(Slot);
-	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
+	GetItemsStoreComponent()->RemovePendingItem(ItemId);
 }
 
 void FArcItemData::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
@@ -700,10 +693,8 @@ void FArcItemData::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
 	//TODO Replicate if duplicated ?
 	Initialize(InArraySerializer.Owner);
 
-	GetItemsStoreComponent()->UnlockItem(ItemId);
-	GetItemsStoreComponent()->UnlockSlot(Slot);
-	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
-	
+	GetItemsStoreComponent()->RemovePendingItem(ItemId);
+
 	OnItemAdded();
 	
 	if (Slot.IsValid() && Slot != FGameplayTag::EmptyTag && OwnerId.IsValid() == false)
@@ -755,9 +746,7 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 {
 	SetItemInstances(ItemInstances);
 
-	GetItemsStoreComponent()->UnlockItem(ItemId);
-	GetItemsStoreComponent()->UnlockSlot(Slot);
-	GetItemsStoreComponent()->UnlockAttachmentSlot(OwnerId, AttachedToSlot);
+	GetItemsStoreComponent()->RemovePendingItem(ItemId);
 	
 	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
@@ -823,14 +812,7 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 		{
 			UE_LOGFMT(LogArcItems, Log, "AddToSlot {0} NewSlot {1}", GetItemDefinition()->GetName(), Slot.ToString());
 			AddToSlot(Slot);
-			//if (OwnerId.IsValid() == false)
-			{
-				if (Slot.IsValid())
-				{
-					GetItemsStoreComponent()->UnlockSlot(Slot);
-				}
-			}
-			
+
 			ItemsSubsystem->OnItemAddedToSlotDynamic.Broadcast(GetItemsStoreComponent(), GetSlotId(), GetItemId());
 			ItemsSubsystem->BroadcastActorOnAddedToSlot(GetItemsStoreComponent()->GetOwner(), GetItemsStoreComponent(), GetSlotId(), this);
 			ItemsSubsystem->BroadcastActorOnItemAddedToSlotMap(GetItemsStoreComponent()->GetOwner(), ItemId, GetItemsStoreComponent(), this);
@@ -845,14 +827,7 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 		{
 			bRemoveFromSlot = true;
 			bAddedToSlot = false;
-			//if (OwnerId.IsValid() == false)
-			{
-				if (OldSlot.IsValid())
-				{
-					GetItemsStoreComponent()->UnlockSlot(Slot);
-				}
-			}
-		
+
 			UE_LOGFMT(LogArcItems, Log, "RemoveToSlot {0} NewSlot {1}", GetItemDefinition()->GetName(), Slot.ToString());
 			RemoveFromSlot(Slot);
 

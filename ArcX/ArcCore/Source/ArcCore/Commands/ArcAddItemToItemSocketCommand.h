@@ -92,7 +92,7 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-
+	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
 
 	FArcRemoveItemFromItemSocketCommand()
 		: ItemsStore(nullptr)

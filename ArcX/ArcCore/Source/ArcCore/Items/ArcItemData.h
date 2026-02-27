@@ -144,6 +144,10 @@ public:
 	UPROPERTY()
 	uint8 ForceRep = 0;
 
+	/** Incremented on server each time this item is mutated via MarkItemDirtyById. Used for client-side version validation. */
+	UPROPERTY()
+	uint32 Version = 0;
+
 	UPROPERTY()
 	FArcItemInstanceArray ItemInstances;
 	
@@ -171,8 +175,9 @@ public:
 		ItemAggregatedTags = Other.ItemAggregatedTags;
 		DynamicTags = Other.DynamicTags;
 		ForceRep = Other.ForceRep;
+		Version = Other.Version;
 		ItemInstances = Other.ItemInstances;
-	
+
 		return *this;
 	}
 	
@@ -197,6 +202,7 @@ public:
 		ItemAggregatedTags = MoveTemp(Other.ItemAggregatedTags);
 		DynamicTags = MoveTemp(Other.DynamicTags);
 		ForceRep = Other.ForceRep;
+		Version = Other.Version;
 		ItemInstances = MoveTemp(Other.ItemInstances);
 	}
 	
@@ -402,6 +408,16 @@ public:
 	uint16 GetStacks() const
 	{
 		return Stacks;
+	}
+
+	uint32 GetVersion() const
+	{
+		return Version;
+	}
+
+	void IncrementVersion()
+	{
+		++Version;
 	}
 
 	void SetStacks(uint16 InStacks)

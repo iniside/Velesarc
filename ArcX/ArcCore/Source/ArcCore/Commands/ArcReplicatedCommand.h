@@ -21,10 +21,12 @@
 
 #pragma once
 
+#include "Items/ArcItemId.h"
 #include "ArcReplicatedCommand.generated.h"
 
 class UScriptStruct;
 class AArcCorePlayerController;
+class UArcItemsStoreComponent;
 
 USTRUCT()
 struct ARCCORE_API FArcReplicatedCommand
@@ -52,6 +54,17 @@ public:
 		return false;
 	};
 
+	/** Override to return item IDs that should be marked pending while this command is in flight. */
+	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const
+	{
+	}
+
+	/** Captures the Version of each pending item from the store. Called after PreSendCommand on client. */
+	void CaptureExpectedVersions(const UArcItemsStoreComponent* Store);
+
+	/** Returns false if any pending item's version on the server differs from what the client captured. */
+	bool ValidateVersions(const UArcItemsStoreComponent* Store) const;
+
 	FArcReplicatedCommand()
 	{
 	}
@@ -62,6 +75,10 @@ public:
 	{
 		return FArcReplicatedCommand::StaticStruct();
 	}
+
+protected:
+	UPROPERTY()
+	TMap<FArcItemId, uint32> ExpectedVersions;
 };
 
 template <>
@@ -170,5 +187,21 @@ public:
 	const FArcReplicatedCommandId& GetCommandId() const
 	{
 		return CommandId;
+	}
+
+	void GetPendingItems(TArray<FArcItemId>& OutItems) const
+	{
+		if (Data.IsValid())
+		{
+			Data->GetPendingItems(OutItems);
+		}
+	}
+
+	void CaptureExpectedVersions(const UArcItemsStoreComponent* Store) const
+	{
+		if (Data.IsValid())
+		{
+			Data->CaptureExpectedVersions(Store);
+		}
 	}
 };

@@ -20,3 +20,50 @@
  */
 
 #include "Commands/ArcReplicatedCommand.h"
+
+#include "Items/ArcItemData.h"
+#include "Items/ArcItemsStoreComponent.h"
+
+void FArcReplicatedCommand::CaptureExpectedVersions(const UArcItemsStoreComponent* Store)
+{
+	if (!Store)
+	{
+		return;
+	}
+
+	TArray<FArcItemId> Items;
+	GetPendingItems(Items);
+
+	ExpectedVersions.Empty(Items.Num());
+	for (const FArcItemId& ItemId : Items)
+	{
+		if (const FArcItemData* ItemData = Store->GetItemPtr(ItemId))
+		{
+			ExpectedVersions.Add(ItemId, ItemData->GetVersion());
+		}
+	}
+}
+
+bool FArcReplicatedCommand::ValidateVersions(const UArcItemsStoreComponent* Store) const
+{
+	if (!Store || ExpectedVersions.IsEmpty())
+	{
+		return true;
+	}
+
+	for (const auto& Pair : ExpectedVersions)
+	{
+		const FArcItemData* ItemData = Store->GetItemPtr(Pair.Key);
+		if (!ItemData)
+		{
+			return false;
+		}
+
+		if (ItemData->GetVersion() != Pair.Value)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}

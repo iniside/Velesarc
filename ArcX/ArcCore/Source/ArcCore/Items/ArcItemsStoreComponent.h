@@ -85,34 +85,18 @@ public:
 	bool bUseSubsystemForItemStore = false;
 	
 private:
-	TArray<FGameplayTag> LockedSlots;
-	
-	TMap<FArcItemId, TArray<FGameplayTag>> LockedAttachmentSlots;
-
-	TSet<FArcItemId> LockedItems;
-
 	/**
-	 * Functions which can be used to lock editing of slot/item on client side.
-	 *
-	 * They sould be used from within replication commands during PreSend to and checked in CanSend functions,
-	 * to see if Item/slot can be changed.
-	 *
-	 * This can prevent from excessive changeds o single item, while previous changed have not replicated yet.
-	 *
-	 * These only work on non authority.
+	 * Items currently in-flight for a command. Client-only.
+	 * Prevents sending duplicate commands for the same item while one is already pending.
+	 * Cleared by replication callbacks on success, or by failure RPC from server.
 	 */
-public:
-	void LockItem(const FArcItemId& InItem);
-	void UnlockItem(const FArcItemId& InItem);
-	bool IsItemLocked(const FArcItemId& InItem) const;
-	
-	void LockSlot(const FGameplayTag& InSlot);
-	void UnlockSlot(const FGameplayTag& InSlot);
-	bool IsSlotLocked(const FGameplayTag& InSlot) const;
+	TSet<FArcItemId> PendingItems;
 
-	void LockAttachmentSlot(const FArcItemId& OwnerId, const FGameplayTag& InSlot);
-	void UnlockAttachmentSlot(const FArcItemId& OwnerId, const FGameplayTag& InSlot);
-	bool IsAttachmentSlotLocked(const FArcItemId& OwnerId, const FGameplayTag& InSlot) const;
+public:
+	void AddPendingItems(const TArray<FArcItemId>& Items);
+	void RemovePendingItems(const TArray<FArcItemId>& Items);
+	void RemovePendingItem(const FArcItemId& ItemId);
+	bool IsPending(const FArcItemId& ItemId) const;
 
 	const FArcItemsArray& GetItemsArray() const
 	{

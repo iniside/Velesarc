@@ -36,11 +36,13 @@ namespace Arcx
 		{
 			return false;
 		}
-		
+
 		if (AArcCorePlayerController* ArcPC = Cast<AArcCorePlayerController>(GEngine->GetFirstLocalPlayerController(World)))
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
-			MakeShareable<CommandType>(new CommandType {args...}));
+				MakeShareable<CommandType>(new CommandType {args...})
+				, FArcReplicatedCommandId::Generate()
+			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle);
 		}
@@ -55,18 +57,20 @@ namespace Arcx
 		{
 			return false;
 		}
-		
+
 		if (AArcCorePlayerController* ArcPC = Cast<AArcCorePlayerController>(GEngine->GetFirstLocalPlayerController(World)))
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
-			MakeShareable<FArcReplicatedCommand>(CommandPtr));
+				MakeShareable<FArcReplicatedCommand>(CommandPtr)
+				, FArcReplicatedCommandId::Generate()
+			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle);
 		}
 
 		return false;
 	}
-	
+
 	template <typename CommandType, typename... Args>
 	inline bool SendServerCommand(UWorld* InWorld, Args... args)
 	{
@@ -74,11 +78,13 @@ namespace Arcx
 		{
 			return false;
 		}
-		
+
 		if (AArcCorePlayerController* ArcPC = Cast<AArcCorePlayerController>(GEngine->GetFirstLocalPlayerController(InWorld)))
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
-			MakeShareable<CommandType>(new CommandType {args...}));
+				MakeShareable<CommandType>(new CommandType {args...})
+				, FArcReplicatedCommandId::Generate()
+			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle);
 		}
@@ -115,7 +121,7 @@ namespace Arcx
 		{
 			return false;
 		}
-		
+
 		if (AArcCorePlayerController* ArcPC = Cast<AArcCorePlayerController>(GEngine->GetFirstLocalPlayerController(InWorld)))
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
@@ -123,7 +129,7 @@ namespace Arcx
 					, FArcReplicatedCommandId::Generate()
 				);
 
-			return ArcPC->SendReplicatedCommand(CommandHandle);
+			return ArcPC->SendReplicatedCommand(CommandHandle, MoveTemp(ConfirmDelegate));
 		}
 
 		return false;

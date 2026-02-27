@@ -85,6 +85,11 @@ bool FArcRemoveItemFromItemSocketCommand::CanSendCommand() const
 		return false;
 	}
 
+	if (ItemsStore->IsPending(AttachmentItem))
+	{
+		return false;
+	}
+
 	FArcItemData* ItemData = ItemsStore->GetItemPtr(AttachmentItem);
 	if (ItemData == nullptr)
 	{
@@ -96,11 +101,27 @@ bool FArcRemoveItemFromItemSocketCommand::CanSendCommand() const
 
 void FArcRemoveItemFromItemSocketCommand::PreSendCommand()
 {
-	ItemsStore->LockItem(AttachmentItem);
+	if (ItemsStore)
+	{
+		TArray<FArcItemId> Items;
+		GetPendingItems(Items);
+		ItemsStore->AddPendingItems(Items);
+		CaptureExpectedVersions(ItemsStore);
+	}
+}
+
+void FArcRemoveItemFromItemSocketCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+{
+	OutItems.Add(AttachmentItem);
 }
 
 bool FArcRemoveItemFromItemSocketCommand::Execute()
 {
+	if (!ValidateVersions(ItemsStore))
+	{
+		return false;
+	}
+
 	ItemsStore->DetachItemFrom(AttachmentItem);
 
 	return true;

@@ -33,6 +33,7 @@
 
 #include "Commands/ArcReplicatedCommand.h"
 #include "Components/InputComponent.h"
+#include "Items/ArcItemsStoreComponent.h"
 #include "GameFramework/GameplayControlRotationComponent.h"
 #include "GameFramework/IGameplayCameraSystemHost.h"
 #include "GameMode/ArcExperienceManagerComponent.h"
@@ -398,6 +399,14 @@ bool AArcCorePlayerController::SendReplicatedCommand(const FArcReplicatedCommand
 	if (Command.CanSendCommand())
 	{
 		Command.PreSendCommand();
+
+		TArray<FArcItemId> PendingItems;
+		Command.GetPendingItems(PendingItems);
+		if (PendingItems.Num() > 0 && Command.GetCommandId().IsValid())
+		{
+			CommandPendingItems.Add(Command.GetCommandId(), MoveTemp(PendingItems));
+		}
+
 		ServerSendReplicatedCommand(Command);
 
 		return true;
@@ -413,6 +422,14 @@ bool AArcCorePlayerController::SendReplicatedCommand(const FArcReplicatedCommand
 	{
 		CommandResponses.Add(Command.GetCommandId(), MoveTemp(ConfirmDelegate));
 		Command.PreSendCommand();
+
+		TArray<FArcItemId> PendingItems;
+		Command.GetPendingItems(PendingItems);
+		if (PendingItems.Num() > 0 && Command.GetCommandId().IsValid())
+		{
+			CommandPendingItems.Add(Command.GetCommandId(), MoveTemp(PendingItems));
+		}
+
 		ServerSendReplicatedCommand(Command);
 
 		return true;
@@ -441,10 +458,27 @@ void AArcCorePlayerController::ClientSendReplicatedCommand_Implementation(const 
 
 void AArcCorePlayerController::ClientConfirmReplicatedCommand_Implementation(const FArcReplicatedCommandId& Command, bool bResult)
 {
+	// On failure, clear pending items from the store since replication won't arrive to clear them.
+	if (!bResult)
+	{
+		if (TArray<FArcItemId>* Items = CommandPendingItems.Find(Command))
+		{
+			if (APawn* P = GetPawn())
+			{
+				TArray<UArcItemsStoreComponent*> StoreComponents;
+				P->GetComponents<UArcItemsStoreComponent>(StoreComponents);
+				for (UArcItemsStoreComponent* Store : StoreComponents)
+				{
+					Store->RemovePendingItems(*Items);
+				}
+			}
+		}
+	}
+	CommandPendingItems.Remove(Command);
+
 	if (FArcCommandConfirmedDelegate* Function = CommandResponses.Find(Command))
 	{
 		Function->ExecuteIfBound(bResult);
-
 		CommandResponses.Remove(Command);
 	}
 }

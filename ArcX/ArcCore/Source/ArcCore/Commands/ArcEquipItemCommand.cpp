@@ -44,18 +44,20 @@ bool FArcEquipItemCommand::CanSendCommand() const
 		return false;	
 	}
 
-	if (ItemsStore->IsSlotLocked(SlotId))
+	if (ItemsStore->IsPending(Item))
 	{
-		UE_LOG(LogArcEquipItemCommand, Log, TEXT("%s Is currently edited."), *SlotId.ToString())
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("Item %s Is currently pending."), *Item.ToString())
 		return false;
 	}
 
-	if (ItemsStore->IsItemLocked(Item))
+	// Check if slot occupant is pending
+	const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
+	if (SlotOccupant && ItemsStore->IsPending(SlotOccupant->GetItemId()))
 	{
-		UE_LOG(LogArcEquipItemCommand, Log, TEXT("Item %s Is currently edited."), *Item.ToString())
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("Slot %s occupant is currently pending."), *SlotId.ToString())
 		return false;
 	}
-	
+
 	const FArcItemData* ItemPtr = ItemsStore->GetItemPtr(Item);
 	
 	if (ItemPtr == nullptr)
@@ -79,24 +81,45 @@ bool FArcEquipItemCommand::CanSendCommand() const
 
 void FArcEquipItemCommand::PreSendCommand()
 {
-	if (ItemsStore->GetNetMode() == ENetMode::NM_Client)
+	if (ItemsStore)
 	{
-		ItemsStore->LockSlot(SlotId);
-		ItemsStore->LockItem(Item);
+		TArray<FArcItemId> Items;
+		GetPendingItems(Items);
+		ItemsStore->AddPendingItems(Items);
+		CaptureExpectedVersions(ItemsStore);
+	}
+}
+
+void FArcEquipItemCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+{
+	OutItems.Add(Item);
+	if (ItemsStore)
+	{
+		const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
+		if (SlotOccupant && SlotOccupant->GetItemId() != Item)
+		{
+			OutItems.Add(SlotOccupant->GetItemId());
+		}
 	}
 }
 
 bool FArcEquipItemCommand::Execute()
-{	
+{
 	if (ItemsStore == nullptr)
 	{
+		return false;
+	}
+
+	if (!ValidateVersions(ItemsStore))
+	{
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("FArcEquipItemCommand::Execute version mismatch, rejecting."))
 		return false;
 	}
 
 	static int32 CommandIdx = 0;
 	CommandIdx++;
 	UE_LOG(LogArcEquipItemCommand, Log, TEXT("FArcEquipItemCommand::Execute %d"), CommandIdx)
-	
+
 	const FArcItemData* ItemPtr = ItemsStore->GetItemPtr(Item);
 	if (ItemPtr == nullptr)
 	{
@@ -143,9 +166,11 @@ bool FArcEquipNewItemCommand::CanSendCommand() const
 		UE_LOG(LogArcEquipItemCommand, Log, TEXT("ItemDefinitionId is not valid."))
 		return false;
 	}
-	if (ItemsStore->IsSlotLocked(SlotId))
+	// Check if slot occupant is pending
+	const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
+	if (SlotOccupant && ItemsStore->IsPending(SlotOccupant->GetItemId()))
 	{
-		UE_LOG(LogArcEquipItemCommand, Log, TEXT("%s Is currently edited."), *SlotId.ToString())
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("Slot %s occupant is currently pending."), *SlotId.ToString())
 		return false;
 	}
 
@@ -160,13 +185,37 @@ bool FArcEquipNewItemCommand::CanSendCommand() const
 
 void FArcEquipNewItemCommand::PreSendCommand()
 {
-	ItemsStore->LockSlot(SlotId);
+	if (ItemsStore)
+	{
+		TArray<FArcItemId> Items;
+		GetPendingItems(Items);
+		ItemsStore->AddPendingItems(Items);
+		CaptureExpectedVersions(ItemsStore);
+	}
+}
+
+void FArcEquipNewItemCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+{
+	if (ItemsStore)
+	{
+		const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
+		if (SlotOccupant)
+		{
+			OutItems.Add(SlotOccupant->GetItemId());
+		}
+	}
 }
 
 bool FArcEquipNewItemCommand::Execute()
-{	
+{
 	if (ItemsStore == nullptr)
 	{
+		return false;
+	}
+
+	if (!ValidateVersions(ItemsStore))
+	{
+		UE_LOG(LogArcEquipItemCommand, Log, TEXT("FArcEquipNewItemCommand::Execute version mismatch, rejecting."))
 		return false;
 	}
 

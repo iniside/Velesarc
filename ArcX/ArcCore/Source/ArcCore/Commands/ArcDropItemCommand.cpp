@@ -50,7 +50,7 @@ bool FArcDropItemCommand::CanSendCommand() const
 		return false;
 	}
 
-	if (ItemsStoreComponent->IsItemLocked(ItemId))
+	if (ItemsStoreComponent->IsPending(ItemId))
 	{
 		return false;
 	}
@@ -74,8 +74,16 @@ void FArcDropItemCommand::PreSendCommand()
 {
 	if (ItemsStoreComponent)
 	{
-		ItemsStoreComponent->LockItem(ItemId);
+		TArray<FArcItemId> Items;
+		GetPendingItems(Items);
+		ItemsStoreComponent->AddPendingItems(Items);
+		CaptureExpectedVersions(ItemsStoreComponent);
 	}
+}
+
+void FArcDropItemCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+{
+	OutItems.Add(ItemId);
 }
 
 bool FArcDropItemCommand::Execute()
@@ -83,6 +91,12 @@ bool FArcDropItemCommand::Execute()
 	if (!ItemsStoreComponent)
 	{
 		UE_LOG(LogArcDropItem, Warning, TEXT("Execute: ItemsStoreComponent is null."));
+		return false;
+	}
+
+	if (!ValidateVersions(ItemsStoreComponent))
+	{
+		UE_LOG(LogArcDropItem, Warning, TEXT("Execute: Version mismatch, item was modified."));
 		return false;
 	}
 
