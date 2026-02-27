@@ -23,7 +23,7 @@
 
 
 
-#include "Commands/ArcReplicatedCommand.h"
+#include "Commands/ArcItemReplicatedCommand.h"
 #include "GameplayTagContainer.h"
 #include "Items/ArcItemId.h"
 
@@ -36,7 +36,7 @@ class UArcQuickBarComponent;
  * 
  */
 USTRUCT(BlueprintType)
-struct ARCCORE_API FArcAddItemToQuickBarCommand : public FArcReplicatedCommand
+struct ARCCORE_API FArcAddItemToQuickBarCommand : public FArcItemReplicatedCommand
 {
 	GENERATED_BODY()
 
@@ -94,7 +94,8 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
@@ -103,12 +104,19 @@ public:
 	virtual ~FArcAddItemToQuickBarCommand() override {}
 };
 
+template <>
+struct TStructOpsTypeTraits<FArcAddItemToQuickBarCommand>
+	: public TStructOpsTypeTraitsBase2<FArcAddItemToQuickBarCommand>
+{
+	enum { WithCopy = true };
+};
+
 
 /**
  *
  */
 USTRUCT(BlueprintType)
-struct ARCCORE_API FArcAddItemToQuickBarNoItemSlotCommand : public FArcReplicatedCommand
+struct ARCCORE_API FArcAddItemToQuickBarNoItemSlotCommand : public FArcItemReplicatedCommand
 {
 	GENERATED_BODY()
 
@@ -166,13 +174,21 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
 		return FArcAddItemToQuickBarNoItemSlotCommand::StaticStruct();
 	}
 	virtual ~FArcAddItemToQuickBarNoItemSlotCommand() override {}
+};
+
+template <>
+struct TStructOpsTypeTraits<FArcAddItemToQuickBarNoItemSlotCommand>
+	: public TStructOpsTypeTraitsBase2<FArcAddItemToQuickBarNoItemSlotCommand>
+{
+	enum { WithCopy = true };
 };
 
 USTRUCT(BlueprintType)

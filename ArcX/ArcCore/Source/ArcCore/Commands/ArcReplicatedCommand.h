@@ -21,12 +21,10 @@
 
 #pragma once
 
-#include "Items/ArcItemId.h"
 #include "ArcReplicatedCommand.generated.h"
 
 class UScriptStruct;
 class AArcCorePlayerController;
-class UArcItemsStoreComponent;
 
 USTRUCT()
 struct ARCCORE_API FArcReplicatedCommand
@@ -41,7 +39,7 @@ public:
 	{
 		return true;
 	};
-	
+
 	/*
 	 * Called before sending to server (On client).
 	 */
@@ -54,16 +52,16 @@ public:
 		return false;
 	};
 
-	/** Override to return item IDs that should be marked pending while this command is in flight. */
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const
+	/** Whether the command system should store a copy for confirmation handling. */
+	virtual bool NeedsConfirmation() const
 	{
+		return false;
 	}
 
-	/** Captures the Version of each pending item from the store. Called after PreSendCommand on client. */
-	void CaptureExpectedVersions(const UArcItemsStoreComponent* Store);
-
-	/** Returns false if any pending item's version on the server differs from what the client captured. */
-	bool ValidateVersions(const UArcItemsStoreComponent* Store) const;
+	/** Called on the stored copy when the server responds with success/failure. */
+	virtual void CommandConfirmed(bool bSuccess)
+	{
+	}
 
 	FArcReplicatedCommand()
 	{
@@ -75,10 +73,6 @@ public:
 	{
 		return FArcReplicatedCommand::StaticStruct();
 	}
-
-protected:
-	UPROPERTY()
-	TMap<FArcItemId, uint32> ExpectedVersions;
 };
 
 template <>
@@ -86,41 +80,8 @@ struct TStructOpsTypeTraits<FArcReplicatedCommand> : public TStructOpsTypeTraits
 {
 	enum
 	{
-		WithCopy = true // Necessary so that TSharedPtr<FHitResult> Data is copied around
+		WithCopy = true
 	};
-};
-
-USTRUCT()
-struct FArcReplicatedCommandId
-{
-	GENERATED_BODY()
-
-	UPROPERTY()
-	int32 Id = INDEX_NONE;
-
-	friend uint32 GetTypeHash(const FArcReplicatedCommandId& In)
-	{
-		return In.Id;
-	}
-
-	bool operator==(const FArcReplicatedCommandId& Other) const
-	{
-		return Id == Other.Id;
-	}
-	
-	bool IsValid() const
-	{
-		return Id > -1;
-	}
-
-	static FArcReplicatedCommandId Generate()
-	{
-		static int32 Idx = INDEX_NONE;
-		Idx++;
-		FArcReplicatedCommandId NewId {Idx};
-
-		return NewId;
-	}
 };
 
 DECLARE_DELEGATE_OneParam(FArcCommandConfirmedDelegate, bool);
@@ -134,8 +95,8 @@ private:
 	TSharedPtr<FArcReplicatedCommand> Data;
 
 	UPROPERTY()
-	FArcReplicatedCommandId CommandId;
-	
+	FGuid CommandId;
+
 public:
 	FArcReplicatedCommandHandle()
 		: Data(nullptr)
@@ -147,7 +108,7 @@ public:
 	{
 	}
 
-	FArcReplicatedCommandHandle(const TSharedPtr<FArcReplicatedCommand>& InData, const FArcReplicatedCommandId& InCommandId)
+	FArcReplicatedCommandHandle(const TSharedPtr<FArcReplicatedCommand>& InData, const FGuid& InCommandId)
 		: Data(InData)
 		, CommandId(InCommandId)
 	{
@@ -183,25 +144,9 @@ public:
 	{
 		return Data.IsValid() && Other.IsValid() && Data->GetScriptStruct() == Other.Data->GetScriptStruct();
 	}
-	
-	const FArcReplicatedCommandId& GetCommandId() const
+
+	const FGuid& GetCommandId() const
 	{
 		return CommandId;
-	}
-
-	void GetPendingItems(TArray<FArcItemId>& OutItems) const
-	{
-		if (Data.IsValid())
-		{
-			Data->GetPendingItems(OutItems);
-		}
-	}
-
-	void CaptureExpectedVersions(const UArcItemsStoreComponent* Store) const
-	{
-		if (Data.IsValid())
-		{
-			Data->CaptureExpectedVersions(Store);
-		}
 	}
 };

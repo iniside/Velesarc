@@ -83,23 +83,22 @@ void FArcEquipItemCommand::PreSendCommand()
 {
 	if (ItemsStore)
 	{
-		TArray<FArcItemId> Items;
-		GetPendingItems(Items);
-		ItemsStore->AddPendingItems(Items);
+		PendingItemIds.Add(Item);
+		const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
+		if (SlotOccupant && SlotOccupant->GetItemId() != Item)
+		{
+			PendingItemIds.Add(SlotOccupant->GetItemId());
+		}
+		ItemsStore->AddPendingItems(PendingItemIds);
 		CaptureExpectedVersions(ItemsStore);
 	}
 }
 
-void FArcEquipItemCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+void FArcEquipItemCommand::CommandConfirmed(bool bSuccess)
 {
-	OutItems.Add(Item);
-	if (ItemsStore)
+	if (!bSuccess && ItemsStore)
 	{
-		const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
-		if (SlotOccupant && SlotOccupant->GetItemId() != Item)
-		{
-			OutItems.Add(SlotOccupant->GetItemId());
-		}
+		ItemsStore->RemovePendingItems(PendingItemIds);
 	}
 }
 
@@ -187,22 +186,21 @@ void FArcEquipNewItemCommand::PreSendCommand()
 {
 	if (ItemsStore)
 	{
-		TArray<FArcItemId> Items;
-		GetPendingItems(Items);
-		ItemsStore->AddPendingItems(Items);
+		const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
+		if (SlotOccupant)
+		{
+			PendingItemIds.Add(SlotOccupant->GetItemId());
+		}
+		ItemsStore->AddPendingItems(PendingItemIds);
 		CaptureExpectedVersions(ItemsStore);
 	}
 }
 
-void FArcEquipNewItemCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+void FArcEquipNewItemCommand::CommandConfirmed(bool bSuccess)
 {
-	if (ItemsStore)
+	if (!bSuccess && ItemsStore)
 	{
-		const FArcItemData* SlotOccupant = ItemsStore->GetItemFromSlot(SlotId);
-		if (SlotOccupant)
-		{
-			OutItems.Add(SlotOccupant->GetItemId());
-		}
+		ItemsStore->RemovePendingItems(PendingItemIds);
 	}
 }
 

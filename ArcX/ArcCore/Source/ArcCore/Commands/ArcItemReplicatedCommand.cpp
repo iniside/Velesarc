@@ -19,47 +19,44 @@
  * and limitations under the License.
  */
 
-#include "Commands/ArcReplicatedCommand.h"
+#include "Commands/ArcItemReplicatedCommand.h"
 
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemsStoreComponent.h"
 
-void FArcReplicatedCommand::CaptureExpectedVersions(const UArcItemsStoreComponent* Store)
+void FArcItemReplicatedCommand::CaptureExpectedVersions(const UArcItemsStoreComponent* Store)
 {
 	if (!Store)
 	{
 		return;
 	}
 
-	TArray<FArcItemId> Items;
-	GetPendingItems(Items);
-
-	ExpectedVersions.Empty(Items.Num());
-	for (const FArcItemId& ItemId : Items)
+	ExpectedVersions.Reset(PendingItemIds.Num());
+	for (const FArcItemId& ItemId : PendingItemIds)
 	{
 		if (const FArcItemData* ItemData = Store->GetItemPtr(ItemId))
 		{
-			ExpectedVersions.Add(ItemId, ItemData->GetVersion());
+			ExpectedVersions.Emplace(ItemId, ItemData->GetVersion());
 		}
 	}
 }
 
-bool FArcReplicatedCommand::ValidateVersions(const UArcItemsStoreComponent* Store) const
+bool FArcItemReplicatedCommand::ValidateVersions(const UArcItemsStoreComponent* Store) const
 {
 	if (!Store || ExpectedVersions.IsEmpty())
 	{
 		return true;
 	}
 
-	for (const auto& Pair : ExpectedVersions)
+	for (const FArcItemExpectedVersion& Entry : ExpectedVersions)
 	{
-		const FArcItemData* ItemData = Store->GetItemPtr(Pair.Key);
+		const FArcItemData* ItemData = Store->GetItemPtr(Entry.ItemId);
 		if (!ItemData)
 		{
 			return false;
 		}
 
-		if (ItemData->GetVersion() != Pair.Value)
+		if (ItemData->GetVersion() != Entry.Version)
 		{
 			return false;
 		}

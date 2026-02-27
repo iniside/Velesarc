@@ -103,16 +103,18 @@ void FArcRemoveItemFromItemSocketCommand::PreSendCommand()
 {
 	if (ItemsStore)
 	{
-		TArray<FArcItemId> Items;
-		GetPendingItems(Items);
-		ItemsStore->AddPendingItems(Items);
+		PendingItemIds.Add(AttachmentItem);
+		ItemsStore->AddPendingItems(PendingItemIds);
 		CaptureExpectedVersions(ItemsStore);
 	}
 }
 
-void FArcRemoveItemFromItemSocketCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+void FArcRemoveItemFromItemSocketCommand::CommandConfirmed(bool bSuccess)
 {
-	OutItems.Add(AttachmentItem);
+	if (!bSuccess && ItemsStore)
+	{
+		ItemsStore->RemovePendingItems(PendingItemIds);
+	}
 }
 
 bool FArcRemoveItemFromItemSocketCommand::Execute()

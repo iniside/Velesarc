@@ -27,6 +27,7 @@
 #include "LoadingProcessInterface.h"
 
 #include "Commands/ArcReplicatedCommand.h"
+#include "StructUtils/InstancedStruct.h"
 
 #include "ArcCorePlayerController.generated.h"
 
@@ -178,22 +179,22 @@ public:
 	void ServerOpenMap(const FString& MapName);
 
 private:
-	TMap<FArcReplicatedCommandId, FArcCommandConfirmedDelegate> CommandResponses;
+	TMap<FGuid, FArcCommandConfirmedDelegate> CommandResponses;
 
-	/** Tracks which items are pending per command, so we can clear them on failure RPC. */
-	TMap<FArcReplicatedCommandId, TArray<FArcItemId>> CommandPendingItems;
-	
+	/** Stores a copy of commands that need confirmation, keyed by CommandId. */
+	TMap<FGuid, FInstancedStruct> PendingCommands;
+
 public:
 	bool SendReplicatedCommand(const FArcReplicatedCommandHandle& Command);
 
 	bool SendReplicatedCommand(const FArcReplicatedCommandHandle& Command, FArcCommandConfirmedDelegate&& ConfirmDelegate);
-	
+
 protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSendReplicatedCommand(const FArcReplicatedCommandHandle& Command);
 
 	UFUNCTION(Client, Reliable)
-	void ClientConfirmReplicatedCommand(const FArcReplicatedCommandId& CommandId, bool bResult);
+	void ClientConfirmReplicatedCommand(const FGuid& CommandId, bool bResult);
 	
 public:
 	bool SendClientReplicatedCommand(const FArcReplicatedCommandHandle& Command);

@@ -33,7 +33,7 @@
 
 #include "Commands/ArcReplicatedCommand.h"
 #include "Components/InputComponent.h"
-#include "Items/ArcItemsStoreComponent.h"
+
 #include "GameFramework/GameplayControlRotationComponent.h"
 #include "GameFramework/IGameplayCameraSystemHost.h"
 #include "GameMode/ArcExperienceManagerComponent.h"
@@ -398,13 +398,16 @@ bool AArcCorePlayerController::SendReplicatedCommand(const FArcReplicatedCommand
 {
 	if (Command.CanSendCommand())
 	{
+		// NOTE: GetData() returns non-const ref; we need a const-safe cast here.
+		FArcReplicatedCommand* Data = const_cast<FArcReplicatedCommandHandle&>(Command).GetData().Get();
+
 		Command.PreSendCommand();
 
-		TArray<FArcItemId> PendingItems;
-		Command.GetPendingItems(PendingItems);
-		if (PendingItems.Num() > 0 && Command.GetCommandId().IsValid())
+		if (Data && Data->NeedsConfirmation() && Command.GetCommandId().IsValid())
 		{
-			CommandPendingItems.Add(Command.GetCommandId(), MoveTemp(PendingItems));
+			FInstancedStruct Copy;
+			Copy.InitializeAs(Data->GetScriptStruct(), reinterpret_cast<const uint8*>(Data));
+			PendingCommands.Add(Command.GetCommandId(), MoveTemp(Copy));
 		}
 
 		ServerSendReplicatedCommand(Command);
@@ -421,13 +424,16 @@ bool AArcCorePlayerController::SendReplicatedCommand(const FArcReplicatedCommand
 	if (Command.CanSendCommand())
 	{
 		CommandResponses.Add(Command.GetCommandId(), MoveTemp(ConfirmDelegate));
+
+		FArcReplicatedCommand* Data = const_cast<FArcReplicatedCommandHandle&>(Command).GetData().Get();
+
 		Command.PreSendCommand();
 
-		TArray<FArcItemId> PendingItems;
-		Command.GetPendingItems(PendingItems);
-		if (PendingItems.Num() > 0 && Command.GetCommandId().IsValid())
+		if (Data && Data->NeedsConfirmation() && Command.GetCommandId().IsValid())
 		{
-			CommandPendingItems.Add(Command.GetCommandId(), MoveTemp(PendingItems));
+			FInstancedStruct Copy;
+			Copy.InitializeAs(Data->GetScriptStruct(), reinterpret_cast<const uint8*>(Data));
+			PendingCommands.Add(Command.GetCommandId(), MoveTemp(Copy));
 		}
 
 		ServerSendReplicatedCommand(Command);
@@ -456,30 +462,21 @@ void AArcCorePlayerController::ClientSendReplicatedCommand_Implementation(const 
 	Command.Execute();
 }
 
-void AArcCorePlayerController::ClientConfirmReplicatedCommand_Implementation(const FArcReplicatedCommandId& Command, bool bResult)
+void AArcCorePlayerController::ClientConfirmReplicatedCommand_Implementation(const FGuid& CommandId, bool bResult)
 {
-	// On failure, clear pending items from the store since replication won't arrive to clear them.
-	if (!bResult)
+	if (FInstancedStruct* CmdStruct = PendingCommands.Find(CommandId))
 	{
-		if (TArray<FArcItemId>* Items = CommandPendingItems.Find(Command))
+		if (FArcReplicatedCommand* Cmd = CmdStruct->GetMutablePtr<FArcReplicatedCommand>())
 		{
-			if (APawn* P = GetPawn())
-			{
-				TArray<UArcItemsStoreComponent*> StoreComponents;
-				P->GetComponents<UArcItemsStoreComponent>(StoreComponents);
-				for (UArcItemsStoreComponent* Store : StoreComponents)
-				{
-					Store->RemovePendingItems(*Items);
-				}
-			}
+			Cmd->CommandConfirmed(bResult);
 		}
+		PendingCommands.Remove(CommandId);
 	}
-	CommandPendingItems.Remove(Command);
 
-	if (FArcCommandConfirmedDelegate* Function = CommandResponses.Find(Command))
+	if (FArcCommandConfirmedDelegate* Function = CommandResponses.Find(CommandId))
 	{
 		Function->ExecuteIfBound(bResult);
-		CommandResponses.Remove(Command);
+		CommandResponses.Remove(CommandId);
 	}
 }
 
@@ -487,6 +484,6 @@ void AArcCorePlayerController::ServerSendReplicatedCommand_Implementation(
 	const FArcReplicatedCommandHandle& Command)
 {
 	const bool bResult = Command.Execute();
-	const FArcReplicatedCommandId& CommandId = Command.GetCommandId();
+	const FGuid& CommandId = Command.GetCommandId();
 	ClientConfirmReplicatedCommand(CommandId, bResult);
 }

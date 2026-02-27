@@ -41,7 +41,7 @@ namespace Arcx
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
 				MakeShareable<CommandType>(new CommandType {args...})
-				, FArcReplicatedCommandId::Generate()
+				, FGuid::NewGuid()
 			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle);
@@ -62,7 +62,7 @@ namespace Arcx
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
 				MakeShareable<FArcReplicatedCommand>(CommandPtr)
-				, FArcReplicatedCommandId::Generate()
+				, FGuid::NewGuid()
 			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle);
@@ -83,7 +83,7 @@ namespace Arcx
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
 				MakeShareable<CommandType>(new CommandType {args...})
-				, FArcReplicatedCommandId::Generate()
+				, FGuid::NewGuid()
 			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle);
@@ -105,7 +105,7 @@ namespace Arcx
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
 				MakeShareable<CommandType>(new CommandType {args...})
-				, FArcReplicatedCommandId::Generate()
+				, FGuid::NewGuid()
 			);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle, MoveTemp(ConfirmDelegate));
@@ -126,7 +126,7 @@ namespace Arcx
 		{
 			FArcReplicatedCommandHandle CommandHandle = FArcReplicatedCommandHandle(
 					MakeShareable<CommandType>(new CommandType {args...})
-					, FArcReplicatedCommandId::Generate()
+					, FGuid::NewGuid()
 				);
 
 			return ArcPC->SendReplicatedCommand(CommandHandle, MoveTemp(ConfirmDelegate));

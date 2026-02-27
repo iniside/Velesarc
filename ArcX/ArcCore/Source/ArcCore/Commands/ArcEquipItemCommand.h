@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "Commands/ArcReplicatedCommand.h"
+#include "Commands/ArcItemReplicatedCommand.h"
 #include "GameplayTagContainer.h"
 #include "Items/ArcItemId.h"
 #include "ArcEquipItemCommand.generated.h"
@@ -37,7 +37,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogArcEquipItemCommand, Log, All);
  * This will equipt item from inventory to given slot. If slot is taken it will remove existing item from slot.
  */
 USTRUCT(BlueprintType)
-struct ARCCORE_API FArcEquipItemCommand : public FArcReplicatedCommand
+struct ARCCORE_API FArcEquipItemCommand : public FArcItemReplicatedCommand
 {
 	GENERATED_BODY()
 	
@@ -58,12 +58,13 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	FArcEquipItemCommand()
 		: ItemsStore(nullptr)
 	{}
-	
+
 	FArcEquipItemCommand(UArcItemsStoreComponent* InItemsStore
 		, UArcEquipmentComponent* InEquipmentComponent
 		, const FArcItemId& InItem
@@ -75,12 +76,19 @@ public:
 	{
 
 	}
-	
+
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
 		return FArcEquipItemCommand::StaticStruct();
 	}
 	virtual ~FArcEquipItemCommand() override = default;
+};
+
+template <>
+struct TStructOpsTypeTraits<FArcEquipItemCommand>
+	: public TStructOpsTypeTraitsBase2<FArcEquipItemCommand>
+{
+	enum { WithCopy = true };
 };
 
 /**
@@ -89,7 +97,7 @@ public:
  * This command is used when you want to equip item not in inventory yet.
  */
 USTRUCT(BlueprintType)
-struct ARCCORE_API FArcEquipNewItemCommand : public FArcReplicatedCommand
+struct ARCCORE_API FArcEquipNewItemCommand : public FArcItemReplicatedCommand
 {
 	GENERATED_BODY()
 	
@@ -114,7 +122,8 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	FArcEquipNewItemCommand()
 		: ItemsStore(nullptr)
@@ -139,4 +148,11 @@ public:
 		return FArcEquipNewItemCommand::StaticStruct();
 	}
 	virtual ~FArcEquipNewItemCommand() override = default;
+};
+
+template <>
+struct TStructOpsTypeTraits<FArcEquipNewItemCommand>
+	: public TStructOpsTypeTraitsBase2<FArcEquipNewItemCommand>
+{
+	enum { WithCopy = true };
 };

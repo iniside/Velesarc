@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "Commands/ArcReplicatedCommand.h"
+#include "Commands/ArcItemReplicatedCommand.h"
 #include "Items/ArcItemId.h"
 #include "Math/TransformVectorized.h"
 #include "UObject/ObjectPtr.h"
@@ -36,7 +36,7 @@ class UArcItemsStoreComponent;
  * The dropped entity reuses FArcLootContainerFragment to hold the item spec.
  */
 USTRUCT(BlueprintType)
-struct ARCCORE_API FArcDropItemCommand : public FArcReplicatedCommand
+struct ARCCORE_API FArcDropItemCommand : public FArcItemReplicatedCommand
 {
 	GENERATED_BODY()
 
@@ -79,11 +79,19 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
 		return FArcDropItemCommand::StaticStruct();
 	}
 	virtual ~FArcDropItemCommand() override {}
+};
+
+template <>
+struct TStructOpsTypeTraits<FArcDropItemCommand>
+	: public TStructOpsTypeTraitsBase2<FArcDropItemCommand>
+{
+	enum { WithCopy = true };
 };

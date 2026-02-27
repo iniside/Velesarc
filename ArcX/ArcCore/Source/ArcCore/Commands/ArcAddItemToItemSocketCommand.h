@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "ArcReplicatedCommand.h"
+#include "ArcItemReplicatedCommand.h"
 #include "GameplayTagContainer.h"
 #include "Items/ArcItemId.h"
 #include "ArcAddItemToItemSocketCommand.generated.h"
@@ -75,30 +75,38 @@ public:
 	virtual ~FArcAddItemToItemSocketCommand() override = default;
 };
 
-USTRUCT()
-struct ARCCORE_API FArcRemoveItemFromItemSocketCommand : public FArcReplicatedCommand
+template <>
+struct TStructOpsTypeTraits<FArcAddItemToItemSocketCommand>
+	: public TStructOpsTypeTraitsBase2<FArcAddItemToItemSocketCommand>
 {
-	
+	enum { WithCopy = true };
+};
+
+USTRUCT()
+struct ARCCORE_API FArcRemoveItemFromItemSocketCommand : public FArcItemReplicatedCommand
+{
+
 	GENERATED_BODY()
-	
+
 protected:
 	UPROPERTY()
 	TObjectPtr<UArcItemsStoreComponent> ItemsStore = nullptr;
-	
+
 	UPROPERTY()
 	FArcItemId AttachmentItem;
-	
+
 public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
-	virtual void GetPendingItems(TArray<FArcItemId>& OutItems) const override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	FArcRemoveItemFromItemSocketCommand()
 		: ItemsStore(nullptr)
 		, AttachmentItem()
 	{}
-	
+
 	FArcRemoveItemFromItemSocketCommand(UArcItemsStoreComponent* InItemsStore
 		, const FArcItemId& InAttachmentItem)
 		: ItemsStore(InItemsStore)
@@ -111,4 +119,11 @@ public:
 		return FArcRemoveItemFromItemSocketCommand::StaticStruct();
 	}
 	virtual ~FArcRemoveItemFromItemSocketCommand() override = default;
+};
+
+template <>
+struct TStructOpsTypeTraits<FArcRemoveItemFromItemSocketCommand>
+	: public TStructOpsTypeTraitsBase2<FArcRemoveItemFromItemSocketCommand>
+{
+	enum { WithCopy = true };
 };

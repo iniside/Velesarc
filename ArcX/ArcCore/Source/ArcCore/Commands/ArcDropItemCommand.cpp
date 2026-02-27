@@ -74,16 +74,18 @@ void FArcDropItemCommand::PreSendCommand()
 {
 	if (ItemsStoreComponent)
 	{
-		TArray<FArcItemId> Items;
-		GetPendingItems(Items);
-		ItemsStoreComponent->AddPendingItems(Items);
+		PendingItemIds.Add(ItemId);
+		ItemsStoreComponent->AddPendingItems(PendingItemIds);
 		CaptureExpectedVersions(ItemsStoreComponent);
 	}
 }
 
-void FArcDropItemCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+void FArcDropItemCommand::CommandConfirmed(bool bSuccess)
 {
-	OutItems.Add(ItemId);
+	if (!bSuccess && ItemsStoreComponent)
+	{
+		ItemsStoreComponent->RemovePendingItems(PendingItemIds);
+	}
 }
 
 bool FArcDropItemCommand::Execute()

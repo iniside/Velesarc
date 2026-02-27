@@ -65,16 +65,18 @@ void FArcAddItemToQuickBarCommand::PreSendCommand()
 {
 	if (ItemsStoreComponent)
 	{
-		TArray<FArcItemId> Items;
-		GetPendingItems(Items);
-		ItemsStoreComponent->AddPendingItems(Items);
+		PendingItemIds.Add(ItemId);
+		ItemsStoreComponent->AddPendingItems(PendingItemIds);
 		CaptureExpectedVersions(ItemsStoreComponent);
 	}
 }
 
-void FArcAddItemToQuickBarCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+void FArcAddItemToQuickBarCommand::CommandConfirmed(bool bSuccess)
 {
-	OutItems.Add(ItemId);
+	if (!bSuccess && ItemsStoreComponent)
+	{
+		ItemsStoreComponent->RemovePendingItems(PendingItemIds);
+	}
 }
 
 bool FArcAddItemToQuickBarCommand::Execute()
@@ -196,16 +198,18 @@ void FArcAddItemToQuickBarNoItemSlotCommand::PreSendCommand()
 
 	if (SourceItemsStoreComponent)
 	{
-		TArray<FArcItemId> Items;
-		GetPendingItems(Items);
-		SourceItemsStoreComponent->AddPendingItems(Items);
+		PendingItemIds.Add(ItemId);
+		SourceItemsStoreComponent->AddPendingItems(PendingItemIds);
 		CaptureExpectedVersions(SourceItemsStoreComponent);
 	}
 }
 
-void FArcAddItemToQuickBarNoItemSlotCommand::GetPendingItems(TArray<FArcItemId>& OutItems) const
+void FArcAddItemToQuickBarNoItemSlotCommand::CommandConfirmed(bool bSuccess)
 {
-	OutItems.Add(ItemId);
+	if (!bSuccess && SourceItemsStoreComponent)
+	{
+		SourceItemsStoreComponent->RemovePendingItems(PendingItemIds);
+	}
 }
 
 bool FArcAddItemToQuickBarNoItemSlotCommand::Execute()
