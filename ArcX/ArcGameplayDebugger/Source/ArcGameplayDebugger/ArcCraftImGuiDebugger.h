@@ -58,6 +58,7 @@ private:
 	void DrawStationList();
 	void DrawStationDetail();
 	void DrawCraftQueue(UArcCraftStationComponent* Station);
+	void DrawStationStoredItems(UArcCraftStationComponent* Station);
 	void DrawAvailableRecipes(UArcCraftStationComponent* Station);
 	void DrawTransferItemsPanel(UArcCraftStationComponent* Station);
 	void DrawCraftableDiscovery(UArcCraftStationComponent* Station);

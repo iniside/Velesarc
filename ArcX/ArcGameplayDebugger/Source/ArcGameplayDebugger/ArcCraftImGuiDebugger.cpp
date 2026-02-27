@@ -35,6 +35,9 @@
 #include "GameplayEffect.h"
 #include "Abilities/GameplayAbility.h"
 #include "ArcCraft/Commands/ArcDepositItemToCraftStationCommand.h"
+#include "ArcCraft/Mass/ArcCraftMassFragments.h"
+#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
+#include "MassEntitySubsystem.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
 
 // -------------------------------------------------------------------
@@ -465,6 +468,9 @@ void FArcCraftImGuiDebugger::DrawStationDetail()
 	DrawCraftQueue(Station);
 
 	ImGui::Spacing();
+	DrawStationStoredItems(Station);
+
+	ImGui::Spacing();
 	DrawAvailableRecipes(Station);
 
 	ImGui::Spacing();
@@ -541,6 +547,199 @@ void FArcCraftImGuiDebugger::DrawCraftQueue(UArcCraftStationComponent* Station)
 		}
 
 		ImGui::EndTable();
+	}
+}
+
+// -------------------------------------------------------------------
+// Helper: draw an item spec table
+// -------------------------------------------------------------------
+
+static void DrawItemSpecTable(const char* TableId, const TArray<FArcItemSpec>& Items)
+{
+	if (Items.Num() == 0)
+	{
+		ImGui::TextDisabled("(empty)");
+		return;
+	}
+
+	if (ImGui::BeginTable(TableId, 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
+	{
+		ImGui::TableSetupColumn("#", 0, 30.f);
+		ImGui::TableSetupColumn("Item", 0, 200.f);
+		ImGui::TableSetupColumn("Lvl", 0, 40.f);
+		ImGui::TableSetupColumn("Qty", 0, 40.f);
+		ImGui::TableHeadersRow();
+
+		for (int32 i = 0; i < Items.Num(); ++i)
+		{
+			const FArcItemSpec& Spec = Items[i];
+
+			ImGui::TableNextRow();
+
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Text("%d", i);
+
+			ImGui::TableSetColumnIndex(1);
+			const UArcItemDefinition* Def = Spec.GetItemDefinition();
+			if (Def)
+			{
+				ImGui::Text("%s", TCHAR_TO_ANSI(*GetNameSafe(Def)));
+			}
+			else if (Spec.GetItemDefinitionId().IsValid())
+			{
+				ImGui::Text("%s", TCHAR_TO_ANSI(*Spec.GetItemDefinitionId().ToString()));
+			}
+			else
+			{
+				ImGui::TextDisabled("(no definition)");
+			}
+
+			ImGui::TableSetColumnIndex(2);
+			ImGui::Text("%d", Spec.Level);
+
+			ImGui::TableSetColumnIndex(3);
+			ImGui::Text("%d", Spec.Amount);
+		}
+
+		ImGui::EndTable();
+	}
+}
+
+void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* Station)
+{
+	ImGui::SeparatorText("Stored Items");
+
+	const bool bEntityBacked = Station->IsEntityBacked();
+
+	// --- Attempt to read from entity fragments (priority for entity-backed stations) ---
+	bool bReadInputFromEntity = false;
+	bool bReadOutputFromEntity = false;
+	TArray<FArcItemSpec> EntityInputItems;
+	TArray<FArcItemSpec> EntityOutputItems;
+
+	if (bEntityBacked)
+	{
+		UArcCraftVisEntityComponent* VisComp =
+			Station->GetOwner() ? Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>() : nullptr;
+
+		if (VisComp)
+		{
+			const FMassEntityHandle Entity = VisComp->GetEntityHandle();
+			UWorld* StationWorld = Station->GetWorld();
+			UMassEntitySubsystem* MassSubsystem = StationWorld ? StationWorld->GetSubsystem<UMassEntitySubsystem>() : nullptr;
+
+			if (MassSubsystem && Entity.IsValid())
+			{
+				FMassEntityManager& EntityMgr = MassSubsystem->GetMutableEntityManager();
+				if (EntityMgr.IsEntityValid(Entity))
+				{
+					const FArcCraftInputFragment* InputFrag = EntityMgr.GetFragmentDataPtr<FArcCraftInputFragment>(Entity);
+					if (InputFrag)
+					{
+						EntityInputItems = InputFrag->InputItems;
+						bReadInputFromEntity = true;
+					}
+
+					const FArcCraftOutputFragment* OutputFrag = EntityMgr.GetFragmentDataPtr<FArcCraftOutputFragment>(Entity);
+					if (OutputFrag)
+					{
+						EntityOutputItems = OutputFrag->OutputItems;
+						bReadOutputFromEntity = true;
+					}
+				}
+			}
+		}
+	}
+
+	// --- Input Ingredients ---
+	if (bReadInputFromEntity)
+	{
+		ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Input Ingredients (Entity Fragment)");
+		DrawItemSpecTable("InputItemsEntity", EntityInputItems);
+	}
+	else
+	{
+		// Fall back to reading from actor-side stores
+		AActor* Owner = Station->GetOwner();
+		if (Owner)
+		{
+			TArray<UArcItemsStoreComponent*> Stores;
+			Owner->GetComponents<UArcItemsStoreComponent>(Stores);
+
+			if (Stores.Num() > 0)
+			{
+				ImGui::Text("Input Ingredients (Actor Store)");
+				for (UArcItemsStoreComponent* Store : Stores)
+				{
+					TArray<const FArcItemData*> Items = Store->GetItems();
+					if (Items.Num() == 0)
+					{
+						continue;
+					}
+
+					ImGui::Text("  Store: %s", TCHAR_TO_ANSI(*Store->GetClass()->GetName()));
+					if (ImGui::BeginTable(TCHAR_TO_ANSI(*FString::Printf(TEXT("InputStore_%s"), *Store->GetName())),
+						4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
+					{
+						ImGui::TableSetupColumn("#", 0, 30.f);
+						ImGui::TableSetupColumn("Item", 0, 200.f);
+						ImGui::TableSetupColumn("Lvl", 0, 40.f);
+						ImGui::TableSetupColumn("Qty", 0, 40.f);
+						ImGui::TableHeadersRow();
+
+						for (int32 i = 0; i < Items.Num(); ++i)
+						{
+							const FArcItemData* Item = Items[i];
+							if (!Item)
+							{
+								continue;
+							}
+
+							ImGui::TableNextRow();
+
+							ImGui::TableSetColumnIndex(0);
+							ImGui::Text("%d", i);
+
+							ImGui::TableSetColumnIndex(1);
+							const UArcItemDefinition* Def = Item->GetItemDefinition();
+							ImGui::Text("%s", TCHAR_TO_ANSI(*GetNameSafe(Def)));
+
+							ImGui::TableSetColumnIndex(2);
+							ImGui::Text("%d", Item->GetLevel());
+
+							ImGui::TableSetColumnIndex(3);
+							ImGui::Text("%d", Item->GetStacks());
+						}
+
+						ImGui::EndTable();
+					}
+				}
+			}
+			else
+			{
+				ImGui::Text("Input Ingredients");
+				ImGui::TextDisabled("(no item stores on station actor)");
+			}
+		}
+		else
+		{
+			ImGui::Text("Input Ingredients");
+			ImGui::TextDisabled("(no owner actor)");
+		}
+	}
+
+	ImGui::Spacing();
+
+	// --- Output (Crafted Items) ---
+	if (bReadOutputFromEntity)
+	{
+		ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Crafted Output (Entity Fragment)");
+		DrawItemSpecTable("OutputItemsEntity", EntityOutputItems);
+	}
+	else
+	{
+		ImGui::Text("Crafted Output");
+		ImGui::TextDisabled("(no entity output fragment — output may be delivered to instigator)");
 	}
 }
 

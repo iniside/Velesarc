@@ -25,6 +25,7 @@
 void FArcDebuggerItems::Initialize()
 {
 	RefreshItemDefinitions();
+	ItemSpecCreator.Initialize();
 }
 
 void FArcDebuggerItems::Uninitialize()
@@ -35,6 +36,8 @@ void FArcDebuggerItems::Uninitialize()
 	TargetStore.Reset();
 	TargetStoreIndex = -1;
 	SelectedQuickBar.Reset();
+	AddItemMode = EAddItemMode::None;
+	ItemSpecCreator.Uninitialize();
 }
 
 TArray<UArcItemsStoreComponent*> FArcDebuggerItems::GetPlayerStores() const
@@ -356,17 +359,43 @@ void FArcDebuggerItems::DrawItemsList()
 		return;
 	}
 
-	// Add Item button
-	if (ImGui::Button("Add Item"))
+	// Add Item buttons
+	if (ImGui::Button("Quick Add"))
 	{
-		bShowAddItemPanel = !bShowAddItemPanel;
-		if (bShowAddItemPanel && CachedItemDefinitions.Num() == 0)
+		if (AddItemMode == EAddItemMode::QuickAdd)
 		{
-			RefreshItemDefinitions();
+			AddItemMode = EAddItemMode::None;
+		}
+		else
+		{
+			AddItemMode = EAddItemMode::QuickAdd;
+			ItemSpecCreator.Reset();
+			if (CachedItemDefinitions.Num() == 0)
+			{
+				RefreshItemDefinitions();
+			}
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Add Custom"))
+	{
+		if (AddItemMode == EAddItemMode::CustomSpec)
+		{
+			AddItemMode = EAddItemMode::None;
+			ItemSpecCreator.Reset();
+		}
+		else
+		{
+			AddItemMode = EAddItemMode::CustomSpec;
+			ItemSpecCreator.Reset();
+			if (CachedItemDefinitions.Num() == 0)
+			{
+				RefreshItemDefinitions();
+			}
 		}
 	}
 
-	if (bShowAddItemPanel)
+	if (AddItemMode != EAddItemMode::None)
 	{
 		DrawAddItemPanel();
 	}
@@ -494,7 +523,44 @@ void FArcDebuggerItems::DrawItemsList()
 void FArcDebuggerItems::DrawAddItemPanel()
 {
 	ImGui::Separator();
-	ImGui::Text("Add New Item");
+
+	const bool bIsCustomMode = (AddItemMode == EAddItemMode::CustomSpec);
+	ImGui::Text(bIsCustomMode ? "Add Item (Custom Spec)" : "Add Item (Quick)");
+
+	// If we are in CustomSpec mode and the spec creator is active (not in definition-selection phase),
+	// draw the spec editor instead of the definition list.
+	if (bIsCustomMode && !ItemSpecCreator.IsFinished() && !ItemSpecCreator.WasCancelled())
+	{
+		// Check if we already started editing (CurrentDefinition is set inside ItemSpecCreator)
+		// We detect this by checking if the result spec has a valid definition id.
+		const FArcItemSpec& Spec = ItemSpecCreator.GetResultSpec();
+		if (Spec.GetItemDefinitionId().IsValid())
+		{
+			// Draw the spec editor
+			ItemSpecCreator.Draw();
+
+			if (ItemSpecCreator.IsFinished())
+			{
+				// Add the item
+				if (SelectedStore.IsValid())
+				{
+					SelectedStore->AddItem(ItemSpecCreator.GetResultSpec(), FArcItemId());
+				}
+				ItemSpecCreator.Reset();
+				AddItemMode = EAddItemMode::None;
+			}
+			else if (ItemSpecCreator.WasCancelled())
+			{
+				ItemSpecCreator.Reset();
+				// Stay in CustomSpec mode but go back to definition selection
+			}
+
+			ImGui::Separator();
+			return;
+		}
+	}
+
+	// --- Definition selection list (shared by both modes) ---
 
 	ImGui::SetNextItemWidth(200.f);
 	if (ImGui::InputText("Filter##AddItemFilter", FilterBuf, IM_ARRAYSIZE(FilterBuf)))
@@ -529,15 +595,34 @@ void FArcDebuggerItems::DrawAddItemPanel()
 		ImGui::EndListBox();
 	}
 
-	if (ImGui::Button("Add Selected"))
+	if (AddItemMode == EAddItemMode::QuickAdd)
 	{
-		if (SelectedDefinitionIndex >= 0 && SelectedDefinitionIndex < CachedItemDefinitions.Num())
+		// Quick Add: create default spec and add immediately
+		if (ImGui::Button("Add Selected"))
 		{
-			UArcItemDefinition* Def = Cast<UArcItemDefinition>(CachedItemDefinitions[SelectedDefinitionIndex].GetAsset());
-			if (Def && SelectedStore.IsValid())
+			if (SelectedDefinitionIndex >= 0 && SelectedDefinitionIndex < CachedItemDefinitions.Num())
 			{
-				FArcItemSpec Spec = FArcItemSpec::NewItem(Def, 1, 1);
-				SelectedStore->AddItem(Spec, FArcItemId());
+				UArcItemDefinition* Def = Cast<UArcItemDefinition>(CachedItemDefinitions[SelectedDefinitionIndex].GetAsset());
+				if (Def && SelectedStore.IsValid())
+				{
+					FArcItemSpec Spec = FArcItemSpec::NewItem(Def, 1, 1);
+					SelectedStore->AddItem(Spec, FArcItemId());
+				}
+			}
+		}
+	}
+	else if (AddItemMode == EAddItemMode::CustomSpec)
+	{
+		// Custom Spec: open the spec editor for the selected definition
+		if (ImGui::Button("Edit Spec..."))
+		{
+			if (SelectedDefinitionIndex >= 0 && SelectedDefinitionIndex < CachedItemDefinitions.Num())
+			{
+				UArcItemDefinition* Def = Cast<UArcItemDefinition>(CachedItemDefinitions[SelectedDefinitionIndex].GetAsset());
+				if (Def)
+				{
+					ItemSpecCreator.Begin(Def);
+				}
 			}
 		}
 	}
@@ -545,7 +630,8 @@ void FArcDebuggerItems::DrawAddItemPanel()
 	ImGui::SameLine();
 	if (ImGui::Button("Close##AddPanel"))
 	{
-		bShowAddItemPanel = false;
+		AddItemMode = EAddItemMode::None;
+		ItemSpecCreator.Reset();
 	}
 
 	ImGui::Separator();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ArcItemDebuggerCreateItemSpec.h"
 #include "AssetRegistry/AssetData.h"
 #include "GameplayTagContainer.h"
 
@@ -8,6 +9,16 @@ class UArcItemDefinition;
 class UArcQuickBarComponent;
 struct FArcItemData;
 struct FArcItemId;
+
+enum class EAddItemMode : uint8
+{
+	/** Not adding — panel hidden */
+	None,
+	/** Pick definition from list, one-click add with default spec */
+	QuickAdd,
+	/** Pick definition, then edit the spec before adding */
+	CustomSpec,
+};
 
 class FArcDebuggerItems
 {
@@ -44,11 +55,14 @@ private:
 	int32 TargetStoreIndex = -1;
 
 	// Add item panel
-	bool bShowAddItemPanel = false;
+	EAddItemMode AddItemMode = EAddItemMode::None;
 	TArray<FAssetData> CachedItemDefinitions;
 	TArray<FString> CachedItemDefinitionNames;
 	int32 SelectedDefinitionIndex = 0;
 	char FilterBuf[256] = {};
+
+	// Custom spec editor (mode == CustomSpec)
+	FArcItemDebuggerItemSpecCreator ItemSpecCreator;
 
 	// Slot assignment
 	char SlotTagBuf[256] = {};
