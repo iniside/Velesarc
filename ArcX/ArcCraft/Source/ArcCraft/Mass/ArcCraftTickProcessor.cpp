@@ -33,7 +33,7 @@ UArcCraftTickProcessor::UArcCraftTickProcessor()
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = false;
 	ProcessingPhase = EMassProcessingPhase::PrePhysics;
-	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server);
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
 void UArcCraftTickProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)

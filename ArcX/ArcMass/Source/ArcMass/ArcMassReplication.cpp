@@ -7,7 +7,13 @@
 #include "MassEntityTemplateRegistry.h"
 #include "MassEntityUtils.h"
 #include "MassExecutionContext.h"
+#include "MassSignalSubsystem.h"
 #include "MassSpawnerSubsystem.h"
+#include "Engine/NetDriver.h"
+#include "Iris/ReplicationSystem/ObjectReplicationBridge.h"
+#include "Iris/ReplicationSystem/NetObjectFactoryRegistry.h"
+#include "Net/Iris/ReplicationSystem/ReplicationSystemUtil.h"
+#include "Net/Iris/ReplicationSystem/EngineReplicationBridge.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
 
@@ -193,6 +199,30 @@ void FArcMassReplicatedEntityArray::PostReplicatedChange(const TArrayView<int32>
 }
 
 // ---------------------------------------------------------------------------
+// UArcMassReplicationProxyFactory
+// ---------------------------------------------------------------------------
+
+FName UArcMassReplicationProxyFactory::GetFactoryName()
+{
+	static const FName Name(TEXT("ArcMassProxyFactory"));
+	return Name;
+}
+
+TOptional<UNetObjectFactory::FWorldInfoData> UArcMassReplicationProxyFactory::GetWorldInfo(const FWorldInfoContext& Context) const
+{
+	UArcMassReplicationProxy* Proxy = Cast<UArcMassReplicationProxy>(Context.Instance);
+	if (!Proxy)
+	{
+		return NullOpt;
+	}
+
+	FWorldInfoData Data;
+	Data.WorldLocation = Proxy->WorldPosition;
+	Data.CullDistance = Proxy->CullDistance;
+	return Data;
+}
+
+// ---------------------------------------------------------------------------
 // UArcMassReplicationProxy
 // ---------------------------------------------------------------------------
 
@@ -209,17 +239,74 @@ void UArcMassReplicationProxy::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 
 void UArcMassReplicationProxy::StartReplication(ULevel* Level)
 {
-	Adapter.InitAdapter(this);
-	Adapter.StartReplication(Level);
+	if (bIsReplicating)
+	{
+		return;
+	}
+
+	UWorld* World = Level ? Level->GetWorld() : nullptr;
+	if (!World || World->bIsTearingDown)
+	{
+		return;
+	}
+
+	if (World->GetNetDriver() && !World->GetNetDriver()->IsUsingIrisReplication())
+	{
+		return;
+	}
+
+	const FName FactoryName = UArcMassReplicationProxyFactory::GetFactoryName();
+	const UE::Net::FNetObjectFactoryId FactoryId = UE::Net::FNetObjectFactoryRegistry::GetFactoryIdFromName(FactoryName);
+	if (FactoryId == UE::Net::InvalidNetObjectFactoryId)
+	{
+		UE_LOG(LogTemp, Error, TEXT("ArcMassReplicationProxy: Factory '%s' not registered"), *FactoryName.ToString());
+		return;
+	}
+
+	UE::Net::FReplicationSystemUtil::ForEachServerBridge(World, [&](UEngineReplicationBridge* Bridge)
+	{
+		UObjectReplicationBridge::FRootObjectReplicationParams Params;
+		Params.bNeedsWorldLocationUpdate = true;
+		Params.bUseClassConfigDynamicFilter = false;
+		Params.bUseExplicitDynamicFilter = true;
+		Params.ExplicitDynamicFilterName = TEXT("Spatial");
+
+		const UE::Net::FNetRefHandle RefHandle = Bridge->StartReplicatingRootObject(this, Params, FactoryId);
+		if (RefHandle.IsValid())
+		{
+			bIsReplicating = true;
+			Bridge->AddRootObjectToContainerGroup(this, Level);
+		}
+	});
 }
 
 void UArcMassReplicationProxy::StopReplication()
 {
-	if (Adapter.IsReplicating())
+	if (!bIsReplicating)
 	{
-		Adapter.StopReplication();
+		return;
 	}
-	Adapter.DeinitAdapter();
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UE::Net::FReplicationSystemUtil::ForEachServerBridge(World, [&](UEngineReplicationBridge* Bridge)
+	{
+		UE::Net::FNetRefHandle RefHandle = Bridge->GetReplicatedRefHandle(this, UE::Net::EGetRefHandleFlags::EvenIfGarbage);
+		if (RefHandle.IsValid())
+		{
+			constexpr EEndReplicationFlags Flags =
+				EEndReplicationFlags::Destroy |
+				EEndReplicationFlags::DestroyNetHandle |
+				EEndReplicationFlags::ClearNetPushId;
+			Bridge->StopReplicatingNetRefHandle(RefHandle, Flags);
+		}
+	});
+
+	bIsReplicating = false;
 }
 
 int32 UArcMassReplicationProxy::FindItemIndex(FArcMassNetId NetId) const
@@ -284,6 +371,7 @@ void UArcMassReplicationSubsystem::Deinitialize()
 
 	NetIdToEntity.Empty();
 	EntityToNetId.Empty();
+	DirtyEntities.Empty();
 	Super::Deinitialize();
 }
 
@@ -303,6 +391,7 @@ void UArcMassReplicationSubsystem::UnregisterEntity(FArcMassNetId NetId)
 {
 	if (const FMassEntityHandle* Entity = NetIdToEntity.Find(NetId))
 	{
+		DirtyEntities.Remove(*Entity);
 		EntityToNetId.Remove(*Entity);
 		NetIdToEntity.Remove(NetId);
 	}
@@ -312,6 +401,43 @@ void UArcMassReplicationSubsystem::UnregisterEntity(FArcMassNetId NetId)
 	{
 		Proxy->RemoveEntity(NetId);
 	}
+}
+
+void UArcMassReplicationSubsystem::MarkEntityDirty(FMassEntityHandle Entity)
+{
+	DirtyEntities.Add(Entity);
+}
+
+void UArcMassReplicationSubsystem::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (DirtyEntities.Num() == 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
+	if (!SignalSubsystem)
+	{
+		return;
+	}
+
+	// Batch-signal all dirty entities at once.
+	// The flush processor will consume DirtyEntities via TakeDirtyEntities().
+	TArray<FMassEntityHandle> Entities = DirtyEntities.Array();
+	SignalSubsystem->SignalEntities(UE::ArcMass::Signals::ReplicationDirty, Entities);
+}
+
+TStatId UArcMassReplicationSubsystem::GetStatId() const
+{
+	RETURN_QUICK_DECLARE_CYCLE_STAT(UArcMassReplicationSubsystem, STATGROUP_Game);
 }
 
 FMassEntityHandle UArcMassReplicationSubsystem::FindEntity(FArcMassNetId NetId) const
@@ -340,6 +466,9 @@ UArcMassReplicationProxy* UArcMassReplicationSubsystem::GetOrCreateProxy()
 	}
 
 	Proxy = NewObject<UArcMassReplicationProxy>(this);
+	// Default: origin position, entities within CullDistance are replicated
+	Proxy->WorldPosition = FVector::ZeroVector;
+	Proxy->CullDistance = 15000.0f;
 	Proxy->StartReplication(World->PersistentLevel);
 
 	return Proxy;
@@ -465,24 +594,39 @@ void UArcMassNetIdAssignObserver::Execute(FMassEntityManager& EntityManager, FMa
 }
 
 // ---------------------------------------------------------------------------
-// UArcMassReplicationCollectProcessor
+// UArcMassReplicationFlushProcessor
+// Signal-based: only runs when entities have been marked dirty via
+// MarkEntityDirty(). Consumes the dirty set and serializes only those
+// entities into the proxy FastArray.
 // ---------------------------------------------------------------------------
 
-UArcMassReplicationCollectProcessor::UArcMassReplicationCollectProcessor()
-	: EntityQuery{*this}
+UArcMassReplicationFlushProcessor::UArcMassReplicationFlushProcessor()
 {
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::UpdateWorldFromMass);
 }
 
-void UArcMassReplicationCollectProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
+void UArcMassReplicationFlushProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)
+{
+	Super::InitializeInternal(Owner, EntityManager);
+
+	if (const UWorld* World = GetWorld())
+	{
+		if (UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>())
+		{
+			SubscribeToSignal(*SignalSubsystem, UE::ArcMass::Signals::ReplicationDirty);
+		}
+	}
+}
+
+void UArcMassReplicationFlushProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
 	EntityQuery.AddRequirement<FArcMassNetIdFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddTagRequirement<FArcMassReplicatedTag>(EMassFragmentPresence::All);
 	EntityQuery.AddConstSharedRequirement<FArcMassReplicationConfigFragment>(EMassFragmentPresence::All);
 }
 
-void UArcMassReplicationCollectProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
+void UArcMassReplicationFlushProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
 {
 	UWorld* World = EntityManager.GetWorld();
 	if (!World)
@@ -502,35 +646,38 @@ void UArcMassReplicationCollectProcessor::Execute(FMassEntityManager& EntityMana
 		return;
 	}
 
-	// Serialize each entity's replicated fragments into the proxy's FastArray.
-	// Simplest approach: full re-serialize every tick.
-	EntityQuery.ForEachEntityChunk(EntityManager, Context,
-		[&EntityManager, Proxy](FMassExecutionContext& Context)
+	// Consume the accumulated dirty set from the subsystem.
+	TSet<FMassEntityHandle> DirtyEntities = Subsystem->TakeDirtyEntities();
+	if (DirtyEntities.IsEmpty())
+	{
+		return;
+	}
+
+	// Serialize only the dirty entities into the proxy's FastArray.
+	for (const FMassEntityHandle& Entity : DirtyEntities)
+	{
+		if (!EntityManager.IsEntityValid(Entity))
 		{
-			const int32 NumEntities = Context.GetNumEntities();
-			TConstArrayView<FArcMassNetIdFragment> NetIdList = Context.GetFragmentView<FArcMassNetIdFragment>();
+			continue;
+		}
 
-			for (int32 Idx = 0; Idx < NumEntities; ++Idx)
-			{
-				const FArcMassNetIdFragment& NetIdFragment = NetIdList[Idx];
-				if (!NetIdFragment.NetId.IsValid())
-				{
-					continue;
-				}
+		const FArcMassNetIdFragment* NetIdFragment = EntityManager.GetFragmentDataPtr<FArcMassNetIdFragment>(Entity);
+		if (!NetIdFragment || !NetIdFragment->NetId.IsValid())
+		{
+			continue;
+		}
 
-				FMassEntityHandle Entity = Context.GetEntity(Idx);
-				const FArcMassReplicationConfigFragment* Config =
-					EntityManager.GetConstSharedFragmentDataPtr<FArcMassReplicationConfigFragment>(Entity);
-				if (!Config)
-				{
-					continue;
-				}
+		const FArcMassReplicationConfigFragment* Config =
+			EntityManager.GetConstSharedFragmentDataPtr<FArcMassReplicationConfigFragment>(Entity);
+		if (!Config)
+		{
+			continue;
+		}
 
-				TArray<uint8> Payload;
-				ArcMassReplicationPrivate::SerializeEntityPayload(EntityManager, Entity, *Config, Payload);
-				Proxy->SetEntityPayload(NetIdFragment.NetId, MoveTemp(Payload));
-			}
-		});
+		TArray<uint8> Payload;
+		ArcMassReplicationPrivate::SerializeEntityPayload(EntityManager, Entity, *Config, Payload);
+		Proxy->SetEntityPayload(NetIdFragment->NetId, MoveTemp(Payload));
+	}
 }
 
 // ---------------------------------------------------------------------------

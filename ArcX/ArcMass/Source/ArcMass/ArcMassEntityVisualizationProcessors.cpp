@@ -536,12 +536,15 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 						AActor* NewActor = World->SpawnActor<AActor>(ActorClassToSpawn, EntityTransform, SpawnParams);
 						MassActorFragment.SetAndUpdateHandleMap(Entity, NewActor, true);
 
-						if (UArcVisEntityComponent* VisComp = NewActor ? NewActor->FindComponentByClass<UArcVisEntityComponent>() : nullptr)
-						{
-							VisComp->NotifyVisActorCreated(Entity);
-						}
-
 						NewActor->FinishSpawning(EntityTransform);
+						if (NewActor)
+						{
+							UArcVisEntityComponent* VisComp = NewActor->FindComponentByClass<UArcVisEntityComponent>();
+							if (VisComp)
+							{
+								VisComp->NotifyVisActorCreated(Entity);
+							}	
+						}
 					}
 					Rep.bIsActorRepresentation = true;
 					Rep.CurrentISMMesh = nullptr;

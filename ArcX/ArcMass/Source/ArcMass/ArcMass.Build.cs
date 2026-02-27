@@ -55,7 +55,8 @@ public class ArcMass : ModuleRules
 				"PhysicsCore",
 				"Chaos",
 				"InputCore",
-				"NetCore"
+				"NetCore",
+				"IrisCore"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
