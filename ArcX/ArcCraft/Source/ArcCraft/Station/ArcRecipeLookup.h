@@ -26,7 +26,7 @@
 #include "GameplayTagContainer.h"
 
 class UArcRecipeDefinition;
-struct FArcItemData;
+struct FArcItemSpec;
 
 /**
  * Stateless utility class for discovering recipes via the asset registry.
@@ -70,7 +70,7 @@ public:
 	 */
 	static UArcRecipeDefinition* FindBestRecipeForIngredients(
 		const TArray<FAssetData>& CandidateRecipes,
-		const TArray<const FArcItemData*>& AvailableItems,
+		const TArray<FArcItemSpec>& AvailableItems,
 		const FGameplayTagContainer& StationTags,
 		float& OutMatchScore);
 };

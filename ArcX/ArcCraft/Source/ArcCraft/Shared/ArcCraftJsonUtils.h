@@ -41,6 +41,19 @@ struct FGameplayTagQueryExpression;
 namespace ArcCraftJsonUtils
 {
 	// -------------------------------------------------------------------
+	// Schema Path Resolution
+	// -------------------------------------------------------------------
+
+	/**
+	 * Resolve a schema filename to its absolute path inside the ArcCraft plugin's Schemas directory.
+	 * Uses IPluginManager to locate the ArcCraft plugin regardless of where the calling code lives.
+	 *
+	 * @param SchemaFileName  Schema filename (e.g., "recipe-definition.schema.json").
+	 * @return Absolute filesystem path to the schema file, or empty string if ArcCraft plugin not found.
+	 */
+	ARCCRAFT_API FString GetSchemaFilePath(const FString& SchemaFileName);
+
+	// -------------------------------------------------------------------
 	// Parsing (JSON -> UE)
 	// -------------------------------------------------------------------
 

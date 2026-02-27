@@ -70,12 +70,7 @@ bool FArcMaterialCraftEvaluator::DoesRuleMatch(
 		{
 			CombinedTags.AppendTags(SlotTags);
 		}
-		
-		if (CombinedTags.IsEmpty())
-		{
-			return true;
-		}
-		
+				
 		if (!Rule.TagQuery.Matches(CombinedTags))
 		{
 			return false;

@@ -25,6 +25,7 @@
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
 #include "ArcCraft/Recipe/ArcCraftOutputBuilder.h"
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
+#include "ArcCraft/Recipe/ArcRecipeIngredient.h"
 
 UArcCraftTickProcessor::UArcCraftTickProcessor()
 	: EntityQuery{*this}
@@ -107,9 +108,18 @@ void UArcCraftTickProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 
 				if (Entry.ElapsedTickTime >= CraftTime)
 				{
-					// Build output using the static utility
-					FArcItemSpec OutputSpec = FArcCraftOutputBuilder::BuildFromSpecs(
-						Entry.Recipe, Input.InputItems);
+					// Compute quality multipliers from input items (default 1.0 per slot)
+					const int32 NumIngredients = Entry.Recipe->Ingredients.Num();
+					TArray<float> QualityMults;
+					QualityMults.SetNum(NumIngredients);
+					for (int32 i = 0; i < NumIngredients; ++i)
+					{
+						QualityMults[i] = 1.0f;
+					}
+
+					// Build output using the unified builder
+					FArcItemSpec OutputSpec = FArcCraftOutputBuilder::Build(
+						Entry.Recipe, Input.InputItems, QualityMults, 1.0f);
 
 					Output.OutputItems.Add(MoveTemp(OutputSpec));
 

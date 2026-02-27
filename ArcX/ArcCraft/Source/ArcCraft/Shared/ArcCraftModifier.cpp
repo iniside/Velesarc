@@ -21,10 +21,14 @@
 
 #include "ArcCraft/Shared/ArcCraftModifier.h"
 
+#include "GameplayEffect.h"
+#include "Abilities/GameplayAbility.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
+#include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
+#include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 
 // -------------------------------------------------------------------
 // FArcCraftModifier (base)
@@ -56,11 +60,6 @@ void FArcCraftModifier_Stats::Apply(
 	const FGameplayTagContainer& AggregatedIngredientTags,
 	float EffectiveQuality) const
 {
-	if (BaseStats.Num() == 0)
-	{
-		return;
-	}
-
 	// Quality gate
 	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
 	{
@@ -83,12 +82,9 @@ void FArcCraftModifier_Stats::Apply(
 
 	const float QualityScale = 1.0f + (EffectiveQuality - 1.0f) * QualityScalingFactor;
 
-	for (const FArcItemAttributeStat& BaseStat : BaseStats)
-	{
-		FArcItemAttributeStat ScaledStat = BaseStat;
-		ScaledStat.SetValue(BaseStat.Value.GetValue() * QualityScale);
-		StatsFragment->DefaultStats.Add(ScaledStat);
-	}
+	FArcItemAttributeStat ScaledStat = BaseStat;
+	ScaledStat.SetValue(BaseStat.Value.GetValue() * QualityScale);
+	StatsFragment->DefaultStats.Add(ScaledStat);
 
 	if (bCreatedNew)
 	{
@@ -105,7 +101,7 @@ void FArcCraftModifier_Abilities::Apply(
 	const FGameplayTagContainer& AggregatedIngredientTags,
 	float EffectiveQuality) const
 {
-	if (AbilitiesToGrant.Num() == 0)
+	if (!AbilityToGrant.GrantedAbility)
 	{
 		return;
 	}
@@ -123,7 +119,7 @@ void FArcCraftModifier_Abilities::Apply(
 	}
 
 	FArcItemFragment_GrantedAbilities* AbilitiesFragment = new FArcItemFragment_GrantedAbilities();
-	AbilitiesFragment->Abilities = AbilitiesToGrant;
+	AbilitiesFragment->Abilities.Add(AbilityToGrant);
 	OutItemSpec.AddInstanceData(AbilitiesFragment);
 }
 
@@ -136,7 +132,7 @@ void FArcCraftModifier_Effects::Apply(
 	const FGameplayTagContainer& AggregatedIngredientTags,
 	float EffectiveQuality) const
 {
-	if (EffectsToGrant.Num() == 0)
+	if (!EffectToGrant)
 	{
 		return;
 	}
@@ -154,6 +150,152 @@ void FArcCraftModifier_Effects::Apply(
 	}
 
 	FArcItemFragment_GrantedGameplayEffects* EffectsFragment = new FArcItemFragment_GrantedGameplayEffects();
-	EffectsFragment->Effects = EffectsToGrant;
+	EffectsFragment->Effects.Add(EffectToGrant);
 	OutItemSpec.AddInstanceData(EffectsFragment);
+}
+
+// -------------------------------------------------------------------
+// FArcCraftModifier_RandomPool
+// -------------------------------------------------------------------
+
+void FArcCraftModifier_RandomPool::Apply(
+	FArcItemSpec& OutItemSpec,
+	const FGameplayTagContainer& AggregatedIngredientTags,
+	float EffectiveQuality) const
+{
+	// Quality gate
+	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
+	{
+		return;
+	}
+
+	// Trigger tag check
+	if (!MatchesTriggerTags(AggregatedIngredientTags))
+	{
+		return;
+	}
+
+	// 1. Load pool definition
+	UArcRandomPoolDefinition* PoolDef = PoolDefinition.LoadSynchronous();
+	if (!PoolDef || PoolDef->Entries.Num() == 0)
+	{
+		return;
+	}
+
+	// 2. Get the selection mode
+	const FArcRandomPoolSelectionMode* Mode = SelectionMode.GetPtr<FArcRandomPoolSelectionMode>();
+	if (!Mode)
+	{
+		return;
+	}
+
+	// 3. Filter eligible entries and compute weights
+	TArray<int32> EligibleIndices;
+	TArray<float> EffectiveWeights;
+	EligibleIndices.Reserve(PoolDef->Entries.Num());
+	EffectiveWeights.Reserve(PoolDef->Entries.Num());
+
+	for (int32 Idx = 0; Idx < PoolDef->Entries.Num(); ++Idx)
+	{
+		const FArcRandomPoolEntry& Entry = PoolDef->Entries[Idx];
+
+		// Eligibility: quality threshold
+		if (Entry.MinQualityThreshold > 0.0f && EffectiveQuality < Entry.MinQualityThreshold)
+		{
+			continue;
+		}
+
+		// Eligibility: required ingredient tags
+		if (!Entry.RequiredIngredientTags.IsEmpty() &&
+			!AggregatedIngredientTags.HasAll(Entry.RequiredIngredientTags))
+		{
+			continue;
+		}
+
+		// Eligibility: deny tags
+		if (!Entry.DenyIngredientTags.IsEmpty() &&
+			AggregatedIngredientTags.HasAny(Entry.DenyIngredientTags))
+		{
+			continue;
+		}
+
+		// Compute effective weight
+		float EntryWeight = Entry.BaseWeight;
+		float Multiplier = 1.0f;
+
+		for (const FArcRandomPoolWeightModifier& WeightMod : Entry.WeightModifiers)
+		{
+			if (!WeightMod.RequiredTags.IsEmpty() &&
+				AggregatedIngredientTags.HasAll(WeightMod.RequiredTags))
+			{
+				EntryWeight += WeightMod.BonusWeight;
+				Multiplier *= WeightMod.WeightMultiplier;
+			}
+		}
+
+		EntryWeight *= Multiplier;
+		EntryWeight *= (1.0f + (EffectiveQuality - 1.0f) * Entry.QualityWeightScaling);
+		EntryWeight = FMath::Max(EntryWeight, 0.0f);
+
+		EligibleIndices.Add(Idx);
+		EffectiveWeights.Add(EntryWeight);
+	}
+
+	if (EligibleIndices.Num() == 0)
+	{
+		return;
+	}
+
+	// 4. Delegate to selection mode
+	FArcRandomPoolSelectionContext SelectionContext
+	{
+		PoolDef->Entries,
+		EligibleIndices,
+		EffectiveWeights,
+		EffectiveQuality
+	};
+
+	TArray<int32> SelectedIndices;
+	Mode->Select(SelectionContext, SelectedIndices);
+
+	// 5. Apply selected entries' sub-modifiers
+	for (const int32 SelectedIdx : SelectedIndices)
+	{
+		if (!PoolDef->Entries.IsValidIndex(SelectedIdx))
+		{
+			continue;
+		}
+
+		const FArcRandomPoolEntry& Entry = PoolDef->Entries[SelectedIdx];
+
+		// Compute effective quality for this entry's sub-modifiers
+		float EntryEffQ;
+		if (Entry.bScaleByQuality)
+		{
+			EntryEffQ = EffectiveQuality * Entry.ValueScale + Entry.ValueSkew;
+		}
+		else
+		{
+			EntryEffQ = Entry.ValueScale + Entry.ValueSkew;
+		}
+
+		// Apply tag-conditional value skew rules
+		for (const FArcRandomPoolValueSkew& SkewRule : Entry.ValueSkewRules)
+		{
+			if (!SkewRule.RequiredTags.IsEmpty() &&
+				AggregatedIngredientTags.HasAll(SkewRule.RequiredTags))
+			{
+				EntryEffQ = EntryEffQ * SkewRule.ValueScale + SkewRule.ValueOffset;
+			}
+		}
+
+		for (const FInstancedStruct& ModifierStruct : Entry.Modifiers)
+		{
+			const FArcCraftModifier* SubModifier = ModifierStruct.GetPtr<FArcCraftModifier>();
+			if (SubModifier)
+			{
+				SubModifier->Apply(OutItemSpec, AggregatedIngredientTags, EntryEffQ);
+			}
+		}
+	}
 }

@@ -27,8 +27,6 @@
 
 #define LOCTEXT_NAMESPACE "FArcCraftModule"
 
-FArcCraftDebugWindow FArcCraftModule::GArcCraftDebugWindow = FArcCraftDebugWindow();
-
 void FArcCraftModule::StartupModule()
 {
 	// Register UArcRecipeDefinition as a primary asset type so it can be discovered by the asset manager.
@@ -43,18 +41,6 @@ void FArcCraftModule::StartupModule()
 			false /* bIsEditorOnly */,
 			false /* bForceSynchronousScan */);
 	}
-
-#if WITH_EDITOR
-	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstace)
-		{
-			FArcCraftModule::GArcCraftDebugWindow.World = GameInstace->GetWorld();
-		});
-
-	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstace)
-		{
-			FArcCraftModule::GArcCraftDebugWindow.World = nullptr;
-		});
-#endif
 }
 
 void FArcCraftModule::ShutdownModule()

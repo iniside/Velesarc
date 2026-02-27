@@ -26,69 +26,15 @@
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
 #include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
+#include "ArcCraft/Recipe/ArcRecipeOutput.h"
 #include "ArcCraft/Shared/ArcCraftModifier.h"
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 
-void FArcRecipeOutputModifier_MaterialProperties::ApplyToOutput(
-	FArcItemSpec& OutItemSpec,
-	const TArray<const FArcItemData*>& ConsumedIngredients,
-	const TArray<float>& IngredientQualityMults,
-	float AverageQuality) const
-{
-	// 1. Load property table
-	UArcMaterialPropertyTable* Table = PropertyTable.LoadSynchronous();
-	if (!Table || Table->Rules.Num() == 0)
-	{
-		return;
-	}
-
-	// 2. Build material craft context (per-slot tags, not aggregated)
-	FArcMaterialCraftContext Context = FArcMaterialCraftContext::Build(
-		ConsumedIngredients,
-		IngredientQualityMults,
-		AverageQuality,
-		RecipeTags,
-		BaseIngredientCount,
-		ExtraCraftTimeBonus);
-
-	// 3. Compute separated quality and weight bonus
-	FArcMaterialCraftEvaluator::ComputeQualityAndWeightBonus(Table, Context);
-
-	// 4. Evaluate rules and select bands
-	TArray<FArcMaterialRuleEvaluation> Evaluations = FArcMaterialCraftEvaluator::EvaluateRules(Table, Context);
-
-	if (Evaluations.Num() == 0)
-	{
-		return;
-	}
-
-	// 5. Aggregate ingredient AssetTags for terminal modifier application
-	FGameplayTagContainer AggregatedTags;
-	for (const FArcItemData* Ingredient : ConsumedIngredients)
-	{
-		if (Ingredient)
-		{
-			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient))
-			{
-				AggregatedTags.AppendTags(TagsFrag->AssetTags);
-			}
-		}
-	}
-
-	// 6. Apply evaluated band modifiers to the output item
-	FArcMaterialCraftEvaluator::ApplyEvaluations(
-		Evaluations,
-		OutItemSpec,
-		AggregatedTags,
-		Context.BandEligibilityQuality);
-}
-
 TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_MaterialProperties::Evaluate(
-	const FArcItemSpec& BaseSpec,
-	const TArray<const FArcItemData*>& ConsumedIngredients,
+	const TArray<FArcItemSpec>& ConsumedIngredients,
 	const TArray<float>& IngredientQualityMults,
 	float AverageQuality) const
 {
@@ -123,18 +69,18 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_MaterialProperties::Ev
 
 	// 5. Aggregate ingredient AssetTags for terminal modifier application
 	FGameplayTagContainer AggregatedTags;
-	for (const FArcItemData* Ingredient : ConsumedIngredients)
+	for (const FArcItemSpec& Ingredient : ConsumedIngredients)
 	{
-		if (Ingredient)
+		if (Ingredient.GetItemDefinition())
 		{
-			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient))
+			if (const FArcItemFragment_Tags* TagsFrag = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(const_cast<UArcItemDefinition*>(Ingredient.GetItemDefinition())))
 			{
 				AggregatedTags.AppendTags(TagsFrag->AssetTags);
 			}
 		}
 	}
 
-	// 6. Create one pending modifier per rule evaluation
+	// 6. Create pending modifiers per rule evaluation — one per atomic result
 	const float BandEligibilityQuality = Context.BandEligibilityQuality;
 
 	for (const FArcMaterialRuleEvaluation& Eval : Evaluations)
@@ -144,42 +90,64 @@ TArray<FArcCraftPendingModifier> FArcRecipeOutputModifier_MaterialProperties::Ev
 			continue;
 		}
 
-		FArcCraftPendingModifier Pending;
-
 		// Determine slot tag: use the rule's first OutputTag if available,
 		// otherwise fall back to this modifier's own SlotTag.
+		FGameplayTag EvalSlotTag = SlotTag;
 		if (Eval.Rule && !Eval.Rule->OutputTags.IsEmpty())
 		{
-			// Use the first OutputTag as the slot routing tag
 			auto TagIt = Eval.Rule->OutputTags.CreateConstIterator();
-			Pending.SlotTag = *TagIt;
-		}
-		else
-		{
-			Pending.SlotTag = SlotTag;
+			EvalSlotTag = *TagIt;
 		}
 
-		Pending.EffectiveWeight = Eval.EffectiveWeight;
-
-		// Capture the band's modifiers and aggregated tags for deferred application
-		TArray<FInstancedStruct> CapturedBandModifiers = Eval.Band->Modifiers;
-		FGameplayTagContainer CapturedTags = AggregatedTags;
-
-		Pending.ApplyFn = [CapturedBandModifiers = MoveTemp(CapturedBandModifiers),
-			CapturedTags = MoveTemp(CapturedTags),
-			BandEligibilityQuality](FArcItemSpec& OutSpec)
+		// Convert each band modifier to an atomic result
+		for (const FInstancedStruct& ModStruct : Eval.Band->Modifiers)
 		{
-			for (const FInstancedStruct& ModStruct : CapturedBandModifiers)
+			const FArcCraftModifier* BaseMod = ModStruct.GetPtr<FArcCraftModifier>();
+			if (!BaseMod)
 			{
-				const FArcCraftModifier* SubMod = ModStruct.GetPtr<FArcCraftModifier>();
-				if (SubMod)
-				{
-					SubMod->Apply(OutSpec, CapturedTags, BandEligibilityQuality);
-				}
+				continue;
 			}
-		};
 
-		Result.Add(MoveTemp(Pending));
+			// Eligibility checks on terminal modifier
+			if (BaseMod->MinQualityThreshold > 0.0f && BandEligibilityQuality < BaseMod->MinQualityThreshold)
+			{
+				continue;
+			}
+			if (!BaseMod->MatchesTriggerTags(AggregatedTags))
+			{
+				continue;
+			}
+
+			FArcCraftModifierResult ModResult;
+
+			if (const FArcCraftModifier_Stats* StatMod = ModStruct.GetPtr<FArcCraftModifier_Stats>())
+			{
+				const float QScale = 1.0f + (BandEligibilityQuality - 1.0f) * StatMod->QualityScalingFactor;
+				ModResult.Type = EArcCraftModifierResultType::Stat;
+				ModResult.Stat = StatMod->BaseStat;
+				ModResult.Stat.SetValue(StatMod->BaseStat.Value.GetValue() * QScale);
+			}
+			else if (const FArcCraftModifier_Abilities* AbilMod = ModStruct.GetPtr<FArcCraftModifier_Abilities>())
+			{
+				ModResult.Type = EArcCraftModifierResultType::Ability;
+				ModResult.Ability = AbilMod->AbilityToGrant;
+			}
+			else if (const FArcCraftModifier_Effects* EffMod = ModStruct.GetPtr<FArcCraftModifier_Effects>())
+			{
+				ModResult.Type = EArcCraftModifierResultType::Effect;
+				ModResult.Effect = EffMod->EffectToGrant;
+			}
+			else
+			{
+				continue; // Unknown modifier type — skip
+			}
+
+			FArcCraftPendingModifier Pending;
+			Pending.SlotTag = EvalSlotTag;
+			Pending.EffectiveWeight = Eval.EffectiveWeight;
+			Pending.Result = MoveTemp(ModResult);
+			Result.Add(MoveTemp(Pending));
+		}
 	}
 
 	return Result;

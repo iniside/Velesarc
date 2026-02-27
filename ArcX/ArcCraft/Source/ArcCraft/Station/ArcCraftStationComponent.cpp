@@ -23,10 +23,11 @@
 
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
+#include "ArcCraft/Mass/ArcCraftMassFragments.h"
 #include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcRecipeLookup.h"
-#include "Items/ArcItemData.h"
-#include "Items/ArcItemsHelpers.h"
+#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "Net/UnrealNetwork.h"
 #include "ArcCraft/Recipe/ArcCraftOutputBuilder.h"
@@ -134,7 +135,7 @@ bool UArcCraftStationComponent::QueueRecipe(
 	}
 
 	// Consume ingredients
-	TArray<const FArcItemData*> MatchedItems;
+	TArray<FArcItemSpec> MatchedItems;
 	TArray<float> QualityMults;
 	if (!Source->ConsumeIngredients(
 		this, Recipe, Instigator,
@@ -166,12 +167,32 @@ bool UArcCraftStationComponent::QueueRecipe(
 	NewEntry.ElapsedTickTime = 0.0f;
 	NewEntry.TimeMode = TimeMode;
 
-	const int32 Idx = CraftQueue.Entries.Add(NewEntry);
-
 	CurrentInstigator = Instigator;
 
-	// Enable tick for AutoTick mode
-	if (TimeMode == EArcCraftStationTimeMode::AutoTick)
+	// Write to entity queue fragment if entity-backed
+	const bool bIsEntityBacked = CachedVisComponent.IsValid();
+	if (bIsEntityBacked)
+	{
+		FMassEntityManager* EntityMgr = GetEntityManager();
+		const FMassEntityHandle Entity = GetEntityHandle();
+		if (EntityMgr && Entity.IsValid() && EntityMgr->IsEntityValid(Entity))
+		{
+			FArcCraftQueueFragment* QueueFrag = EntityMgr->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
+			if (QueueFrag)
+			{
+				const int32 Idx = QueueFrag->Entries.Add(NewEntry);
+				QueueFrag->ActiveEntryIndex = INDEX_NONE; // Re-evaluate
+				OnQueueChanged.Broadcast(this, QueueFrag->Entries[Idx]);
+				return true;
+			}
+		}
+	}
+
+	const int32 Idx = CraftQueue.Entries.Add(NewEntry);
+	
+	// Enable actor tick for AutoTick mode, but only for non-entity-backed stations.
+	// Entity-backed AutoTick stations are processed by UArcCraftTickProcessor.
+	if (TimeMode == EArcCraftStationTimeMode::AutoTick && !bIsEntityBacked)
 	{
 		PrimaryComponentTick.SetTickFunctionEnable(true);
 	}
@@ -201,7 +222,7 @@ UArcRecipeDefinition* UArcCraftStationComponent::DiscoverAndQueueRecipe(UObject*
 	}
 
 	// Get available items
-	TArray<const FArcItemData*> AvailableItems = Source->GetAvailableItems(this, Instigator);
+	TArray<FArcItemSpec> AvailableItems = Source->GetAvailableItems(this, Instigator);
 	if (AvailableItems.Num() == 0)
 	{
 		return nullptr;
@@ -209,14 +230,18 @@ UArcRecipeDefinition* UArcCraftStationComponent::DiscoverAndQueueRecipe(UObject*
 
 	// Build union of all available item tags (for coarse filtering)
 	FGameplayTagContainer AvailableItemTags;
-	for (const FArcItemData* Item : AvailableItems)
+	for (const FArcItemSpec& Item : AvailableItems)
 	{
-		if (Item)
+		if (Item.GetItemDefinitionId().IsValid())
 		{
-			const FArcItemFragment_Tags* TagsFragment = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Item);
-			if (TagsFragment)
+			const UArcItemDefinition* Def = Item.GetItemDefinition();
+			if (Def)
 			{
-				AvailableItemTags.AppendTags(TagsFragment->ItemTags);
+				const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
+				if (TagsFragment)
+				{
+					AvailableItemTags.AppendTags(TagsFragment->ItemTags);
+				}
 			}
 		}
 	}
@@ -270,6 +295,29 @@ bool UArcCraftStationComponent::CancelQueueEntry(const FGuid& EntryId)
 				ActiveEntryIndex = INDEX_NONE;
 			}
 
+			// Also remove from entity queue fragment
+			if (CachedVisComponent.IsValid())
+			{
+				FMassEntityManager* EntityMgr = GetEntityManager();
+				const FMassEntityHandle Entity = GetEntityHandle();
+				if (EntityMgr && Entity.IsValid() && EntityMgr->IsEntityValid(Entity))
+				{
+					FArcCraftQueueFragment* QueueFrag = EntityMgr->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
+					if (QueueFrag)
+					{
+						for (int32 EntityIdx = 0; EntityIdx < QueueFrag->Entries.Num(); ++EntityIdx)
+						{
+							if (QueueFrag->Entries[EntityIdx].EntryId == EntryId)
+							{
+								QueueFrag->Entries.RemoveAt(EntityIdx);
+								QueueFrag->ActiveEntryIndex = INDEX_NONE;
+								break;
+							}
+						}
+					}
+				}
+			}
+
 			OnQueueChanged.Broadcast(this, RemovedEntry);
 
 			if (CraftQueue.Entries.IsEmpty())
@@ -295,6 +343,16 @@ bool UArcCraftStationComponent::DepositItem(const FArcItemSpec& Item, UObject* I
 		return false;
 	}
 	return Source->DepositItem(this, Item, Instigator);
+}
+
+// -------------------------------------------------------------------
+// Public API: Set queue from entity
+// -------------------------------------------------------------------
+
+void UArcCraftStationComponent::SetQueueFromEntity(const TArray<FArcCraftQueueEntry>& InEntries)
+{
+	CraftQueue.Entries = InEntries;
+	ActiveEntryIndex = INDEX_NONE;
 }
 
 // -------------------------------------------------------------------
@@ -427,6 +485,24 @@ bool UArcCraftStationComponent::CanCraftRecipe(
 
 const TArray<FArcCraftQueueEntry>& UArcCraftStationComponent::GetQueue() const
 {
+	return CraftQueue.Entries;
+}
+
+TArray<FArcCraftQueueEntry> UArcCraftStationComponent::GetLiveQueue() const
+{
+	if (CachedVisComponent.IsValid())
+	{
+		FMassEntityManager* EntityMgr = GetEntityManager();
+		const FMassEntityHandle Entity = GetEntityHandle();
+		if (EntityMgr && Entity.IsValid() && EntityMgr->IsEntityValid(Entity))
+		{
+			const FArcCraftQueueFragment* QueueFrag = EntityMgr->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
+			if (QueueFrag)
+			{
+				return QueueFrag->Entries;
+			}
+		}
+	}
 	return CraftQueue.Entries;
 }
 
@@ -623,7 +699,7 @@ FArcItemSpec UArcCraftStationComponent::BuildOutputSpec(
 	// This is a known simplification — for now, use default quality (1.0) for all slots.
 	const int32 NumIngredients = Recipe->Ingredients.Num();
 
-	TArray<const FArcItemData*> MatchedIngredients;
+	TArray<FArcItemSpec> MatchedIngredients;
 	MatchedIngredients.SetNum(NumIngredients);
 
 	TArray<float> QualityMultipliers;
@@ -631,7 +707,6 @@ FArcItemSpec UArcCraftStationComponent::BuildOutputSpec(
 
 	for (int32 i = 0; i < NumIngredients; ++i)
 	{
-		MatchedIngredients[i] = nullptr;
 		QualityMultipliers[i] = 1.0f;
 	}
 

@@ -26,7 +26,7 @@
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 
 FArcMaterialCraftContext FArcMaterialCraftContext::Build(
-	const TArray<const FArcItemData*>& ConsumedIngredients,
+	const TArray<FArcItemSpec>& ConsumedIngredients,
 	const TArray<float>& QualityMultipliers,
 	float InAverageQuality,
 	const FGameplayTagContainer& InRecipeTags,
@@ -36,16 +36,18 @@ FArcMaterialCraftContext FArcMaterialCraftContext::Build(
 	FArcMaterialCraftContext Context;
 
 	// Build per-slot tags using FArcItemFragment_Tags::ItemTags (not GetItemAggregatedTags)
-	Context.PerSlotTags.Reserve(ConsumedIngredients.Num());
+	Context.PerSlotTags.SetNum(ConsumedIngredients.Num());
 	for (int32 Idx = 0; Idx < ConsumedIngredients.Num(); ++Idx)
 	{
-		if (const FArcItemData* Ingredient = ConsumedIngredients[Idx])
+		const FArcItemSpec& Ingredient = ConsumedIngredients[Idx];
+		const UArcItemDefinition* ItemDef = Ingredient.GetItemDefinition();
+		if (ItemDef)
 		{
 			const FArcItemFragment_Tags* TagsFragment =
-				ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(Ingredient);
+				ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(const_cast<UArcItemDefinition*>(ItemDef));
 			if (TagsFragment)
 			{
-				Context.PerSlotTags[Idx] = TagsFragment->ItemTags;
+				Context.PerSlotTags[Idx] = (TagsFragment->ItemTags);
 			}
 		}
 	}

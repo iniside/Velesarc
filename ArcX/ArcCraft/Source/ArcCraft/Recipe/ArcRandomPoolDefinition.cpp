@@ -82,7 +82,7 @@ void UArcRandomPoolDefinition::ExportToJson()
 
 	nlohmann::json JsonObj;
 
-	JsonObj["$schema"] = "../../Schemas/random-pool-definition.schema.json";
+	JsonObj["$schema"] = TCHAR_TO_UTF8(*ArcCraftJsonUtils::GetSchemaFilePath(TEXT("random-pool-definition.schema.json")));
 	JsonObj["$type"] = "ArcRandomPoolDefinition";
 	JsonObj["name"] = TCHAR_TO_UTF8(*PoolName.ToString());
 

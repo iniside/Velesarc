@@ -51,47 +51,48 @@ const FName UArcRecipeDefinition::IngredientCountName = TEXT("IngredientCount");
 // -------------------------------------------------------------------
 // Helper: serialize FGameplayTagContainer → comma-separated string
 // -------------------------------------------------------------------
-
-static FString SerializeTagContainer(const FGameplayTagContainer& Tags)
+namespace Arc::RecipeDefinition
 {
-	FString Result;
-	int32 Num = Tags.Num();
-	int32 Idx = 0;
-	for (const FGameplayTag& Tag : Tags)
+	static FString SerializeTagContainer(const FGameplayTagContainer& Tags)
 	{
-		Result += Tag.ToString();
-		Idx++;
-		if (Num > Idx)
+		FString Result;
+		int32 Num = Tags.Num();
+		int32 Idx = 0;
+		for (const FGameplayTag& Tag : Tags)
 		{
-			Result += TEXT(",");
+			Result += Tag.ToString();
+			Idx++;
+			if (Num > Idx)
+			{
+				Result += TEXT(",");
+			}
 		}
+		return Result;
 	}
-	return Result;
-}
 
-static FGameplayTagContainer DeserializeTagContainer(const FString& Str)
-{
-	FGameplayTagContainer Container;
-	if (Str.IsEmpty())
+	static FGameplayTagContainer DeserializeTagContainer(const FString& Str)
 	{
+		FGameplayTagContainer Container;
+		if (Str.IsEmpty())
+		{
+			return Container;
+		}
+
+		TArray<FString> TagStrings;
+		Str.ParseIntoArray(TagStrings, TEXT(","), true);
+
+		for (const FString& TagStr : TagStrings)
+		{
+			FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
+			if (Tag.IsValid())
+			{
+				Container.AddTag(Tag);
+			}
+		}
+
 		return Container;
 	}
-
-	TArray<FString> TagStrings;
-	Str.ParseIntoArray(TagStrings, TEXT(","), true);
-
-	for (const FString& TagStr : TagStrings)
-	{
-		FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
-		if (Tag.IsValid())
-		{
-			Container.AddTag(Tag);
-		}
-	}
-
-	return Container;
 }
-
 // -------------------------------------------------------------------
 // PostInitProperties — create AssetImportData subobject
 // -------------------------------------------------------------------
@@ -131,13 +132,13 @@ void UArcRecipeDefinition::GetAssetRegistryTags(FAssetRegistryTagsContext Contex
 	// Recipe tags
 	Context.AddTag(UObject::FAssetRegistryTag(
 		RecipeTagsName,
-		SerializeTagContainer(RecipeTags),
+		Arc::RecipeDefinition::SerializeTagContainer(RecipeTags),
 		UObject::FAssetRegistryTag::TT_Hidden));
 
 	// Required station tags
 	Context.AddTag(UObject::FAssetRegistryTag(
 		RequiredStationTagsName,
-		SerializeTagContainer(RequiredStationTags),
+		Arc::RecipeDefinition::SerializeTagContainer(RequiredStationTags),
 		UObject::FAssetRegistryTag::TT_Hidden));
 
 	// Ingredient tags — union of all tag-based ingredient RequiredTags
@@ -164,7 +165,7 @@ void UArcRecipeDefinition::GetAssetRegistryTags(FAssetRegistryTagsContext Contex
 
 	Context.AddTag(UObject::FAssetRegistryTag(
 		IngredientTagsName,
-		SerializeTagContainer(AllIngredientTags),
+		Arc::RecipeDefinition::SerializeTagContainer(AllIngredientTags),
 		UObject::FAssetRegistryTag::TT_Hidden));
 
 	// Ingredient item definitions
@@ -205,7 +206,7 @@ FGameplayTagContainer UArcRecipeDefinition::GetTagsFromAssetData(const FAssetDat
 	FString TagString;
 	if (AssetData.GetTagValue(TagKey, TagString))
 	{
-		return DeserializeTagContainer(TagString);
+		return Arc::RecipeDefinition::DeserializeTagContainer(TagString);
 	}
 	return FGameplayTagContainer();
 }
@@ -312,7 +313,7 @@ void UArcRecipeDefinition::ExportToJson()
 
 	nlohmann::json JsonObj;
 
-	JsonObj["$schema"] = "../../Schemas/recipe-definition.schema.json";
+	JsonObj["$schema"] = TCHAR_TO_UTF8(*ArcCraftJsonUtils::GetSchemaFilePath(TEXT("recipe-definition.schema.json")));
 	JsonObj["$type"] = "ArcRecipeDefinition";
 
 	JsonObj["id"] = TCHAR_TO_UTF8(*RecipeId.ToString());

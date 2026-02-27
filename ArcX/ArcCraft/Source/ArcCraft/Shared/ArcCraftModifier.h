@@ -25,12 +25,14 @@
 #include "GameplayTagContainer.h"
 #include "Items/ArcItemTypes.h"
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Templates/SubclassOf.h"
 
 #include "ArcCraftModifier.generated.h"
 
 struct FArcItemSpec;
 class UGameplayEffect;
+class UArcRandomPoolDefinition;
 
 /**
  * Base struct for terminal craft modifiers.
@@ -88,7 +90,7 @@ public:
 };
 
 /**
- * Adds stats to the output item, scaled by quality.
+ * Adds a stat to the output item, scaled by quality.
  * Formula: FinalValue = BaseValue * (1.0 + (EffectiveQuality - 1.0) * QualityScalingFactor)
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Craft Stat Modifier"))
@@ -97,9 +99,9 @@ struct ARCCRAFT_API FArcCraftModifier_Stats : public FArcCraftModifier
 	GENERATED_BODY()
 
 public:
-	/** Base stats to add to the output item. */
+	/** Base stat to add to the output item. */
 	UPROPERTY(EditAnywhere, Category = "Stats")
-	TArray<FArcItemAttributeStat> BaseStats;
+	FArcItemAttributeStat BaseStat;
 
 	virtual void Apply(
 		FArcItemSpec& OutItemSpec,
@@ -108,7 +110,7 @@ public:
 };
 
 /**
- * Grants abilities on the output item when trigger conditions are met.
+ * Grants an ability on the output item when trigger conditions are met.
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Craft Ability Modifier"))
 struct ARCCRAFT_API FArcCraftModifier_Abilities : public FArcCraftModifier
@@ -116,9 +118,9 @@ struct ARCCRAFT_API FArcCraftModifier_Abilities : public FArcCraftModifier
 	GENERATED_BODY()
 
 public:
-	/** Abilities to grant when trigger conditions are met. */
+	/** Ability to grant when trigger conditions are met. */
 	UPROPERTY(EditAnywhere, Category = "Abilities")
-	TArray<FArcAbilityEntry> AbilitiesToGrant;
+	FArcAbilityEntry AbilityToGrant;
 
 	virtual void Apply(
 		FArcItemSpec& OutItemSpec,
@@ -127,7 +129,7 @@ public:
 };
 
 /**
- * Grants gameplay effects on the output item when trigger conditions and quality threshold are met.
+ * Grants a gameplay effect on the output item when trigger conditions and quality threshold are met.
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Craft Effect Modifier"))
 struct ARCCRAFT_API FArcCraftModifier_Effects : public FArcCraftModifier
@@ -135,9 +137,39 @@ struct ARCCRAFT_API FArcCraftModifier_Effects : public FArcCraftModifier
 	GENERATED_BODY()
 
 public:
-	/** Gameplay effects to grant when trigger conditions are met. */
+	/** Gameplay effect to grant when trigger conditions are met. */
 	UPROPERTY(EditAnywhere, Category = "Effects")
-	TArray<TSubclassOf<UGameplayEffect>> EffectsToGrant;
+	TSubclassOf<UGameplayEffect> EffectToGrant;
+
+	virtual void Apply(
+		FArcItemSpec& OutItemSpec,
+		const FGameplayTagContainer& AggregatedIngredientTags,
+		float EffectiveQuality) const override;
+};
+
+/**
+ * Delegates to a UArcRandomPoolDefinition for entry selection.
+ * Runs the pool's eligibility, weighting, and selection pipeline using the band's
+ * effective quality and aggregated ingredient tags as context.
+ *
+ * The pool itself contains only terminal modifiers (Stats/Abilities/Effects),
+ * so there is no recursion risk.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Craft Random Pool Modifier"))
+struct ARCCRAFT_API FArcCraftModifier_RandomPool : public FArcCraftModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** The pool definition asset containing all possible entries. */
+	UPROPERTY(EditAnywhere, Category = "RandomPool")
+	TSoftObjectPtr<UArcRandomPoolDefinition> PoolDefinition;
+
+	/** Selection mode — determines how entries are picked from the pool.
+	 *  Use "Simple Random" for weighted random rolls, or "Budget" for point-based selection. */
+	UPROPERTY(EditAnywhere, Category = "RandomPool",
+		meta = (BaseStruct = "/Script/ArcCraft.ArcRandomPoolSelectionMode", ExcludeBaseStruct))
+	FInstancedStruct SelectionMode;
 
 	virtual void Apply(
 		FArcItemSpec& OutItemSpec,

@@ -23,6 +23,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+#include "Items/ArcItemSpec.h"
 
 #include "ArcMaterialCraftContext.generated.h"
 
@@ -96,7 +97,7 @@ public:
 	 * @param InExtraCraftTimeBonus  Designer-set extra-time quality bonus.
 	 */
 	static FArcMaterialCraftContext Build(
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& QualityMultipliers,
 		float InAverageQuality,
 		const FGameplayTagContainer& InRecipeTags,

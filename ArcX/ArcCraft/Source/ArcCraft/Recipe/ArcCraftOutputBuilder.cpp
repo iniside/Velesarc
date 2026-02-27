@@ -21,7 +21,13 @@
 
 #include "ArcCraft/Recipe/ArcCraftOutputBuilder.h"
 
-#include "Items/ArcItemData.h"
+#include "Abilities/GameplayAbility.h"
+#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemSpec.h"
+#include "Items/Fragments/ArcItemFragment_ItemStats.h"
+#include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
+#include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "ArcCraft/Recipe/ArcCraftModifierSlot.h"
 #include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
@@ -29,9 +35,56 @@
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
 
+static void ApplyResult(FArcItemSpec& OutSpec, const FArcCraftModifierResult& Result)
+{
+	switch (Result.Type)
+	{
+	case EArcCraftModifierResultType::Stat:
+		{
+			FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
+			if (!StatsFragment)
+			{
+				StatsFragment = new FArcItemFragment_ItemStats();
+				StatsFragment->DefaultStats.Add(Result.Stat);
+				OutSpec.AddInstanceData(StatsFragment);
+			}
+			else
+			{
+				StatsFragment->DefaultStats.Add(Result.Stat);
+			}
+		}
+		break;
+
+	case EArcCraftModifierResultType::Ability:
+		{
+			if (Result.Ability.GrantedAbility)
+			{
+				FArcItemFragment_GrantedAbilities* AbilitiesFragment = new FArcItemFragment_GrantedAbilities();
+				AbilitiesFragment->Abilities.Add(Result.Ability);
+				OutSpec.AddInstanceData(AbilitiesFragment);
+			}
+		}
+		break;
+
+	case EArcCraftModifierResultType::Effect:
+		{
+			if (Result.Effect)
+			{
+				FArcItemFragment_GrantedGameplayEffects* EffectsFragment = new FArcItemFragment_GrantedGameplayEffects();
+				EffectsFragment->Effects.Add(Result.Effect);
+				OutSpec.AddInstanceData(EffectsFragment);
+			}
+		}
+		break;
+
+	default:
+		break;
+	}
+}
+
 FArcItemSpec FArcCraftOutputBuilder::Build(
 	const UArcRecipeDefinition* Recipe,
-	const TArray<const FArcItemData*>& MatchedIngredients,
+	const TArray<FArcItemSpec>& MatchedIngredients,
 	const TArray<float>& QualityMultipliers,
 	float AverageQuality)
 {
@@ -52,14 +105,21 @@ FArcItemSpec FArcCraftOutputBuilder::Build(
 			int32 TierCount = 0;
 			for (int32 Idx = 0; Idx < MatchedIngredients.Num(); ++Idx)
 			{
-				if (MatchedIngredients[Idx])
+				if (MatchedIngredients[Idx].GetItemDefinitionId().IsValid())
 				{
-					const FGameplayTag BestTag = TierTable->FindBestTierTag(
-						MatchedIngredients[Idx]->GetItemAggregatedTags());
-					if (BestTag.IsValid())
+					const UArcItemDefinition* IngDef = MatchedIngredients[Idx].GetItemDefinition();
+					if (IngDef)
 					{
-						TotalTierValue += TierTable->GetTierValue(BestTag);
-						++TierCount;
+						const FArcItemFragment_Tags* IngTags = IngDef->FindFragment<FArcItemFragment_Tags>();
+						if (IngTags)
+						{
+							const FGameplayTag BestTag = TierTable->FindBestTierTag(IngTags->ItemTags);
+							if (BestTag.IsValid())
+							{
+								TotalTierValue += TierTable->GetTierValue(BestTag);
+								++TierCount;
+							}
+						}
 					}
 				}
 			}
@@ -74,97 +134,52 @@ FArcItemSpec FArcCraftOutputBuilder::Build(
 	// Create base output spec
 	OutputSpec = FArcItemSpec::NewItem(Recipe->OutputItemDefinition, OutputLevel, Recipe->OutputAmount);
 
-	// Apply output modifiers
+	// Phase 1: Evaluate all modifiers into pending results (eligibility checked per-modifier)
+	TArray<FArcCraftPendingModifier> PendingModifiers;
+	PendingModifiers.Reserve(Recipe->OutputModifiers.Num());
+	for (int32 Idx = 0; Idx < Recipe->OutputModifiers.Num(); ++Idx)
+	{
+		const FArcRecipeOutputModifier* Modifier =
+			Recipe->OutputModifiers[Idx].GetPtr<FArcRecipeOutputModifier>();
+		if (Modifier)
+		{
+			TArray<FArcCraftPendingModifier> Results = Modifier->Evaluate(
+				MatchedIngredients, QualityMultipliers, AverageQuality);
+			for (FArcCraftPendingModifier& Pending : Results)
+			{
+				Pending.ModifierIndex = Idx;
+			}
+			PendingModifiers.Append(MoveTemp(Results));
+		}
+	}
+
+	// Phase 2: Resolve through slot configuration (if slots exist)
+	TArray<int32> ResolvedIndices;
 	if (Recipe->ModifierSlots.Num() > 0)
 	{
-		// --- Slot-managed path ---
-		// Phase 1: Evaluate all modifiers into pending results
-		TArray<FArcCraftPendingModifier> PendingModifiers;
-		PendingModifiers.Reserve(Recipe->OutputModifiers.Num());
-		for (int32 Idx = 0; Idx < Recipe->OutputModifiers.Num(); ++Idx)
-		{
-			const FArcRecipeOutputModifier* Modifier =
-				Recipe->OutputModifiers[Idx].GetPtr<FArcRecipeOutputModifier>();
-			if (Modifier)
-			{
-				TArray<FArcCraftPendingModifier> Results = Modifier->Evaluate(
-					OutputSpec, MatchedIngredients, QualityMultipliers, AverageQuality);
-				for (FArcCraftPendingModifier& Pending : Results)
-				{
-					Pending.ModifierIndex = Idx;
-				}
-				PendingModifiers.Append(MoveTemp(Results));
-			}
-		}
-
-		// Phase 2: Resolve through recipe-level slot configuration
-		TArray<int32> ResolvedIndices = FArcCraftSlotResolver::Resolve(
+		ResolvedIndices = FArcCraftSlotResolver::Resolve(
 			PendingModifiers, Recipe->ModifierSlots,
 			Recipe->MaxUsableSlots, Recipe->SlotSelectionMode);
-
-		// Phase 3: Apply only the resolved modifiers
-		for (int32 Idx : ResolvedIndices)
-		{
-			if (PendingModifiers[Idx].ApplyFn)
-			{
-				PendingModifiers[Idx].ApplyFn(OutputSpec);
-			}
-		}
 	}
 	else
 	{
-		// --- Legacy direct-apply path ---
-		for (const FInstancedStruct& ModifierStruct : Recipe->OutputModifiers)
+		// No slots — all pending modifiers apply
+		ResolvedIndices.SetNum(PendingModifiers.Num());
+		for (int32 i = 0; i < PendingModifiers.Num(); ++i)
 		{
-			const FArcRecipeOutputModifier* Modifier =
-				ModifierStruct.GetPtr<FArcRecipeOutputModifier>();
-			if (Modifier)
-			{
-				Modifier->ApplyToOutput(
-					OutputSpec, MatchedIngredients, QualityMultipliers, AverageQuality);
-			}
+			ResolvedIndices[i] = i;
+		}
+	}
+
+	// Phase 3: Apply resolved modifiers
+	for (int32 Idx : ResolvedIndices)
+	{
+		if (PendingModifiers[Idx].Result.Type != EArcCraftModifierResultType::None)
+		{
+			ApplyResult(OutputSpec, PendingModifiers[Idx].Result);
 		}
 	}
 
 	return OutputSpec;
 }
 
-FArcItemSpec FArcCraftOutputBuilder::BuildFromSpecs(
-	const UArcRecipeDefinition* Recipe,
-	const TArray<FArcItemSpec>& InputItems)
-{
-	if (!Recipe)
-	{
-		return FArcItemSpec();
-	}
-
-	// When building from specs (entity path), we don't have live FArcItemData.
-	// Use default quality (1.0) for all ingredient slots.
-	const int32 NumIngredients = Recipe->Ingredients.Num();
-
-	TArray<const FArcItemData*> MatchedIngredients;
-	MatchedIngredients.SetNum(NumIngredients);
-
-	TArray<float> QualityMultipliers;
-	QualityMultipliers.SetNum(NumIngredients);
-
-	for (int32 i = 0; i < NumIngredients; ++i)
-	{
-		MatchedIngredients[i] = nullptr;
-		QualityMultipliers[i] = 1.0f;
-	}
-
-	// Compute average quality (all 1.0, but weighted by ingredient amounts for consistency)
-	float TotalQuality = 0.0f;
-	int32 TotalWeight = 0;
-	for (int32 Idx = 0; Idx < NumIngredients; ++Idx)
-	{
-		const FArcRecipeIngredient* Ingredient = Recipe->GetIngredientBase(Idx);
-		const int32 Weight = Ingredient ? Ingredient->Amount : 1;
-		TotalQuality += QualityMultipliers[Idx] * Weight;
-		TotalWeight += Weight;
-	}
-	const float AverageQuality = TotalWeight > 0 ? TotalQuality / TotalWeight : 1.0f;
-
-	return Build(Recipe, MatchedIngredients, QualityMultipliers, AverageQuality);
-}

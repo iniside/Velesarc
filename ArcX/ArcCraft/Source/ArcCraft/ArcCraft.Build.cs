@@ -68,7 +68,8 @@ public class ArcCraft : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+				"Projects",
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
 		

@@ -73,7 +73,7 @@ public:
 		const UArcRecipeDefinition* InRecipe,
 		const UObject* InInstigator,
 		bool bConsume,
-		TArray<const FArcItemData*>* OutMatchedIngredients = nullptr,
+		TArray<FArcItemSpec>* OutMatchedIngredients = nullptr,
 		TArray<float>* OutQualityMultipliers = nullptr) const;
 
 	/**

@@ -31,7 +31,6 @@
 #include "ArcRecipeOutput.generated.h"
 
 struct FArcItemSpec;
-struct FArcItemData;
 struct FArcCraftPendingModifier;
 class UGameplayEffect;
 class UChooserTable;
@@ -74,41 +73,31 @@ public:
 	float QualityScalingFactor = 1.0f;
 
 	/**
-	 * Evaluate and apply this modifier to the output item spec.
+	 * Evaluate this modifier and produce pending results for slot-based resolution.
+	 * Each pending modifier carries exactly one atomic result (stat, ability, or effect).
+	 * Checks eligibility (MinQualityThreshold, TriggerTags) before producing results.
 	 *
-	 * @param OutItemSpec             The output item spec being built.
-	 * @param ConsumedIngredients     The actual items matched to each ingredient slot.
-	 * @param IngredientQualityMults  Quality multiplier for each ingredient slot (parallel array).
-	 * @param AverageQuality          Weighted average quality across all ingredients.
-	 */
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
-		const TArray<float>& IngredientQualityMults,
-		float AverageQuality) const;
-
-	/**
-	 * Evaluate this modifier and produce pending results for deferred slot-based application.
-	 * Default implementation wraps ApplyToOutput in a single pending modifier.
-	 * Override for modifiers that produce multiple independent results (Random, MaterialProperties).
-	 *
-	 * @param BaseSpec                The current output item spec (read-only for evaluation).
 	 * @param ConsumedIngredients     The actual items matched to each ingredient slot.
 	 * @param IngredientQualityMults  Quality multiplier for each ingredient slot (parallel array).
 	 * @param AverageQuality          Weighted average quality across all ingredients.
 	 * @return Pending modifiers to be resolved through the recipe's slot configuration.
 	 */
 	virtual TArray<FArcCraftPendingModifier> Evaluate(
-		const FArcItemSpec& BaseSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const;
 
 	virtual ~FArcRecipeOutputModifier() = default;
+
+protected:
+	/** Check if this modifier passes MinQualityThreshold and TriggerTags gates. */
+	bool IsEligible(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		float AverageQuality) const;
 };
 
 /**
- * Adds stats to the output item, scaled by ingredient quality.
+ * Adds a stat to the output item, scaled by ingredient quality.
  * Formula: FinalValue = BaseValue * (1.0 + (AverageQuality - 1.0) * QualityScalingFactor)
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Stat Modifier"))
@@ -117,19 +106,18 @@ struct ARCCRAFT_API FArcRecipeOutputModifier_Stats : public FArcRecipeOutputModi
 	GENERATED_BODY()
 
 public:
-	/** Base stats to add to the output item. */
+	/** Base stat to add to the output item. */
 	UPROPERTY(EditAnywhere, Category = "Stats")
-	TArray<FArcItemAttributeStat> BaseStats;
+	FArcItemAttributeStat BaseStat;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };
 
 /**
- * Grants abilities on the output item if any consumed ingredient has ALL of the trigger tags.
+ * Grants an ability on the output item if any consumed ingredient has ALL of the trigger tags.
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Ability Modifier"))
 struct ARCCRAFT_API FArcRecipeOutputModifier_Abilities : public FArcRecipeOutputModifier
@@ -137,19 +125,18 @@ struct ARCCRAFT_API FArcRecipeOutputModifier_Abilities : public FArcRecipeOutput
 	GENERATED_BODY()
 
 public:
-	/** Abilities to grant when trigger conditions are met. */
+	/** Ability to grant when trigger conditions are met. */
 	UPROPERTY(EditAnywhere, Category = "Abilities")
-	TArray<FArcAbilityEntry> AbilitiesToGrant;
+	FArcAbilityEntry AbilityToGrant;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };
 
 /**
- * Grants gameplay effects on the output item based on ingredient tags and quality threshold.
+ * Grants a gameplay effect on the output item based on ingredient tags and quality threshold.
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Effect Modifier"))
 struct ARCCRAFT_API FArcRecipeOutputModifier_Effects : public FArcRecipeOutputModifier
@@ -157,13 +144,12 @@ struct ARCCRAFT_API FArcRecipeOutputModifier_Effects : public FArcRecipeOutputMo
 	GENERATED_BODY()
 
 public:
-	/** Gameplay effects to grant when trigger conditions are met. */
+	/** Gameplay effect to grant when trigger conditions are met. */
 	UPROPERTY(EditAnywhere, Category = "Effects")
-	TArray<TSubclassOf<UGameplayEffect>> EffectsToGrant;
+	TSubclassOf<UGameplayEffect> EffectToGrant;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };
@@ -189,9 +175,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Transfer")
 	bool bScaleByQuality = true;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };
@@ -232,15 +217,8 @@ public:
 		meta = (EditCondition = "bQualityAffectsRolls", ClampMin = "0.01"))
 	float QualityBonusRollThreshold = 2.0f;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
-		const TArray<float>& IngredientQualityMults,
-		float AverageQuality) const override;
-
 	virtual TArray<FArcCraftPendingModifier> Evaluate(
-		const FArcItemSpec& BaseSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };
@@ -269,15 +247,8 @@ public:
 		meta = (BaseStruct = "/Script/ArcCraft.ArcRandomPoolSelectionMode", ExcludeBaseStruct))
 	FInstancedStruct SelectionMode;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
-		const TArray<float>& IngredientQualityMults,
-		float AverageQuality) const override;
-
 	virtual TArray<FArcCraftPendingModifier> Evaluate(
-		const FArcItemSpec& BaseSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };

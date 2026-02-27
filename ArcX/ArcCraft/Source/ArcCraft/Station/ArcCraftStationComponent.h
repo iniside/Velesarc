@@ -36,7 +36,6 @@
 
 class UArcRecipeDefinition;
 class UArcCraftVisEntityComponent;
-struct FArcItemData;
 struct FMassEntityHandle;
 
 /**
@@ -188,8 +187,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Craft Station")
 	TArray<UArcRecipeDefinition*> GetCraftableRecipes(UObject* Instigator);
 
+	/**
+	 * Get the live craft queue (reads from entity fragment if entity-backed, else actor-side).
+	 * Use this for debug UI that needs real-time progress data.
+	 */
+	TArray<FArcCraftQueueEntry> GetLiveQueue() const;
+
+	/** Whether this station is backed by a Mass entity. */
+	bool IsEntityBacked() const { return CachedVisComponent.IsValid(); }
+
 	/** Get the station's tags. */
 	const FGameplayTagContainer& GetStationTags() const { return StationTags; }
+
+	/** Replace the actor-side queue from entity data. Called by UArcCraftVisEntityComponent on actor activation. */
+	void SetQueueFromEntity(const TArray<FArcCraftQueueEntry>& InEntries);
+
+	/** Get the current actor-side queue entries for syncing back to entity. */
+	const FArcCraftStationQueue& GetCraftQueue() const { return CraftQueue; }
 
 protected:
 	virtual void BeginPlay() override;

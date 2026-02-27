@@ -24,7 +24,6 @@
 #include "Items/ArcItemSpec.h"
 
 class UArcRecipeDefinition;
-struct FArcItemData;
 struct FGameplayTagContainer;
 
 /**
@@ -34,31 +33,18 @@ struct FGameplayTagContainer;
 struct ARCCRAFT_API FArcCraftOutputBuilder
 {
 	/**
-	 * Build an output FArcItemSpec from a recipe and matched ingredient data.
+	 * Build an output FArcItemSpec from a recipe and matched ingredient specs.
 	 * Handles quality calculation, tier evaluation, modifier application (with slot resolution).
 	 *
 	 * @param Recipe               The recipe definition.
-	 * @param MatchedIngredients   Matched ingredient item data per slot. May contain nullptrs.
+	 * @param MatchedIngredients   Matched ingredient specs per slot. Invalid specs are skipped.
 	 * @param QualityMultipliers   Quality multiplier per ingredient slot.
 	 * @param AverageQuality       Average quality across ingredients.
 	 * @return The constructed output spec.
 	 */
 	static FArcItemSpec Build(
 		const UArcRecipeDefinition* Recipe,
-		const TArray<const FArcItemData*>& MatchedIngredients,
+		const TArray<FArcItemSpec>& MatchedIngredients,
 		const TArray<float>& QualityMultipliers,
 		float AverageQuality);
-
-	/**
-	 * Build an output FArcItemSpec from a recipe using input items as specs.
-	 * Used by the Mass processor for entity-only crafting where no live FArcItemData exists.
-	 * Creates default quality (1.0) for all ingredient slots.
-	 *
-	 * @param Recipe      The recipe definition.
-	 * @param InputItems  Items used as ingredients (as specs).
-	 * @return The constructed output spec.
-	 */
-	static FArcItemSpec BuildFromSpecs(
-		const UArcRecipeDefinition* Recipe,
-		const TArray<FArcItemSpec>& InputItems);
 };

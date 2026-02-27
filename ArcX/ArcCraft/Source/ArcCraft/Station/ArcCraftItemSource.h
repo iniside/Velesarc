@@ -30,8 +30,9 @@ class UArcCraftStationComponent;
 class UArcRecipeDefinition;
 class UArcItemsStoreComponent;
 class UArcCraftVisEntityComponent;
-struct FArcItemData;
 struct FArcCraftInputFragment;
+struct FMassEntityManager;
+struct FMassEntityHandle;
 
 /**
  * Base instanced struct for ingredient sourcing.
@@ -47,10 +48,10 @@ struct ARCCRAFT_API FArcCraftItemSource
 
 public:
 	/**
-	 * Get all items available from this source.
+	 * Get all items available from this source as specs.
 	 * Used for recipe discovery and UI display.
 	 */
-	virtual TArray<const FArcItemData*> GetAvailableItems(
+	virtual TArray<FArcItemSpec> GetAvailableItems(
 		const UArcCraftStationComponent* Station,
 		const UObject* Instigator) const;
 
@@ -64,7 +65,7 @@ public:
 
 	/**
 	 * Consume ingredients for a recipe.
-	 * @param OutMatchedItems   Filled with matched item data per ingredient slot.
+	 * @param OutMatchedItems   Filled with matched item specs per ingredient slot.
 	 * @param OutQualityMults   Filled with quality multiplier per ingredient slot.
 	 * @return true if all ingredients were consumed successfully.
 	 */
@@ -72,7 +73,7 @@ public:
 		UArcCraftStationComponent* Station,
 		const UArcRecipeDefinition* Recipe,
 		const UObject* Instigator,
-		TArray<const FArcItemData*>& OutMatchedItems,
+		TArray<FArcItemSpec>& OutMatchedItems,
 		TArray<float>& OutQualityMults) const;
 
 	/**
@@ -87,12 +88,22 @@ public:
 	virtual ~FArcCraftItemSource() = default;
 
 protected:
-	/** Shared logic: match and optionally consume recipe ingredients from an items store. */
+	/** Shared logic: match and optionally consume recipe ingredients from a spec array.
+	 *  When bConsume is true, matched items are removed from the Items array. */
+	static bool MatchAndConsumeFromSpecs(
+		TArray<FArcItemSpec>& Items,
+		const UArcRecipeDefinition* Recipe,
+		bool bConsume,
+		TArray<FArcItemSpec>* OutMatchedItems = nullptr,
+		TArray<float>* OutQualityMults = nullptr);
+
+	/** Shared logic: match and optionally consume from an items store.
+	 *  Converts store items to specs, then delegates to MatchAndConsumeFromSpecs. */
 	static bool MatchAndConsumeFromStore(
 		UArcItemsStoreComponent* ItemsStore,
 		const UArcRecipeDefinition* Recipe,
 		bool bConsume,
-		TArray<const FArcItemData*>* OutMatchedItems = nullptr,
+		TArray<FArcItemSpec>* OutMatchedItems = nullptr,
 		TArray<float>* OutQualityMults = nullptr);
 };
 
@@ -110,7 +121,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Source")
 	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
 
-	virtual TArray<const FArcItemData*> GetAvailableItems(
+	virtual TArray<FArcItemSpec> GetAvailableItems(
 		const UArcCraftStationComponent* Station,
 		const UObject* Instigator) const override;
 
@@ -123,7 +134,7 @@ public:
 		UArcCraftStationComponent* Station,
 		const UArcRecipeDefinition* Recipe,
 		const UObject* Instigator,
-		TArray<const FArcItemData*>& OutMatchedItems,
+		TArray<FArcItemSpec>& OutMatchedItems,
 		TArray<float>& OutQualityMults) const override;
 
 	virtual bool DepositItem(
@@ -151,7 +162,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Source")
 	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
 
-	virtual TArray<const FArcItemData*> GetAvailableItems(
+	virtual TArray<FArcItemSpec> GetAvailableItems(
 		const UArcCraftStationComponent* Station,
 		const UObject* Instigator) const override;
 
@@ -164,7 +175,7 @@ public:
 		UArcCraftStationComponent* Station,
 		const UArcRecipeDefinition* Recipe,
 		const UObject* Instigator,
-		TArray<const FArcItemData*>& OutMatchedItems,
+		TArray<FArcItemSpec>& OutMatchedItems,
 		TArray<float>& OutQualityMults) const override;
 
 	virtual bool DepositItem(
@@ -179,13 +190,12 @@ protected:
 };
 
 /**
- * Item source that reads from the entity's FArcCraftInputFragment.
- * Items must be deposited via the actor interface; depositing writes directly
- * to the entity fragment through UArcCraftVisEntityComponent.
+ * Item source that reads/writes directly to the entity's FArcCraftInputFragment.
+ * The source of truth is the Mass entity fragment — not the actor-side store.
  *
- * When the actor is alive (vis active), items are also available from the
- * UArcItemsStoreComponent that mirrors the entity data. When the actor is
- * despawned, only the entity fragment persists — the processor reads it directly.
+ * When the actor is alive (vis active), changes are also mirrored to the
+ * UArcItemsStoreComponent for UI display. When the actor is despawned,
+ * only the entity fragment persists — the processor reads it directly.
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage"))
 struct ARCCRAFT_API FArcCraftItemSource_EntityStore : public FArcCraftItemSource
@@ -193,7 +203,7 @@ struct ARCCRAFT_API FArcCraftItemSource_EntityStore : public FArcCraftItemSource
 	GENERATED_BODY()
 
 public:
-	virtual TArray<const FArcItemData*> GetAvailableItems(
+	virtual TArray<FArcItemSpec> GetAvailableItems(
 		const UArcCraftStationComponent* Station,
 		const UObject* Instigator) const override;
 
@@ -206,7 +216,7 @@ public:
 		UArcCraftStationComponent* Station,
 		const UArcRecipeDefinition* Recipe,
 		const UObject* Instigator,
-		TArray<const FArcItemData*>& OutMatchedItems,
+		TArray<FArcItemSpec>& OutMatchedItems,
 		TArray<float>& OutQualityMults) const override;
 
 	virtual bool DepositItem(
@@ -217,15 +227,7 @@ public:
 	virtual ~FArcCraftItemSource_EntityStore() override = default;
 
 private:
-	/**
-	 * Get the UArcCraftVisEntityComponent from the station's owner.
-	 * Returns nullptr if the owner doesn't have one.
-	 */
 	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
-
-	/**
-	 * Get the input store component that mirrors entity data.
-	 * This is the store class configured on the vis component.
-	 */
-	UArcItemsStoreComponent* GetInputStore(const UArcCraftStationComponent* Station) const;
+	FArcCraftInputFragment* GetInputFragment(const UArcCraftStationComponent* Station) const;
+	UArcItemsStoreComponent* GetMirrorInputStore(const UArcCraftStationComponent* Station) const;
 };

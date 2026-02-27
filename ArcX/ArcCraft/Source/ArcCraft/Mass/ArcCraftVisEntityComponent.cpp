@@ -24,6 +24,8 @@
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
+#include "ArcCraft/Station/ArcCraftStationComponent.h"
+#include "Engine/World.h"
 #include "Items/ArcItemsArray.h"
 #include "Items/ArcItemsStoreComponent.h"
 #include "Items/ArcItemData.h"
@@ -105,6 +107,19 @@ void UArcCraftVisEntityComponent::SyncEntityToStores()
 		}
 	}
 
+	// Sync queue → station component
+	{
+		UArcCraftStationComponent* StationComp = FindStationComponent();
+		if (StationComp)
+		{
+			const FArcCraftQueueFragment* QueueFrag = EntityManager.GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
+			if (QueueFrag)
+			{
+				StationComp->SetQueueFromEntity(QueueFrag->Entries);
+			}
+		}
+	}
+
 	UE_LOG(LogArcCraftVis, Verbose,
 		TEXT("Synced entity data to stores on %s"), *GetOwner()->GetName());
 }
@@ -175,6 +190,20 @@ void UArcCraftVisEntityComponent::SyncStoresToEntity()
 		}
 	}
 
+	// Sync station queue → entity queue fragment
+	{
+		UArcCraftStationComponent* StationComp = FindStationComponent();
+		if (StationComp)
+		{
+			FArcCraftQueueFragment* QueueFrag = EntityManager.GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
+			if (QueueFrag)
+			{
+				QueueFrag->Entries = StationComp->GetCraftQueue().Entries;
+				QueueFrag->ActiveEntryIndex = INDEX_NONE;
+			}
+		}
+	}
+
 	UE_LOG(LogArcCraftVis, Verbose,
 		TEXT("Synced store data to entity on %s"), *GetOwner()->GetName());
 }
@@ -198,4 +227,13 @@ UArcItemsStoreComponent* UArcCraftVisEntityComponent::FindStore(
 	}
 
 	return nullptr;
+}
+
+UArcCraftStationComponent* UArcCraftVisEntityComponent::FindStationComponent() const
+{
+	if (!GetOwner())
+	{
+		return nullptr;
+	}
+	return GetOwner()->FindComponentByClass<UArcCraftStationComponent>();
 }

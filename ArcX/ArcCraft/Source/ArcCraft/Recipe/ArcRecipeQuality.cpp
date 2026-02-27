@@ -72,7 +72,7 @@ void UArcQualityTierTable::ExportToJson()
 
 	nlohmann::json JsonObj;
 
-	JsonObj["$schema"] = "../../Schemas/quality-tier-table.schema.json";
+	JsonObj["$schema"] = TCHAR_TO_UTF8(*ArcCraftJsonUtils::GetSchemaFilePath(TEXT("quality-tier-table.schema.json")));
 	JsonObj["$type"] = "ArcQualityTierTable";
 	JsonObj["name"] = TCHAR_TO_UTF8(*GetName());
 

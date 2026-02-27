@@ -21,25 +21,24 @@
 
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
 
-#include "Items/ArcItemData.h"
+#include "Items/ArcItemSpec.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
-#include "Items/ArcItemsHelpers.h"
 
 // -------------------------------------------------------------------
 // FArcRecipeIngredient (base)
 // -------------------------------------------------------------------
 
 bool FArcRecipeIngredient::DoesItemSatisfy(
-	const FArcItemData* InItemData,
+	const FArcItemSpec& InItemSpec,
 	const UArcQualityTierTable* InTierTable) const
 {
-	return InItemData != nullptr;
+	return InItemSpec.GetItemDefinitionId().IsValid();
 }
 
 float FArcRecipeIngredient::GetItemQualityMultiplier(
-	const FArcItemData* InItemData,
+	const FArcItemSpec& InItemSpec,
 	const UArcQualityTierTable* InTierTable) const
 {
 	return 1.0f;
@@ -50,28 +49,39 @@ float FArcRecipeIngredient::GetItemQualityMultiplier(
 // -------------------------------------------------------------------
 
 bool FArcRecipeIngredient_ItemDef::DoesItemSatisfy(
-	const FArcItemData* InItemData,
+	const FArcItemSpec& InItemSpec,
 	const UArcQualityTierTable* InTierTable) const
 {
-	if (!InItemData)
+	if (!InItemSpec.GetItemDefinitionId().IsValid())
 	{
 		return false;
 	}
 
-	return InItemData->GetItemDefinitionId() == ItemDefinitionId;
+	return InItemSpec.GetItemDefinitionId() == ItemDefinitionId;
 }
 
 float FArcRecipeIngredient_ItemDef::GetItemQualityMultiplier(
-	const FArcItemData* InItemData,
+	const FArcItemSpec& InItemSpec,
 	const UArcQualityTierTable* InTierTable) const
 {
-	if (!InItemData || !InTierTable)
+	if (!InTierTable)
 	{
 		return 1.0f;
 	}
 
-	const FGameplayTagContainer& ItemTags = InItemData->GetItemAggregatedTags();
-	return InTierTable->EvaluateQuality(ItemTags);
+	const UArcItemDefinition* Def = InItemSpec.GetItemDefinition();
+	if (!Def)
+	{
+		return 1.0f;
+	}
+
+	const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
+	if (!TagsFragment)
+	{
+		return 1.0f;
+	}
+
+	return InTierTable->EvaluateQuality(TagsFragment->ItemTags);
 }
 
 // -------------------------------------------------------------------
@@ -79,21 +89,22 @@ float FArcRecipeIngredient_ItemDef::GetItemQualityMultiplier(
 // -------------------------------------------------------------------
 
 bool FArcRecipeIngredient_Tags::DoesItemSatisfy(
-	const FArcItemData* InItemData,
+	const FArcItemSpec& InItemSpec,
 	const UArcQualityTierTable* InTierTable) const
 {
-	if (!InItemData)
+	const UArcItemDefinition* Def = InItemSpec.GetItemDefinition();
+	if (!Def)
 	{
 		return false;
 	}
 
-	const FArcItemFragment_Tags* TagsFragment = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(InItemData);
+	const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
 	if (!TagsFragment)
 	{
 		return false;
 	}
-	
-	const FGameplayTagContainer& ItemTags = TagsFragment->AssetTags;	
+
+	const FGameplayTagContainer& ItemTags = TagsFragment->AssetTags;
 	// Check required tags
 	if (RequiredTags.Num() > 0 && !ItemTags.HasAll(RequiredTags))
 	{
@@ -110,7 +121,7 @@ bool FArcRecipeIngredient_Tags::DoesItemSatisfy(
 	if (MinimumTierTag.IsValid() && InTierTable)
 	{
 		const int32 MinTierValue = InTierTable->GetTierValue(MinimumTierTag);
-		const FGameplayTag BestTag = InTierTable->FindBestTierTag(ItemTags);
+		const FGameplayTag BestTag = InTierTable->FindBestTierTag(TagsFragment->ItemTags);
 
 		if (!BestTag.IsValid())
 		{
@@ -128,14 +139,25 @@ bool FArcRecipeIngredient_Tags::DoesItemSatisfy(
 }
 
 float FArcRecipeIngredient_Tags::GetItemQualityMultiplier(
-	const FArcItemData* InItemData,
+	const FArcItemSpec& InItemSpec,
 	const UArcQualityTierTable* InTierTable) const
 {
-	if (!InItemData || !InTierTable)
+	if (!InTierTable)
 	{
 		return 1.0f;
 	}
 
-	const FGameplayTagContainer& ItemTags = InItemData->GetItemAggregatedTags();
-	return InTierTable->EvaluateQuality(ItemTags);
+	const UArcItemDefinition* Def = InItemSpec.GetItemDefinition();
+	if (!Def)
+	{
+		return 1.0f;
+	}
+
+	const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
+	if (!TagsFragment)
+	{
+		return 1.0f;
+	}
+
+	return InTierTable->EvaluateQuality(TagsFragment->ItemTags);
 }

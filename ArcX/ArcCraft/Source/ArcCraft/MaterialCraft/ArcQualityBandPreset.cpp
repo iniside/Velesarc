@@ -84,7 +84,7 @@ void UArcQualityBandPreset::ExportToJson()
 
 	nlohmann::json JsonObj;
 
-	JsonObj["$schema"] = "../../Schemas/quality-band-preset.schema.json";
+	JsonObj["$schema"] = TCHAR_TO_UTF8(*ArcCraftJsonUtils::GetSchemaFilePath(TEXT("quality-band-preset.schema.json")));
 	JsonObj["$type"] = "ArcQualityBandPreset";
 	JsonObj["name"] = TCHAR_TO_UTF8(*PresetName.ToString());
 

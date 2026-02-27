@@ -78,15 +78,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MaterialProperties")
 	FGameplayTagContainer RecipeTags;
 
-	virtual void ApplyToOutput(
-		FArcItemSpec& OutItemSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
-		const TArray<float>& IngredientQualityMults,
-		float AverageQuality) const override;
-
 	virtual TArray<FArcCraftPendingModifier> Evaluate(
-		const FArcItemSpec& BaseSpec,
-		const TArray<const FArcItemData*>& ConsumedIngredients,
+		const TArray<FArcItemSpec>& ConsumedIngredients,
 		const TArray<float>& IngredientQualityMults,
 		float AverageQuality) const override;
 };

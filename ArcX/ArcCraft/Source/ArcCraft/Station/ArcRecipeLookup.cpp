@@ -23,8 +23,7 @@
 
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 #include "Engine/AssetManager.h"
-#include "Items/ArcItemData.h"
-#include "Items/ArcItemsHelpers.h"
+#include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
 
@@ -79,7 +78,7 @@ TArray<FAssetData> FArcRecipeLookup::FilterByAvailableIngredients(
 
 UArcRecipeDefinition* FArcRecipeLookup::FindBestRecipeForIngredients(
 	const TArray<FAssetData>& CandidateRecipes,
-	const TArray<const FArcItemData*>& AvailableItems,
+	const TArray<FArcItemSpec>& AvailableItems,
 	const FGameplayTagContainer& StationTags,
 	float& OutMatchScore)
 {
@@ -126,16 +125,16 @@ UArcRecipeDefinition* FArcRecipeLookup::FindBestRecipeForIngredients(
 					continue;
 				}
 
-				const FArcItemData* ItemData = AvailableItems[ItemIdx];
-				if (!ItemData)
+				const FArcItemSpec& ItemSpec = AvailableItems[ItemIdx];
+				if (!ItemSpec.GetItemDefinitionId().IsValid())
 				{
 					continue;
 				}
 
 				// We pass nullptr for tier table since we don't have it without loading more.
 				// This is a best-effort match.
-				if (Ingredient->DoesItemSatisfy(ItemData, nullptr) &&
-					ItemData->GetStacks() >= static_cast<uint16>(Ingredient->Amount))
+				if (Ingredient->DoesItemSatisfy(ItemSpec, nullptr) &&
+					ItemSpec.Amount >= static_cast<uint16>(Ingredient->Amount))
 				{
 					UsedItemIndices.Add(ItemIdx);
 					MatchedSlots++;

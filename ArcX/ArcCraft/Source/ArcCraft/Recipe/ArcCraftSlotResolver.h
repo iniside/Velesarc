@@ -23,13 +23,44 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+#include "Items/ArcItemTypes.h"
+#include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "Templates/SubclassOf.h"
 #include "ArcCraft/Recipe/ArcCraftModifierSlot.h"
 
-struct FArcItemSpec;
+class UGameplayEffect;
+
+/** Type tag for which field in FArcCraftModifierResult is valid. */
+enum class EArcCraftModifierResultType : uint8
+{
+	None,
+	Stat,
+	Ability,
+	Effect
+};
+
+/**
+ * Calculated output of a single modifier — exactly one of stat, ability, or effect.
+ * Transient, not serialized.
+ */
+struct FArcCraftModifierResult
+{
+	EArcCraftModifierResultType Type = EArcCraftModifierResultType::None;
+
+	/** Valid when Type == Stat. Pre-scaled stat value ready to apply. */
+	FArcItemAttributeStat Stat;
+
+	/** Valid when Type == Ability. */
+	FArcAbilityEntry Ability;
+
+	/** Valid when Type == Effect. */
+	TSubclassOf<UGameplayEffect> Effect;
+};
 
 /**
  * Intermediate result from evaluating an output modifier.
- * Captures the modifier's slot target, quality score, and a deferred apply callback.
+ * Each entry represents exactly one atomic modifier result (stat, ability, or effect).
+ * Compound modifiers (Random, Pool, Material) produce multiple entries.
  * Used only transiently during BuildOutputSpec — not serialized.
  */
 struct FArcCraftPendingModifier
@@ -43,8 +74,8 @@ struct FArcCraftPendingModifier
 	/** Index of the original modifier in Recipe->OutputModifiers (-1 for sub-results). */
 	int32 ModifierIndex = INDEX_NONE;
 
-	/** Callback that applies this modifier's result to the output spec. */
-	TFunction<void(FArcItemSpec&)> ApplyFn;
+	/** The calculated result to apply to the output item. */
+	FArcCraftModifierResult Result;
 };
 
 /**

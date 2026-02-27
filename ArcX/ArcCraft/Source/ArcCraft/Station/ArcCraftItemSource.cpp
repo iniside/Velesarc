@@ -28,15 +28,17 @@
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
-#include "Items/ArcItemData.h"
-#include "Items/ArcItemId.h"
+#include "Engine/World.h"
+#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemSpec.h"
+#include "Items/ArcItemsArray.h"
 #include "Items/ArcItemsStoreComponent.h"
 
 // -------------------------------------------------------------------
 // FArcCraftItemSource (base)
 // -------------------------------------------------------------------
 
-TArray<const FArcItemData*> FArcCraftItemSource::GetAvailableItems(
+TArray<FArcItemSpec> FArcCraftItemSource::GetAvailableItems(
 	const UArcCraftStationComponent* Station,
 	const UObject* Instigator) const
 {
@@ -55,7 +57,7 @@ bool FArcCraftItemSource::ConsumeIngredients(
 	UArcCraftStationComponent* Station,
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator,
-	TArray<const FArcItemData*>& OutMatchedItems,
+	TArray<FArcItemSpec>& OutMatchedItems,
 	TArray<float>& OutQualityMults) const
 {
 	return false;
@@ -69,11 +71,125 @@ bool FArcCraftItemSource::DepositItem(
 	return false;
 }
 
+bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
+	TArray<FArcItemSpec>& Items,
+	const UArcRecipeDefinition* Recipe,
+	bool bConsume,
+	TArray<FArcItemSpec>* OutMatchedItems,
+	TArray<float>* OutQualityMults)
+{
+	if (!Recipe)
+	{
+		return false;
+	}
+
+	UArcQualityTierTable* TierTable = nullptr;
+	if (!Recipe->QualityTierTable.IsNull())
+	{
+		TierTable = Recipe->QualityTierTable.LoadSynchronous();
+	}
+
+	TSet<int32> UsedIndices;
+	TArray<FArcItemSpec> MatchedIngredients;
+	TArray<float> QualityMultipliers;
+	MatchedIngredients.SetNum(Recipe->Ingredients.Num());
+	QualityMultipliers.SetNum(Recipe->Ingredients.Num());
+
+	// Track items to consume (index + amount)
+	TArray<TPair<int32, int32>> ItemsToConsume;
+
+	for (int32 SlotIdx = 0; SlotIdx < Recipe->Ingredients.Num(); ++SlotIdx)
+	{
+		const FArcRecipeIngredient* Ingredient = Recipe->GetIngredientBase(SlotIdx);
+		if (!Ingredient)
+		{
+			return false;
+		}
+
+		int32 MatchedIndex = INDEX_NONE;
+		for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
+		{
+			if (UsedIndices.Contains(ItemIdx))
+			{
+				continue;
+			}
+
+			const FArcItemSpec& Spec = Items[ItemIdx];
+			if (!Spec.GetItemDefinitionId().IsValid())
+			{
+				continue;
+			}
+
+			if (!Ingredient->DoesItemSatisfy(Spec, TierTable))
+			{
+				continue;
+			}
+
+			if (Spec.Amount < static_cast<uint16>(Ingredient->Amount))
+			{
+				continue;
+			}
+
+			MatchedIndex = ItemIdx;
+			break;
+		}
+
+		if (MatchedIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		MatchedIngredients[SlotIdx] = Items[MatchedIndex];
+		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(Items[MatchedIndex], TierTable);
+
+		UsedIndices.Add(MatchedIndex);
+
+		if (Ingredient->bConsumeOnCraft)
+		{
+			ItemsToConsume.Add({MatchedIndex, Ingredient->Amount});
+		}
+	}
+
+	if (bConsume)
+	{
+		// Remove consumed amounts from the Items array. Process in reverse index order
+		// so that removals don't invalidate earlier indices.
+		ItemsToConsume.Sort([](const TPair<int32, int32>& A, const TPair<int32, int32>& B)
+		{
+			return A.Key > B.Key;
+		});
+
+		for (const auto& Pair : ItemsToConsume)
+		{
+			FArcItemSpec& Spec = Items[Pair.Key];
+			if (Spec.Amount <= static_cast<uint16>(Pair.Value))
+			{
+				Items.RemoveAt(Pair.Key);
+			}
+			else
+			{
+				Spec.Amount -= static_cast<uint16>(Pair.Value);
+			}
+		}
+	}
+
+	if (OutMatchedItems)
+	{
+		*OutMatchedItems = MoveTemp(MatchedIngredients);
+	}
+	if (OutQualityMults)
+	{
+		*OutQualityMults = MoveTemp(QualityMultipliers);
+	}
+
+	return true;
+}
+
 bool FArcCraftItemSource::MatchAndConsumeFromStore(
 	UArcItemsStoreComponent* ItemsStore,
 	const UArcRecipeDefinition* Recipe,
 	bool bConsume,
-	TArray<const FArcItemData*>* OutMatchedItems,
+	TArray<FArcItemSpec>* OutMatchedItems,
 	TArray<float>* OutQualityMults)
 {
 	if (!ItemsStore || !Recipe)
@@ -81,7 +197,6 @@ bool FArcCraftItemSource::MatchAndConsumeFromStore(
 		return false;
 	}
 
-	// Load quality tier table if available
 	UArcQualityTierTable* TierTable = nullptr;
 	if (!Recipe->QualityTierTable.IsNull())
 	{
@@ -91,7 +206,7 @@ bool FArcCraftItemSource::MatchAndConsumeFromStore(
 	TArray<TPair<FArcItemId, int32>> ItemsToConsume;
 	TSet<FArcItemId> UsedItemIds;
 
-	TArray<const FArcItemData*> MatchedIngredients;
+	TArray<FArcItemSpec> MatchedIngredients;
 	TArray<float> QualityMultipliers;
 	MatchedIngredients.SetNum(Recipe->Ingredients.Num());
 	QualityMultipliers.SetNum(Recipe->Ingredients.Num());
@@ -114,7 +229,8 @@ bool FArcCraftItemSource::MatchAndConsumeFromStore(
 				continue;
 			}
 
-			if (!Ingredient->DoesItemSatisfy(ItemData, TierTable))
+			const FArcItemSpec ItemSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
+			if (!Ingredient->DoesItemSatisfy(ItemSpec, TierTable))
 			{
 				continue;
 			}
@@ -133,8 +249,9 @@ bool FArcCraftItemSource::MatchAndConsumeFromStore(
 			return false;
 		}
 
-		MatchedIngredients[SlotIdx] = MatchedItem;
-		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(MatchedItem, TierTable);
+		const FArcItemSpec MatchedSpec = FArcItemCopyContainerHelper::ToSpec(MatchedItem);
+		MatchedIngredients[SlotIdx] = MatchedSpec;
+		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(MatchedSpec, TierTable);
 
 		UsedItemIds.Add(MatchedItem->GetItemId());
 
@@ -178,7 +295,7 @@ UArcItemsStoreComponent* FArcCraftItemSource_InstigatorStore::GetItemsStore(cons
 	return Arcx::Utils::GetComponent(OwnerActor, ItemsStoreClass);
 }
 
-TArray<const FArcItemData*> FArcCraftItemSource_InstigatorStore::GetAvailableItems(
+TArray<FArcItemSpec> FArcCraftItemSource_InstigatorStore::GetAvailableItems(
 	const UArcCraftStationComponent* Station,
 	const UObject* Instigator) const
 {
@@ -187,7 +304,18 @@ TArray<const FArcItemData*> FArcCraftItemSource_InstigatorStore::GetAvailableIte
 	{
 		return {};
 	}
-	return Store->GetItems();
+
+	TArray<FArcItemSpec> Specs;
+	const TArray<const FArcItemData*> Items = Store->GetItems();
+	Specs.Reserve(Items.Num());
+	for (const FArcItemData* ItemData : Items)
+	{
+		if (ItemData)
+		{
+			Specs.Add(FArcItemCopyContainerHelper::ToSpec(ItemData));
+		}
+	}
+	return Specs;
 }
 
 bool FArcCraftItemSource_InstigatorStore::CanSatisfyRecipe(
@@ -203,7 +331,7 @@ bool FArcCraftItemSource_InstigatorStore::ConsumeIngredients(
 	UArcCraftStationComponent* Station,
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator,
-	TArray<const FArcItemData*>& OutMatchedItems,
+	TArray<FArcItemSpec>& OutMatchedItems,
 	TArray<float>& OutQualityMults) const
 {
 	UArcItemsStoreComponent* Store = GetItemsStore(Instigator);
@@ -240,7 +368,7 @@ UArcItemsStoreComponent* FArcCraftItemSource_StationStore::GetStationStore(
 	return Arcx::Utils::GetComponent(Owner, ItemsStoreClass);
 }
 
-TArray<const FArcItemData*> FArcCraftItemSource_StationStore::GetAvailableItems(
+TArray<FArcItemSpec> FArcCraftItemSource_StationStore::GetAvailableItems(
 	const UArcCraftStationComponent* Station,
 	const UObject* Instigator) const
 {
@@ -249,7 +377,18 @@ TArray<const FArcItemData*> FArcCraftItemSource_StationStore::GetAvailableItems(
 	{
 		return {};
 	}
-	return Store->GetItems();
+
+	TArray<FArcItemSpec> Specs;
+	const TArray<const FArcItemData*> Items = Store->GetItems();
+	Specs.Reserve(Items.Num());
+	for (const FArcItemData* ItemData : Items)
+	{
+		if (ItemData)
+		{
+			Specs.Add(FArcItemCopyContainerHelper::ToSpec(ItemData));
+		}
+	}
+	return Specs;
 }
 
 bool FArcCraftItemSource_StationStore::CanSatisfyRecipe(
@@ -265,7 +404,7 @@ bool FArcCraftItemSource_StationStore::ConsumeIngredients(
 	UArcCraftStationComponent* Station,
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator,
-	TArray<const FArcItemData*>& OutMatchedItems,
+	TArray<FArcItemSpec>& OutMatchedItems,
 	TArray<float>& OutQualityMults) const
 {
 	UArcItemsStoreComponent* Store = GetStationStore(Station);
@@ -301,7 +440,43 @@ UArcCraftVisEntityComponent* FArcCraftItemSource_EntityStore::GetVisComponent(
 	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
 }
 
-UArcItemsStoreComponent* FArcCraftItemSource_EntityStore::GetInputStore(
+FArcCraftInputFragment* FArcCraftItemSource_EntityStore::GetInputFragment(
+	const UArcCraftStationComponent* Station) const
+{
+	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
+	if (!VisComp)
+	{
+		return nullptr;
+	}
+
+	const FMassEntityHandle Entity = VisComp->GetEntityHandle();
+	if (!Entity.IsValid())
+	{
+		return nullptr;
+	}
+
+	UWorld* World = Station->GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!MassSubsystem)
+	{
+		return nullptr;
+	}
+
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+	if (!EntityManager.IsEntityValid(Entity))
+	{
+		return nullptr;
+	}
+
+	return EntityManager.GetFragmentDataPtr<FArcCraftInputFragment>(Entity);
+}
+
+UArcItemsStoreComponent* FArcCraftItemSource_EntityStore::GetMirrorInputStore(
 	const UArcCraftStationComponent* Station) const
 {
 	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
@@ -322,15 +497,14 @@ UArcItemsStoreComponent* FArcCraftItemSource_EntityStore::GetInputStore(
 	return nullptr;
 }
 
-TArray<const FArcItemData*> FArcCraftItemSource_EntityStore::GetAvailableItems(
+TArray<FArcItemSpec> FArcCraftItemSource_EntityStore::GetAvailableItems(
 	const UArcCraftStationComponent* Station,
 	const UObject* Instigator) const
 {
-	// When actor is alive, read from the mirrored input store
-	UArcItemsStoreComponent* Store = GetInputStore(Station);
-	if (Store)
+	const FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
+	if (InputFrag)
 	{
-		return Store->GetItems();
+		return InputFrag->InputItems;
 	}
 	return {};
 }
@@ -340,19 +514,57 @@ bool FArcCraftItemSource_EntityStore::CanSatisfyRecipe(
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator) const
 {
-	UArcItemsStoreComponent* Store = GetInputStore(Station);
-	return MatchAndConsumeFromStore(Store, Recipe, false);
+	const FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
+	if (!InputFrag)
+	{
+		return false;
+	}
+
+	// Match against a copy — don't modify the fragment for a check
+	TArray<FArcItemSpec> ItemsCopy = InputFrag->InputItems;
+	return MatchAndConsumeFromSpecs(ItemsCopy, Recipe, false);
 }
 
 bool FArcCraftItemSource_EntityStore::ConsumeIngredients(
 	UArcCraftStationComponent* Station,
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator,
-	TArray<const FArcItemData*>& OutMatchedItems,
+	TArray<FArcItemSpec>& OutMatchedItems,
 	TArray<float>& OutQualityMults) const
 {
-	UArcItemsStoreComponent* Store = GetInputStore(Station);
-	return MatchAndConsumeFromStore(Store, Recipe, true, &OutMatchedItems, &OutQualityMults);
+	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
+	if (!InputFrag)
+	{
+		return false;
+	}
+
+	// Consume directly from the entity fragment (source of truth)
+	if (!MatchAndConsumeFromSpecs(InputFrag->InputItems, Recipe, true, &OutMatchedItems, &OutQualityMults))
+	{
+		return false;
+	}
+
+	// Mirror to actor-side store if alive (for UI)
+	UArcItemsStoreComponent* MirrorStore = GetMirrorInputStore(Station);
+	if (MirrorStore)
+	{
+		// Re-sync the entire mirror store from the fragment
+		// Remove all items from the store and re-add from fragment
+		const TArray<const FArcItemData*> StoreItems = MirrorStore->GetItems();
+		for (const FArcItemData* ItemData : StoreItems)
+		{
+			if (ItemData)
+			{
+				MirrorStore->RemoveItem(ItemData->GetItemId(), ItemData->GetStacks(), true);
+			}
+		}
+		for (const FArcItemSpec& Spec : InputFrag->InputItems)
+		{
+			MirrorStore->AddItem(Spec, FArcItemId::InvalidId);
+		}
+	}
+
+	return true;
 }
 
 bool FArcCraftItemSource_EntityStore::DepositItem(
@@ -360,14 +572,21 @@ bool FArcCraftItemSource_EntityStore::DepositItem(
 	const FArcItemSpec& Item,
 	const UObject* Instigator)
 {
-	// When actor is alive, deposit into the mirrored input store.
-	// On deactivation, UArcCraftVisEntityComponent syncs store → entity fragment.
-	UArcItemsStoreComponent* Store = GetInputStore(Station);
-	if (!Store)
+	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
+	if (!InputFrag)
 	{
 		return false;
 	}
 
-	Store->AddItem(Item, FArcItemId::InvalidId);
+	// Add to entity fragment (source of truth)
+	InputFrag->InputItems.Add(Item);
+
+	// Mirror to actor-side store if alive (for UI)
+	UArcItemsStoreComponent* MirrorStore = GetMirrorInputStore(Station);
+	if (MirrorStore)
+	{
+		MirrorStore->AddItem(Item, FArcItemId::InvalidId);
+	}
+
 	return true;
 }

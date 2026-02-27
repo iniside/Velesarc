@@ -26,6 +26,7 @@
 #include "ArcCraftVisEntityComponent.generated.h"
 
 class UArcItemsStoreComponent;
+class UArcCraftStationComponent;
 
 /**
  * Subclass of UArcVisEntityComponent for crafting stations.
@@ -58,12 +59,15 @@ public:
 	virtual void NotifyVisActorPreDestroy() override;
 
 private:
-	/** Copy entity output/input items → UArcItemsStoreComponent for UI. */
+	/** Copy entity output/input items + queue → actor-side stores/component for UI. */
 	void SyncEntityToStores();
 
-	/** Sync UArcItemsStoreComponent changes back → entity fragments. */
+	/** Sync actor-side stores/component changes back → entity fragments. */
 	void SyncStoresToEntity();
 
 	/** Find a store component of the given class on the owning actor. */
 	UArcItemsStoreComponent* FindStore(TSubclassOf<UArcItemsStoreComponent> StoreClass) const;
+
+	/** Find the station component on the owning actor. */
+	UArcCraftStationComponent* FindStationComponent() const;
 };

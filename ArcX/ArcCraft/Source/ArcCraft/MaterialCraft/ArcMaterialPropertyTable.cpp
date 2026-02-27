@@ -85,7 +85,7 @@ void UArcMaterialPropertyTable::ExportToJson()
 
 	nlohmann::json JsonObj;
 
-	JsonObj["$schema"] = "../../Schemas/material-property-table.schema.json";
+	JsonObj["$schema"] = TCHAR_TO_UTF8(*ArcCraftJsonUtils::GetSchemaFilePath(TEXT("material-property-table.schema.json")));
 	JsonObj["$type"] = "ArcMaterialPropertyTable";
 	JsonObj["name"] = TCHAR_TO_UTF8(*TableName.ToString());
 	JsonObj["maxActiveRules"] = MaxActiveRules;

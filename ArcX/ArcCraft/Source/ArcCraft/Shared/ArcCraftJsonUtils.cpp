@@ -21,6 +21,7 @@
 
 #include "ArcCraft/Shared/ArcCraftJsonUtils.h"
 
+#include "Interfaces/IPluginManager.h"
 #include "Chooser.h"
 #include "GameplayEffect.h"
 #include "Abilities/GameplayAbility.h"
@@ -35,6 +36,22 @@
 #include "StructUtils/InstancedStruct.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcCraftJsonUtils, Log, All);
+
+// -------------------------------------------------------------------
+// Schema Path Resolution
+// -------------------------------------------------------------------
+
+FString ArcCraftJsonUtils::GetSchemaFilePath(const FString& SchemaFileName)
+{
+	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("ArcCraft"));
+	if (!Plugin.IsValid())
+	{
+		UE_LOG(LogArcCraftJsonUtils, Warning, TEXT("GetSchemaFilePath: ArcCraft plugin not found via IPluginManager"));
+		return FString();
+	}
+
+	return Plugin->GetBaseDir() / TEXT("Schemas") / SchemaFileName;
+}
 
 // -------------------------------------------------------------------
 // Internal helpers
@@ -198,21 +215,11 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		Modifier.Weight = ModWeight;
 		Modifier.QualityScalingFactor = QualityScaling;
 
-		if (ModObj.contains("stats") && ModObj["stats"].is_array())
+		if (ModObj.contains("stat") && ModObj["stat"].is_object())
 		{
-			for (const auto& StatObj : ModObj["stats"])
-			{
-				FArcItemAttributeStat Stat;
-				Stat.SetValue(GetJsonFloat(StatObj, "value", 0.0f));
-				Stat.Type = StringToModType(GetJsonString(StatObj, "modType"));
-
-				// Note: Attribute is stored by name string. The FGameplayAttribute reference
-				// will need to be resolved at runtime by the stat system.
-				// The "attribute" field is stored for round-trip serialization but actual
-				// attribute binding happens during item initialization.
-
-				Modifier.BaseStats.Add(Stat);
-			}
+			const auto& StatObj = ModObj["stat"];
+			Modifier.BaseStat.SetValue(GetJsonFloat(StatObj, "value", 0.0f));
+			Modifier.BaseStat.Type = StringToModType(GetJsonString(StatObj, "modType"));
 		}
 
 		return true;
@@ -229,24 +236,18 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		Modifier.Weight = ModWeight;
 		Modifier.QualityScalingFactor = QualityScaling;
 
-		if (ModObj.contains("abilities") && ModObj["abilities"].is_array())
+		if (ModObj.contains("ability") && ModObj["ability"].is_object())
 		{
-			for (const auto& AbilityObj : ModObj["abilities"])
+			const auto& AbilityObj = ModObj["ability"];
+			const FString ClassStr = GetJsonString(AbilityObj, "class");
+			if (!ClassStr.IsEmpty())
 			{
-				FArcAbilityEntry Entry;
-
-				const FString ClassStr = GetJsonString(AbilityObj, "class");
-				if (!ClassStr.IsEmpty())
-				{
-					Entry.GrantedAbility = LoadClass<UGameplayAbility>(nullptr, *ClassStr);
-				}
-
-				const FString InputTagStr = GetJsonString(AbilityObj, "inputTag");
-				Entry.InputTag = ParseGameplayTag(InputTagStr);
-				Entry.bAddInputTag = Entry.InputTag.IsValid();
-
-				Modifier.AbilitiesToGrant.Add(Entry);
+				Modifier.AbilityToGrant.GrantedAbility = LoadClass<UGameplayAbility>(nullptr, *ClassStr);
 			}
+
+			const FString InputTagStr = GetJsonString(AbilityObj, "inputTag");
+			Modifier.AbilityToGrant.InputTag = ParseGameplayTag(InputTagStr);
+			Modifier.AbilityToGrant.bAddInputTag = Modifier.AbilityToGrant.InputTag.IsValid();
 		}
 
 		return true;
@@ -263,19 +264,12 @@ bool ArcCraftJsonUtils::ParseOutputModifier(const nlohmann::json& ModObj, FInsta
 		Modifier.Weight = ModWeight;
 		Modifier.QualityScalingFactor = QualityScaling;
 
-		if (ModObj.contains("effects") && ModObj["effects"].is_array())
+		if (ModObj.contains("effect") && ModObj["effect"].is_object())
 		{
-			for (const auto& EffectObj : ModObj["effects"])
+			const FString ClassStr = GetJsonString(ModObj["effect"], "class");
+			if (!ClassStr.IsEmpty())
 			{
-				const FString ClassStr = GetJsonString(EffectObj, "class");
-				if (!ClassStr.IsEmpty())
-				{
-					TSubclassOf<UGameplayEffect> EffectClass = LoadClass<UGameplayEffect>(nullptr, *ClassStr);
-					if (EffectClass)
-					{
-						Modifier.EffectsToGrant.Add(EffectClass);
-					}
-				}
+				Modifier.EffectToGrant = LoadClass<UGameplayEffect>(nullptr, *ClassStr);
 			}
 		}
 
@@ -502,15 +496,11 @@ bool ArcCraftJsonUtils::ParseCraftModifier(const nlohmann::json& ModObj, FInstan
 		Mod.Weight = ModWeight;
 		Mod.QualityScalingFactor = QualityScaling;
 
-		if (ModObj.contains("stats") && ModObj["stats"].is_array())
+		if (ModObj.contains("stat") && ModObj["stat"].is_object())
 		{
-			for (const auto& StatObj : ModObj["stats"])
-			{
-				FArcItemAttributeStat Stat;
-				Stat.SetValue(GetJsonFloat(StatObj, "value", 0.0f));
-				Stat.Type = StringToModType(GetJsonString(StatObj, "modType"));
-				Mod.BaseStats.Add(Stat);
-			}
+			const auto& StatObj = ModObj["stat"];
+			Mod.BaseStat.SetValue(GetJsonFloat(StatObj, "value", 0.0f));
+			Mod.BaseStat.Type = StringToModType(GetJsonString(StatObj, "modType"));
 		}
 		return true;
 	}
@@ -524,21 +514,17 @@ bool ArcCraftJsonUtils::ParseCraftModifier(const nlohmann::json& ModObj, FInstan
 		Mod.Weight = ModWeight;
 		Mod.QualityScalingFactor = QualityScaling;
 
-		if (ModObj.contains("abilities") && ModObj["abilities"].is_array())
+		if (ModObj.contains("ability") && ModObj["ability"].is_object())
 		{
-			for (const auto& AbilityObj : ModObj["abilities"])
+			const auto& AbilityObj = ModObj["ability"];
+			const FString ClassStr = GetJsonString(AbilityObj, "class");
+			if (!ClassStr.IsEmpty())
 			{
-				FArcAbilityEntry Entry;
-				const FString ClassStr = GetJsonString(AbilityObj, "class");
-				if (!ClassStr.IsEmpty())
-				{
-					Entry.GrantedAbility = LoadClass<UGameplayAbility>(nullptr, *ClassStr);
-				}
-				const FString InputTagStr = GetJsonString(AbilityObj, "inputTag");
-				Entry.InputTag = ParseGameplayTag(InputTagStr);
-				Entry.bAddInputTag = Entry.InputTag.IsValid();
-				Mod.AbilitiesToGrant.Add(Entry);
+				Mod.AbilityToGrant.GrantedAbility = LoadClass<UGameplayAbility>(nullptr, *ClassStr);
 			}
+			const FString InputTagStr = GetJsonString(AbilityObj, "inputTag");
+			Mod.AbilityToGrant.InputTag = ParseGameplayTag(InputTagStr);
+			Mod.AbilityToGrant.bAddInputTag = Mod.AbilityToGrant.InputTag.IsValid();
 		}
 		return true;
 	}
@@ -552,19 +538,12 @@ bool ArcCraftJsonUtils::ParseCraftModifier(const nlohmann::json& ModObj, FInstan
 		Mod.Weight = ModWeight;
 		Mod.QualityScalingFactor = QualityScaling;
 
-		if (ModObj.contains("effects") && ModObj["effects"].is_array())
+		if (ModObj.contains("effect") && ModObj["effect"].is_object())
 		{
-			for (const auto& EffectObj : ModObj["effects"])
+			const FString ClassStr = GetJsonString(ModObj["effect"], "class");
+			if (!ClassStr.IsEmpty())
 			{
-				const FString ClassStr = GetJsonString(EffectObj, "class");
-				if (!ClassStr.IsEmpty())
-				{
-					TSubclassOf<UGameplayEffect> EffectClass = LoadClass<UGameplayEffect>(nullptr, *ClassStr);
-					if (EffectClass)
-					{
-						Mod.EffectsToGrant.Add(EffectClass);
-					}
-				}
+				Mod.EffectToGrant = LoadClass<UGameplayEffect>(nullptr, *ClassStr);
 			}
 		}
 		return true;
@@ -614,21 +593,14 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 		Obj["type"] = "Stats";
 		SerializeBaseFields(Obj, Stats);
 
-		nlohmann::json StatsArray = nlohmann::json::array();
-		for (const FArcItemAttributeStat& Stat : Stats->BaseStats)
+		nlohmann::json StatObj = nlohmann::json::object();
+		StatObj["value"] = Stats->BaseStat.Value.GetValueAtLevel(0);
+		StatObj["modType"] = TCHAR_TO_UTF8(*ModTypeToString(Stats->BaseStat.Type));
+		if (Stats->BaseStat.Attribute.IsValid())
 		{
-			nlohmann::json StatObj = nlohmann::json::object();
-			StatObj["value"] = Stat.Value.GetValueAtLevel(0);
-			StatObj["modType"] = TCHAR_TO_UTF8(*ModTypeToString(Stat.Type));
-
-			if (Stat.Attribute.IsValid())
-			{
-				StatObj["attribute"] = TCHAR_TO_UTF8(*Stat.Attribute.GetName());
-			}
-
-			StatsArray.push_back(StatObj);
+			StatObj["attribute"] = TCHAR_TO_UTF8(*Stats->BaseStat.Attribute.GetName());
 		}
-		Obj["stats"] = StatsArray;
+		Obj["stat"] = StatObj;
 
 		return Obj;
 	}
@@ -639,24 +611,16 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 		Obj["type"] = "Abilities";
 		SerializeBaseFields(Obj, Abilities);
 
-		nlohmann::json AbilitiesArray = nlohmann::json::array();
-		for (const FArcAbilityEntry& Entry : Abilities->AbilitiesToGrant)
+		nlohmann::json AbilityObj = nlohmann::json::object();
+		if (Abilities->AbilityToGrant.GrantedAbility)
 		{
-			nlohmann::json AbilityObj = nlohmann::json::object();
-
-			if (Entry.GrantedAbility)
-			{
-				AbilityObj["class"] = TCHAR_TO_UTF8(*Entry.GrantedAbility->GetPathName());
-			}
-
-			if (Entry.InputTag.IsValid())
-			{
-				AbilityObj["inputTag"] = TCHAR_TO_UTF8(*Entry.InputTag.ToString());
-			}
-
-			AbilitiesArray.push_back(AbilityObj);
+			AbilityObj["class"] = TCHAR_TO_UTF8(*Abilities->AbilityToGrant.GrantedAbility->GetPathName());
 		}
-		Obj["abilities"] = AbilitiesArray;
+		if (Abilities->AbilityToGrant.InputTag.IsValid())
+		{
+			AbilityObj["inputTag"] = TCHAR_TO_UTF8(*Abilities->AbilityToGrant.InputTag.ToString());
+		}
+		Obj["ability"] = AbilityObj;
 
 		return Obj;
 	}
@@ -667,19 +631,12 @@ nlohmann::json ArcCraftJsonUtils::SerializeOutputModifier(const FInstancedStruct
 		Obj["type"] = "Effects";
 		SerializeBaseFields(Obj, Effects);
 
-		nlohmann::json EffectsArray = nlohmann::json::array();
-		for (const TSubclassOf<UGameplayEffect>& EffectClass : Effects->EffectsToGrant)
+		nlohmann::json EffectObj = nlohmann::json::object();
+		if (Effects->EffectToGrant)
 		{
-			nlohmann::json EffectObj = nlohmann::json::object();
-
-			if (EffectClass)
-			{
-				EffectObj["class"] = TCHAR_TO_UTF8(*EffectClass->GetPathName());
-			}
-
-			EffectsArray.push_back(EffectObj);
+			EffectObj["class"] = TCHAR_TO_UTF8(*Effects->EffectToGrant->GetPathName());
 		}
-		Obj["effects"] = EffectsArray;
+		Obj["effect"] = EffectObj;
 
 		return Obj;
 	}
@@ -792,19 +749,14 @@ nlohmann::json ArcCraftJsonUtils::SerializeCraftModifier(const FInstancedStruct&
 		Obj["type"] = "Stats";
 		SerializeCraftBaseFields(Obj, Stats);
 
-		nlohmann::json StatsArray = nlohmann::json::array();
-		for (const FArcItemAttributeStat& Stat : Stats->BaseStats)
+		nlohmann::json StatObj = nlohmann::json::object();
+		StatObj["value"] = Stats->BaseStat.Value.GetValueAtLevel(0);
+		StatObj["modType"] = TCHAR_TO_UTF8(*ModTypeToString(Stats->BaseStat.Type));
+		if (Stats->BaseStat.Attribute.IsValid())
 		{
-			nlohmann::json StatObj = nlohmann::json::object();
-			StatObj["value"] = Stat.Value.GetValueAtLevel(0);
-			StatObj["modType"] = TCHAR_TO_UTF8(*ModTypeToString(Stat.Type));
-			if (Stat.Attribute.IsValid())
-			{
-				StatObj["attribute"] = TCHAR_TO_UTF8(*Stat.Attribute.GetName());
-			}
-			StatsArray.push_back(StatObj);
+			StatObj["attribute"] = TCHAR_TO_UTF8(*Stats->BaseStat.Attribute.GetName());
 		}
-		Obj["stats"] = StatsArray;
+		Obj["stat"] = StatObj;
 		return Obj;
 	}
 
@@ -813,15 +765,10 @@ nlohmann::json ArcCraftJsonUtils::SerializeCraftModifier(const FInstancedStruct&
 		Obj["type"] = "Abilities";
 		SerializeCraftBaseFields(Obj, Abilities);
 
-		nlohmann::json AbilitiesArray = nlohmann::json::array();
-		for (const FArcAbilityEntry& Entry : Abilities->AbilitiesToGrant)
-		{
-			nlohmann::json AbilityObj = nlohmann::json::object();
-			if (Entry.GrantedAbility) { AbilityObj["class"] = TCHAR_TO_UTF8(*Entry.GrantedAbility->GetPathName()); }
-			if (Entry.InputTag.IsValid()) { AbilityObj["inputTag"] = TCHAR_TO_UTF8(*Entry.InputTag.ToString()); }
-			AbilitiesArray.push_back(AbilityObj);
-		}
-		Obj["abilities"] = AbilitiesArray;
+		nlohmann::json AbilityObj = nlohmann::json::object();
+		if (Abilities->AbilityToGrant.GrantedAbility) { AbilityObj["class"] = TCHAR_TO_UTF8(*Abilities->AbilityToGrant.GrantedAbility->GetPathName()); }
+		if (Abilities->AbilityToGrant.InputTag.IsValid()) { AbilityObj["inputTag"] = TCHAR_TO_UTF8(*Abilities->AbilityToGrant.InputTag.ToString()); }
+		Obj["ability"] = AbilityObj;
 		return Obj;
 	}
 
@@ -830,14 +777,9 @@ nlohmann::json ArcCraftJsonUtils::SerializeCraftModifier(const FInstancedStruct&
 		Obj["type"] = "Effects";
 		SerializeCraftBaseFields(Obj, Effects);
 
-		nlohmann::json EffectsArray = nlohmann::json::array();
-		for (const TSubclassOf<UGameplayEffect>& EffectClass : Effects->EffectsToGrant)
-		{
-			nlohmann::json EffectObj = nlohmann::json::object();
-			if (EffectClass) { EffectObj["class"] = TCHAR_TO_UTF8(*EffectClass->GetPathName()); }
-			EffectsArray.push_back(EffectObj);
-		}
-		Obj["effects"] = EffectsArray;
+		nlohmann::json EffectObj = nlohmann::json::object();
+		if (Effects->EffectToGrant) { EffectObj["class"] = TCHAR_TO_UTF8(*Effects->EffectToGrant->GetPathName()); }
+		Obj["effect"] = EffectObj;
 		return Obj;
 	}
 

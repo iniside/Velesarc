@@ -24,10 +24,11 @@
 #include "ArcCoreUtils.h"
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemSpec.h"
+#include "Items/ArcItemsArray.h"
 #include "Items/ArcItemsStoreComponent.h"
+#include "Recipe/ArcCraftOutputBuilder.h"
 #include "Recipe/ArcRecipeDefinition.h"
 #include "Recipe/ArcRecipeIngredient.h"
-#include "Recipe/ArcRecipeOutput.h"
 #include "Recipe/ArcRecipeQuality.h"
 
 // -------------------------------------------------------------------
@@ -89,7 +90,7 @@ bool FArcCraftExecution_Recipe::CheckAndConsumeRecipeItems(
 	const UArcRecipeDefinition* InRecipe,
 	const UObject* InInstigator,
 	bool bConsume,
-	TArray<const FArcItemData*>* OutMatchedIngredients,
+	TArray<FArcItemSpec>* OutMatchedIngredients,
 	TArray<float>* OutQualityMultipliers) const
 {
 	if (!InRecipe)
@@ -109,7 +110,7 @@ bool FArcCraftExecution_Recipe::CheckAndConsumeRecipeItems(
 	TArray<TPair<FArcItemId, int32>> ItemsToConsume;
 	TSet<FArcItemId> UsedItemIds;
 
-	TArray<const FArcItemData*> MatchedIngredients;
+	TArray<FArcItemSpec> MatchedIngredients;
 	TArray<float> QualityMultipliers;
 	MatchedIngredients.SetNum(InRecipe->Ingredients.Num());
 	QualityMultipliers.SetNum(InRecipe->Ingredients.Num());
@@ -133,7 +134,8 @@ bool FArcCraftExecution_Recipe::CheckAndConsumeRecipeItems(
 				continue;
 			}
 
-			if (!Ingredient->DoesItemSatisfy(ItemData, TierTable))
+			const FArcItemSpec ItemSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
+			if (!Ingredient->DoesItemSatisfy(ItemSpec, TierTable))
 			{
 				continue;
 			}
@@ -152,8 +154,9 @@ bool FArcCraftExecution_Recipe::CheckAndConsumeRecipeItems(
 			return false;
 		}
 
-		MatchedIngredients[SlotIdx] = MatchedItem;
-		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(MatchedItem, TierTable);
+		const FArcItemSpec MatchedSpec = FArcItemCopyContainerHelper::ToSpec(MatchedItem);
+		MatchedIngredients[SlotIdx] = MatchedSpec;
+		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(MatchedSpec, TierTable);
 
 		UsedItemIds.Add(MatchedItem->GetItemId());
 
@@ -204,7 +207,7 @@ FArcItemSpec FArcCraftExecution_Recipe::OnRecipeCraftFinished(
 	// Items were already consumed at craft start, so we use bConsume=false here and accept
 	// that some items may have changed. For accuracy, matched ingredients could be cached
 	// at craft start time. This is a known simplification.
-	TArray<const FArcItemData*> MatchedIngredients;
+	TArray<FArcItemSpec> MatchedIngredients;
 	TArray<float> QualityMultipliers;
 
 	// Try to gather quality data from remaining items. If items were consumed, we still
@@ -224,49 +227,9 @@ FArcItemSpec FArcCraftExecution_Recipe::OnRecipeCraftFinished(
 	}
 	const float AverageQuality = TotalWeight > 0 ? TotalQuality / TotalWeight : 1.0f;
 
-	// Create base output spec
-	uint8 OutputLevel = InRecipe->OutputLevel;
-	if (InRecipe->bQualityAffectsLevel)
-	{
-		// Map quality multiplier to level (clamped to uint8 range)
-		UArcQualityTierTable* TierTable = GetTierTable(InRecipe);
-		if (TierTable)
-		{
-			// Use the average tier value as the output level
-			float TotalTierValue = 0.0f;
-			int32 TierCount = 0;
-			for (int32 Idx = 0; Idx < MatchedIngredients.Num(); ++Idx)
-			{
-				if (MatchedIngredients[Idx])
-				{
-					const FGameplayTag BestTag = TierTable->FindBestTierTag(
-						MatchedIngredients[Idx]->GetItemAggregatedTags());
-					if (BestTag.IsValid())
-					{
-						TotalTierValue += TierTable->GetTierValue(BestTag);
-						++TierCount;
-					}
-				}
-			}
-			if (TierCount > 0)
-			{
-				OutputLevel = static_cast<uint8>(FMath::Clamp(
-					FMath::RoundToInt(TotalTierValue / TierCount), 1, 255));
-			}
-		}
-	}
-
-	OutputSpec = FArcItemSpec::NewItem(InRecipe->OutputItemDefinition, OutputLevel, InRecipe->OutputAmount);
-
-	// Apply output modifiers
-	for (const FInstancedStruct& ModifierStruct : InRecipe->OutputModifiers)
-	{
-		const FArcRecipeOutputModifier* Modifier = ModifierStruct.GetPtr<FArcRecipeOutputModifier>();
-		if (Modifier)
-		{
-			Modifier->ApplyToOutput(OutputSpec, MatchedIngredients, QualityMultipliers, AverageQuality);
-		}
-	}
+	// Build output through the unified Evaluate → Resolve → Apply pipeline
+	OutputSpec = FArcCraftOutputBuilder::Build(
+		InRecipe, MatchedIngredients, QualityMultipliers, AverageQuality);
 
 	// Add to player inventory
 	ItemsStore->AddItem(OutputSpec, FArcItemId::InvalidId);

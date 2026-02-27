@@ -29,6 +29,7 @@
 class UArcCraftStationComponent;
 class UArcItemsStoreComponent;
 class UArcCraftVisEntityComponent;
+struct FArcCraftOutputFragment;
 
 /**
  * Base instanced struct for crafted item delivery.
@@ -123,5 +124,6 @@ public:
 
 private:
 	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
-	UArcItemsStoreComponent* GetOutputStore(const UArcCraftStationComponent* Station) const;
+	FArcCraftOutputFragment* GetOutputFragment(const UArcCraftStationComponent* Station) const;
+	UArcItemsStoreComponent* GetMirrorOutputStore(const UArcCraftStationComponent* Station) const;
 };

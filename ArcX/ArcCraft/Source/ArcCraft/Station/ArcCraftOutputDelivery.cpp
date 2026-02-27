@@ -22,8 +22,11 @@
 #include "ArcCraft/Station/ArcCraftOutputDelivery.h"
 
 #include "ArcCoreUtils.h"
+#include "MassEntitySubsystem.h"
+#include "ArcCraft/Mass/ArcCraftMassFragments.h"
 #include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
+#include "Engine/World.h"
 #include "Items/ArcItemId.h"
 #include "Items/ArcItemsStoreComponent.h"
 
@@ -108,11 +111,47 @@ UArcCraftVisEntityComponent* FArcCraftOutputDelivery_EntityStore::GetVisComponen
 	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
 }
 
-UArcItemsStoreComponent* FArcCraftOutputDelivery_EntityStore::GetOutputStore(
+FArcCraftOutputFragment* FArcCraftOutputDelivery_EntityStore::GetOutputFragment(
 	const UArcCraftStationComponent* Station) const
 {
 	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp || !VisComp->OutputStoreClass || !Station->GetOwner())
+	if (!VisComp)
+	{
+		return nullptr;
+	}
+
+	const FMassEntityHandle Entity = VisComp->GetEntityHandle();
+	if (!Entity.IsValid())
+	{
+		return nullptr;
+	}
+
+	UWorld* World = Station->GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!MassSubsystem)
+	{
+		return nullptr;
+	}
+
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+	if (!EntityManager.IsEntityValid(Entity))
+	{
+		return nullptr;
+	}
+
+	return EntityManager.GetFragmentDataPtr<FArcCraftOutputFragment>(Entity);
+}
+
+UArcItemsStoreComponent* FArcCraftOutputDelivery_EntityStore::GetMirrorOutputStore(
+	const UArcCraftStationComponent* Station) const
+{
+	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
+	if (!VisComp || !Station->GetOwner())
 	{
 		return nullptr;
 	}
@@ -134,14 +173,21 @@ bool FArcCraftOutputDelivery_EntityStore::DeliverOutput(
 	const FArcItemSpec& OutputSpec,
 	const UObject* Instigator) const
 {
-	// When the actor is alive, deliver to the output store.
-	// UArcCraftVisEntityComponent will sync it back to the entity fragment on deactivation.
-	UArcItemsStoreComponent* Store = GetOutputStore(Station);
-	if (!Store)
+	// Write to entity fragment (source of truth)
+	FArcCraftOutputFragment* OutputFrag = GetOutputFragment(Station);
+	if (!OutputFrag)
 	{
 		return false;
 	}
 
-	Store->AddItem(OutputSpec, FArcItemId::InvalidId);
+	OutputFrag->OutputItems.Add(OutputSpec);
+
+	// Mirror to actor-side store if alive (for UI)
+	UArcItemsStoreComponent* MirrorStore = GetMirrorOutputStore(Station);
+	if (MirrorStore)
+	{
+		MirrorStore->AddItem(OutputSpec, FArcItemId::InvalidId);
+	}
+
 	return true;
 }

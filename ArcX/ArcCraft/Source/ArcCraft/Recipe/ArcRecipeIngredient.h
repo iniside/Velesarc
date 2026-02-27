@@ -27,7 +27,7 @@
 
 #include "ArcRecipeIngredient.generated.h"
 
-struct FArcItemData;
+struct FArcItemSpec;
 class UArcQualityTierTable;
 
 /**
@@ -55,12 +55,12 @@ public:
 
 	/** Returns true if the given item satisfies this ingredient requirement. */
 	virtual bool DoesItemSatisfy(
-		const FArcItemData* InItemData,
+		const FArcItemSpec& InItemSpec,
 		const UArcQualityTierTable* InTierTable) const;
 
 	/** Get the quality multiplier that this specific item provides for this slot. */
 	virtual float GetItemQualityMultiplier(
-		const FArcItemData* InItemData,
+		const FArcItemSpec& InItemSpec,
 		const UArcQualityTierTable* InTierTable) const;
 
 	virtual ~FArcRecipeIngredient() = default;
@@ -80,11 +80,11 @@ public:
 	FArcNamedPrimaryAssetId ItemDefinitionId;
 
 	virtual bool DoesItemSatisfy(
-		const FArcItemData* InItemData,
+		const FArcItemSpec& InItemSpec,
 		const UArcQualityTierTable* InTierTable) const override;
 
 	virtual float GetItemQualityMultiplier(
-		const FArcItemData* InItemData,
+		const FArcItemSpec& InItemSpec,
 		const UArcQualityTierTable* InTierTable) const override;
 };
 
@@ -113,10 +113,10 @@ public:
 	FGameplayTag MinimumTierTag;
 
 	virtual bool DoesItemSatisfy(
-		const FArcItemData* InItemData,
+		const FArcItemSpec& InItemSpec,
 		const UArcQualityTierTable* InTierTable) const override;
 
 	virtual float GetItemQualityMultiplier(
-		const FArcItemData* InItemData,
+		const FArcItemSpec& InItemSpec,
 		const UArcQualityTierTable* InTierTable) const override;
 };
