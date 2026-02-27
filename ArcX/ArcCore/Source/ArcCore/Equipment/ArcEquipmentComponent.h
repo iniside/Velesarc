@@ -89,6 +89,12 @@ public:
 	TArray<FArcEquipmentSlot> GetMatchingSlots(const FGameplayTag& InTag) const;
 
 	const TArray<FArcEquipmentSlot>& GetEquipmentSlots() const;
+
+	const TMap<FGameplayTag, FArcItemId>& GetEquippedItems() const { return EquippedItems; }
+
+	const UArcEquipmentSlotPreset* GetEquipmentSlotPreset() const { return EquipmentSlotPreset; }
+
+	TSubclassOf<UArcItemsStoreComponent> GetItemsStoreClass() const { return ItemsStoreClass; }
 };
 
 USTRUCT()

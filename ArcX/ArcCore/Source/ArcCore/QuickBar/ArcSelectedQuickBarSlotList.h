@@ -117,7 +117,7 @@ struct TStructOpsTypeTraits<FArcSelectedQuickBarSlot> : public TStructOpsTypeTra
  * 
  */
 USTRUCT()
-struct FArcSelectedQuickBarSlotList : public FIrisFastArraySerializer
+struct ARCCORE_API FArcSelectedQuickBarSlotList : public FIrisFastArraySerializer
 {
 	GENERATED_BODY()
  

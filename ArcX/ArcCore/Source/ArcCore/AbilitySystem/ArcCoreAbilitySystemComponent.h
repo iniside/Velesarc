@@ -672,6 +672,20 @@ public:
 	{
 		return TargetingPresets;
 	}
+
+	// Debug accessors for protected engine members
+#if !UE_BUILD_SHIPPING
+	int32 GetDebug_AbilityScopeLockCount() const { return AbilityScopeLockCount; }
+	float GetDebug_AbilityLastActivatedTime() const { return AbilityLastActivatedTime; }
+	const FGameplayAbilityLocalAnimMontage& GetDebug_LocalAnimMontageInfo() const { return LocalAnimMontageInfo; }
+	const TMap<FGameplayTag, TArray<FGameplayAbilitySpecHandle>>& GetDebug_GameplayEventTriggeredAbilities() const { return GameplayEventTriggeredAbilities; }
+	const TMap<FGameplayTag, TArray<FGameplayAbilitySpecHandle>>& GetDebug_OwnedTagTriggeredAbilities() const { return OwnedTagTriggeredAbilities; }
+	const TMap<FGameplayAbilitySpecHandle, FTimerHandle>& GetDebug_AbilitiesOnCooldown() const { return AbilitiesOnCooldown; }
+	const TMap<FGameplayAbilitySpecHandle, double>& GetDebug_AbilityActivationStartTimes() const { return AbilityActivationStartTimes; }
+	const TArray<FGameplayAbilitySpecHandle>& GetDebug_InputPressedSpecHandles() const { return InputPressedSpecHandles; }
+	const TArray<FGameplayAbilitySpecHandle>& GetDebug_InputHeldSpecHandles() const { return InputHeldSpecHandles; }
+	const TMap<FArcAbilityActorHandle, TWeakObjectPtr<AActor>>& GetDebug_SpawnedActors() const { return SpawnedActors; }
+#endif
 	
 	void HandleTargetingCompleted(FTargetingRequestHandle TargetingRequestHandle, FGameplayTag TargetingTag);
 	void GiveGlobalTargetingPreset(const TMap<FGameplayTag, FArcCoreGlobalTargetingEntry>& Preset);

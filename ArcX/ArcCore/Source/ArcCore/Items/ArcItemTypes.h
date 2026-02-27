@@ -96,6 +96,7 @@ public:
 	FArcItemAttributeStat(const FArcItemAttributeStat& Other)
 		: Value(Other.Value)
 		, Attribute(Other.Attribute)
+		, Type(Other.Type)
 	{
 	};
 

@@ -425,6 +425,21 @@ public:
 		return PendingAttachments;
 	}
 
+	const TMap<FGameplayTag, TSet<FName>>& GetTakenSockets() const
+	{
+		return TakenSockets;
+	}
+
+	const FArcLinkedAnimLayer& GetLinkedAnimLayer() const
+	{
+		return LinkedAnimLayer;
+	}
+
+	const TMap<const UArcItemDefinition*, TArray<UObject*>>& GetObjectsAttachedFromItem() const
+	{
+		return ObjectsAttachedFromItem;
+	}
+
 	UClass* GetItemStoreClass() const;
 #if WITH_EDITORONLY_DATA
 	/** This scans the class for AssetBundles metadata on asset properties and initializes the AssetBundleData with InitializeAssetBundlesFromMetadata */
