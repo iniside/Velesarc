@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcSettlement",
+	"Description": "Meta-knowledge layer for settlements, regions, and world state queries.",
+	"Category": "ArcX",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcSettlement",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{"Name": "GameplayAbilities", "Enabled": true},
+		{"Name": "StateTree", "Enabled": true},
+		{"Name": "SmartObjects", "Enabled": true},
+		{"Name": "MassGameplay", "Enabled": true},
+		{"Name": "ArcCore", "Enabled": true},
+		{"Name": "ArcMass", "Enabled": true},
+		{"Name": "ArcAI", "Enabled": true}
+	]
+}
