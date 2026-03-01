@@ -1,0 +1,35 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcArea",
+	"Description": "Persistent area assignment layer — manages NPC-to-slot assignments over SmartObjects.",
+	"Category": "ArcX",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcArea",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{"Name": "GameplayAbilities", "Enabled": true},
+		{"Name": "StateTree", "Enabled": true},
+		{"Name": "SmartObjects", "Enabled": true},
+		{"Name": "MassGameplay", "Enabled": true},
+		{"Name": "ArcCore", "Enabled": true},
+		{"Name": "ArcMass", "Enabled": true},
+		{"Name": "ArcAI", "Enabled": true},
+		{"Name": "ArcKnowledge", "Enabled": true}
+	]
+}
