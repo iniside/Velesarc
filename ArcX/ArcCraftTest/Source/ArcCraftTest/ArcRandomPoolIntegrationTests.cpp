@@ -22,14 +22,16 @@
 #include "CQTest.h"
 
 #include "NativeGameplayTags.h"
+#include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
 #include "StructUtils/InstancedStruct.h"
 #include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
-#include "Items/ArcItemData.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
+#include "Items/Fragments/ArcItemFragment_Tags.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcRandomPoolIntegrationTest, Log, All);
 
@@ -56,14 +58,14 @@ namespace RandomPoolTestHelpers
 	 */
 	FInstancedStruct MakeStatModifier(float BaseValue, float QualityScalingFactor = 0.0f)
 	{
-		FArcRecipeOutputModifier_Stats StatMod;
+		FArcCraftModifier_Stats StatMod;
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(BaseValue);
-		StatMod.BaseStats.Add(Stat);
+		StatMod.BaseStat = Stat;
 		StatMod.QualityScalingFactor = QualityScalingFactor;
 
 		FInstancedStruct Instance;
-		Instance.InitializeAs<FArcRecipeOutputModifier_Stats>(StatMod);
+		Instance.InitializeAs<FArcCraftModifier_Stats>(StatMod);
 		return Instance;
 	}
 
@@ -122,14 +124,33 @@ namespace RandomPoolTestHelpers
 		return Instance;
 	}
 
+	/** Apply a single modifier result to an item spec. */
+	void ApplyResult(FArcItemSpec& OutSpec, const FArcCraftModifierResult& Result)
+	{
+		if (Result.Type == EArcCraftModifierResultType::Stat)
+		{
+			FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
+			if (!StatsFragment)
+			{
+				StatsFragment = new FArcItemFragment_ItemStats();
+				StatsFragment->DefaultStats.Add(Result.Stat);
+				OutSpec.AddInstanceData(StatsFragment);
+			}
+			else
+			{
+				StatsFragment->DefaultStats.Add(Result.Stat);
+			}
+		}
+	}
+
 	/**
-	 * Build a FArcRecipeOutputModifier_RandomPool and call ApplyToOutput.
+	 * Build a FArcRecipeOutputModifier_RandomPool, evaluate it, and apply results.
 	 * Returns the resulting item spec.
 	 */
 	FArcItemSpec ApplyRandomPool(
 		UArcRandomPoolDefinition* Pool,
 		const FInstancedStruct& SelectionMode,
-		const TArray<const FArcItemData*>& Ingredients = {},
+		const TArray<FArcItemSpec>& Ingredients = {},
 		const TArray<float>& QualityMults = {},
 		float AverageQuality = 1.0f)
 	{
@@ -138,7 +159,15 @@ namespace RandomPoolTestHelpers
 		PoolModifier.SelectionMode = SelectionMode;
 
 		FArcItemSpec OutSpec;
-		PoolModifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, AverageQuality);
+		TArray<FArcCraftPendingModifier> Results = PoolModifier.Evaluate(
+			Ingredients, QualityMults, AverageQuality);
+		for (const FArcCraftPendingModifier& Pending : Results)
+		{
+			if (Pending.Result.Type != EArcCraftModifierResultType::None)
+			{
+				ApplyResult(OutSpec, Pending.Result);
+			}
+		}
 		return OutSpec;
 	}
 
@@ -489,13 +518,21 @@ TEST_CLASS(RandomPool_SimpleRandom_Eligibility, "ArcCraft.RandomPool.Integration
 		FInstancedStruct Mode = RandomPoolTestHelpers::MakeSimpleRandomMode(/*MaxSelections=*/ 3, /*bAllowDuplicates=*/ false);
 
 		// Provide Metal ingredient only => entries 0,1,2 eligible (3 total), entries 3,4 not
+		FGameplayTagContainer MetalItemTags;
+		MetalItemTags.AddTag(TAG_PoolTest_Resource_Metal);
+
 		UArcItemDefinition* MetalDef = NewObject<UArcItemDefinition>(
 			GetTransientPackage(), TEXT("TestItem_PoolMetal"), RF_Transient);
 		MetalDef->RegenerateItemId();
-		TSharedPtr<FArcItemData> MetalItem = FArcItemData::NewFromSpec(
-			FArcItemSpec().SetItemDefinitionAsset(MetalDef));
-		MetalItem->ItemAggregatedTags.AddTag(TAG_PoolTest_Resource_Metal);
-		TArray<const FArcItemData*> Ingredients = { MetalItem.Get() };
+
+		FArcItemFragment_Tags TagsFragment;
+		TagsFragment.AssetTags = MetalItemTags;
+		MetalDef->AddFragment(TagsFragment);
+
+		FArcItemSpec MetalSpec;
+		MetalSpec.SetItemDefinitionAsset(MetalDef);
+		MetalSpec.SetItemDefinition(MetalDef->GetPrimaryAssetId());
+		TArray<FArcItemSpec> Ingredients = { MetalSpec };
 		TArray<float> QualityMults = { 1.0f };
 
 		TMap<int32, int32> StatCounts;

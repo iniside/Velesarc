@@ -38,7 +38,7 @@ bool FArcDepositItemToCraftStationCommand::CanSendCommand() const
 		return false;
 	}
 
-	if (SourceStore->IsItemLocked(ItemId))
+	if (SourceStore->IsPending(ItemId))
 	{
 		return false;
 	}
@@ -56,13 +56,28 @@ void FArcDepositItemToCraftStationCommand::PreSendCommand()
 {
 	if (SourceStore)
 	{
-		SourceStore->LockItem(ItemId);
+		PendingItemIds.Add(ItemId);
+		SourceStore->AddPendingItems(PendingItemIds);
+		CaptureExpectedVersions(SourceStore);
+	}
+}
+
+void FArcDepositItemToCraftStationCommand::CommandConfirmed(bool bSuccess)
+{
+	if (!bSuccess && SourceStore)
+	{
+		SourceStore->RemovePendingItems(PendingItemIds);
 	}
 }
 
 bool FArcDepositItemToCraftStationCommand::Execute()
 {
 	if (!SourceStore || !CraftStation)
+	{
+		return false;
+	}
+
+	if (!ValidateVersions(SourceStore))
 	{
 		return false;
 	}

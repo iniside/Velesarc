@@ -154,6 +154,26 @@ public:
 	bool DepositItem(const FArcItemSpec& Item, UObject* Instigator);
 
 	/**
+	 * Withdraw an input item from the station's ingredient source by index.
+	 * @param ItemIndex  Index into the source's available items.
+	 * @param Stacks     Number of stacks to withdraw. 0 = all.
+	 * @param OutSpec    Filled with the withdrawn item spec on success.
+	 * @return true if the item was successfully withdrawn.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Craft Station")
+	bool WithdrawInputItem(int32 ItemIndex, int32 Stacks, FArcItemSpec& OutSpec, UObject* Instigator);
+
+	/**
+	 * Withdraw a crafted output item from the station by index.
+	 * @param ItemIndex  Index into the output items.
+	 * @param Stacks     Number of stacks to withdraw. 0 = all.
+	 * @param OutSpec    Filled with the withdrawn item spec on success.
+	 * @return true if the item was successfully withdrawn.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Craft Station")
+	bool WithdrawOutputItem(int32 ItemIndex, int32 Stacks, FArcItemSpec& OutSpec, UObject* Instigator);
+
+	/**
 	 * For InteractionCheck mode: called when the player interacts with the station.
 	 * Checks if enough time has passed since the craft started and finishes items accordingly.
 	 * @return true if at least one item was completed.

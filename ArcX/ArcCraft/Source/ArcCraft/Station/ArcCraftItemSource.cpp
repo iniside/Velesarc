@@ -71,6 +71,16 @@ bool FArcCraftItemSource::DepositItem(
 	return false;
 }
 
+bool FArcCraftItemSource::WithdrawItem(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
+{
+	return false;
+}
+
 bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
 	TArray<FArcItemSpec>& Items,
 	const UArcRecipeDefinition* Recipe,
@@ -347,6 +357,17 @@ bool FArcCraftItemSource_InstigatorStore::DepositItem(
 	return false;
 }
 
+bool FArcCraftItemSource_InstigatorStore::WithdrawItem(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
+{
+	// Instigator store doesn't support withdrawal — items are in the player's inventory, not the station.
+	return false;
+}
+
 // -------------------------------------------------------------------
 // FArcCraftItemSource_StationStore
 // -------------------------------------------------------------------
@@ -423,6 +444,49 @@ bool FArcCraftItemSource_StationStore::DepositItem(
 	}
 
 	Store->AddItem(Item, FArcItemId::InvalidId);
+	return true;
+}
+
+bool FArcCraftItemSource_StationStore::WithdrawItem(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
+{
+	UArcItemsStoreComponent* Store = GetStationStore(Station);
+	if (!Store)
+	{
+		return false;
+	}
+
+	const TArray<const FArcItemData*> Items = Store->GetItems();
+	if (!Items.IsValidIndex(ItemIndex))
+	{
+		return false;
+	}
+
+	const FArcItemData* ItemData = Items[ItemIndex];
+	if (!ItemData)
+	{
+		return false;
+	}
+
+	const int32 ItemStacks = static_cast<int32>(ItemData->GetStacks());
+	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= ItemStacks) ? ItemStacks : Stacks;
+
+	OutSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
+	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
+
+	if (StacksToWithdraw >= ItemStacks)
+	{
+		Store->DestroyItem(ItemData->GetItemId());
+	}
+	else
+	{
+		Store->RemoveItem(ItemData->GetItemId(), StacksToWithdraw);
+	}
+
 	return true;
 }
 
@@ -586,6 +650,63 @@ bool FArcCraftItemSource_EntityStore::DepositItem(
 	if (MirrorStore)
 	{
 		MirrorStore->AddItem(Item, FArcItemId::InvalidId);
+	}
+
+	return true;
+}
+
+bool FArcCraftItemSource_EntityStore::WithdrawItem(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
+{
+	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
+	if (!InputFrag)
+	{
+		return false;
+	}
+
+	if (!InputFrag->InputItems.IsValidIndex(ItemIndex))
+	{
+		return false;
+	}
+
+	FArcItemSpec& SourceSpec = InputFrag->InputItems[ItemIndex];
+	const int32 AvailableStacks = static_cast<int32>(SourceSpec.Amount);
+	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= AvailableStacks) ? AvailableStacks : Stacks;
+
+	// Build the output spec
+	OutSpec = SourceSpec;
+	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
+
+	// Remove from entity fragment (source of truth)
+	if (StacksToWithdraw >= AvailableStacks)
+	{
+		InputFrag->InputItems.RemoveAt(ItemIndex);
+	}
+	else
+	{
+		SourceSpec.Amount = static_cast<uint16>(AvailableStacks - StacksToWithdraw);
+	}
+
+	// Re-sync mirror store from fragment
+	UArcItemsStoreComponent* MirrorStore = GetMirrorInputStore(Station);
+	if (MirrorStore)
+	{
+		const TArray<const FArcItemData*> StoreItems = MirrorStore->GetItems();
+		for (const FArcItemData* ItemData : StoreItems)
+		{
+			if (ItemData)
+			{
+				MirrorStore->RemoveItem(ItemData->GetItemId(), ItemData->GetStacks(), true);
+			}
+		}
+		for (const FArcItemSpec& Spec : InputFrag->InputItems)
+		{
+			MirrorStore->AddItem(Spec, FArcItemId::InvalidId);
+		}
 	}
 
 	return true;

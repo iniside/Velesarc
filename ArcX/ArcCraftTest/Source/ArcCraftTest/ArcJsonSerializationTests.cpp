@@ -29,6 +29,7 @@
 #include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
 #include "ArcCraft/Recipe/ArcRandomPoolJsonLoader.h"
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcQualityBandPreset.h"
@@ -369,10 +370,12 @@ TEST_CLASS(RandomPool_JsonSerialization, "ArcCraft.Json.Integration.RandomPool")
 						{
 							"type": "Stats",
 							"qualityScaling": 0.5,
-							"stats": [
-								{ "value": 10, "modType": "Additive" },
-								{ "value": 2, "modType": "Multiply" }
-							]
+							"stat": { "value": 10, "modType": "Additive" }
+						},
+						{
+							"type": "Stats",
+							"qualityScaling": 0.5,
+							"stat": { "value": 2, "modType": "Multiply" }
 						}
 					]
 				}
@@ -384,38 +387,40 @@ TEST_CLASS(RandomPool_JsonSerialization, "ArcCraft.Json.Integration.RandomPool")
 
 		ASSERT_THAT(AreEqual(1, Pool->Entries.Num()));
 		const FArcRandomPoolEntry& Entry = Pool->Entries[0];
-		ASSERT_THAT(AreEqual(1, Entry.Modifiers.Num(), TEXT("Should have 1 modifier")));
+		ASSERT_THAT(AreEqual(2, Entry.Modifiers.Num(), TEXT("Should have 2 modifiers")));
 
-		const FInstancedStruct& ModStruct = Entry.Modifiers[0];
-		ASSERT_THAT(IsTrue(ModStruct.IsValid(), TEXT("Modifier struct should be valid")));
+		const FInstancedStruct& ModStruct0 = Entry.Modifiers[0];
+		ASSERT_THAT(IsTrue(ModStruct0.IsValid(), TEXT("Modifier struct 0 should be valid")));
 
-		const FArcRecipeOutputModifier_Stats* StatMod = ModStruct.GetPtr<FArcRecipeOutputModifier_Stats>();
-		ASSERT_THAT(IsNotNull(StatMod, TEXT("Should be a Stats modifier")));
-		ASSERT_THAT(IsNear(0.5f, StatMod->QualityScalingFactor, 0.001f, TEXT("QualityScaling")));
-		ASSERT_THAT(AreEqual(2, StatMod->BaseStats.Num(), TEXT("Should have 2 stats")));
+		const FArcCraftModifier_Stats* StatMod0 = ModStruct0.GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(StatMod0, TEXT("Should be a CraftModifier_Stats")));
+		ASSERT_THAT(IsNear(0.5f, StatMod0->QualityScalingFactor, 0.001f, TEXT("QualityScaling")));
+		ASSERT_THAT(IsNear(10.0f, StatMod0->BaseStat.Value.GetValue(), 0.001f));
+		ASSERT_THAT(AreEqual((int32)EArcModType::Additive, (int32)StatMod0->BaseStat.Type));
 
-		ASSERT_THAT(IsNear(10.0f, StatMod->BaseStats[0].Value.GetValue(), 0.001f));
-		ASSERT_THAT(AreEqual((int32)EArcModType::Additive, (int32)StatMod->BaseStats[0].Type));
-
-		ASSERT_THAT(IsNear(2.0f, StatMod->BaseStats[1].Value.GetValue(), 0.001f));
-		ASSERT_THAT(AreEqual((int32)EArcModType::Multiply, (int32)StatMod->BaseStats[1].Type));
+		const FArcCraftModifier_Stats* StatMod1 = Entry.Modifiers[1].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(StatMod1, TEXT("Second modifier should be a CraftModifier_Stats")));
+		ASSERT_THAT(IsNear(2.0f, StatMod1->BaseStat.Value.GetValue(), 0.001f));
+		ASSERT_THAT(AreEqual((int32)EArcModType::Multiply, (int32)StatMod1->BaseStat.Type));
 	}
 
-	TEST_METHOD(ParseJson_TransferStatsModifier_ParsedCorrectly)
+	TEST_METHOD(ParseJson_CraftModifierBaseFields_ParsedCorrectly)
 	{
 		const auto Json = JsonTestHelpers::ParseJsonString(R"({
 			"$type": "RandomPoolDefinition",
-			"name": "TransferPool",
+			"name": "BaseFieldPool",
 			"entries": [
 				{
-					"name": "TransferEntry",
+					"name": "BaseFieldEntry",
 					"baseWeight": 1,
 					"modifiers": [
 						{
-							"type": "TransferStats",
-							"ingredientSlot": 2,
-							"transferScale": 0.75,
-							"scaleByQuality": false
+							"type": "Stats",
+							"minQuality": 2.5,
+							"triggerTags": ["Resource.Metal", "Resource.Gem"],
+							"weight": 3.0,
+							"qualityScaling": 0.75,
+							"stat": { "value": 10, "modType": "Additive" }
 						}
 					]
 				}
@@ -429,12 +434,61 @@ TEST_CLASS(RandomPool_JsonSerialization, "ArcCraft.Json.Integration.RandomPool")
 		const FArcRandomPoolEntry& Entry = Pool->Entries[0];
 		ASSERT_THAT(AreEqual(1, Entry.Modifiers.Num()));
 
-		const FArcRecipeOutputModifier_TransferStats* TransferMod =
-			Entry.Modifiers[0].GetPtr<FArcRecipeOutputModifier_TransferStats>();
-		ASSERT_THAT(IsNotNull(TransferMod, TEXT("Should be TransferStats modifier")));
-		ASSERT_THAT(AreEqual(2, TransferMod->IngredientSlotIndex));
-		ASSERT_THAT(IsNear(0.75f, TransferMod->TransferScale, 0.001f));
-		ASSERT_THAT(IsFalse(TransferMod->bScaleByQuality, TEXT("ScaleByQuality should be false")));
+		const FArcCraftModifier_Stats* StatMod = Entry.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(StatMod, TEXT("Should be a CraftModifier_Stats")));
+		ASSERT_THAT(IsNear(2.5f, StatMod->MinQualityThreshold, 0.001f, TEXT("MinQuality")));
+		ASSERT_THAT(IsNear(3.0f, StatMod->Weight, 0.001f, TEXT("Weight")));
+		ASSERT_THAT(IsNear(0.75f, StatMod->QualityScalingFactor, 0.001f, TEXT("QualityScaling")));
+		ASSERT_THAT(IsTrue(StatMod->TriggerTags.HasTag(TAG_JsonTest_Resource_Metal), TEXT("Should have Metal trigger tag")));
+		ASSERT_THAT(IsTrue(StatMod->TriggerTags.HasTag(TAG_JsonTest_Resource_Gem), TEXT("Should have Gem trigger tag")));
+		ASSERT_THAT(AreEqual(2, StatMod->TriggerTags.Num(), TEXT("Should have 2 trigger tags")));
+		ASSERT_THAT(IsNear(10.0f, StatMod->BaseStat.Value.GetValue(), 0.001f));
+	}
+
+	TEST_METHOD(ParseJson_CraftModifierEmptyTriggerTags_DefaultsCorrectly)
+	{
+		const auto Json = JsonTestHelpers::ParseJsonString(R"({
+			"$type": "RandomPoolDefinition",
+			"name": "DefaultPool",
+			"entries": [
+				{
+					"name": "DefaultEntry",
+					"baseWeight": 1,
+					"modifiers": [
+						{
+							"type": "Stats",
+							"stat": { "value": 5, "modType": "Additive" }
+						}
+					]
+				}
+			]
+		})");
+
+		UArcRandomPoolDefinition* Pool = NewObject<UArcRandomPoolDefinition>(GetTransientPackage());
+		UArcRandomPoolJsonLoader::ParseJson(Json, Pool);
+
+		ASSERT_THAT(AreEqual(1, Pool->Entries.Num()));
+		const FArcRandomPoolEntry& Entry = Pool->Entries[0];
+		ASSERT_THAT(AreEqual(1, Entry.Modifiers.Num()));
+
+		const FArcCraftModifier_Stats* StatMod = Entry.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(StatMod));
+
+		// Defaults: empty trigger tags = always match, minQuality 0, weight 1, qualityScaling 1
+		ASSERT_THAT(IsNear(0.0f, StatMod->MinQualityThreshold, 0.001f, TEXT("Default MinQuality")));
+		ASSERT_THAT(IsNear(1.0f, StatMod->Weight, 0.001f, TEXT("Default Weight")));
+		ASSERT_THAT(IsNear(1.0f, StatMod->QualityScalingFactor, 0.001f, TEXT("Default QualityScaling")));
+		ASSERT_THAT(AreEqual(0, StatMod->TriggerTags.Num(), TEXT("Empty TriggerTags = always match")));
+
+		// Verify MatchesTriggerTags with empty tags matches anything
+		FGameplayTagContainer AnyTags;
+		AnyTags.AddTag(TAG_JsonTest_Resource_Metal);
+		ASSERT_THAT(IsTrue(StatMod->MatchesTriggerTags(AnyTags),
+			TEXT("Empty TriggerTags should match any ingredient tags")));
+
+		FGameplayTagContainer EmptyTags;
+		ASSERT_THAT(IsTrue(StatMod->MatchesTriggerTags(EmptyTags),
+			TEXT("Empty TriggerTags should match empty ingredient tags")));
 	}
 
 	TEST_METHOD(ParseJson_EmptyPool_ZeroEntries)
@@ -487,9 +541,7 @@ TEST_CLASS(RandomPool_JsonSerialization, "ArcCraft.Json.Integration.RandomPool")
 						{
 							"type": "Stats",
 							"qualityScaling": 0.2,
-							"stats": [
-								{ "value": 25, "modType": "Additive" }
-							]
+							"stat": { "value": 25, "modType": "Additive" }
 						}
 					]
 				}
@@ -520,10 +572,9 @@ TEST_CLASS(RandomPool_JsonSerialization, "ArcCraft.Json.Integration.RandomPool")
 		ASSERT_THAT(AreEqual(1, E.Modifiers.Num()));
 
 		// Verify modifier content
-		const FArcRecipeOutputModifier_Stats* StatMod = E.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
+		const FArcCraftModifier_Stats* StatMod = E.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
 		ASSERT_THAT(IsNotNull(StatMod));
-		ASSERT_THAT(AreEqual(1, StatMod->BaseStats.Num()));
-		ASSERT_THAT(IsNear(25.0f, StatMod->BaseStats[0].Value.GetValue(), 0.001f));
+		ASSERT_THAT(IsNear(25.0f, StatMod->BaseStat.Value.GetValue(), 0.001f));
 	}
 };
 
@@ -568,7 +619,6 @@ TEST_CLASS(MaterialPropertyTable_JsonSerialization, "ArcCraft.Json.Integration.M
 				{
 					"name": "Metal Rule",
 					"priority": 10,
-					"maxContributions": 2,
 					"requiredRecipeTags": ["Recipe.Weapon"],
 					"outputTags": ["Output.Sharpness"]
 				}
@@ -583,7 +633,6 @@ TEST_CLASS(MaterialPropertyTable_JsonSerialization, "ArcCraft.Json.Integration.M
 
 		ASSERT_THAT(AreEqual(FString("Metal Rule"), Rule.RuleName.ToString()));
 		ASSERT_THAT(AreEqual(10, Rule.Priority));
-		ASSERT_THAT(AreEqual(2, Rule.MaxContributions));
 		ASSERT_THAT(IsTrue(Rule.RequiredRecipeTags.HasTag(TAG_JsonTest_Recipe_Weapon)));
 		ASSERT_THAT(IsTrue(Rule.OutputTags.HasTag(TAG_JsonTest_Output_Sharpness)));
 	}
@@ -775,9 +824,7 @@ TEST_CLASS(MaterialPropertyTable_JsonSerialization, "ArcCraft.Json.Integration.M
 								{
 									"type": "Stats",
 									"qualityScaling": 0,
-									"stats": [
-										{ "value": 5, "modType": "Additive" }
-									]
+									"stat": { "value": 5, "modType": "Additive" }
 								}
 							]
 						},
@@ -790,9 +837,7 @@ TEST_CLASS(MaterialPropertyTable_JsonSerialization, "ArcCraft.Json.Integration.M
 								{
 									"type": "Stats",
 									"qualityScaling": 0.3,
-									"stats": [
-										{ "value": 20, "modType": "Additive" }
-									]
+									"stat": { "value": 20, "modType": "Additive" }
 								}
 							]
 						}
@@ -815,10 +860,9 @@ TEST_CLASS(MaterialPropertyTable_JsonSerialization, "ArcCraft.Json.Integration.M
 		ASSERT_THAT(IsNear(2.0f, Band0.BaseWeight, 0.001f));
 		ASSERT_THAT(IsNear(0.1f, Band0.QualityWeightBias, 0.001f));
 		ASSERT_THAT(AreEqual(1, Band0.Modifiers.Num()));
-		const FArcRecipeOutputModifier_Stats* StatMod0 = Band0.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
+		const FArcCraftModifier_Stats* StatMod0 = Band0.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
 		ASSERT_THAT(IsNotNull(StatMod0));
-		ASSERT_THAT(AreEqual(1, StatMod0->BaseStats.Num()));
-		ASSERT_THAT(IsNear(5.0f, StatMod0->BaseStats[0].Value.GetValue(), 0.001f));
+		ASSERT_THAT(IsNear(5.0f, StatMod0->BaseStat.Value.GetValue(), 0.001f));
 
 		// Band 1: High
 		const FArcMaterialQualityBand& Band1 = Rule.QualityBands[1];
@@ -827,10 +871,10 @@ TEST_CLASS(MaterialPropertyTable_JsonSerialization, "ArcCraft.Json.Integration.M
 		ASSERT_THAT(IsNear(1.0f, Band1.BaseWeight, 0.001f));
 		ASSERT_THAT(IsNear(0.5f, Band1.QualityWeightBias, 0.001f));
 		ASSERT_THAT(AreEqual(1, Band1.Modifiers.Num()));
-		const FArcRecipeOutputModifier_Stats* StatMod1 = Band1.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
+		const FArcCraftModifier_Stats* StatMod1 = Band1.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
 		ASSERT_THAT(IsNotNull(StatMod1));
 		ASSERT_THAT(IsNear(0.3f, StatMod1->QualityScalingFactor, 0.001f));
-		ASSERT_THAT(IsNear(20.0f, StatMod1->BaseStats[0].Value.GetValue(), 0.001f));
+		ASSERT_THAT(IsNear(20.0f, StatMod1->BaseStat.Value.GetValue(), 0.001f));
 	}
 
 	TEST_METHOD(ParseJson_MultipleRules_OrderPreserved)
@@ -912,9 +956,7 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 						{
 							"type": "Stats",
 							"qualityScaling": 0.1,
-							"stats": [
-								{ "value": 15, "modType": "Additive" }
-							]
+							"stat": { "value": 15, "modType": "Additive" }
 						}
 					]
 				},
@@ -927,10 +969,12 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 						{
 							"type": "Stats",
 							"qualityScaling": 0.5,
-							"stats": [
-								{ "value": 50, "modType": "Additive" },
-								{ "value": 1.5, "modType": "Multiply" }
-							]
+							"stat": { "value": 50, "modType": "Additive" }
+						},
+						{
+							"type": "Stats",
+							"qualityScaling": 0.5,
+							"stat": { "value": 1.5, "modType": "Multiply" }
 						}
 					]
 				}
@@ -959,11 +1003,10 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 		ASSERT_THAT(IsNear(1.0f, B1.BaseWeight, 0.001f));
 		ASSERT_THAT(IsNear(0.5f, B1.QualityWeightBias, 0.001f));
 		ASSERT_THAT(AreEqual(1, B1.Modifiers.Num()));
-		const FArcRecipeOutputModifier_Stats* Stat1 = B1.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
+		const FArcCraftModifier_Stats* Stat1 = B1.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
 		ASSERT_THAT(IsNotNull(Stat1));
 		ASSERT_THAT(IsNear(0.1f, Stat1->QualityScalingFactor, 0.001f));
-		ASSERT_THAT(AreEqual(1, Stat1->BaseStats.Num()));
-		ASSERT_THAT(IsNear(15.0f, Stat1->BaseStats[0].Value.GetValue(), 0.001f));
+		ASSERT_THAT(IsNear(15.0f, Stat1->BaseStat.Value.GetValue(), 0.001f));
 
 		// Band 2: Epic
 		const FArcMaterialQualityBand& B2 = Preset->QualityBands[2];
@@ -971,15 +1014,17 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 		ASSERT_THAT(IsNear(5.0f, B2.MinQuality, 0.001f));
 		ASSERT_THAT(IsNear(0.5f, B2.BaseWeight, 0.001f));
 		ASSERT_THAT(IsNear(1.0f, B2.QualityWeightBias, 0.001f));
-		ASSERT_THAT(AreEqual(1, B2.Modifiers.Num()));
-		const FArcRecipeOutputModifier_Stats* Stat2 = B2.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
-		ASSERT_THAT(IsNotNull(Stat2));
-		ASSERT_THAT(IsNear(0.5f, Stat2->QualityScalingFactor, 0.001f));
-		ASSERT_THAT(AreEqual(2, Stat2->BaseStats.Num(), TEXT("Epic band should have 2 stats")));
-		ASSERT_THAT(IsNear(50.0f, Stat2->BaseStats[0].Value.GetValue(), 0.001f));
-		ASSERT_THAT(AreEqual((int32)EArcModType::Additive, (int32)Stat2->BaseStats[0].Type));
-		ASSERT_THAT(IsNear(1.5f, Stat2->BaseStats[1].Value.GetValue(), 0.001f));
-		ASSERT_THAT(AreEqual((int32)EArcModType::Multiply, (int32)Stat2->BaseStats[1].Type));
+		ASSERT_THAT(AreEqual(2, B2.Modifiers.Num(), TEXT("Epic band should have 2 modifiers")));
+		const FArcCraftModifier_Stats* Stat2a = B2.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(Stat2a));
+		ASSERT_THAT(IsNear(0.5f, Stat2a->QualityScalingFactor, 0.001f));
+		ASSERT_THAT(IsNear(50.0f, Stat2a->BaseStat.Value.GetValue(), 0.001f));
+		ASSERT_THAT(AreEqual((int32)EArcModType::Additive, (int32)Stat2a->BaseStat.Type));
+
+		const FArcCraftModifier_Stats* Stat2b = B2.Modifiers[1].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(Stat2b));
+		ASSERT_THAT(IsNear(1.5f, Stat2b->BaseStat.Value.GetValue(), 0.001f));
+		ASSERT_THAT(AreEqual((int32)EArcModType::Multiply, (int32)Stat2b->BaseStat.Type));
 	}
 
 	TEST_METHOD(ParsePresetJson_EmptyPreset)
@@ -1011,9 +1056,7 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 					"modifiers": [
 						{
 							"type": "Stats",
-							"stats": [
-								{ "value": 3, "modType": "Division" }
-							]
+							"stat": { "value": 3, "modType": "Division" }
 						}
 					]
 				}
@@ -1027,11 +1070,10 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 		const FArcMaterialQualityBand& Band = Preset->QualityBands[0];
 		ASSERT_THAT(AreEqual(1, Band.Modifiers.Num()));
 
-		const FArcRecipeOutputModifier_Stats* StatMod = Band.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
+		const FArcCraftModifier_Stats* StatMod = Band.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
 		ASSERT_THAT(IsNotNull(StatMod));
-		ASSERT_THAT(AreEqual(1, StatMod->BaseStats.Num()));
-		ASSERT_THAT(IsNear(3.0f, StatMod->BaseStats[0].Value.GetValue(), 0.001f));
-		ASSERT_THAT(AreEqual((int32)EArcModType::Division, (int32)StatMod->BaseStats[0].Type,
+		ASSERT_THAT(IsNear(3.0f, StatMod->BaseStat.Value.GetValue(), 0.001f));
+		ASSERT_THAT(AreEqual((int32)EArcModType::Division, (int32)StatMod->BaseStat.Type,
 			TEXT("ModType should be Division")));
 	}
 
@@ -1050,15 +1092,15 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 						{
 							"type": "Stats",
 							"qualityScaling": 0,
-							"stats": [
-								{ "value": 10, "modType": "Additive" }
-							]
+							"weight": 2.5,
+							"stat": { "value": 10, "modType": "Additive" }
 						},
 						{
-							"type": "TransferStats",
-							"ingredientSlot": 0,
-							"transferScale": 0.5,
-							"scaleByQuality": true
+							"type": "Stats",
+							"minQuality": 1.5,
+							"qualityScaling": 0.8,
+							"triggerTags": ["Resource.Metal"],
+							"stat": { "value": 20, "modType": "Multiply" }
 						}
 					]
 				}
@@ -1072,18 +1114,20 @@ TEST_CLASS(QualityBandPreset_JsonSerialization, "ArcCraft.Json.Integration.Quali
 		const FArcMaterialQualityBand& Band = Preset->QualityBands[0];
 		ASSERT_THAT(AreEqual(2, Band.Modifiers.Num(), TEXT("Should have 2 modifiers")));
 
-		// First modifier: Stats
-		const FArcRecipeOutputModifier_Stats* StatMod = Band.Modifiers[0].GetPtr<FArcRecipeOutputModifier_Stats>();
-		ASSERT_THAT(IsNotNull(StatMod, TEXT("First modifier should be Stats")));
-		ASSERT_THAT(AreEqual(1, StatMod->BaseStats.Num()));
+		// First modifier: Stats with weight
+		const FArcCraftModifier_Stats* FirstMod = Band.Modifiers[0].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(FirstMod, TEXT("First modifier should be CraftModifier_Stats")));
+		ASSERT_THAT(IsNear(10.0f, FirstMod->BaseStat.Value.GetValue(), 0.001f));
+		ASSERT_THAT(IsNear(2.5f, FirstMod->Weight, 0.001f, TEXT("First modifier weight")));
 
-		// Second modifier: TransferStats
-		const FArcRecipeOutputModifier_TransferStats* TransferMod =
-			Band.Modifiers[1].GetPtr<FArcRecipeOutputModifier_TransferStats>();
-		ASSERT_THAT(IsNotNull(TransferMod, TEXT("Second modifier should be TransferStats")));
-		ASSERT_THAT(AreEqual(0, TransferMod->IngredientSlotIndex));
-		ASSERT_THAT(IsNear(0.5f, TransferMod->TransferScale, 0.001f));
-		ASSERT_THAT(IsTrue(TransferMod->bScaleByQuality));
+		// Second modifier: Stats with trigger tags and minQuality
+		const FArcCraftModifier_Stats* SecondMod = Band.Modifiers[1].GetPtr<FArcCraftModifier_Stats>();
+		ASSERT_THAT(IsNotNull(SecondMod, TEXT("Second modifier should be CraftModifier_Stats")));
+		ASSERT_THAT(IsNear(1.5f, SecondMod->MinQualityThreshold, 0.001f, TEXT("Second modifier minQuality")));
+		ASSERT_THAT(IsNear(0.8f, SecondMod->QualityScalingFactor, 0.001f, TEXT("Second modifier qualityScaling")));
+		ASSERT_THAT(IsTrue(SecondMod->TriggerTags.HasTag(TAG_JsonTest_Resource_Metal),
+			TEXT("Second modifier should have Metal trigger tag")));
+		ASSERT_THAT(IsNear(20.0f, SecondMod->BaseStat.Value.GetValue(), 0.001f));
 	}
 };
 

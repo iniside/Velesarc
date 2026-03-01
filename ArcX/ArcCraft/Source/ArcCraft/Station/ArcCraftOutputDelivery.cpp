@@ -27,7 +27,9 @@
 #include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
 #include "Engine/World.h"
+#include "Items/ArcItemData.h"
 #include "Items/ArcItemId.h"
+#include "Items/ArcItemsArray.h"
 #include "Items/ArcItemsStoreComponent.h"
 
 // -------------------------------------------------------------------
@@ -38,6 +40,16 @@ bool FArcCraftOutputDelivery::DeliverOutput(
 	UArcCraftStationComponent* Station,
 	const FArcItemSpec& OutputSpec,
 	const UObject* Instigator) const
+{
+	return false;
+}
+
+bool FArcCraftOutputDelivery::WithdrawOutput(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
 {
 	return false;
 }
@@ -69,6 +81,60 @@ bool FArcCraftOutputDelivery_StoreOnStation::DeliverOutput(
 	}
 
 	Store->AddItem(OutputSpec, FArcItemId::InvalidId);
+	return true;
+}
+
+bool FArcCraftOutputDelivery_StoreOnStation::WithdrawOutput(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
+{
+	if (!Station)
+	{
+		return false;
+	}
+
+	AActor* Owner = Station->GetOwner();
+	if (!Owner)
+	{
+		return false;
+	}
+
+	UArcItemsStoreComponent* Store = Arcx::Utils::GetComponent(Owner, OutputStoreClass);
+	if (!Store)
+	{
+		return false;
+	}
+
+	const TArray<const FArcItemData*> Items = Store->GetItems();
+	if (!Items.IsValidIndex(ItemIndex))
+	{
+		return false;
+	}
+
+	const FArcItemData* ItemData = Items[ItemIndex];
+	if (!ItemData)
+	{
+		return false;
+	}
+
+	const int32 ItemStacks = static_cast<int32>(ItemData->GetStacks());
+	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= ItemStacks) ? ItemStacks : Stacks;
+
+	OutSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
+	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
+
+	if (StacksToWithdraw >= ItemStacks)
+	{
+		Store->DestroyItem(ItemData->GetItemId());
+	}
+	else
+	{
+		Store->RemoveItem(ItemData->GetItemId(), StacksToWithdraw);
+	}
+
 	return true;
 }
 
@@ -187,6 +253,62 @@ bool FArcCraftOutputDelivery_EntityStore::DeliverOutput(
 	if (MirrorStore)
 	{
 		MirrorStore->AddItem(OutputSpec, FArcItemId::InvalidId);
+	}
+
+	return true;
+}
+
+bool FArcCraftOutputDelivery_EntityStore::WithdrawOutput(
+	UArcCraftStationComponent* Station,
+	int32 ItemIndex,
+	int32 Stacks,
+	FArcItemSpec& OutSpec,
+	const UObject* Instigator)
+{
+	FArcCraftOutputFragment* OutputFrag = GetOutputFragment(Station);
+	if (!OutputFrag)
+	{
+		return false;
+	}
+
+	if (!OutputFrag->OutputItems.IsValidIndex(ItemIndex))
+	{
+		return false;
+	}
+
+	FArcItemSpec& SourceSpec = OutputFrag->OutputItems[ItemIndex];
+	const int32 AvailableStacks = static_cast<int32>(SourceSpec.Amount);
+	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= AvailableStacks) ? AvailableStacks : Stacks;
+
+	OutSpec = SourceSpec;
+	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
+
+	// Remove from entity fragment (source of truth)
+	if (StacksToWithdraw >= AvailableStacks)
+	{
+		OutputFrag->OutputItems.RemoveAt(ItemIndex);
+	}
+	else
+	{
+		SourceSpec.Amount = static_cast<uint16>(AvailableStacks - StacksToWithdraw);
+	}
+
+	// Re-sync mirror store from fragment
+	UArcItemsStoreComponent* MirrorStore = GetMirrorOutputStore(Station);
+	if (MirrorStore)
+	{
+		const TArray<const FArcItemData*> StoreItems = MirrorStore->GetItems();
+		for (const FArcItemData* ItemData : StoreItems)
+		{
+			if (ItemData)
+			{
+				MirrorStore->RemoveItem(ItemData->GetItemId(), ItemData->GetStacks(), true);
+			}
+		}
+		for (const FArcItemSpec& Spec : OutputFrag->OutputItems)
+		{
+			MirrorStore->AddItem(Spec, FArcItemId::InvalidId);
+		}
 	}
 
 	return true;

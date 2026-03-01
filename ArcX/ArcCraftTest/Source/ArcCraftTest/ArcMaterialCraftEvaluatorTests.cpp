@@ -66,7 +66,6 @@ namespace ArcCraftTestHelpers
 		Rule.RuleName = Name;
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(Tags);
 		Rule.Priority = Priority;
-		Rule.MaxContributions = 1;
 		return Rule;
 	}
 
@@ -77,7 +76,6 @@ namespace ArcCraftTestHelpers
 		Rule.RuleName = Name;
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAllTags(Tags);
 		Rule.Priority = Priority;
-		Rule.MaxContributions = 1;
 		return Rule;
 	}
 
@@ -367,6 +365,7 @@ TEST_CLASS(MaterialCraft_RuleMatching, "ArcCraft.MaterialCraft.RuleMatching")
 
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Empty Query Rule");
+		Rule.TagQuery = FGameplayTagQuery::MakeQuery_ExactMatchAnyTags(FGameplayTagContainer{TAG_Test_Resource_Gem});
 		// TagQuery is empty (default)
 		Rule.QualityBands.Add(ArcCraftTestHelpers::MakeBand(FText::FromString("Common"), 0.0f, 1.0f));
 		Table->Rules.Add(Rule);
@@ -595,7 +594,7 @@ TEST_CLASS(MaterialCraft_PriorityAndLimits, "ArcCraft.MaterialCraft.PriorityAndL
 		ASSERT_THAT(AreEqual(1, Evals[0].RuleIndex, TEXT("Higher priority rule (index 1) should be selected")));
 	}
 
-	TEST_METHOD(MaxContributions_MultipleFromSameRule)
+	TEST_METHOD(SingleRule_ProducesOneEvaluation)
 	{
 		UArcMaterialPropertyTable* Table = ArcCraftTestHelpers::CreateTransientTable();
 
@@ -603,8 +602,8 @@ TEST_CLASS(MaterialCraft_PriorityAndLimits, "ArcCraft.MaterialCraft.PriorityAndL
 		MetalTags.AddTag(TAG_Test_Resource_Metal);
 
 		FArcMaterialPropertyRule Rule = ArcCraftTestHelpers::MakeRuleMatchAny(
-			FText::FromString("Metal Multi"), MetalTags);
-		Rule.MaxContributions = 3;
+			FText::FromString("Metal Single"), MetalTags);
+
 		Rule.QualityBands.Add(ArcCraftTestHelpers::MakeBand(FText::FromString("Common"), 0.0f, 1.0f));
 		Table->Rules.Add(Rule);
 
@@ -615,7 +614,7 @@ TEST_CLASS(MaterialCraft_PriorityAndLimits, "ArcCraft.MaterialCraft.PriorityAndL
 		Ctx.BandEligibilityQuality = 1.0f;
 
 		TArray<FArcMaterialRuleEvaluation> Evals = FArcMaterialCraftEvaluator::EvaluateRules(Table, Ctx);
-		ASSERT_THAT(AreEqual(3, Evals.Num(), TEXT("MaxContributions=3 should produce 3 evaluations from one rule")));
+		ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("One matched rule should produce exactly one evaluation")));
 	}
 
 	TEST_METHOD(MultipleRules_BothMatch)

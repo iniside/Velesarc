@@ -345,6 +345,26 @@ bool UArcCraftStationComponent::DepositItem(const FArcItemSpec& Item, UObject* I
 	return Source->DepositItem(this, Item, Instigator);
 }
 
+bool UArcCraftStationComponent::WithdrawInputItem(int32 ItemIndex, int32 Stacks, FArcItemSpec& OutSpec, UObject* Instigator)
+{
+	FArcCraftItemSource* Source = ItemSource.GetMutablePtr<FArcCraftItemSource>();
+	if (!Source)
+	{
+		return false;
+	}
+	return Source->WithdrawItem(this, ItemIndex, Stacks, OutSpec, Instigator);
+}
+
+bool UArcCraftStationComponent::WithdrawOutputItem(int32 ItemIndex, int32 Stacks, FArcItemSpec& OutSpec, UObject* Instigator)
+{
+	FArcCraftOutputDelivery* Delivery = OutputDelivery.GetMutablePtr<FArcCraftOutputDelivery>();
+	if (!Delivery)
+	{
+		return false;
+	}
+	return Delivery->WithdrawOutput(this, ItemIndex, Stacks, OutSpec, Instigator);
+}
+
 // -------------------------------------------------------------------
 // Public API: Set queue from entity
 // -------------------------------------------------------------------

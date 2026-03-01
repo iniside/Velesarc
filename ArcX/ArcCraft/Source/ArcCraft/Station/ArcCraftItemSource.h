@@ -85,6 +85,21 @@ public:
 		const FArcItemSpec& Item,
 		const UObject* Instigator);
 
+	/**
+	 * Withdraw an item from this source's storage by index.
+	 * Removes the item (or reduces its amount) from the station and returns the withdrawn spec.
+	 * @param ItemIndex  Index into the source's available items array.
+	 * @param Stacks     Number of stacks to withdraw. 0 = all.
+	 * @param OutSpec    Filled with the withdrawn item spec on success.
+	 * @return true if the item was successfully withdrawn.
+	 */
+	virtual bool WithdrawItem(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
+		const UObject* Instigator);
+
 	virtual ~FArcCraftItemSource() = default;
 
 protected:
@@ -142,6 +157,13 @@ public:
 		const FArcItemSpec& Item,
 		const UObject* Instigator) override;
 
+	virtual bool WithdrawItem(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
+		const UObject* Instigator) override;
+
 	virtual ~FArcCraftItemSource_InstigatorStore() override = default;
 
 protected:
@@ -183,6 +205,13 @@ public:
 		const FArcItemSpec& Item,
 		const UObject* Instigator) override;
 
+	virtual bool WithdrawItem(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
+		const UObject* Instigator) override;
+
 	virtual ~FArcCraftItemSource_StationStore() override = default;
 
 protected:
@@ -222,6 +251,13 @@ public:
 	virtual bool DepositItem(
 		UArcCraftStationComponent* Station,
 		const FArcItemSpec& Item,
+		const UObject* Instigator) override;
+
+	virtual bool WithdrawItem(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
 		const UObject* Instigator) override;
 
 	virtual ~FArcCraftItemSource_EntityStore() override = default;

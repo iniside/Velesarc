@@ -27,10 +27,8 @@
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftEvaluator.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyTable.h"
-#include "ArcCraft/MaterialCraft/ArcMaterialOutputModifier.h"
-#include "ArcCraft/Recipe/ArcRecipeOutput.h"
+#include "ArcCraft/Shared/ArcCraftModifier.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
-#include "Items/ArcItemData.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
@@ -53,14 +51,11 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntTest_Recipe_Weapon, "Recipe.Weapon");
 namespace IntegrationTestHelpers
 {
 	/**
-	 * Create a properly initialized FArcItemData with the given tags.
-	 * Creates a unique transient UArcItemDefinition per item with an
-	 * FArcItemFragment_Tags fragment so that Build() can read tags via
-	 * ArcItemsHelper::GetFragment<FArcItemFragment_Tags>().
-	 * Also sets ItemAggregatedTags for code paths that read tags from there
-	 * (e.g. quality tier evaluation).
+	 * Create an FArcItemSpec backed by a transient UArcItemDefinition with the given tags.
+	 * The definition has FArcItemFragment_Tags so that Build() can read tags via
+	 * the definition's fragment. Tags are stored in both ItemTags and AssetTags.
 	 */
-	TSharedPtr<FArcItemData> MakeTestItem(const FGameplayTagContainer& AggregatedTags)
+	FArcItemSpec MakeTestItemSpec(const FGameplayTagContainer& AggregatedTags)
 	{
 		UArcItemDefinition* Def = NewObject<UArcItemDefinition>(
 			GetTransientPackage(), NAME_None, RF_Transient);
@@ -68,13 +63,29 @@ namespace IntegrationTestHelpers
 
 		FArcItemFragment_Tags TagsFragment;
 		TagsFragment.ItemTags = AggregatedTags;
+		TagsFragment.AssetTags = AggregatedTags;
 		Def->AddFragment(TagsFragment);
 
 		FArcItemSpec Spec;
 		Spec.SetItemDefinitionAsset(Def);
-		TSharedPtr<FArcItemData> Item = FArcItemData::NewFromSpec(Spec);
-		Item->ItemAggregatedTags = AggregatedTags;
-		return Item;
+		Spec.SetItemDefinition(Def->GetPrimaryAssetId());
+		return Spec;
+	}
+
+	/**
+	 * Get the aggregated tags from an FArcItemSpec by loading its definition.
+	 */
+	FGameplayTagContainer GetSpecTags(const FArcItemSpec& Spec)
+	{
+		const UArcItemDefinition* Def = Spec.GetItemDefinition();
+		if (Def)
+		{
+			if (const FArcItemFragment_Tags* TagsFrag = Def->FindFragment<FArcItemFragment_Tags>())
+			{
+				return TagsFrag->AssetTags;
+			}
+		}
+		return FGameplayTagContainer();
 	}
 
 	/** Create a transient property table. */
@@ -85,38 +96,32 @@ namespace IntegrationTestHelpers
 
 	/**
 	 * Create a stat modifier with the given base value and scaling factor.
-	 * Returns an FInstancedStruct wrapping FArcRecipeOutputModifier_Stats.
+	 * Returns an FInstancedStruct wrapping FArcCraftModifier_Stats (terminal craft modifier).
 	 */
 	FInstancedStruct MakeStatModifier(float BaseValue, float QualityScalingFactor = 1.0f)
 	{
-		FArcRecipeOutputModifier_Stats StatMod;
+		FArcCraftModifier_Stats StatMod;
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(BaseValue);
-		StatMod.BaseStats.Add(Stat);
+		StatMod.BaseStat = Stat;
 		StatMod.QualityScalingFactor = QualityScalingFactor;
 
 		FInstancedStruct Instance;
-		Instance.InitializeAs<FArcRecipeOutputModifier_Stats>(StatMod);
+		Instance.InitializeAs<FArcCraftModifier_Stats>(StatMod);
 		return Instance;
 	}
 
 	/**
-	 * Create a stat modifier with multiple stats.
+	 * Create multiple stat modifiers, one per value.
 	 */
-	FInstancedStruct MakeMultiStatModifier(const TArray<float>& BaseValues, float QualityScalingFactor = 1.0f)
+	TArray<FInstancedStruct> MakeMultiStatModifiers(const TArray<float>& BaseValues, float QualityScalingFactor = 1.0f)
 	{
-		FArcRecipeOutputModifier_Stats StatMod;
-		StatMod.QualityScalingFactor = QualityScalingFactor;
+		TArray<FInstancedStruct> Result;
 		for (const float Value : BaseValues)
 		{
-			FArcItemAttributeStat Stat;
-			Stat.SetValue(Value);
-			StatMod.BaseStats.Add(Stat);
+			Result.Add(MakeStatModifier(Value, QualityScalingFactor));
 		}
-
-		FInstancedStruct Instance;
-		Instance.InitializeAs<FArcRecipeOutputModifier_Stats>(StatMod);
-		return Instance;
+		return Result;
 	}
 
 	/** Create a quality band with stat modifiers embedded. */
@@ -234,7 +239,7 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Strength");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
+		
 		// Common band with base stat 10.0
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 10.0f, 1.0f));
@@ -251,10 +256,8 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 
 		// Apply evaluations to a fresh item spec
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
 
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("SingleRule_SingleBand"));
 
@@ -275,7 +278,7 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Strength");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
+		
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 10.0f, 1.0f));
 		Table->Rules.Add(Rule);
@@ -290,10 +293,8 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		TArray<FArcMaterialRuleEvaluation> Evals = FArcMaterialCraftEvaluator::EvaluateRules(Table, Ctx);
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
 
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 3.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 3.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("QualityScalesModifier"));
 
@@ -315,7 +316,7 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Metal Strength");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 10.0f, 1.0f));
 			Table->Rules.Add(Rule);
@@ -329,7 +330,7 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Gem Brilliance");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(GemTags);
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 25.0f, 1.0f));
 			Table->Rules.Add(Rule);
@@ -347,10 +348,8 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		ASSERT_THAT(AreEqual(2, Evals.Num(), TEXT("Both Metal and Gem rules should match")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
 
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("TwoRules_BothMatch"));
 
@@ -366,45 +365,6 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 			StatsFragment->DefaultStats[1].Value.GetValue());
 	}
 
-	TEST_METHOD(MaxContributions_MultipleStatsFromSameRule)
-	{
-		UArcMaterialPropertyTable* Table = IntegrationTestHelpers::CreateTransientTable();
-
-		FGameplayTagContainer MetalTags;
-		MetalTags.AddTag(TAG_IntTest_Resource_Metal);
-
-		FArcMaterialPropertyRule Rule;
-		Rule.RuleName = FText::FromString("Metal Multi-Roll");
-		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 3;
-		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
-			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 5.0f, 1.0f));
-		Table->Rules.Add(Rule);
-
-		FGameplayTagContainer IngredientTags;
-		IngredientTags.AddTag(TAG_IntTest_Resource_Metal);
-
-		FArcMaterialCraftContext Ctx = IntegrationTestHelpers::MakeContext(IngredientTags, 1.0f);
-		Ctx.BandEligibilityQuality = 1.0f;
-
-		TArray<FArcMaterialRuleEvaluation> Evals = FArcMaterialCraftEvaluator::EvaluateRules(Table, Ctx);
-		ASSERT_THAT(AreEqual(3, Evals.Num(), TEXT("MaxContributions=3 should produce 3 evaluations")));
-
-		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
-
-		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("MaxContributions"));
-
-		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
-		ASSERT_THAT(IsNotNull(StatsFragment));
-		// 3 contributions * 1 stat each = 3 stats
-		ASSERT_THAT(AreEqual(3, StatsFragment->DefaultStats.Num(),
-			TEXT("3 contributions should add 3 stats")));
-	}
-
 	TEST_METHOD(BandWithMultipleModifiers_AllApplied)
 	{
 		UArcMaterialPropertyTable* Table = IntegrationTestHelpers::CreateTransientTable();
@@ -415,7 +375,6 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Dual Stat");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
 
 		// Create a band with TWO stat modifiers
 		TArray<FInstancedStruct> Modifiers;
@@ -436,10 +395,8 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		ASSERT_THAT(AreEqual(1, Evals.Num()));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
 
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 2.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 2.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("BandWithMultipleModifiers"));
 
@@ -467,7 +424,6 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Empty");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
 		// Band with no modifiers
 		FArcMaterialQualityBand EmptyBand;
 		EmptyBand.BandName = FText::FromString("Empty");
@@ -487,10 +443,8 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("Rule should match even with empty band")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
 
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("EmptyBandModifiers"));
 
@@ -512,11 +466,9 @@ TEST_CLASS(MaterialCraft_ApplyEvaluations, "ArcCraft.MaterialCraft.Integration.A
 		TArray<FArcMaterialRuleEvaluation> Evals = { Eval };
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
 
 		// Should not crash
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 		ASSERT_THAT(IsNull(StatsFragment, TEXT("Null band should not produce stats")));
@@ -539,7 +491,6 @@ TEST_CLASS(MaterialCraft_BandSelectionWithModifiers, "ArcCraft.MaterialCraft.Int
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Tiered");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
 
 		// Band 0: Common stat=5.0  (1 stat modifier)
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
@@ -573,10 +524,8 @@ TEST_CLASS(MaterialCraft_BandSelectionWithModifiers, "ArcCraft.MaterialCraft.Int
 			ObservedBands.Add(Evals[0].SelectedBandIndex);
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
 
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 5.0f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 5.0f);
 
 			const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			ASSERT_THAT(IsNotNull(StatsFragment, TEXT("Each run should produce stats")));
@@ -617,7 +566,6 @@ TEST_CLASS(MaterialCraft_BandSelectionWithModifiers, "ArcCraft.MaterialCraft.Int
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Tiered");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 5.0f, 0.0f)); // zero scaling
@@ -640,9 +588,7 @@ TEST_CLASS(MaterialCraft_BandSelectionWithModifiers, "ArcCraft.MaterialCraft.Int
 			ASSERT_THAT(AreEqual(0, Evals[0].SelectedBandIndex, TEXT("Only Common should be eligible")));
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 0.5f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 0.5f);
 
 			const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			ASSERT_THAT(IsNotNull(StatsFragment));
@@ -672,7 +618,6 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Metal Strength");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-			Rule.MaxContributions = 1;
 
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 10.0f, 0.0f, 5.0f, 1.0f));
@@ -692,7 +637,6 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Gem Brilliance");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(GemTags);
-			Rule.MaxContributions = 1;
 
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Dull"), 0.0f, 5.0f, 0.0f, 3.0f, 0.5f));
@@ -705,13 +649,13 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		// Simulate crafting with Metal+Gem ingredients
 		FGameplayTagContainer TagsA;
 		TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
+		FArcItemSpec ItemA = IntegrationTestHelpers::MakeTestItemSpec(TagsA);
 
 		FGameplayTagContainer TagsB;
 		TagsB.AddTag(TAG_IntTest_Resource_Gem_Ruby);
-		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+		FArcItemSpec ItemB = IntegrationTestHelpers::MakeTestItemSpec(TagsB);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
+		TArray<FArcItemSpec> Ingredients = { ItemA, ItemB };
 		TArray<float> QualityMults = { 1.3f, 1.5f };
 		const float AvgQuality = 1.4f;
 
@@ -733,8 +677,13 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 
 		// Apply to output
 		FArcItemSpec OutSpec;
+		FGameplayTagContainer AggregatedTags;
+		for (const FArcItemSpec& Item : Ingredients)
+		{
+			AggregatedTags.AppendTags(IntegrationTestHelpers::GetSpecTags(Item));
+		}
 		FArcMaterialCraftEvaluator::ApplyEvaluations(
-			Evals, OutSpec, Ingredients, QualityMults, Ctx.BandEligibilityQuality);
+			Evals, OutSpec, AggregatedTags, Ctx.BandEligibilityQuality);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("FullPipeline"));
 
@@ -757,7 +706,6 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 10.0f, 1.0f));
@@ -769,21 +717,21 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		// 4 ingredients, base=2 => 2 extra => +1.0 weight bonus
 		FGameplayTagContainer TagsA;
 		TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
+		FArcItemSpec ItemA = IntegrationTestHelpers::MakeTestItemSpec(TagsA);
 
 		FGameplayTagContainer TagsB;
 		TagsB.AddTag(TAG_IntTest_Resource_Metal);
-		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+		FArcItemSpec ItemB = IntegrationTestHelpers::MakeTestItemSpec(TagsB);
 
 		FGameplayTagContainer TagsC;
 		TagsC.AddTag(TAG_IntTest_Resource_Metal);
-		TSharedPtr<FArcItemData> ItemC = IntegrationTestHelpers::MakeTestItem(TagsC);
+		FArcItemSpec ItemC = IntegrationTestHelpers::MakeTestItemSpec(TagsC);
 
 		FGameplayTagContainer TagsD;
 		TagsD.AddTag(TAG_IntTest_Resource_Metal);
-		TSharedPtr<FArcItemData> ItemD = IntegrationTestHelpers::MakeTestItem(TagsD);
+		FArcItemSpec ItemD = IntegrationTestHelpers::MakeTestItemSpec(TagsD);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get(), ItemC.Get(), ItemD.Get() };
+		TArray<FArcItemSpec> Ingredients = { ItemA, ItemB, ItemC, ItemD };
 		TArray<float> QualityMults = { 1.0f, 1.0f, 1.0f, 1.0f };
 		const float AvgQuality = 2.5f;
 
@@ -821,7 +769,12 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 
 		// Verify output — should always be Common band
 		FArcItemSpec OutSpec;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, Ctx.BandEligibilityQuality);
+		FGameplayTagContainer AggregatedTags;
+		for (const FArcItemSpec& Item : Ingredients)
+		{
+			AggregatedTags.AppendTags(IntegrationTestHelpers::GetSpecTags(Item));
+		}
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, AggregatedTags, Ctx.BandEligibilityQuality);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("ExtraIngredients_WeightBonusOnly"));
 
@@ -842,7 +795,6 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal+Gem Synergy");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAllTags(ComboTags);
-		Rule.MaxContributions = 1;
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Synergy"), 0.0f, 1.0f, 0.0f, 99.0f, 0.0f));
 		Table->Rules.Add(Rule);
@@ -851,9 +803,9 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		{
 			FGameplayTagContainer TagsA;
 			TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
-			TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
+			FArcItemSpec ItemA = IntegrationTestHelpers::MakeTestItemSpec(TagsA);
 
-			TArray<const FArcItemData*> Ingredients = { ItemA.Get() };
+			TArray<FArcItemSpec> Ingredients = { ItemA };
 			TArray<float> QualityMults = { 1.0f };
 
 			FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -868,13 +820,13 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		{
 			FGameplayTagContainer TagsA;
 			TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
-			TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
+			FArcItemSpec ItemA = IntegrationTestHelpers::MakeTestItemSpec(TagsA);
 
 			FGameplayTagContainer TagsB;
 			TagsB.AddTag(TAG_IntTest_Resource_Gem_Ruby);
-			TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+			FArcItemSpec ItemB = IntegrationTestHelpers::MakeTestItemSpec(TagsB);
 
-			TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
+			TArray<FArcItemSpec> Ingredients = { ItemA, ItemB };
 			TArray<float> QualityMults = { 1.0f, 1.0f };
 
 			FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -885,7 +837,12 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("Metal+Gem should trigger combo rule")));
 
 			FArcItemSpec OutSpec;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+			FGameplayTagContainer AggregatedTags;
+			for (const FArcItemSpec& Item : Ingredients)
+			{
+				AggregatedTags.AppendTags(IntegrationTestHelpers::GetSpecTags(Item));
+			}
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, AggregatedTags, 1.0f);
 
 			IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("ComboRule_BothPresent"));
 
@@ -908,7 +865,7 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Metal Strength");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));
 			Table->Rules.Add(Rule);
@@ -922,7 +879,7 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Gem Brilliance");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(GemTags);
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 8.0f, 0.0f));
 			Table->Rules.Add(Rule);
@@ -937,7 +894,7 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			FArcMaterialPropertyRule Rule;
 			Rule.RuleName = FText::FromString("Metal+Gem Synergy");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAllTags(ComboTags);
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Synergy"), 0.0f, 1.0f, 0.0f, 30.0f, 0.0f));
 			Table->Rules.Add(Rule);
@@ -946,13 +903,13 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		// Craft with Metal + Gem => all 3 rules should fire
 		FGameplayTagContainer TagsA;
 		TagsA.AddTag(TAG_IntTest_Resource_Metal_Iron);
-		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
+		FArcItemSpec ItemA = IntegrationTestHelpers::MakeTestItemSpec(TagsA);
 
 		FGameplayTagContainer TagsB;
 		TagsB.AddTag(TAG_IntTest_Resource_Gem_Ruby);
-		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+		FArcItemSpec ItemB = IntegrationTestHelpers::MakeTestItemSpec(TagsB);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
+		TArray<FArcItemSpec> Ingredients = { ItemA, ItemB };
 		TArray<float> QualityMults = { 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -963,7 +920,12 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		ASSERT_THAT(AreEqual(3, Evals.Num(), TEXT("Metal + Gem + Combo = 3 rules")));
 
 		FArcItemSpec OutSpec;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FGameplayTagContainer AggregatedTags;
+		for (const FArcItemSpec& Item : Ingredients)
+		{
+			AggregatedTags.AppendTags(IntegrationTestHelpers::GetSpecTags(Item));
+		}
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, AggregatedTags, 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("MixedRules_IndividualPlusCombo"));
 
@@ -1002,7 +964,7 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			Rule.RuleName = FText::FromString("Metal High Priority");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
 			Rule.Priority = 5;
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));
 			Table->Rules.Add(Rule);
@@ -1017,7 +979,7 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 			Rule.RuleName = FText::FromString("Gem Low Priority");
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(GemTags);
 			Rule.Priority = 1;
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 20.0f, 0.0f));
 			Table->Rules.Add(Rule);
@@ -1025,13 +987,13 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 
 		FGameplayTagContainer TagsA;
 		TagsA.AddTag(TAG_IntTest_Resource_Metal);
-		TSharedPtr<FArcItemData> ItemA = IntegrationTestHelpers::MakeTestItem(TagsA);
+		FArcItemSpec ItemA = IntegrationTestHelpers::MakeTestItemSpec(TagsA);
 
 		FGameplayTagContainer TagsB;
 		TagsB.AddTag(TAG_IntTest_Resource_Gem);
-		TSharedPtr<FArcItemData> ItemB = IntegrationTestHelpers::MakeTestItem(TagsB);
+		FArcItemSpec ItemB = IntegrationTestHelpers::MakeTestItemSpec(TagsB);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
+		TArray<FArcItemSpec> Ingredients = { ItemA, ItemB };
 		TArray<float> QualityMults = { 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -1042,7 +1004,12 @@ TEST_CLASS(MaterialCraft_FullPipeline, "ArcCraft.MaterialCraft.Integration.FullP
 		ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("MaxActiveRules=1 should limit to 1 evaluation")));
 
 		FArcItemSpec OutSpec;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FGameplayTagContainer AggregatedTags;
+		for (const FArcItemSpec& Item : Ingredients)
+		{
+			AggregatedTags.AppendTags(IntegrationTestHelpers::GetSpecTags(Item));
+		}
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, AggregatedTags, 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("MaxActiveRules_Limit"));
 
@@ -1072,11 +1039,10 @@ TEST_CLASS(MaterialCraft_MultiStatModifier, "ArcCraft.MaterialCraft.Integration.
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Multi-Stat");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
+	
 
 		// Band with one modifier that has 3 base stats
-		TArray<FInstancedStruct> Modifiers;
-		Modifiers.Add(IntegrationTestHelpers::MakeMultiStatModifier({ 10.0f, 20.0f, 5.0f }, 0.0f));
+		TArray<FInstancedStruct> Modifiers = IntegrationTestHelpers::MakeMultiStatModifiers({ 10.0f, 20.0f, 5.0f }, 0.0f);
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithStats(
 			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, Modifiers));
@@ -1092,9 +1058,7 @@ TEST_CLASS(MaterialCraft_MultiStatModifier, "ArcCraft.MaterialCraft.Integration.
 		ASSERT_THAT(AreEqual(1, Evals.Num()));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("MultiStatModifier"));
 
@@ -1117,10 +1081,9 @@ TEST_CLASS(MaterialCraft_MultiStatModifier, "ArcCraft.MaterialCraft.Integration.
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Multi-Stat x2");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 2;
+		
 
-		TArray<FInstancedStruct> Modifiers;
-		Modifiers.Add(IntegrationTestHelpers::MakeMultiStatModifier({ 10.0f, 20.0f }, 0.0f));
+		TArray<FInstancedStruct> Modifiers = IntegrationTestHelpers::MakeMultiStatModifiers({ 10.0f, 20.0f }, 0.0f);
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithStats(
 			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, Modifiers));
@@ -1133,20 +1096,18 @@ TEST_CLASS(MaterialCraft_MultiStatModifier, "ArcCraft.MaterialCraft.Integration.
 		Ctx.BandEligibilityQuality = 1.0f;
 
 		TArray<FArcMaterialRuleEvaluation> Evals = FArcMaterialCraftEvaluator::EvaluateRules(Table, Ctx);
-		ASSERT_THAT(AreEqual(2, Evals.Num(), TEXT("MaxContributions=2")));
+		ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("One rule should produce one evaluation")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("MultiStat_x2_Accumulate"));
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 		ASSERT_THAT(IsNotNull(StatsFragment));
-		// 2 contributions * 2 stats each = 4 total stats
-		ASSERT_THAT(AreEqual(4, StatsFragment->DefaultStats.Num(),
-			TEXT("2 contributions of 2-stat modifier should give 4 stats total")));
+		// 1 evaluation with 2-stat modifier = 2 total stats
+		ASSERT_THAT(AreEqual(2, StatsFragment->DefaultStats.Num(),
+			TEXT("1 evaluation of 2-stat modifier should give 2 stats total")));
 	}
 };
 
@@ -1186,7 +1147,7 @@ TEST_CLASS(MaterialCraft_SelectiveRules, "ArcCraft.MaterialCraft.Integration.Sel
 			Rule.RuleName = FText::FromString(Names[i]);
 			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
 			Rule.Priority = Priorities[i];
-			Rule.MaxContributions = 1;
+			
 			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 				FText::FromString(TEXT("Common")), 0.0f, 1.0f, 0.0f, StatValues[i], 0.0f));
 			Table->Rules.Add(Rule);
@@ -1209,9 +1170,7 @@ TEST_CLASS(MaterialCraft_SelectiveRules, "ArcCraft.MaterialCraft.Integration.Sel
 		ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("MaxActiveRules=1 should limit to 1")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("5Rules_MaxActive1"));
 
@@ -1238,9 +1197,7 @@ TEST_CLASS(MaterialCraft_SelectiveRules, "ArcCraft.MaterialCraft.Integration.Sel
 		ASSERT_THAT(AreEqual(2, Evals.Num(), TEXT("MaxActiveRules=2")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("5Rules_MaxActive2"));
 
@@ -1279,9 +1236,7 @@ TEST_CLASS(MaterialCraft_SelectiveRules, "ArcCraft.MaterialCraft.Integration.Sel
 		ASSERT_THAT(AreEqual(3, Evals.Num(), TEXT("MaxActiveRules=3")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("5Rules_MaxActive3"));
 
@@ -1317,9 +1272,7 @@ TEST_CLASS(MaterialCraft_SelectiveRules, "ArcCraft.MaterialCraft.Integration.Sel
 		ASSERT_THAT(AreEqual(5, Evals.Num(), TEXT("Unlimited should allow all 5 rules")));
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+		FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 		IntegrationTestHelpers::LogEvaluationResults(Evals, OutSpec, TEXT("5Rules_Unlimited"));
 
@@ -1366,7 +1319,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Five-Tier");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
+		
 
 		// All bands have equal weights and no bias, so selection is pure uniform among eligible
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
@@ -1403,9 +1356,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 			ObservedBands.Add(Evals[0].SelectedBandIndex);
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 0.5f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 0.5f);
 
 			const FArcItemFragment_ItemStats* Stats = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			ASSERT_THAT(IsNotNull(Stats));
@@ -1447,9 +1398,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 			BandCounts.FindOrAdd(Band, 0)++;
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 2.5f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 2.5f);
 
 			const FArcItemFragment_ItemStats* Stats = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			ASSERT_THAT(IsNotNull(Stats));
@@ -1501,9 +1450,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 			BandCounts.FindOrAdd(Band, 0)++;
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 10.0f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 10.0f);
 
 			const FArcItemFragment_ItemStats* Stats = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			ASSERT_THAT(IsNotNull(Stats));
@@ -1523,7 +1470,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 			BandCounts.FindRef(3), BandCounts.FindRef(4));
 	}
 
-	TEST_METHOD(MultiContribution_FiveBands_EachContributionSelectsOneBand)
+	TEST_METHOD(SingleRule_FiveBands_OneEvaluationPerRun)
 	{
 		UArcMaterialPropertyTable* Table = IntegrationTestHelpers::CreateTransientTable();
 
@@ -1531,9 +1478,8 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 		MetalTags.AddTag(TAG_IntTest_Resource_Metal);
 
 		FArcMaterialPropertyRule Rule;
-		Rule.RuleName = FText::FromString("Metal Five-Tier Multi");
+		Rule.RuleName = FText::FromString("Metal Five-Tier");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 3; // 3 rolls into 5 bands
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Trash"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));
@@ -1551,41 +1497,38 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 		FGameplayTagContainer IngredientTags;
 		IngredientTags.AddTag(TAG_IntTest_Resource_Metal);
 
-		// BandEligibilityQuality 10.0 => all bands eligible, 3 contributions
+		// BandEligibilityQuality 10.0 => all bands eligible
 		FArcMaterialCraftContext Ctx = IntegrationTestHelpers::MakeContext(IngredientTags, 10.0f);
 		Ctx.BandEligibilityQuality = 10.0f;
 
-		// Run multiple times to check distribution
-		int32 TotalStats = 0;
+		// Run multiple times to check that one rule = one evaluation, band varies
 		TMap<int32, int32> BandCounts;
 
-		for (int32 Run = 0; Run < 100; ++Run)
+		for (int32 Run = 0; Run < 200; ++Run)
 		{
 			TArray<FArcMaterialRuleEvaluation> Evals = FArcMaterialCraftEvaluator::EvaluateRules(Table, Ctx);
-			ASSERT_THAT(AreEqual(3, Evals.Num(), TEXT("3 contributions expected")));
+			ASSERT_THAT(AreEqual(1, Evals.Num(), TEXT("One rule should produce exactly one evaluation")));
 
-			for (const auto& Eval : Evals)
-			{
-				BandCounts.FindOrAdd(Eval.SelectedBandIndex, 0)++;
-			}
+			BandCounts.FindOrAdd(Evals[0].SelectedBandIndex, 0)++;
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 10.0f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 10.0f);
 
 			const FArcItemFragment_ItemStats* Stats = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			ASSERT_THAT(IsNotNull(Stats));
-			// Each contribution selects one band with one stat modifier
-			ASSERT_THAT(AreEqual(3, Stats->DefaultStats.Num(),
-				TEXT("3 contributions should produce 3 stats")));
-			TotalStats += Stats->DefaultStats.Num();
+			ASSERT_THAT(AreEqual(1, Stats->DefaultStats.Num(),
+				TEXT("One evaluation should produce one stat")));
 		}
 
+		// All 5 bands should appear over 200 runs
+		ASSERT_THAT(IsTrue(BandCounts.Contains(0), TEXT("Trash should appear")));
+		ASSERT_THAT(IsTrue(BandCounts.Contains(1), TEXT("Common should appear")));
+		ASSERT_THAT(IsTrue(BandCounts.Contains(2), TEXT("Uncommon should appear")));
+		ASSERT_THAT(IsTrue(BandCounts.Contains(3), TEXT("Rare should appear")));
+		ASSERT_THAT(IsTrue(BandCounts.Contains(4), TEXT("Legendary should appear")));
+
 		UE_LOG(LogArcCraftIntegrationTest, Log,
-			TEXT("  MultiContrib 5-Band: TotalStats=%d over 100 runs (expected=300)"), TotalStats);
-		UE_LOG(LogArcCraftIntegrationTest, Log,
-			TEXT("    BandDistribution: Trash=%d, Common=%d, Uncommon=%d, Rare=%d, Legendary=%d"),
+			TEXT("  SingleRule 5-Band: Trash=%d, Common=%d, Uncommon=%d, Rare=%d, Legendary=%d over 200 runs"),
 			BandCounts.FindRef(0), BandCounts.FindRef(1), BandCounts.FindRef(2),
 			BandCounts.FindRef(3), BandCounts.FindRef(4));
 	}
@@ -1605,7 +1548,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Budgeted");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 5; // Wants to contribute 5 times, but budget limits it
+		
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Trash"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));     // cost=1
@@ -1652,9 +1595,7 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 				TEXT("Total band cost should not exceed budget")));
 
 			FArcItemSpec OutSpec;
-			TArray<const FArcItemData*> Ingredients;
-			TArray<float> QualityMults;
-			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, Ingredients, QualityMults, 1.0f);
+			FArcMaterialCraftEvaluator::ApplyEvaluations(Evals, OutSpec, FGameplayTagContainer(), 1.0f);
 
 			const FArcItemFragment_ItemStats* Stats = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 			if (Evals.Num() > 0)
@@ -1682,24 +1623,53 @@ TEST_CLASS(MaterialCraft_SelectiveBands, "ArcCraft.MaterialCraft.Integration.Sel
 		FGameplayTagContainer MetalTags;
 		MetalTags.AddTag(TAG_IntTest_Resource_Metal);
 
-		FArcMaterialPropertyRule Rule;
-		Rule.RuleName = FText::FromString("Metal Budget Scaling");
-		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 5;
+		{
+			FArcMaterialPropertyRule Rule;
+			Rule.RuleName = FText::FromString("Metal Budget Scaling");
+			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
+		
 
-		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
-			FText::FromString("Trash"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));
-		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
-			FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 20.0f, 0.0f));
-		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
-			FText::FromString("Uncommon"), 0.0f, 1.0f, 0.0f, 50.0f, 0.0f));
-		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
-			FText::FromString("Rare"), 0.0f, 1.0f, 0.0f, 100.0f, 0.0f));
-		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
-			FText::FromString("Legendary"), 0.0f, 1.0f, 0.0f, 250.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Trash"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 20.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Uncommon"), 0.0f, 1.0f, 0.0f, 50.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Rare"), 0.0f, 1.0f, 0.0f, 100.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Legendary"), 0.0f, 1.0f, 0.0f, 250.0f, 0.0f));
 
-		Table->Rules.Add(Rule);
+			Table->Rules.Add(Rule);
+		}
+		
+		{
+			FArcMaterialPropertyRule Rule;
+			Rule.RuleName = FText::FromString("Wood Budget Scaling");
+			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
+		
 
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Trash"), 0.0f, 1.0f, 0.0f, 10.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Common"), 0.0f, 1.0f, 0.0f, 20.0f, 0.0f));
+			
+
+			Table->Rules.Add(Rule);
+		}
+		{
+			FArcMaterialPropertyRule Rule;
+			Rule.RuleName = FText::FromString("Gem Budget Scaling");
+			Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
+		
+
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Rare"), 0.0f, 1.0f, 0.0f, 100.0f, 0.0f));
+			Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
+				FText::FromString("Legendary"), 0.0f, 1.0f, 0.0f, 250.0f, 0.0f));
+
+			Table->Rules.Add(Rule);
+		}
 		FGameplayTagContainer IngredientTags;
 		IngredientTags.AddTag(TAG_IntTest_Resource_Metal);
 
@@ -1808,7 +1778,7 @@ namespace RealisticQualityHelpers
 		FArcMaterialPropertyRule Rule;
 		Rule.RuleName = FText::FromString("Metal Tempering");
 		Rule.TagQuery = FGameplayTagQuery::MakeQuery_MatchAnyTags(MetalTags);
-		Rule.MaxContributions = 1;
+		
 
 		Rule.QualityBands.Add(IntegrationTestHelpers::MakeBandWithSingleStat(
 			FText::FromString("Brittle"), 0.0f, 10.0f, 0.0f, 5.0f, 1.0f));
@@ -1847,7 +1817,7 @@ namespace RealisticQualityHelpers
 	FRealisticCraftResult RunFullCraftPipeline(
 		UArcMaterialPropertyTable* Table,
 		UArcQualityTierTable* TierTable,
-		const TArray<FArcItemData*>& Items,
+		const TArray<FArcItemSpec>& Items,
 		int32 BaseIngredientCount = 0,
 		float ExtraCraftTimeBonus = 0.0f)
 	{
@@ -1856,16 +1826,13 @@ namespace RealisticQualityHelpers
 		// Step 1: Evaluate quality multiplier per ingredient using the tier table
 		// This is what ArcCraftExecution_Recipe::CheckAndConsumeRecipeItems does
 		TArray<float> QualityMults;
-		TArray<const FArcItemData*> ConstIngredients;
 		QualityMults.Reserve(Items.Num());
-		ConstIngredients.Reserve(Items.Num());
 
-		for (const FArcItemData* Item : Items)
+		for (const FArcItemSpec& Item : Items)
 		{
-			ConstIngredients.Add(Item);
-
-			// Real system calls: TierTable->EvaluateQuality(Item->GetItemAggregatedTags())
-			const float QualityMult = TierTable->EvaluateQuality(Item->GetItemAggregatedTags());
+			// Get tags from the item definition's tags fragment
+			const FGameplayTagContainer ItemTags = IntegrationTestHelpers::GetSpecTags(Item);
+			const float QualityMult = TierTable->EvaluateQuality(ItemTags);
 			QualityMults.Add(QualityMult);
 		}
 
@@ -1880,7 +1847,7 @@ namespace RealisticQualityHelpers
 
 		// Step 3: Build context (aggregates tags from items)
 		Result.Context = FArcMaterialCraftContext::Build(
-			ConstIngredients, QualityMults, AverageQuality,
+			Items, QualityMults, AverageQuality,
 			FGameplayTagContainer(), BaseIngredientCount, ExtraCraftTimeBonus);
 
 		// Step 4: Compute quality and weight bonus
@@ -1893,9 +1860,14 @@ namespace RealisticQualityHelpers
 		Result.Evaluations = FArcMaterialCraftEvaluator::EvaluateRules(Table, Result.Context);
 
 		// Step 6: Apply band modifiers to output item
+		FGameplayTagContainer AggregatedTags;
+		for (const FArcItemSpec& Item : Items)
+		{
+			AggregatedTags.AppendTags(IntegrationTestHelpers::GetSpecTags(Item));
+		}
 		FArcMaterialCraftEvaluator::ApplyEvaluations(
 			Result.Evaluations, Result.OutSpec,
-			ConstIngredients, QualityMults, Result.BandEligibilityQuality);
+			AggregatedTags, Result.BandEligibilityQuality);
 
 		return Result;
 	}
@@ -1918,13 +1890,13 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer CrudeIronTags;
 		CrudeIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		CrudeIronTags.AddTag(TAG_IntTest_Material_Tier_Crude);
-		TSharedPtr<FArcItemData> CrudeIron1 = IntegrationTestHelpers::MakeTestItem(CrudeIronTags);
-		TSharedPtr<FArcItemData> CrudeIron2 = IntegrationTestHelpers::MakeTestItem(CrudeIronTags);
+		FArcItemSpec CrudeIron1 = IntegrationTestHelpers::MakeTestItemSpec(CrudeIronTags);
+		FArcItemSpec CrudeIron2 = IntegrationTestHelpers::MakeTestItemSpec(CrudeIronTags);
 
-		TArray<FArcItemData*> Items = { CrudeIron1.Get(), CrudeIron2.Get() };
+		TArray<FArcItemSpec> Items = { CrudeIron1, CrudeIron2 };
 
 		// Verify quality evaluation
-		const float QMult = TierTable->EvaluateQuality(CrudeIron1->GetItemAggregatedTags());
+		const float QMult = TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(CrudeIron1));
 		ASSERT_THAT(IsNear(0.6f, QMult, 0.001f,
 			TEXT("Crude tier should evaluate to 0.6 quality multiplier")));
 
@@ -1970,13 +1942,13 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer CommonIronTags;
 		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
-		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		FArcItemSpec CommonIron1 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
+		FArcItemSpec CommonIron2 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get() };
+		TArray<FArcItemSpec> Items = { CommonIron1, CommonIron2 };
 
 		// Verify tier evaluation
-		ASSERT_THAT(IsNear(1.0f, TierTable->EvaluateQuality(CommonIron1->GetItemAggregatedTags()), 0.001f));
+		ASSERT_THAT(IsNear(1.0f, TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(CommonIron1)), 0.001f));
 
 		TSet<int32> ObservedBands;
 		TMap<int32, int32> BandCounts;
@@ -2025,19 +1997,19 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer FineIronTags;
 		FineIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		FineIronTags.AddTag(TAG_IntTest_Material_Tier_Fine);
-		TSharedPtr<FArcItemData> FineIron = IntegrationTestHelpers::MakeTestItem(FineIronTags);
+		FArcItemSpec FineIron = IntegrationTestHelpers::MakeTestItemSpec(FineIronTags);
 
 		FGameplayTagContainer MasterworkIronTags;
 		MasterworkIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		MasterworkIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
-		TSharedPtr<FArcItemData> MasterworkIron = IntegrationTestHelpers::MakeTestItem(MasterworkIronTags);
+		FArcItemSpec MasterworkIron = IntegrationTestHelpers::MakeTestItemSpec(MasterworkIronTags);
 
-		TArray<FArcItemData*> Items = { FineIron.Get(), MasterworkIron.Get() };
+		TArray<FArcItemSpec> Items = { FineIron, MasterworkIron };
 
 		// Verify per-item quality
-		ASSERT_THAT(IsNear(1.4f, TierTable->EvaluateQuality(FineIron->GetItemAggregatedTags()), 0.001f,
+		ASSERT_THAT(IsNear(1.4f, TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(FineIron)), 0.001f,
 			TEXT("Fine tier should evaluate to 1.4")));
-		ASSERT_THAT(IsNear(2.0f, TierTable->EvaluateQuality(MasterworkIron->GetItemAggregatedTags()), 0.001f,
+		ASSERT_THAT(IsNear(2.0f, TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(MasterworkIron)), 0.001f,
 			TEXT("Masterwork tier should evaluate to 2.0")));
 
 		TSet<int32> ObservedBands;
@@ -2087,12 +2059,12 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer LegIronTags;
 		LegIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		LegIronTags.AddTag(TAG_IntTest_Material_Tier_Legendary);
-		TSharedPtr<FArcItemData> LegIron1 = IntegrationTestHelpers::MakeTestItem(LegIronTags);
-		TSharedPtr<FArcItemData> LegIron2 = IntegrationTestHelpers::MakeTestItem(LegIronTags);
+		FArcItemSpec LegIron1 = IntegrationTestHelpers::MakeTestItemSpec(LegIronTags);
+		FArcItemSpec LegIron2 = IntegrationTestHelpers::MakeTestItemSpec(LegIronTags);
 
-		TArray<FArcItemData*> Items = { LegIron1.Get(), LegIron2.Get() };
+		TArray<FArcItemSpec> Items = { LegIron1, LegIron2 };
 
-		ASSERT_THAT(IsNear(3.0f, TierTable->EvaluateQuality(LegIron1->GetItemAggregatedTags()), 0.001f));
+		ASSERT_THAT(IsNear(3.0f, TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(LegIron1)), 0.001f));
 
 		TSet<int32> ObservedBands;
 		TMap<int32, int32> BandCounts;
@@ -2147,12 +2119,12 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer CommonIronTags;
 		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
-		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
-		TSharedPtr<FArcItemData> CommonIron3 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
-		TSharedPtr<FArcItemData> CommonIron4 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		FArcItemSpec CommonIron1 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
+		FArcItemSpec CommonIron2 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
+		FArcItemSpec CommonIron3 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
+		FArcItemSpec CommonIron4 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get(), CommonIron3.Get(), CommonIron4.Get() };
+		TArray<FArcItemSpec> Items = { CommonIron1, CommonIron2, CommonIron3, CommonIron4 };
 
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(
 			PropTable, TierTable, Items,
@@ -2219,10 +2191,10 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer CommonIronTags;
 		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
-		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		FArcItemSpec CommonIron1 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
+		FArcItemSpec CommonIron2 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get() };
+		TArray<FArcItemSpec> Items = { CommonIron1, CommonIron2 };
 
 		TSet<int32> ObservedBands;
 		for (int32 Run = 0; Run < 100; ++Run)
@@ -2269,19 +2241,19 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer FineIronTags;
 		FineIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		FineIronTags.AddTag(TAG_IntTest_Material_Tier_Fine);
-		TSharedPtr<FArcItemData> FineIron = IntegrationTestHelpers::MakeTestItem(FineIronTags);
+		FArcItemSpec FineIron = IntegrationTestHelpers::MakeTestItemSpec(FineIronTags);
 
 		FGameplayTagContainer CommonIronTags;
 		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		TSharedPtr<FArcItemData> CommonIron = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		FArcItemSpec CommonIron = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
 
 		FGameplayTagContainer MasterworkIronTags;
 		MasterworkIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		MasterworkIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
-		TSharedPtr<FArcItemData> MasterworkIron = IntegrationTestHelpers::MakeTestItem(MasterworkIronTags);
+		FArcItemSpec MasterworkIron = IntegrationTestHelpers::MakeTestItemSpec(MasterworkIronTags);
 
-		TArray<FArcItemData*> Items = { FineIron.Get(), CommonIron.Get(), MasterworkIron.Get() };
+		TArray<FArcItemSpec> Items = { FineIron, CommonIron, MasterworkIron };
 
 		// Single run to verify math
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(
@@ -2350,15 +2322,15 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		MultiTierTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		MultiTierTags.AddTag(TAG_IntTest_Material_Tier_Fine);
 		MultiTierTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
-		TSharedPtr<FArcItemData> MultiTierItem = IntegrationTestHelpers::MakeTestItem(MultiTierTags);
+		FArcItemSpec MultiTierItem = IntegrationTestHelpers::MakeTestItemSpec(MultiTierTags);
 
 		// FindBestTierTag should find Masterwork (TierValue=3) over Fine (TierValue=2)
-		const FGameplayTag BestTag = TierTable->FindBestTierTag(MultiTierItem->GetItemAggregatedTags());
+		const FGameplayTag BestTag = TierTable->FindBestTierTag(IntegrationTestHelpers::GetSpecTags(MultiTierItem));
 		ASSERT_THAT(IsTrue(BestTag == TAG_IntTest_Material_Tier_Masterwork,
 			TEXT("Masterwork (TierValue=3) should win over Fine (TierValue=2)")));
 
 		// Quality should be Masterwork's 2.0, not Fine's 1.4
-		const float Quality = TierTable->EvaluateQuality(MultiTierItem->GetItemAggregatedTags());
+		const float Quality = TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(MultiTierItem));
 		ASSERT_THAT(IsNear(2.0f, Quality, 0.001f,
 			TEXT("Quality should be Masterwork's 2.0")));
 
@@ -2378,9 +2350,9 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer UntieredTags;
 		UntieredTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		// No tier tag added
-		TSharedPtr<FArcItemData> UntieredItem = IntegrationTestHelpers::MakeTestItem(UntieredTags);
+		FArcItemSpec UntieredItem = IntegrationTestHelpers::MakeTestItemSpec(UntieredTags);
 
-		const float Quality = TierTable->EvaluateQuality(UntieredItem->GetItemAggregatedTags());
+		const float Quality = TierTable->EvaluateQuality(IntegrationTestHelpers::GetSpecTags(UntieredItem));
 		ASSERT_THAT(IsNear(1.0f, Quality, 0.001f,
 			TEXT("No matching tier tag should return default quality 1.0")));
 
@@ -2390,9 +2362,9 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer MasterworkIronTags;
 		MasterworkIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		MasterworkIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
-		TSharedPtr<FArcItemData> MasterworkIron = IntegrationTestHelpers::MakeTestItem(MasterworkIronTags);
+		FArcItemSpec MasterworkIron = IntegrationTestHelpers::MakeTestItemSpec(MasterworkIronTags);
 
-		TArray<FArcItemData*> Items = { MasterworkIron.Get(), UntieredItem.Get() };
+		TArray<FArcItemSpec> Items = { MasterworkIron, UntieredItem };
 
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(PropTable, TierTable, Items);
 
@@ -2426,10 +2398,10 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer MWIronTags;
 		MWIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		MWIronTags.AddTag(TAG_IntTest_Material_Tier_Masterwork);
-		TSharedPtr<FArcItemData> MWIron1 = IntegrationTestHelpers::MakeTestItem(MWIronTags);
-		TSharedPtr<FArcItemData> MWIron2 = IntegrationTestHelpers::MakeTestItem(MWIronTags);
+		FArcItemSpec MWIron1 = IntegrationTestHelpers::MakeTestItemSpec(MWIronTags);
+		FArcItemSpec MWIron2 = IntegrationTestHelpers::MakeTestItemSpec(MWIronTags);
 
-		TArray<FArcItemData*> Items = { MWIron1.Get(), MWIron2.Get() };
+		TArray<FArcItemSpec> Items = { MWIron1, MWIron2 };
 
 		// Expected stat values at BandEligQ=2.0 for each band:
 		// Brittle:    5  * (1 + (2-1)*1) = 5  * 2 = 10
@@ -2486,10 +2458,10 @@ TEST_CLASS(MaterialCraft_RealisticQuality, "ArcCraft.MaterialCraft.Integration.R
 		FGameplayTagContainer CommonIronTags;
 		CommonIronTags.AddTag(TAG_IntTest_Resource_Metal_Iron);
 		CommonIronTags.AddTag(TAG_IntTest_Material_Tier_Common);
-		TSharedPtr<FArcItemData> CommonIron1 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
-		TSharedPtr<FArcItemData> CommonIron2 = IntegrationTestHelpers::MakeTestItem(CommonIronTags);
+		FArcItemSpec CommonIron1 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
+		FArcItemSpec CommonIron2 = IntegrationTestHelpers::MakeTestItemSpec(CommonIronTags);
 
-		TArray<FArcItemData*> Items = { CommonIron1.Get(), CommonIron2.Get() };
+		TArray<FArcItemSpec> Items = { CommonIron1, CommonIron2 };
 
 		// Pass a huge time bonus — should be capped
 		auto Result = RealisticQualityHelpers::RunFullCraftPipeline(

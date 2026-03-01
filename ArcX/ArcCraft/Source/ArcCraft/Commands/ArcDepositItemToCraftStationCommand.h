@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "Commands/ArcReplicatedCommand.h"
+#include "Commands/ArcItemReplicatedCommand.h"
 #include "Items/ArcItemId.h"
 
 #include "ArcDepositItemToCraftStationCommand.generated.h"
@@ -39,7 +39,7 @@ class UArcCraftStationComponent;
  * Stacks == 0 means transfer all stacks of the item.
  */
 USTRUCT()
-struct ARCCRAFT_API FArcDepositItemToCraftStationCommand : public FArcReplicatedCommand
+struct ARCCRAFT_API FArcDepositItemToCraftStationCommand : public FArcItemReplicatedCommand
 {
 	GENERATED_BODY()
 
@@ -61,6 +61,8 @@ public:
 	virtual bool CanSendCommand() const override;
 	virtual void PreSendCommand() override;
 	virtual bool Execute() override;
+	virtual bool NeedsConfirmation() const override { return true; }
+	virtual void CommandConfirmed(bool bSuccess) override;
 
 	FArcDepositItemToCraftStationCommand()
 		: SourceStore(nullptr)

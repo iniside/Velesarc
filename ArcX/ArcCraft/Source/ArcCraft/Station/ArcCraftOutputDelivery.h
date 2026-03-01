@@ -53,6 +53,21 @@ public:
 		const FArcItemSpec& OutputSpec,
 		const UObject* Instigator) const;
 
+	/**
+	 * Withdraw a crafted item from output storage by index.
+	 * Removes the item (or reduces its amount) and returns the withdrawn spec.
+	 * @param ItemIndex  Index into the output items array.
+	 * @param Stacks     Number of stacks to withdraw. 0 = all.
+	 * @param OutSpec    Filled with the withdrawn item spec on success.
+	 * @return true if the item was successfully withdrawn.
+	 */
+	virtual bool WithdrawOutput(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
+		const UObject* Instigator);
+
 	virtual ~FArcCraftOutputDelivery() = default;
 };
 
@@ -74,6 +89,13 @@ public:
 		UArcCraftStationComponent* Station,
 		const FArcItemSpec& OutputSpec,
 		const UObject* Instigator) const override;
+
+	virtual bool WithdrawOutput(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
+		const UObject* Instigator) override;
 
 	virtual ~FArcCraftOutputDelivery_StoreOnStation() override = default;
 };
@@ -119,6 +141,13 @@ public:
 		UArcCraftStationComponent* Station,
 		const FArcItemSpec& OutputSpec,
 		const UObject* Instigator) const override;
+
+	virtual bool WithdrawOutput(
+		UArcCraftStationComponent* Station,
+		int32 ItemIndex,
+		int32 Stacks,
+		FArcItemSpec& OutSpec,
+		const UObject* Instigator) override;
 
 	virtual ~FArcCraftOutputDelivery_EntityStore() override = default;
 

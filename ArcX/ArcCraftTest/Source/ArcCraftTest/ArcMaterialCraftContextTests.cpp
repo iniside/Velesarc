@@ -23,7 +23,6 @@
 
 #include "NativeGameplayTags.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftContext.h"
-#include "Items/ArcItemData.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
@@ -63,15 +62,15 @@ namespace ArcCraftContextTestHelpers
 	}
 
 	/**
-	 * Create an FArcItemData backed by a transient item definition.
-	 * Uses FArcItemData::NewFromSpec to properly initialize the item.
+	 * Create an FArcItemSpec backed by a transient item definition.
 	 */
-	TSharedPtr<FArcItemData> MakeTestItem(
+	FArcItemSpec MakeTestItemSpec(
 		const UArcItemDefinition* ItemDef)
 	{
 		FArcItemSpec Spec;
 		Spec.SetItemDefinitionAsset(ItemDef);
-		return FArcItemData::NewFromSpec(Spec);
+		Spec.SetItemDefinition(ItemDef->GetPrimaryAssetId());
+		return Spec;
 	}
 }
 
@@ -94,10 +93,10 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 		UArcItemDefinition* GemDef = ArcCraftContextTestHelpers::CreateTransientItemDef(
 			TEXT("TestItem_Gem"), GemTags);
 
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(MetalDef);
-		TSharedPtr<FArcItemData> ItemB = ArcCraftContextTestHelpers::MakeTestItem(GemDef);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(MetalDef);
+		FArcItemSpec SpecB = ArcCraftContextTestHelpers::MakeTestItemSpec(GemDef);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA, SpecB };
 		TArray<float> QualityMults = { 1.0f, 1.2f };
 
 		FGameplayTagContainer RecipeTags;
@@ -114,7 +113,7 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 
 	TEST_METHOD(Build_CopiesRecipeTags)
 	{
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		FGameplayTagContainer RecipeTags;
@@ -130,9 +129,9 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 	TEST_METHOD(Build_SetsQualityMultipliers)
 	{
 		UArcItemDefinition* Def = ArcCraftContextTestHelpers::CreateTransientItemDef(TEXT("TestItem_Qual"));
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(Def);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA };
 		TArray<float> QualityMults = { 1.5f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -145,11 +144,11 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 	TEST_METHOD(Build_SetsIngredientCount)
 	{
 		UArcItemDefinition* Def = ArcCraftContextTestHelpers::CreateTransientItemDef(TEXT("TestItem_Count"));
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemB = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemC = ArcCraftContextTestHelpers::MakeTestItem(Def);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecB = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecC = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get(), ItemC.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA, SpecB, SpecC };
 		TArray<float> QualityMults = { 1.0f, 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -161,10 +160,10 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 	TEST_METHOD(Build_BaseIngredientCount_ZeroUsesActual)
 	{
 		UArcItemDefinition* Def = ArcCraftContextTestHelpers::CreateTransientItemDef(TEXT("TestItem_Base0"));
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemB = ArcCraftContextTestHelpers::MakeTestItem(Def);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecB = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA, SpecB };
 		TArray<float> QualityMults = { 1.0f, 1.0f };
 
 		// BaseIngredientCount = 0 means use actual count
@@ -178,11 +177,11 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 	TEST_METHOD(Build_BaseIngredientCount_ExplicitValue)
 	{
 		UArcItemDefinition* Def = ArcCraftContextTestHelpers::CreateTransientItemDef(TEXT("TestItem_BaseN"));
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemB = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemC = ArcCraftContextTestHelpers::MakeTestItem(Def);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecB = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecC = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get(), ItemC.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA, SpecB, SpecC };
 		TArray<float> QualityMults = { 1.0f, 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -196,7 +195,7 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 
 	TEST_METHOD(Build_SetsExtraCraftTimeBonus)
 	{
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -207,7 +206,7 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 
 	TEST_METHOD(Build_SetsAverageQuality)
 	{
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -220,7 +219,7 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 
 	TEST_METHOD(Build_SetsBandWeightBonusToZero)
 	{
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
@@ -230,26 +229,28 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 			TEXT("BandWeightBonus should be zero after Build (computed by evaluator)")));
 	}
 
-	TEST_METHOD(Build_NullIngredient_SkippedSafely)
+	TEST_METHOD(Build_EmptySpecIngredient_SkippedSafely)
 	{
 		FGameplayTagContainer WoodTags;
 		WoodTags.AddTag(TAG_CtxTest_Resource_Wood);
 		UArcItemDefinition* WoodDef = ArcCraftContextTestHelpers::CreateTransientItemDef(
 			TEXT("TestItem_Wood"), WoodTags);
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(WoodDef);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(WoodDef);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), nullptr };
+		// Second ingredient is a default-constructed spec with no definition
+		FArcItemSpec EmptySpec;
+		TArray<FArcItemSpec> Ingredients = { SpecA, EmptySpec };
 		TArray<float> QualityMults = { 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(
 			Ingredients, QualityMults, 1.0f, FGameplayTagContainer());
 
 		ASSERT_THAT(IsTrue(Ctx.PerSlotTags[0].HasTag(TAG_CtxTest_Resource_Wood),
-			TEXT("Should have tags in slot for non-null ingredient")));
+			TEXT("Should have tags in slot for valid ingredient")));
 		ASSERT_THAT(AreEqual(0, Ctx.PerSlotTags[1].Num(),
-			TEXT("Null ingredient slot should have empty tags")));
+			TEXT("Empty spec ingredient slot should have empty tags")));
 		ASSERT_THAT(AreEqual(2, Ctx.IngredientCount,
-			TEXT("IngredientCount includes null entries in the array")));
+			TEXT("IngredientCount includes empty spec entries in the array")));
 		ASSERT_THAT(AreEqual(2, Ctx.PerSlotTags.Num(),
 			TEXT("PerSlotTags array should match ingredient count")));
 	}
@@ -278,11 +279,11 @@ TEST_CLASS(MaterialCraft_ContextBuild, "ArcCraft.MaterialCraft.Context")
 	TEST_METHOD(Build_AllocatesPerSlotTagsArray)
 	{
 		UArcItemDefinition* Def = ArcCraftContextTestHelpers::CreateTransientItemDef(TEXT("TestItem_Alloc"));
-		TSharedPtr<FArcItemData> ItemA = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemB = ArcCraftContextTestHelpers::MakeTestItem(Def);
-		TSharedPtr<FArcItemData> ItemC = ArcCraftContextTestHelpers::MakeTestItem(Def);
+		FArcItemSpec SpecA = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecB = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
+		FArcItemSpec SpecC = ArcCraftContextTestHelpers::MakeTestItemSpec(Def);
 
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get(), ItemB.Get(), ItemC.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA, SpecB, SpecC };
 		TArray<float> QualityMults = { 1.0f, 1.0f, 1.0f };
 
 		FArcMaterialCraftContext Ctx = FArcMaterialCraftContext::Build(

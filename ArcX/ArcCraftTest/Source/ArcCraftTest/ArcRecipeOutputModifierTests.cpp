@@ -22,12 +22,14 @@
 #include "CQTest.h"
 
 #include "NativeGameplayTags.h"
+#include "Abilities/GameplayAbility.h"
 #include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
 #include "ArcCraft/Recipe/ArcRecipeOutput.h"
-#include "Items/ArcItemData.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
+#include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
 
 // Tags for output modifier tests
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_OutTest_Resource_Metal, "Resource.Metal");
@@ -44,12 +46,74 @@ namespace ArcRecipeOutputModifierTestHelpers
 		return Def;
 	}
 
-	/** Create an FArcItemData backed by a transient item definition. */
-	TSharedPtr<FArcItemData> MakeTestItem(const UArcItemDefinition* ItemDef)
+	/** Create an FArcItemSpec backed by a transient item definition. */
+	FArcItemSpec MakeTestItemSpec(const UArcItemDefinition* ItemDef)
 	{
 		FArcItemSpec Spec;
 		Spec.SetItemDefinitionAsset(ItemDef);
-		return FArcItemData::NewFromSpec(Spec);
+		Spec.SetItemDefinition(ItemDef->GetPrimaryAssetId());
+		return Spec;
+	}
+
+	/** Apply a single modifier result to an item spec. */
+	void ApplyResult(FArcItemSpec& OutSpec, const FArcCraftModifierResult& Result)
+	{
+		switch (Result.Type)
+		{
+		case EArcCraftModifierResultType::Stat:
+			{
+				FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
+				if (!StatsFragment)
+				{
+					StatsFragment = new FArcItemFragment_ItemStats();
+					StatsFragment->DefaultStats.Add(Result.Stat);
+					OutSpec.AddInstanceData(StatsFragment);
+				}
+				else
+				{
+					StatsFragment->DefaultStats.Add(Result.Stat);
+				}
+			}
+			break;
+		case EArcCraftModifierResultType::Ability:
+			if (Result.Ability.GrantedAbility)
+			{
+				FArcItemFragment_GrantedAbilities* Frag = new FArcItemFragment_GrantedAbilities();
+				Frag->Abilities.Add(Result.Ability);
+				OutSpec.AddInstanceData(Frag);
+			}
+			break;
+		case EArcCraftModifierResultType::Effect:
+			if (Result.Effect)
+			{
+				FArcItemFragment_GrantedGameplayEffects* Frag = new FArcItemFragment_GrantedGameplayEffects();
+				Frag->Effects.Add(Result.Effect);
+				OutSpec.AddInstanceData(Frag);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	/** Evaluate a modifier and apply all resulting pending modifiers to OutSpec. */
+	TArray<FArcCraftPendingModifier> EvaluateAndApply(
+		const FArcRecipeOutputModifier& Modifier,
+		FArcItemSpec& OutSpec,
+		const TArray<FArcItemSpec>& Ingredients,
+		const TArray<float>& QualityMults,
+		float AverageQuality)
+	{
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(
+			Ingredients, QualityMults, AverageQuality);
+		for (const FArcCraftPendingModifier& Pending : Results)
+		{
+			if (Pending.Result.Type != EArcCraftModifierResultType::None)
+			{
+				ApplyResult(OutSpec, Pending.Result);
+			}
+		}
+		return Results;
 	}
 }
 
@@ -59,20 +123,20 @@ namespace ArcRecipeOutputModifierTestHelpers
 
 TEST_CLASS(RecipeOutput_StatModifier, "ArcCraft.Recipe.OutputModifier.Stats")
 {
-	TEST_METHOD(ApplyToOutput_AddsStats)
+	TEST_METHOD(Evaluate_AddsStats)
 	{
 		FArcRecipeOutputModifier_Stats Modifier;
 
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
 		Modifier.QualityScalingFactor = 1.0f;
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(Modifier, OutSpec, Ingredients, QualityMults, 1.0f);
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 		ASSERT_THAT(IsNotNull(StatsFragment, TEXT("Should have created stats fragment")));
@@ -81,21 +145,21 @@ TEST_CLASS(RecipeOutput_StatModifier, "ArcCraft.Recipe.OutputModifier.Stats")
 			TEXT("Stat value at quality 1.0 should be base value")));
 	}
 
-	TEST_METHOD(ApplyToOutput_QualityScalesStats)
+	TEST_METHOD(Evaluate_QualityScalesStats)
 	{
 		FArcRecipeOutputModifier_Stats Modifier;
 
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
 		Modifier.QualityScalingFactor = 1.0f;
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		// Quality 2.0: scale = 1.0 + (2.0-1.0)*1.0 = 2.0 => 10.0*2.0 = 20.0
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 2.0f);
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(Modifier, OutSpec, Ingredients, QualityMults, 2.0f);
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 		ASSERT_THAT(IsNotNull(StatsFragment));
@@ -103,21 +167,21 @@ TEST_CLASS(RecipeOutput_StatModifier, "ArcCraft.Recipe.OutputModifier.Stats")
 			TEXT("Quality 2.0 with scale 1.0 should double the base stat")));
 	}
 
-	TEST_METHOD(ApplyToOutput_ZeroScaling_IgnoresQuality)
+	TEST_METHOD(Evaluate_ZeroScaling_IgnoresQuality)
 	{
 		FArcRecipeOutputModifier_Stats Modifier;
 
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
 		Modifier.QualityScalingFactor = 0.0f;
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		// Quality 5.0 but scaling 0.0 => scale = 1.0 + (5.0-1.0)*0.0 = 1.0
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 5.0f);
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(Modifier, OutSpec, Ingredients, QualityMults, 5.0f);
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 		ASSERT_THAT(IsNotNull(StatsFragment));
@@ -125,64 +189,44 @@ TEST_CLASS(RecipeOutput_StatModifier, "ArcCraft.Recipe.OutputModifier.Stats")
 			TEXT("Zero scaling should ignore quality")));
 	}
 
-	TEST_METHOD(ApplyToOutput_MultipleStats)
+	TEST_METHOD(Evaluate_DefaultStat_ProducesFragment)
 	{
 		FArcRecipeOutputModifier_Stats Modifier;
-
-		FArcItemAttributeStat StatA;
-		StatA.SetValue(10.0f);
-		FArcItemAttributeStat StatB;
-		StatB.SetValue(20.0f);
-		Modifier.BaseStats.Add(StatA);
-		Modifier.BaseStats.Add(StatB);
-		Modifier.QualityScalingFactor = 1.0f;
+		// BaseStat is default-initialized (value 0)
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(Modifier, OutSpec, Ingredients, QualityMults, 1.0f);
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
-		ASSERT_THAT(IsNotNull(StatsFragment));
-		ASSERT_THAT(AreEqual(2, StatsFragment->DefaultStats.Num(), TEXT("Should have two stats")));
+		ASSERT_THAT(IsNotNull(StatsFragment, TEXT("Default stat should still produce a fragment")));
+		ASSERT_THAT(AreEqual(1, StatsFragment->DefaultStats.Num(), TEXT("Should have one stat")));
+		ASSERT_THAT(IsNear(0.0f, StatsFragment->DefaultStats[0].Value.GetValue(), 0.001f,
+			TEXT("Default stat value should be 0.0")));
 	}
 
-	TEST_METHOD(ApplyToOutput_EmptyStats_NoFragment)
-	{
-		FArcRecipeOutputModifier_Stats Modifier;
-		// No stats added
-
-		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
-
-		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
-		ASSERT_THAT(IsNull(StatsFragment, TEXT("Empty stats should not create fragment")));
-	}
-
-	TEST_METHOD(ApplyToOutput_MultipleCalls_Accumulate)
+	TEST_METHOD(Evaluate_MultipleCalls_Accumulate)
 	{
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
 		FArcRecipeOutputModifier_Stats ModifierA;
 		FArcItemAttributeStat StatA;
 		StatA.SetValue(10.0f);
-		ModifierA.BaseStats.Add(StatA);
+		ModifierA.BaseStat = StatA;
 		ModifierA.QualityScalingFactor = 1.0f;
 
 		FArcRecipeOutputModifier_Stats ModifierB;
 		FArcItemAttributeStat StatB;
 		StatB.SetValue(5.0f);
-		ModifierB.BaseStats.Add(StatB);
+		ModifierB.BaseStat = StatB;
 		ModifierB.QualityScalingFactor = 1.0f;
 
-		ModifierA.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
-		ModifierB.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(ModifierA, OutSpec, Ingredients, QualityMults, 1.0f);
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(ModifierB, OutSpec, Ingredients, QualityMults, 1.0f);
 
 		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
 		ASSERT_THAT(IsNotNull(StatsFragment));
@@ -197,38 +241,34 @@ TEST_CLASS(RecipeOutput_StatModifier, "ArcCraft.Recipe.OutputModifier.Stats")
 
 TEST_CLASS(RecipeOutput_AbilityModifier, "ArcCraft.Recipe.OutputModifier.Abilities")
 {
-	TEST_METHOD(NoTriggerTags_DoesNothing)
+	TEST_METHOD(NoAbility_ProducesEmptyResult)
 	{
 		FArcRecipeOutputModifier_Abilities Modifier;
-		// Empty trigger tags
+		// No ability set
 
 		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
-		// Should not crash and not modify OutSpec
-		// (We can't easily check if no ability fragment was added without knowing the type,
-		//  but at least verify no crash.)
+		ArcRecipeOutputModifierTestHelpers::EvaluateAndApply(Modifier, OutSpec, Ingredients, QualityMults, 1.0f);
+		// Should not crash
 	}
 
-	TEST_METHOD(TriggerTags_NotPresent_DoesNothing)
+	TEST_METHOD(TriggerTags_NotPresent_EvaluateReturnsEmpty)
 	{
 		FArcRecipeOutputModifier_Abilities Modifier;
 		Modifier.TriggerTags.AddTag(TAG_OutTest_Resource_Gem);
-		// Note: no abilities to grant, but we're testing the tag check here
 
 		UArcItemDefinition* Def = ArcRecipeOutputModifierTestHelpers::CreateTransientItemDef(TEXT("TestItem_AbilTrigger"));
-		TSharedPtr<FArcItemData> ItemA = ArcRecipeOutputModifierTestHelpers::MakeTestItem(Def);
-		ItemA->ItemAggregatedTags.AddTag(TAG_OutTest_Resource_Metal);
+		FArcItemSpec SpecA = ArcRecipeOutputModifierTestHelpers::MakeTestItemSpec(Def);
 
-		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA };
 		TArray<float> QualityMults = { 1.0f };
 
-		// Should return early because Metal != Gem
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
-		// Verify no crash — the actual ability granting is harder to test without GAS setup
+		// Should return empty because the item doesn't have Gem tags
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
+		ASSERT_THAT(AreEqual(0, Results.Num(),
+			TEXT("Should produce no pending modifiers when trigger tags don't match")));
 	}
 };
 
@@ -238,37 +278,36 @@ TEST_CLASS(RecipeOutput_AbilityModifier, "ArcCraft.Recipe.OutputModifier.Abiliti
 
 TEST_CLASS(RecipeOutput_EffectModifier, "ArcCraft.Recipe.OutputModifier.Effects")
 {
-	TEST_METHOD(BelowMinQuality_DoesNothing)
+	TEST_METHOD(BelowMinQuality_EvaluateReturnsEmpty)
 	{
 		FArcRecipeOutputModifier_Effects Modifier;
 		Modifier.TriggerTags.AddTag(TAG_OutTest_Resource_Metal);
 		Modifier.MinQualityThreshold = 3.0f;
-		// No effects to grant, just testing the quality gate
 
 		UArcItemDefinition* Def = ArcRecipeOutputModifierTestHelpers::CreateTransientItemDef(TEXT("TestItem_EffectQual"));
-		TSharedPtr<FArcItemData> ItemA = ArcRecipeOutputModifierTestHelpers::MakeTestItem(Def);
-		ItemA->ItemAggregatedTags.AddTag(TAG_OutTest_Resource_Metal);
+		FArcItemSpec SpecA = ArcRecipeOutputModifierTestHelpers::MakeTestItemSpec(Def);
 
-		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients = { ItemA.Get() };
+		TArray<FArcItemSpec> Ingredients = { SpecA };
 		TArray<float> QualityMults = { 1.0f };
 
-		// Quality 1.0 < threshold 3.0 => should not apply
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
-		// Verify no crash — the actual effect granting requires GE setup
+		// Quality 1.0 < threshold 3.0 => should produce no results
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
+		ASSERT_THAT(AreEqual(0, Results.Num(),
+			TEXT("Should produce no pending modifiers when quality below threshold")));
 	}
 
-	TEST_METHOD(EmptyTriggerTags_DoesNothing)
+	TEST_METHOD(NoEffect_ProducesResult)
 	{
 		FArcRecipeOutputModifier_Effects Modifier;
-		// Empty trigger tags
+		// No effect set, no quality/tag gates
 
-		FArcItemSpec OutSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		Modifier.ApplyToOutput(OutSpec, Ingredients, QualityMults, 1.0f);
-		// Verify no crash
+		// Should still produce a pending modifier (effect validity checked at application time)
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
+		ASSERT_THAT(AreEqual(1, Results.Num(),
+			TEXT("Should produce a pending modifier even without effect set")));
 	}
 };
 
@@ -286,14 +325,13 @@ TEST_CLASS(RecipeOutput_BaseEvaluate, "ArcCraft.Recipe.OutputModifier.Evaluate.B
 		FArcRecipeOutputModifier_Stats Modifier;
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
 		Modifier.QualityScalingFactor = 1.0f;
 
-		FArcItemSpec BaseSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(BaseSpec, Ingredients, QualityMults, 1.0f);
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
 
 		ASSERT_THAT(AreEqual(1, Results.Num(), TEXT("Base Evaluate should produce exactly 1 pending modifier")));
 	}
@@ -303,14 +341,13 @@ TEST_CLASS(RecipeOutput_BaseEvaluate, "ArcCraft.Recipe.OutputModifier.Evaluate.B
 		FArcRecipeOutputModifier_Stats Modifier;
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
 		Modifier.SlotTag = TAG_OutTest_Slot_Offense;
 
-		FArcItemSpec BaseSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(BaseSpec, Ingredients, QualityMults, 2.0f);
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 2.0f);
 
 		ASSERT_THAT(AreEqual(1, Results.Num()));
 		ASSERT_THAT(IsTrue(Results[0].SlotTag == TAG_OutTest_Slot_Offense,
@@ -322,109 +359,123 @@ TEST_CLASS(RecipeOutput_BaseEvaluate, "ArcCraft.Recipe.OutputModifier.Evaluate.B
 		FArcRecipeOutputModifier_Stats Modifier;
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(5.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
 		// SlotTag not set — empty by default
 
-		FArcItemSpec BaseSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(BaseSpec, Ingredients, QualityMults, 1.0f);
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
 
 		ASSERT_THAT(AreEqual(1, Results.Num()));
 		ASSERT_THAT(IsFalse(Results[0].SlotTag.IsValid(),
 			TEXT("Unset SlotTag should produce invalid/empty tag (unslotted)")));
 	}
 
-	TEST_METHOD(BaseEvaluate_EffectiveWeightEqualsAverageQuality)
+	TEST_METHOD(BaseEvaluate_EffectiveWeight_IncorporatesQualityAndWeight)
 	{
 		FArcRecipeOutputModifier_Stats Modifier;
 		FArcItemAttributeStat Stat;
 		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
-
-		FArcItemSpec BaseSpec;
-		TArray<const FArcItemData*> Ingredients;
-		TArray<float> QualityMults;
-
-		const float TestQuality = 3.5f;
-		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(BaseSpec, Ingredients, QualityMults, TestQuality);
-
-		ASSERT_THAT(AreEqual(1, Results.Num()));
-		ASSERT_THAT(IsNear(TestQuality, Results[0].EffectiveWeight, 0.001f,
-			TEXT("Base Evaluate sets EffectiveWeight = AverageQuality")));
-	}
-
-	TEST_METHOD(BaseEvaluate_ApplyFnProducesCorrectResult)
-	{
-		FArcRecipeOutputModifier_Stats Modifier;
-		FArcItemAttributeStat Stat;
-		Stat.SetValue(10.0f);
-		Modifier.BaseStats.Add(Stat);
+		Modifier.BaseStat = Stat;
+		Modifier.Weight = 2.0f;
 		Modifier.QualityScalingFactor = 1.0f;
 
-		FArcItemSpec BaseSpec;
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
 
-		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(BaseSpec, Ingredients, QualityMults, 2.0f);
+		const float TestQuality = 3.0f;
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, TestQuality);
 
+		// EffectiveWeight = Weight * (1.0 + (Quality - 1.0) * ScalingFactor)
+		// = 2.0 * (1.0 + (3.0 - 1.0) * 1.0) = 2.0 * 3.0 = 6.0
 		ASSERT_THAT(AreEqual(1, Results.Num()));
-		ASSERT_THAT(IsTrue(Results[0].ApplyFn != nullptr, TEXT("ApplyFn should be set")));
-
-		// Execute the deferred apply
-		FArcItemSpec OutSpec;
-		Results[0].ApplyFn(OutSpec);
-
-		// Verify the stats were applied correctly: 10.0 * (1.0 + (2.0-1.0)*1.0) = 20.0
-		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
-		ASSERT_THAT(IsNotNull(StatsFragment, TEXT("ApplyFn should create stats fragment")));
-		ASSERT_THAT(AreEqual(1, StatsFragment->DefaultStats.Num()));
-		ASSERT_THAT(IsNear(20.0f, StatsFragment->DefaultStats[0].Value.GetValue(), 0.001f,
-			TEXT("Deferred apply should produce same result as direct ApplyToOutput")));
+		ASSERT_THAT(IsNear(6.0f, Results[0].EffectiveWeight, 0.001f,
+			TEXT("EffectiveWeight should be Weight * (1 + (Quality-1) * ScalingFactor)")));
 	}
 
-	TEST_METHOD(BaseEvaluate_ApplyFnMatchesDirectApply)
+	TEST_METHOD(BaseEvaluate_DefaultWeight_AtQuality1_EqualsWeight)
 	{
 		FArcRecipeOutputModifier_Stats Modifier;
-		FArcItemAttributeStat StatA;
-		StatA.SetValue(10.0f);
-		FArcItemAttributeStat StatB;
-		StatB.SetValue(25.0f);
-		Modifier.BaseStats.Add(StatA);
-		Modifier.BaseStats.Add(StatB);
-		Modifier.QualityScalingFactor = 0.5f;
+		FArcItemAttributeStat Stat;
+		Stat.SetValue(10.0f);
+		Modifier.BaseStat = Stat;
 
-		TArray<const FArcItemData*> Ingredients;
+		TArray<FArcItemSpec> Ingredients;
 		TArray<float> QualityMults;
-		const float Quality = 3.0f;
 
-		// Direct apply
-		FArcItemSpec DirectSpec;
-		Modifier.ApplyToOutput(DirectSpec, Ingredients, QualityMults, Quality);
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
 
-		// Deferred apply via Evaluate
-		FArcItemSpec BaseSpec;
-		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(BaseSpec, Ingredients, QualityMults, Quality);
-		FArcItemSpec DeferredSpec;
-		Results[0].ApplyFn(DeferredSpec);
+		// At Quality 1.0: EffectiveWeight = 1.0 * (1.0 + 0.0 * 1.0) = 1.0
+		ASSERT_THAT(AreEqual(1, Results.Num()));
+		ASSERT_THAT(IsNear(1.0f, Results[0].EffectiveWeight, 0.001f,
+			TEXT("At quality 1.0, EffectiveWeight should equal Weight")));
+	}
 
-		// Compare results
-		const FArcItemFragment_ItemStats* DirectStats = DirectSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
-		const FArcItemFragment_ItemStats* DeferredStats = DeferredSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
+	TEST_METHOD(BaseEvaluate_ResultProducesCorrectValue)
+	{
+		FArcRecipeOutputModifier_Stats Modifier;
+		FArcItemAttributeStat Stat;
+		Stat.SetValue(10.0f);
+		Modifier.BaseStat = Stat;
+		Modifier.QualityScalingFactor = 1.0f;
 
-		ASSERT_THAT(IsNotNull(DirectStats));
-		ASSERT_THAT(IsNotNull(DeferredStats));
-		ASSERT_THAT(AreEqual(DirectStats->DefaultStats.Num(), DeferredStats->DefaultStats.Num(),
-			TEXT("Same number of stats")));
+		TArray<FArcItemSpec> Ingredients;
+		TArray<float> QualityMults;
 
-		for (int32 i = 0; i < DirectStats->DefaultStats.Num(); ++i)
-		{
-			ASSERT_THAT(IsNear(
-				DirectStats->DefaultStats[i].Value.GetValue(),
-				DeferredStats->DefaultStats[i].Value.GetValue(),
-				0.001f,
-				TEXT("Deferred apply must match direct apply")));
-		}
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 2.0f);
+
+		ASSERT_THAT(AreEqual(1, Results.Num()));
+		ASSERT_THAT(IsTrue(Results[0].Result.Type == EArcCraftModifierResultType::Stat,
+			TEXT("Result should be a Stat type")));
+
+		// Verify the pre-scaled stat value: 10.0 * (1.0 + (2.0-1.0)*1.0) = 20.0
+		ASSERT_THAT(IsNear(20.0f, Results[0].Result.Stat.Value.GetValue(), 0.001f,
+			TEXT("Result should carry correct quality-scaled stat value")));
+
+		// Also verify it applies correctly
+		FArcItemSpec OutSpec;
+		ArcRecipeOutputModifierTestHelpers::ApplyResult(OutSpec, Results[0].Result);
+
+		const FArcItemFragment_ItemStats* StatsFragment = OutSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
+		ASSERT_THAT(IsNotNull(StatsFragment, TEXT("Applying result should create stats fragment")));
+		ASSERT_THAT(AreEqual(1, StatsFragment->DefaultStats.Num()));
+		ASSERT_THAT(IsNear(20.0f, StatsFragment->DefaultStats[0].Value.GetValue(), 0.001f,
+			TEXT("Applied result should produce correct quality-scaled stat")));
+	}
+
+	TEST_METHOD(BaseEvaluate_IneligibleQuality_ReturnsEmpty)
+	{
+		FArcRecipeOutputModifier_Stats Modifier;
+		FArcItemAttributeStat Stat;
+		Stat.SetValue(10.0f);
+		Modifier.BaseStat = Stat;
+		Modifier.MinQualityThreshold = 5.0f;
+
+		TArray<FArcItemSpec> Ingredients;
+		TArray<float> QualityMults;
+
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 2.0f);
+		ASSERT_THAT(AreEqual(0, Results.Num(),
+			TEXT("Should produce no pending modifiers when quality below threshold")));
+	}
+
+	TEST_METHOD(BaseEvaluate_IneligibleTags_ReturnsEmpty)
+	{
+		FArcRecipeOutputModifier_Stats Modifier;
+		FArcItemAttributeStat Stat;
+		Stat.SetValue(10.0f);
+		Modifier.BaseStat = Stat;
+		Modifier.TriggerTags.AddTag(TAG_OutTest_Resource_Gem);
+
+		UArcItemDefinition* Def = ArcRecipeOutputModifierTestHelpers::CreateTransientItemDef(TEXT("TestItem_BaseEvalTags"));
+		FArcItemSpec SpecA = ArcRecipeOutputModifierTestHelpers::MakeTestItemSpec(Def);
+
+		TArray<FArcItemSpec> Ingredients = { SpecA };
+		TArray<float> QualityMults = { 1.0f };
+
+		TArray<FArcCraftPendingModifier> Results = Modifier.Evaluate(Ingredients, QualityMults, 1.0f);
+		ASSERT_THAT(AreEqual(0, Results.Num(),
+			TEXT("Should produce no pending modifiers when trigger tags don't match")));
 	}
 };

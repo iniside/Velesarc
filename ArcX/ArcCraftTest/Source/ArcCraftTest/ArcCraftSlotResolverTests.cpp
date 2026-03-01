@@ -40,7 +40,7 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_SlotTest_Unknown, "Modifier.Unknown");
 
 namespace SlotResolverTestHelpers
 {
-	/** Create a pending modifier with a slot tag and weight. ApplyFn is a no-op marker. */
+	/** Create a pending modifier with a slot tag and weight. */
 	FArcCraftPendingModifier MakePending(
 		FGameplayTag InSlotTag,
 		float InWeight,
@@ -50,8 +50,20 @@ namespace SlotResolverTestHelpers
 		Pending.SlotTag = InSlotTag;
 		Pending.EffectiveWeight = InWeight;
 		Pending.ModifierIndex = InModifierIndex;
-		// No-op apply: just a marker to verify which modifiers survive
-		Pending.ApplyFn = [](FArcItemSpec&) {};
+		return Pending;
+	}
+
+	/** Create a pending modifier with a stat result carrying a specific value. */
+	FArcCraftPendingModifier MakePendingWithStat(
+		FGameplayTag InSlotTag,
+		float InWeight,
+		float StatValue)
+	{
+		FArcCraftPendingModifier Pending;
+		Pending.SlotTag = InSlotTag;
+		Pending.EffectiveWeight = InWeight;
+		Pending.Result.Type = EArcCraftModifierResultType::Stat;
+		Pending.Result.Stat.SetValue(StatValue);
 		return Pending;
 	}
 
@@ -616,57 +628,40 @@ TEST_CLASS(SlotResolver_Mixed, "ArcCraft.SlotResolver.Mixed")
 };
 
 // ===================================================================
-// ApplyFn integration: verify that resolved modifiers actually apply
+// Result integration: verify that resolved modifiers carry correct results
 // ===================================================================
 
-TEST_CLASS(SlotResolver_ApplyFn, "ArcCraft.SlotResolver.ApplyFn")
+TEST_CLASS(SlotResolver_Result, "ArcCraft.SlotResolver.Result")
 {
-	TEST_METHOD(ResolvedModifiers_ApplyFnExecuted)
+	TEST_METHOD(ResolvedModifiers_ResultTypesPreserved)
 	{
-		int32 ApplyCount = 0;
-
 		TArray<FArcCraftPendingModifier> Pending;
 
-		{
-			FArcCraftPendingModifier P;
-			P.SlotTag = TAG_SlotTest_Offense;
-			P.EffectiveWeight = 5.0f;
-			P.ApplyFn = [&ApplyCount](FArcItemSpec&) { ApplyCount += 10; };
-			Pending.Add(MoveTemp(P));
-		}
-		{
-			FArcCraftPendingModifier P;
-			P.SlotTag = TAG_SlotTest_Offense;
-			P.EffectiveWeight = 1.0f;
-			P.ApplyFn = [&ApplyCount](FArcItemSpec&) { ApplyCount += 100; };
-			Pending.Add(MoveTemp(P));
-		}
-		{
-			FArcCraftPendingModifier P;
-			// Unslotted
-			P.EffectiveWeight = 0.0f;
-			P.ApplyFn = [&ApplyCount](FArcItemSpec&) { ApplyCount += 1000; };
-			Pending.Add(MoveTemp(P));
-		}
+		// Slotted stat with value 10 (weight=5, wins)
+		Pending.Add(SlotResolverTestHelpers::MakePendingWithStat(TAG_SlotTest_Offense, 5.0f, 10.0f));
+		// Slotted stat with value 100 (weight=1, loses)
+		Pending.Add(SlotResolverTestHelpers::MakePendingWithStat(TAG_SlotTest_Offense, 1.0f, 100.0f));
+		// Unslotted stat with value 1000 (always passes)
+		Pending.Add(SlotResolverTestHelpers::MakePendingWithStat(FGameplayTag(), 0.0f, 1000.0f));
 
 		TArray<FArcCraftModifierSlot> Slots;
 		Slots.Add(SlotResolverTestHelpers::MakeSlot(TAG_SlotTest_Offense)); // Only 1 Offense chair
 
 		TArray<int32> ResolvedIndices = FArcCraftSlotResolver::Resolve(Pending, Slots, 0, EArcCraftSlotSelection::HighestWeight);
 
-		// Apply resolved modifiers
-		FArcItemSpec Spec;
+		// Verify resolved modifier results
+		float TotalStatValue = 0.0f;
 		for (int32 Idx : ResolvedIndices)
 		{
-			if (Pending[Idx].ApplyFn)
+			if (Pending[Idx].Result.Type == EArcCraftModifierResultType::Stat)
 			{
-				Pending[Idx].ApplyFn(Spec);
+				TotalStatValue += Pending[Idx].Result.Stat.Value.GetValue();
 			}
 		}
 
-		// Idx 0 (weight=5, +10) + Idx 2 (unslotted, +1000) should fire
-		// Idx 1 (weight=1, +100) should NOT fire (cut — only 1 chair)
-		ASSERT_THAT(AreEqual(1010, ApplyCount,
-			TEXT("Only resolved modifiers should be applied: 10 (offense winner) + 1000 (unslotted)")));
+		// Idx 0 (weight=5, stat=10) + Idx 2 (unslotted, stat=1000) should survive
+		// Idx 1 (weight=1, stat=100) should NOT survive (cut — only 1 chair)
+		ASSERT_THAT(IsNear(1010.0f, TotalStatValue, 0.001f,
+			TEXT("Only resolved modifiers should contribute: 10 (offense winner) + 1000 (unslotted)")));
 	}
 };
