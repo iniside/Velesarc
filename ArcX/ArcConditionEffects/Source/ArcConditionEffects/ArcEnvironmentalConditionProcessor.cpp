@@ -8,24 +8,7 @@
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
 
-namespace
-{
-	template<typename ConfigType>
-	const FArcConditionConfig* GetOptionalConfig(FMassExecutionContext& Ctx)
-	{
-		const ConfigType* Cfg = Ctx.GetConstSharedFragmentPtr<ConfigType>();
-		return Cfg ? &Cfg->Config : nullptr;
-	}
 
-	void ApplyGenericCondition(float Amount, FArcConditionState* State, const FArcConditionConfig* Config)
-	{
-		if (!State || !Config) { return; }
-
-		const float Effective = ArcConditionHelpers::ApplyResistance(Amount, State->Resistance);
-		ArcConditionHelpers::SetSaturationClamped(*State, *Config, State->Saturation + Effective);
-		ArcConditionHelpers::UpdateActiveFlag(*State, *Config);
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Processor Implementation
@@ -109,11 +92,11 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 			TArrayView<FArcCorrodedConditionFragment>     CorrodedFrags    = Ctx.GetMutableFragmentView<FArcCorrodedConditionFragment>();
 			TArrayView<FArcShockedConditionFragment>      ShockedFrags     = Ctx.GetMutableFragmentView<FArcShockedConditionFragment>();
 
-			const FArcConditionConfig* BlindedCfg     = GetOptionalConfig<FArcBlindedConditionConfig>(Ctx);
-			const FArcConditionConfig* SuffocatingCfg = GetOptionalConfig<FArcSuffocatingConditionConfig>(Ctx);
-			const FArcConditionConfig* ExhaustedCfg   = GetOptionalConfig<FArcExhaustedConditionConfig>(Ctx);
-			const FArcConditionConfig* CorrodedCfg    = GetOptionalConfig<FArcCorrodedConditionConfig>(Ctx);
-			const FArcConditionConfig* ShockedCfg     = GetOptionalConfig<FArcShockedConditionConfig>(Ctx);
+			const FArcConditionConfig* BlindedCfg     = Arc::Condition::GetOptionalConfig<FArcBlindedConditionConfig>(Ctx);
+			const FArcConditionConfig* SuffocatingCfg = Arc::Condition::GetOptionalConfig<FArcSuffocatingConditionConfig>(Ctx);
+			const FArcConditionConfig* ExhaustedCfg   = Arc::Condition::GetOptionalConfig<FArcExhaustedConditionConfig>(Ctx);
+			const FArcConditionConfig* CorrodedCfg    = Arc::Condition::GetOptionalConfig<FArcCorrodedConditionConfig>(Ctx);
+			const FArcConditionConfig* ShockedCfg     = Arc::Condition::GetOptionalConfig<FArcShockedConditionConfig>(Ctx);
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -163,7 +146,7 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 						}
 						else
 						{
-							ApplyGenericCondition(Req->Amount, Target, Cfg);
+							Arc::Condition::ApplyGenericCondition(Req->Amount, Target, Cfg);
 						}
 						ArcConditionHelpers::UpdateActiveFlag(*Target, *Cfg);
 					}

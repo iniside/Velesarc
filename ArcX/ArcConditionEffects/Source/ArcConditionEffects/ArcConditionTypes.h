@@ -6,6 +6,7 @@
 #include "MassEntityHandle.h"
 #include "MassEntityTypes.h"
 #include "MassEntityConcepts.h"
+#include "MassExecutionContext.h"
 
 #include "ArcConditionTypes.generated.h"
 
@@ -311,5 +312,40 @@ namespace ArcConditionHelpers
 
 		bOutStateChanged = (State.bActive != bWasActive);
 		bOutOverloadChanged = (State.OverloadPhase != PrevOverload);
+	}
+}
+
+namespace Arc::Condition
+{
+	template<typename ConfigType>
+	const FArcConditionConfig* GetOptionalConfig(FMassExecutionContext& Ctx)
+	{
+		const ConfigType* Cfg = Ctx.GetConstSharedFragmentPtr<ConfigType>();
+		return Cfg ? &Cfg->Config : nullptr;
+	}
+
+	inline void ApplyGenericCondition(float Amount, FArcConditionState* State, const FArcConditionConfig* Config)
+	{
+		if (!State || !Config) { return; }
+
+		const float Effective = ArcConditionHelpers::ApplyResistance(Amount, State->Resistance);
+		ArcConditionHelpers::SetSaturationClamped(*State, *Config, State->Saturation + Effective);
+		ArcConditionHelpers::UpdateActiveFlag(*State, *Config);
+	}
+	
+	template<typename FragmentType>
+	FArcConditionState* GetOptionalState(FMassExecutionContext& Ctx, int32 EntityIndex)
+	{
+		TArrayView<FragmentType> View = Ctx.GetMutableFragmentView<FragmentType>();
+		if (View.IsEmpty()) { return nullptr; }
+		return &View[EntityIndex].State;
+	}
+
+	template<typename FragmentType>
+	const FArcConditionState* GetOptionalStateConst(FMassExecutionContext& Ctx, int32 EntityIndex)
+	{
+		TConstArrayView<FragmentType> View = Ctx.GetFragmentView<FragmentType>();
+		if (View.IsEmpty()) { return nullptr; }
+		return &View[EntityIndex].State;
 	}
 }

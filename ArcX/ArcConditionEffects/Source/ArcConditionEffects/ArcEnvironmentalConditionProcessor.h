@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ArcConditionTypes.h"
 #include "MassSignalProcessorBase.h"
 
 #include "ArcEnvironmentalConditionProcessor.generated.h"
@@ -13,6 +14,7 @@
 // Handles application of: Blinded, Suffocating, Exhausted, Corroded, Shocked
 // These conditions are mostly independent — simple generic application.
 // ---------------------------------------------------------------------------
+
 
 UCLASS()
 class ARCCONDITIONEFFECTS_API UArcEnvironmentalConditionProcessor : public UMassSignalProcessorBase

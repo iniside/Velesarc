@@ -14,29 +14,6 @@
 
 namespace
 {
-	template<typename FragmentType>
-	FArcConditionState* GetOptionalState(FMassExecutionContext& Ctx, int32 EntityIndex)
-	{
-		TArrayView<FragmentType> View = Ctx.GetMutableFragmentView<FragmentType>();
-		if (View.IsEmpty()) { return nullptr; }
-		return &View[EntityIndex].State;
-	}
-
-	template<typename FragmentType>
-	const FArcConditionState* GetOptionalStateConst(FMassExecutionContext& Ctx, int32 EntityIndex)
-	{
-		TConstArrayView<FragmentType> View = Ctx.GetFragmentView<FragmentType>();
-		if (View.IsEmpty()) { return nullptr; }
-		return &View[EntityIndex].State;
-	}
-
-	template<typename ConfigType>
-	const FArcConditionConfig* GetOptionalConfig(FMassExecutionContext& Ctx)
-	{
-		const ConfigType* Cfg = Ctx.GetConstSharedFragmentPtr<ConfigType>();
-		return Cfg ? &Cfg->Config : nullptr;
-	}
-
 	// -----------------------------------------------------------------------
 	// Fire Application
 	// -----------------------------------------------------------------------
@@ -374,11 +351,11 @@ void UArcThermalConditionProcessor::SignalEntities(FMassEntityManager& EntityMan
 			TArrayView<FArcDiseasedConditionFragment> DiseasedFrags = Ctx.GetMutableFragmentView<FArcDiseasedConditionFragment>();
 			TArrayView<FArcBlindedConditionFragment>  BlindedFrags  = Ctx.GetMutableFragmentView<FArcBlindedConditionFragment>();
 
-			const FArcConditionConfig* BurningCfg = GetOptionalConfig<FArcBurningConditionConfig>(Ctx);
-			const FArcConditionConfig* ChilledCfg = GetOptionalConfig<FArcChilledConditionConfig>(Ctx);
-			const FArcConditionConfig* WetCfg     = GetOptionalConfig<FArcWetConditionConfig>(Ctx);
-			const FArcConditionConfig* OiledCfg   = GetOptionalConfig<FArcOiledConditionConfig>(Ctx);
-			const FArcConditionConfig* BlindedCfg = GetOptionalConfig<FArcBlindedConditionConfig>(Ctx);
+			const FArcConditionConfig* BurningCfg = Arc::Condition::GetOptionalConfig<FArcBurningConditionConfig>(Ctx);
+			const FArcConditionConfig* ChilledCfg = Arc::Condition::GetOptionalConfig<FArcChilledConditionConfig>(Ctx);
+			const FArcConditionConfig* WetCfg     = Arc::Condition::GetOptionalConfig<FArcWetConditionConfig>(Ctx);
+			const FArcConditionConfig* OiledCfg   = Arc::Condition::GetOptionalConfig<FArcOiledConditionConfig>(Ctx);
+			const FArcConditionConfig* BlindedCfg = Arc::Condition::GetOptionalConfig<FArcBlindedConditionConfig>(Ctx);
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
