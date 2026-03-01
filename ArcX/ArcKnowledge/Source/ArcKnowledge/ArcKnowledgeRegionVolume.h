@@ -1,0 +1,66 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "GameplayTagContainer.h"
+#include "InstancedStruct.h"
+#include "ArcKnowledgeTypes.h"
+#include "ArcKnowledgeEntry.h"
+#include "ArcKnowledgeRegionVolume.generated.h"
+
+class USphereComponent;
+class UArcKnowledgeEntryDefinition;
+
+/**
+ * Level-placed actor that marks a large-scale knowledge region.
+ * Same concept as AArcKnowledgeVolume but with a larger default radius
+ * and distinct visual color for level design clarity.
+ */
+UCLASS()
+class ARCKNOWLEDGE_API AArcKnowledgeRegionVolume : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	AArcKnowledgeRegionVolume();
+
+	/** Optional data asset defining this knowledge region's entries.
+	  * When set, its Tags/Payload/InitialKnowledge are used as defaults.
+	  * Per-instance properties below override the definition when non-empty. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge")
+	TObjectPtr<UArcKnowledgeEntryDefinition> Definition;
+
+	/** Tags to put on the knowledge entry registered by this volume.
+	  * Overrides Definition.Tags when non-empty. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge")
+	FGameplayTagContainer KnowledgeTags;
+
+	/** Optional payload data for the knowledge entry. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge", meta = (BaseStruct = "/Script/ArcKnowledge.ArcKnowledgePayload", ExcludeBaseStruct))
+	FInstancedStruct Payload;
+
+	/** Initial knowledge entries to register alongside this volume's own entry. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge")
+	TArray<FArcKnowledgeEntry> InitialKnowledge;
+
+	/** Spatial broadcast radius for events on this area's knowledge. 0 = use system default. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge", meta = (ClampMin = "0.0"))
+	float SpatialBroadcastRadius = 0.0f;
+
+	/** Visual/spatial representation of the region bounds. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knowledge")
+	TObjectPtr<USphereComponent> SphereComponent;
+
+	/** The runtime handle for the primary knowledge entry. */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Knowledge")
+	FArcKnowledgeHandle KnowledgeHandle;
+
+	/** Runtime handles for initial knowledge entries. */
+	TArray<FArcKnowledgeHandle> InitialKnowledgeHandles;
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+};
