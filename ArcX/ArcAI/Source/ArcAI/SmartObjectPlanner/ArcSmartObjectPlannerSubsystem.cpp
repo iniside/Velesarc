@@ -144,7 +144,6 @@ void UArcSmartObjectPlannerSubsystem::GatherCandidates(
 // -------------------------------------------------------------------
 
 bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
-	FMassEntityManager& EntityManager,
 	TArray<FArcPotentialEntity>& AvailableEntities,
 	const FGameplayTagContainer& NeededTags,
 	FGameplayTagContainer& CurrentTags,
@@ -152,7 +151,8 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 	TArray<FArcSmartObjectPlanStep>& CurrentPlan,
 	TArray<FArcSmartObjectPlanContainer>& OutPlans,
 	TArray<bool>& UsedEntities,
-	int32 MaxPlans)
+	int32 MaxPlans,
+	FMassEntityManager* EntityManager)
 {
 	// Stop if we already have enough plans
 	if (OutPlans.Num() >= MaxPlans)
@@ -181,8 +181,6 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 	bool bFoundValidPlan = false;
 
-	USmartObjectSubsystem* SmartObjectSubsystem = GetWorld()->GetSubsystem<USmartObjectSubsystem>();
-
 	// Try each available entity
 	for (int32 EntityIndex = 0; EntityIndex < AvailableEntities.Num(); EntityIndex++)
 	{
@@ -194,24 +192,13 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 		FArcPotentialEntity& Entity = AvailableEntities[EntityIndex];
 
-		bool bHasAnyFreeSlot = false;
-
-		for (const FSmartObjectCandidateSlot& Slot : Entity.FoundCandidateSlots.Slots)
-		{
-			const bool bCanBeClaimed = SmartObjectSubsystem->CanBeClaimed(Slot.Result.SlotHandle);
-			if (bCanBeClaimed)
-			{
-				bHasAnyFreeSlot = true;
-				break;
-			}
-		}
-
-		if (!bHasAnyFreeSlot)
+		// Slot availability already verified by GatherCandidates
+		if (Entity.FoundCandidateSlots.NumSlots == 0)
 		{
 			continue;
 		}
 
-		if (!EvaluateCustomConditions(Entity, EntityManager))
+		if (EntityManager && !EvaluateCustomConditions(Entity, *EntityManager))
 		{
 			continue;
 		}
@@ -245,7 +232,6 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 				TArray<FArcSmartObjectPlanStep> ReqCurrentPlan = CurrentPlan;
 
 				const bool bFoundReqPlan = BuildPlanRecursive(
-					EntityManager,
 					AvailableEntities,
 					MissingRequirements,
 					ReqCurrentTags,
@@ -253,7 +239,8 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 					ReqCurrentPlan,
 					RequirementPlans,
 					UsedEntities,
-					1);
+					1,
+					EntityManager);
 
 				UsedEntities[EntityIndex] = false; // Unreserve
 
@@ -315,7 +302,6 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 					// Continue with the complete plan
 					if (BuildPlanRecursive(
-						EntityManager,
 						AvailableEntities,
 						NeededTags,
 						CurrentTags,
@@ -323,7 +309,8 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 						CurrentPlan,
 						OutPlans,
 						UsedEntities,
-						MaxPlans))
+						MaxPlans,
+						EntityManager))
 					{
 						bFoundValidPlan = true;
 					}
@@ -370,7 +357,6 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 		// Continue recursively
 		if (BuildPlanRecursive(
-			EntityManager,
 			AvailableEntities,
 			NeededTags,
 			CurrentTags,
@@ -378,7 +364,8 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 			CurrentPlan,
 			OutPlans,
 			UsedEntities,
-			MaxPlans))
+			MaxPlans,
+			EntityManager))
 		{
 			bFoundValidPlan = true;
 		}
@@ -422,7 +409,6 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 	TArray<FArcSmartObjectPlanStep> CurrentPlan;
 
 	BuildPlanRecursive(
-		EntityManager,
 		AvailableEntities,
 		Request.Requires,
 		CurrentTags,
@@ -430,7 +416,8 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 		CurrentPlan,
 		Response.Plans,
 		UsedEntities,
-		Request.MaxPlans
+		Request.MaxPlans,
+		&EntityManager
 	);
 
 	// Sort plans by efficiency
@@ -462,7 +449,7 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 }
 
 
-bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(const FArcPotentialEntity& Entity, FMassEntityManager& EntityManager) const
+bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(const FArcPotentialEntity& Entity, FMassEntityManager& EntityManager)
 {
 	for (const FConstStructView& View : Entity.CustomConditions)
 	{

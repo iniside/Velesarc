@@ -20,6 +20,8 @@ float FArcTQSStep_DistanceFilter::ExecuteStep(const FArcTQSTargetItem& Item, con
 			RefLocations.Add(QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
 				? QueryContext.ContextLocations[Item.ContextIndex]
 				: QueryContext.QuerierLocation);
+			
+			RefLocations.Add(ReferenceLocation);
 		}
 	}
 	else

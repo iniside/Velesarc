@@ -25,6 +25,11 @@
 			"Name": "ArcAIEditor",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcAITests",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [

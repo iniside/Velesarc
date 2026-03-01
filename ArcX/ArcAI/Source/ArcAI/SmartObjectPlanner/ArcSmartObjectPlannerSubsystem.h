@@ -49,19 +49,11 @@ public:
 	/** Time budget per tick in milliseconds. Default 1ms. */
 	float TimeBudgetMs = 1.0f;
 
-private:
-	TArray<FArcSmartObjectPlanRequest> RequestQueue;
-
-	void GatherCandidates(
-		const FArcSmartObjectPlanRequest& Request,
-		TArray<FArcPotentialEntity>& OutCandidates);
-
 	void BuildAllPlans(
 		const FArcSmartObjectPlanRequest& Request,
 		TArray<FArcPotentialEntity>& AvailableEntities);
 
-	bool BuildPlanRecursive(
-		FMassEntityManager& EntityManager,
+	static bool BuildPlanRecursive(
 		TArray<FArcPotentialEntity>& AvailableEntities,
 		const FGameplayTagContainer& NeededTags,
 		FGameplayTagContainer& CurrentTags,
@@ -69,10 +61,18 @@ private:
 		TArray<FArcSmartObjectPlanStep>& CurrentPlan,
 		TArray<FArcSmartObjectPlanContainer>& OutPlans,
 		TArray<bool>& UsedEntities,
-		int32 MaxPlans);
+		int32 MaxPlans,
+		FMassEntityManager* EntityManager = nullptr);
 
-	bool EvaluateCustomConditions(const FArcPotentialEntity& Entity,
-								FMassEntityManager& EntityManager) const;
+	static bool EvaluateCustomConditions(const FArcPotentialEntity& Entity,
+								FMassEntityManager& EntityManager);
+
+private:
+	TArray<FArcSmartObjectPlanRequest> RequestQueue;
+
+	void GatherCandidates(
+		const FArcSmartObjectPlanRequest& Request,
+		TArray<FArcPotentialEntity>& OutCandidates);
 };
 
 class FGameplayDebuggerCategory_SmartObjectPlanner : public FGameplayDebuggerCategory

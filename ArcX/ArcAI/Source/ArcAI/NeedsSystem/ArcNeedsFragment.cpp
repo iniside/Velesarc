@@ -104,7 +104,7 @@ void UArcThirstNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 
 UArcFatigueNeedProcessor::UArcFatigueNeedProcessor()
 {
-	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
+	ProcessingPhase = EMassProcessingPhase::PrePhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }
 

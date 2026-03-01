@@ -49,7 +49,7 @@ struct FArcTQSRunQueryTaskInstanceData
 	FInstancedStruct InlineContextProvider;
 
 	// Generator that produces the initial target pool
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator", EditCondition = "bUseInlineDefinition"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator"))
 	FInstancedStruct InlineGenerator;
 
 	// Ordered pipeline of filter/score steps
