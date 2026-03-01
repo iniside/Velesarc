@@ -293,6 +293,7 @@ void UArcVisLifecycleVisSwitchProcessor::ConfigureQueries(const TSharedRef<FMass
 	EntityQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
+	EntityQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 }
 
 void UArcVisLifecycleVisSwitchProcessor::SignalEntities(FMassEntityManager& EntityManager,
@@ -313,6 +314,10 @@ void UArcVisLifecycleVisSwitchProcessor::SignalEntities(FMassEntityManager& Enti
 		const TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
 		const FArcVisConfigFragment& BaseConfig = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
 		const FArcVisLifecycleConfigFragment& LCConfig = Ctx.GetConstSharedFragment<FArcVisLifecycleConfigFragment>();
+
+		// Optional pre-placed actor fragment
+		const TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFragments = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
+		const bool bHasPrePlaced = !PrePlacedFragments.IsEmpty();
 
 		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
@@ -338,10 +343,22 @@ void UArcVisLifecycleVisSwitchProcessor::SignalEntities(FMassEntityManager& Enti
 				// --- Actor mode ---
 				FMassActorFragment& MassActorFragment = MassActorFragments[EntityIt];
 				const FArcVisLifecyclePhaseVisuals& PhaseVisuals = LCConfig.GetPhaseVisuals(Lifecycle.CurrentPhase);
+				const bool bIsPrePlaced = bHasPrePlaced && PrePlacedFragments[EntityIt].PrePlacedActor.IsValid();
 
 				AActor* CurrentActor = MassActorFragment.GetMutable();
 				if (!CurrentActor)
 				{
+					continue;
+				}
+
+				// Pre-placed actors cannot be swapped to a different class — just notify via interface
+				if (bIsPrePlaced)
+				{
+					if (CurrentActor->GetClass()->ImplementsInterface(UArcLifecycleObserverInterface::StaticClass()))
+					{
+						IArcLifecycleObserverInterface::Execute_OnLifecyclePhaseChanged(
+							CurrentActor, CurrentActor, Lifecycle.CurrentPhase, Lifecycle.PreviousPhase);
+					}
 					continue;
 				}
 

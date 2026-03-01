@@ -96,6 +96,16 @@ struct TMassFragmentTraits<FArcVisConfigFragment> final
 	};
 };
 
+/** Marks a pre-placed actor that should be reused during ISM<->Actor swaps instead of spawning/destroying. */
+USTRUCT()
+struct ARCMASS_API FArcVisPrePlacedActorFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+	/** Weak reference to the pre-placed actor in the level. */
+	TWeakObjectPtr<AActor> PrePlacedActor;
+};
+
 /** Tag to identify visualization entities. */
 USTRUCT()
 struct ARCMASS_API FArcVisEntityTag : public FMassTag

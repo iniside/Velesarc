@@ -40,6 +40,8 @@ public class ArcMass : ModuleRules
 				, "StructUtils"
 				, "DeveloperSettings"
 				, "InstancedActors"
+				, "AsyncMessageSystem"
+				, "SmartObjectsModule"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

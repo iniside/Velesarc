@@ -257,6 +257,7 @@ void UArcVisActivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityMana
 	EntityQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
 	EntityQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::Optional);
+	EntityQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 }
 
 void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
@@ -286,6 +287,10 @@ void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager,
 			const FArcVisLifecycleConfigFragment* LCConfig = Ctx.GetConstSharedFragmentPtr<FArcVisLifecycleConfigFragment>();
 			const bool bHasLifecycle = !LCFragments.IsEmpty() && LCConfig;
 
+			// Optional pre-placed actor fragment
+			const TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFragments = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
+			const bool bHasPrePlaced = !PrePlacedFragments.IsEmpty();
+
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
@@ -296,6 +301,7 @@ void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager,
 				}
 
 				const FTransform& EntityTransform = TransformFragments[EntityIt].GetTransform();
+				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
 				// Remove ISM instance using tracked mesh
 				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
@@ -305,6 +311,20 @@ void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager,
 					Rep.ISMInstanceId = INDEX_NONE;
 				}
 				Rep.CurrentISMMesh = nullptr;
+
+				// Check for pre-placed actor — reuse it instead of spawning
+				if (bHasPrePlaced)
+				{
+					AActor* PrePlacedActor = PrePlacedFragments[EntityIt].PrePlacedActor.Get();
+					if (PrePlacedActor)
+					{
+						PrePlacedActor->SetActorHiddenInGame(false);
+						PrePlacedActor->SetActorEnableCollision(true);
+						MassActorFragment.SetAndUpdateHandleMap(Entity, PrePlacedActor, false);
+						Rep.bIsActorRepresentation = true;
+						continue;
+					}
+				}
 
 				// Resolve actor class (lifecycle-aware)
 				TSubclassOf<AActor> ActorClassToSpawn = Config.ActorClass;
@@ -322,7 +342,6 @@ void UArcVisActivateProcessor::SignalEntities(FMassEntityManager& EntityManager,
 
 					AActor* NewActor = World->SpawnActor<AActor>(ActorClassToSpawn, EntityTransform, SpawnParams);
 
-					const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 					MassActorFragment.SetAndUpdateHandleMap(Entity, NewActor, true);
 
 					if (UArcVisEntityComponent* VisComp = NewActor ? NewActor->FindComponentByClass<UArcVisEntityComponent>() : nullptr)
@@ -365,6 +384,7 @@ void UArcVisDeactivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityMa
 	EntityQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
 	EntityQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::Optional);
+	EntityQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 }
 
 void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
@@ -394,6 +414,10 @@ void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManage
 			const FArcVisLifecycleConfigFragment* LCConfig = Ctx.GetConstSharedFragmentPtr<FArcVisLifecycleConfigFragment>();
 			const bool bHasLifecycle = !LCFragments.IsEmpty() && LCConfig;
 
+			// Optional pre-placed actor fragment
+			const TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFragments = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
+			const bool bHasPrePlaced = !PrePlacedFragments.IsEmpty();
+
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
@@ -403,16 +427,30 @@ void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManage
 					continue;
 				}
 
-				// Notify component before destroying actor
-				if (AActor* Actor = MassActorFragment.GetMutable())
+				// Check if this is a pre-placed actor — hide instead of destroy
+				const bool bIsPrePlaced = bHasPrePlaced && PrePlacedFragments[EntityIt].PrePlacedActor.IsValid();
+				if (bIsPrePlaced)
 				{
-					if (UArcVisEntityComponent* VisComp = Actor->FindComponentByClass<UArcVisEntityComponent>())
+					if (AActor* Actor = MassActorFragment.GetMutable())
 					{
-						VisComp->NotifyVisActorPreDestroy();
+						Actor->SetActorHiddenInGame(true);
+						Actor->SetActorEnableCollision(false);
 					}
-					Actor->Destroy();
+					MassActorFragment.ResetAndUpdateHandleMap();
 				}
-				MassActorFragment.ResetAndUpdateHandleMap();
+				else
+				{
+					// Notify component before destroying actor
+					if (AActor* Actor = MassActorFragment.GetMutable())
+					{
+						if (UArcVisEntityComponent* VisComp = Actor->FindComponentByClass<UArcVisEntityComponent>())
+						{
+							VisComp->NotifyVisActorPreDestroy();
+						}
+						Actor->Destroy();
+					}
+					MassActorFragment.ResetAndUpdateHandleMap();
+				}
 
 				// Resolve ISM mesh (lifecycle-aware)
 				UStaticMesh* MeshToUse = Config.StaticMesh;
@@ -598,6 +636,7 @@ void UArcVisEntityDeinitObserver::ConfigureQueries(const TSharedRef<FMassEntityM
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
+	ObserverQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 }
 
 void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -622,21 +661,40 @@ void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMa
 			const TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
 
+			// Optional pre-placed actor fragment
+			const TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFragments = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
+			const bool bHasPrePlaced = !PrePlacedFragments.IsEmpty();
+
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
 				FMassActorFragment& MassActorFragment = MassActorFragments[EntityIt];
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
+				const bool bIsPrePlaced = bHasPrePlaced && PrePlacedFragments[EntityIt].PrePlacedActor.IsValid();
+
 				if (Rep.bIsActorRepresentation)
 				{
-					if (AActor* Actor = MassActorFragment.GetMutable())
+					if (bIsPrePlaced)
 					{
-						if (UArcVisEntityComponent* VisComp = Actor->FindComponentByClass<UArcVisEntityComponent>())
+						// Pre-placed actor — don't destroy it, it manages its own lifetime.
+						// Just unhide it so it's visible again (entity is going away).
+						if (AActor* Actor = MassActorFragment.GetMutable())
 						{
-							VisComp->NotifyVisActorPreDestroy();
+							Actor->SetActorHiddenInGame(false);
+							Actor->SetActorEnableCollision(true);
 						}
-						Actor->Destroy();
+					}
+					else
+					{
+						if (AActor* Actor = MassActorFragment.GetMutable())
+						{
+							if (UArcVisEntityComponent* VisComp = Actor->FindComponentByClass<UArcVisEntityComponent>())
+							{
+								VisComp->NotifyVisActorPreDestroy();
+							}
+							Actor->Destroy();
+						}
 					}
 					MassActorFragment.ResetAndUpdateHandleMap();
 				}
@@ -647,6 +705,16 @@ void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMa
 					{
 						Subsystem->RemoveISMInstance(Rep.GridCoords, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
 						Rep.ISMInstanceId = INDEX_NONE;
+					}
+
+					// If pre-placed and hidden, unhide since entity is being cleaned up
+					if (bIsPrePlaced)
+					{
+						if (AActor* Actor = PrePlacedFragments[EntityIt].PrePlacedActor.Get())
+						{
+							Actor->SetActorHiddenInGame(false);
+							Actor->SetActorEnableCollision(true);
+						}
 					}
 				}
 

@@ -74,30 +74,42 @@ void UArcVisEntityComponent::RegisterPrePlacedActor()
 		return;
 	}
 
-	// Spawn the Mass entity
-	TArray<FMassEntityHandle> SpawnedEntities;
-	TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
-		SpawnerSubsystem->SpawnEntities(EntityTemplate, 1, SpawnedEntities);
-
-	if (SpawnedEntities.IsEmpty())
-	{
-		return;
-	}
-
-	EntityHandle = SpawnedEntities[0];
-	bOwnsEntity = true;
-
+	// Spawn the Mass entity. The init observer (FArcVisEntityTag Add) fires when CreationContext
+	// is released, so we set the transform first, then release to ensure the observer sees it.
 	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*World);
-
-	// Set the transform to match the actor
-	FTransformFragment* TransformFragment = EntityManager.GetFragmentDataPtr<FTransformFragment>(EntityHandle);
-	if (TransformFragment)
+	TArray<FMassEntityHandle> SpawnedEntities;
 	{
-		TransformFragment->SetTransform(GetOwner()->GetActorTransform());
-	}
+		TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
+			SpawnerSubsystem->SpawnEntities(EntityTemplate, 1, SpawnedEntities);
 
-	// The init observer will have already run and created an ISM instance or spawned a new actor.
-	// We need to fix that — this pre-placed actor IS the actor representation.
+		if (SpawnedEntities.IsEmpty())
+		{
+			return;
+		}
+
+		EntityHandle = SpawnedEntities[0];
+		bOwnsEntity = true;
+
+		// Set the transform before the observer fires so it uses the correct position
+		FTransformFragment* TransformFragment = EntityManager.GetFragmentDataPtr<FTransformFragment>(EntityHandle);
+		if (TransformFragment)
+		{
+			TransformFragment->SetTransform(GetOwner()->GetActorTransform());
+		}
+	} // CreationContext released → init observer fires here
+
+	// Store a reference to this pre-placed actor so the activate/deactivate processors
+	// can reuse it instead of spawning/destroying.
+	AActor* Owner = GetOwner();
+	EntityManager.AddFragmentToEntity(EntityHandle, FArcVisPrePlacedActorFragment::StaticStruct(),
+		[Owner](void* FragmentMemory, const UScriptStruct& FragmentType)
+		{
+			auto& Fragment = *static_cast<FArcVisPrePlacedActorFragment*>(FragmentMemory);
+			Fragment.PrePlacedActor = Owner;
+		});
+
+	// The init observer has already run and created an ISM instance or spawned a new actor.
+	// Clean up whatever it created — the pre-placed actor lifecycle is managed by the cell system.
 	FArcVisRepresentationFragment* Rep = EntityManager.GetFragmentDataPtr<FArcVisRepresentationFragment>(EntityHandle);
 	if (Rep)
 	{
@@ -114,6 +126,7 @@ void UArcVisEntityComponent::RegisterPrePlacedActor()
 						SpawnedActor->Destroy();
 					}
 				}
+				ActorFragment->ResetAndUpdateHandleMap();
 			}
 		}
 		else
@@ -131,16 +144,45 @@ void UArcVisEntityComponent::RegisterPrePlacedActor()
 			}
 		}
 
-		// Set to actor representation using the pre-placed actor
-		Rep->bIsActorRepresentation = true;
-		Rep->CurrentISMMesh = nullptr;
-	}
+		// Determine representation based on cell activity
+		if (VisSubsystem->IsActiveCellCoord(Rep->GridCoords))
+		{
+			// Cell is active — bind the pre-placed actor now
+			Rep->bIsActorRepresentation = true;
+			Rep->CurrentISMMesh = nullptr;
 
-	// Bind this actor to the entity via FMassActorFragment
-	FMassActorFragment* ActorFragment = EntityManager.GetFragmentDataPtr<FMassActorFragment>(EntityHandle);
-	if (ActorFragment)
-	{
-		ActorFragment->SetAndUpdateHandleMap(EntityHandle, GetOwner(), false);
+			FMassActorFragment* ActorFragment = EntityManager.GetFragmentDataPtr<FMassActorFragment>(EntityHandle);
+			if (ActorFragment)
+			{
+				ActorFragment->SetAndUpdateHandleMap(EntityHandle, GetOwner(), false);
+			}
+		}
+		else
+		{
+			// Cell is inactive — hide the pre-placed actor, use ISM representation
+			Rep->bIsActorRepresentation = false;
+			Rep->CurrentISMMesh = nullptr;
+			GetOwner()->SetActorHiddenInGame(true);
+			GetOwner()->SetActorEnableCollision(false);
+
+			const FArcVisConfigFragment* Config = EntityManager.GetConstSharedFragmentDataPtr<FArcVisConfigFragment>(EntityHandle);
+			if (Config)
+			{
+				UStaticMesh* MeshToUse = Config->StaticMesh;
+				if (MeshToUse)
+				{
+					Rep->ISMInstanceId = VisSubsystem->AddISMInstance(
+						Rep->GridCoords,
+						Config->ISMManagerClass,
+						MeshToUse,
+						Config->MaterialOverrides,
+						Config->bCastShadows,
+						GetOwner()->GetActorTransform(),
+						EntityHandle);
+				}
+				Rep->CurrentISMMesh = MeshToUse;
+			}
+		}
 	}
 }
 
