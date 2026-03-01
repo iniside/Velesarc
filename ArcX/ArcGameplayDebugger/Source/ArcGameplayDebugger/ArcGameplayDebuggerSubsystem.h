@@ -16,12 +16,18 @@
 #include "ArcCraftImGuiDebugger.h"
 #include "ArcGameplayTagTreeWidget.h"
 #include "ArcAIDebugger.h"
+#include "ArcPlanFeasibilityDebugger.h"
 #include "ArcPerceptionDebugger.h"
 #include "ArcMassEntityDebugger.h"
+#include "ArcPathDebugger.h"
 #include "ArcVisEntityDebugger.h"
+#include "ArcKnowledgeDebugger.h"
+#include "ArcAreaDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
+
+extern TAutoConsoleVariable<bool> CVarArcDebugDraw;
 
 /**
  * 
@@ -55,9 +61,17 @@ private:
 
 	FArcAIDebugger AIDebugger;
 
+	FArcPlanFeasibilityDebugger PlanFeasibilityDebugger;
+
 	FArcPerceptionDebugger PerceptionDebugger;
 
+	FArcPathDebugger PathDebugger;
+
 	FArcVisEntityDebugger VisEntityDebugger;
+
+	FArcKnowledgeDebugger KnowledgeDebugger;
+
+	FArcAreaDebugger AreaDebugger;
 
 	void Toggle();
 	

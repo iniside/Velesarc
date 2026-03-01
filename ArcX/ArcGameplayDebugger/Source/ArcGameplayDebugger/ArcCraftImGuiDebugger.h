@@ -89,6 +89,10 @@ private:
 	TArray<FCachedStoreInfo> CachedTransferStores;
 	int32 SelectedTransferStoreIndex = 0;
 
+	// ---- Stored Items panel: withdraw target store ----
+
+	int32 SelectedWithdrawStoreIndex = 0;
+
 	// ---- Tab: Recipes ----
 
 	void DrawRecipesTab();

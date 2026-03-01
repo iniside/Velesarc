@@ -120,10 +120,11 @@ void FArcEquipmentDebugger::DrawOverview(APlayerController* PC, UArcEquipmentCom
 
 			// Status
 			ImGui::TableNextColumn();
-			const bool bIsLocked = EquipmentItemsStore && EquipmentItemsStore->IsSlotLocked(Slot.SlotId);
-			if (bIsLocked)
+			const FArcItemData* SlotItem = EquipmentItemsStore ? EquipmentItemsStore->GetItemFromSlot(Slot.SlotId) : nullptr;
+			const bool bIsPending = SlotItem && EquipmentItemsStore->IsPending(SlotItem->GetItemId());
+			if (bIsPending)
 			{
-				ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Locked");
+				ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Pending");
 			}
 			else
 			{
@@ -372,7 +373,7 @@ void FArcEquipmentDebugger::DrawItemsStoreInfo(UArcEquipmentComponent* Equipment
 				}
 
 				ImGui::TableNextColumn();
-				bool bItemLocked = ItemsStore->IsItemLocked(Item->GetItemId());
+				bool bItemLocked = ItemsStore->IsPending(Item->GetItemId());
 				if (bItemLocked)
 				{
 					ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Yes");

@@ -44,8 +44,15 @@ public class ArcGameplayDebugger : ModuleRules
 				"MassCommon",
 				"MassActors",
 				"MassAIBehavior",
+				"MassNavigation",
+				"MassNavMeshNavigation",
+				"MassMovement",
 				"StateTreeModule",
-				"ArcMass"
+				"ArcMass",
+				"ArcKnowledge",
+				"ArcArea",
+				"SmartObjectsModule",
+				"StructUtils"
 
 				// ... add other public dependencies that you statically link with here ...
 			}

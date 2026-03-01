@@ -35,6 +35,7 @@
 #include "GameplayEffect.h"
 #include "Abilities/GameplayAbility.h"
 #include "ArcCraft/Commands/ArcDepositItemToCraftStationCommand.h"
+#include "ArcCraft/Commands/ArcWithdrawItemFromCraftStationCommand.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
 #include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "MassEntitySubsystem.h"
@@ -611,6 +612,61 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 
 	const bool bEntityBacked = Station->IsEntityBacked();
 
+	// --- Withdraw target store selector ---
+	ImGui::Text("Withdraw Target:");
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Refresh##WithdrawStores"))
+	{
+		if (CachedTransferStores.Num() == 0)
+		{
+			RefreshTransferStores();
+		}
+	}
+
+	if (CachedTransferStores.Num() == 0)
+	{
+		RefreshTransferStores();
+	}
+
+	UArcItemsStoreComponent* WithdrawTargetStore = nullptr;
+
+	if (CachedTransferStores.Num() > 0)
+	{
+		FString WithdrawLabel = TEXT("(none)");
+		if (SelectedWithdrawStoreIndex >= 0 && SelectedWithdrawStoreIndex < CachedTransferStores.Num())
+		{
+			const FCachedStoreInfo& Info = CachedTransferStores[SelectedWithdrawStoreIndex];
+			WithdrawLabel = FString::Printf(TEXT("%s - %s"), *Info.OwnerName, *Info.StoreName);
+			WithdrawTargetStore = Info.Store.Get();
+		}
+
+		ImGui::SetNextItemWidth(350.f);
+		if (ImGui::BeginCombo("##WithdrawStoreSelector", TCHAR_TO_ANSI(*WithdrawLabel)))
+		{
+			for (int32 i = 0; i < CachedTransferStores.Num(); ++i)
+			{
+				const FCachedStoreInfo& Info = CachedTransferStores[i];
+				FString Label = FString::Printf(TEXT("%s - %s"), *Info.OwnerName, *Info.StoreName);
+				const bool bSelected = (SelectedWithdrawStoreIndex == i);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*Label), bSelected))
+				{
+					SelectedWithdrawStoreIndex = i;
+				}
+				if (bSelected)
+				{
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
+	else
+	{
+		ImGui::TextDisabled("(no item stores found - click Refresh)");
+	}
+
+	ImGui::Spacing();
+
 	// --- Attempt to read from entity fragments (priority for entity-backed stations) ---
 	bool bReadInputFromEntity = false;
 	bool bReadOutputFromEntity = false;
@@ -655,7 +711,67 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 	if (bReadInputFromEntity)
 	{
 		ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Input Ingredients (Entity Fragment)");
-		DrawItemSpecTable("InputItemsEntity", EntityInputItems);
+
+		if (EntityInputItems.Num() == 0)
+		{
+			ImGui::TextDisabled("(empty)");
+		}
+		else if (ImGui::BeginTable("InputItemsEntityW", 5,
+			ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
+		{
+			ImGui::TableSetupColumn("#", 0, 30.f);
+			ImGui::TableSetupColumn("Item", 0, 200.f);
+			ImGui::TableSetupColumn("Lvl", 0, 40.f);
+			ImGui::TableSetupColumn("Qty", 0, 40.f);
+			ImGui::TableSetupColumn("", 0, 70.f);
+			ImGui::TableHeadersRow();
+
+			for (int32 i = 0; i < EntityInputItems.Num(); ++i)
+			{
+				const FArcItemSpec& Spec = EntityInputItems[i];
+				ImGui::TableNextRow();
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("%d", i);
+
+				ImGui::TableSetColumnIndex(1);
+				const UArcItemDefinition* Def = Spec.GetItemDefinition();
+				if (Def)
+				{
+					ImGui::Text("%s", TCHAR_TO_ANSI(*GetNameSafe(Def)));
+				}
+				else if (Spec.GetItemDefinitionId().IsValid())
+				{
+					ImGui::Text("%s", TCHAR_TO_ANSI(*Spec.GetItemDefinitionId().ToString()));
+				}
+				else
+				{
+					ImGui::TextDisabled("(no definition)");
+				}
+
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("%d", Spec.Level);
+
+				ImGui::TableSetColumnIndex(3);
+				ImGui::Text("%d", Spec.Amount);
+
+				ImGui::TableSetColumnIndex(4);
+				ImGui::PushID(i);
+				if (WithdrawTargetStore && ImGui::SmallButton("Withdraw"))
+				{
+					Arcx::SendServerCommand<FArcWithdrawItemFromCraftStationCommand>(
+						Station,
+						Station,
+						WithdrawTargetStore,
+						i,
+						0,
+						false);
+				}
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
 	}
 	else
 	{
@@ -679,12 +795,13 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 
 					ImGui::Text("  Store: %s", TCHAR_TO_ANSI(*Store->GetClass()->GetName()));
 					if (ImGui::BeginTable(TCHAR_TO_ANSI(*FString::Printf(TEXT("InputStore_%s"), *Store->GetName())),
-						4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
+						5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
 					{
 						ImGui::TableSetupColumn("#", 0, 30.f);
 						ImGui::TableSetupColumn("Item", 0, 200.f);
 						ImGui::TableSetupColumn("Lvl", 0, 40.f);
 						ImGui::TableSetupColumn("Qty", 0, 40.f);
+						ImGui::TableSetupColumn("", 0, 70.f);
 						ImGui::TableHeadersRow();
 
 						for (int32 i = 0; i < Items.Num(); ++i)
@@ -709,6 +826,20 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 
 							ImGui::TableSetColumnIndex(3);
 							ImGui::Text("%d", Item->GetStacks());
+
+							ImGui::TableSetColumnIndex(4);
+							ImGui::PushID(i + 10000);
+							if (WithdrawTargetStore && ImGui::SmallButton("Withdraw"))
+							{
+								Arcx::SendServerCommand<FArcWithdrawItemFromCraftStationCommand>(
+									Station,
+									Station,
+									WithdrawTargetStore,
+									i,
+									0,
+									false);
+							}
+							ImGui::PopID();
 						}
 
 						ImGui::EndTable();
@@ -734,7 +865,67 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 	if (bReadOutputFromEntity)
 	{
 		ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Crafted Output (Entity Fragment)");
-		DrawItemSpecTable("OutputItemsEntity", EntityOutputItems);
+
+		if (EntityOutputItems.Num() == 0)
+		{
+			ImGui::TextDisabled("(empty)");
+		}
+		else if (ImGui::BeginTable("OutputItemsEntityW", 5,
+			ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
+		{
+			ImGui::TableSetupColumn("#", 0, 30.f);
+			ImGui::TableSetupColumn("Item", 0, 200.f);
+			ImGui::TableSetupColumn("Lvl", 0, 40.f);
+			ImGui::TableSetupColumn("Qty", 0, 40.f);
+			ImGui::TableSetupColumn("", 0, 70.f);
+			ImGui::TableHeadersRow();
+
+			for (int32 i = 0; i < EntityOutputItems.Num(); ++i)
+			{
+				const FArcItemSpec& Spec = EntityOutputItems[i];
+				ImGui::TableNextRow();
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("%d", i);
+
+				ImGui::TableSetColumnIndex(1);
+				const UArcItemDefinition* Def = Spec.GetItemDefinition();
+				if (Def)
+				{
+					ImGui::Text("%s", TCHAR_TO_ANSI(*GetNameSafe(Def)));
+				}
+				else if (Spec.GetItemDefinitionId().IsValid())
+				{
+					ImGui::Text("%s", TCHAR_TO_ANSI(*Spec.GetItemDefinitionId().ToString()));
+				}
+				else
+				{
+					ImGui::TextDisabled("(no definition)");
+				}
+
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("%d", Spec.Level);
+
+				ImGui::TableSetColumnIndex(3);
+				ImGui::Text("%d", Spec.Amount);
+
+				ImGui::TableSetColumnIndex(4);
+				ImGui::PushID(i + 20000);
+				if (WithdrawTargetStore && ImGui::SmallButton("Withdraw"))
+				{
+					Arcx::SendServerCommand<FArcWithdrawItemFromCraftStationCommand>(
+						Station,
+						Station,
+						WithdrawTargetStore,
+						i,
+						0,
+						true);
+				}
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
 	}
 	else
 	{

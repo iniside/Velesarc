@@ -21,10 +21,18 @@
 
 #include "ArcGameplayDebuggerModule.h"
 
+#include "ArcGameplayDebuggerSubsystem.h"
+#include "Engine/World.h"
+#include "Misc/CoreDelegates.h"
+
 #define LOCTEXT_NAMESPACE "FArcGameplayDebuggerModule"
 
 void FArcGameplayDebuggerModule::StartupModule()
 {
+	FWorldDelegates::OnPIEEnded.AddLambda([](UGameInstance* World)
+		{
+			CVarArcDebugDraw->Set(false);
+		});
 }
 
 void FArcGameplayDebuggerModule::ShutdownModule()

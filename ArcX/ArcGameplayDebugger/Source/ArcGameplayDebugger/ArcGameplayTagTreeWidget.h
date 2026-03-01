@@ -16,6 +16,9 @@ public:
 	void Uninitialize();
 	void Draw();
 
+	/** Draw widget content without ImGui::Begin/End — for embedding inside another window */
+	void DrawInline();
+
 	/** Get currently selected tags */
 	const FGameplayTagContainer& GetSelectedTags() const { return SelectedTags; }
 

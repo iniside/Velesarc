@@ -59,6 +59,10 @@
 		{
 			"Name": "MassAI",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcKnowledge",
+			"Enabled": true
 		}
 	]
 }

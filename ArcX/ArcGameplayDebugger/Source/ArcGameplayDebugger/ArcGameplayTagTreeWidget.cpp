@@ -165,16 +165,13 @@ void FArcGameplayTagTreeWidget::DrawNode(const FTagTreeNode& Node, const FString
 	}
 }
 
-void FArcGameplayTagTreeWidget::Draw()
+void FArcGameplayTagTreeWidget::DrawInline()
 {
-	ImGui::Begin("Gameplay Tag Tree", &bShow);
-
 	// Rebuild button
 	if (ImGui::Button("Refresh"))
 	{
 		RebuildTree();
 	}
-	ImGui::SameLine();
 
 	// Display count of selected tags
 	const int32 SelectedCount = SelectedTags.Num();
@@ -225,6 +222,11 @@ void FArcGameplayTagTreeWidget::Draw()
 	{
 		ImGui::TextDisabled("No tags loaded. Click Refresh.");
 	}
+}
 
+void FArcGameplayTagTreeWidget::Draw()
+{
+	ImGui::Begin("Gameplay Tag Tree", &bShow);
+	DrawInline();
 	ImGui::End();
 }

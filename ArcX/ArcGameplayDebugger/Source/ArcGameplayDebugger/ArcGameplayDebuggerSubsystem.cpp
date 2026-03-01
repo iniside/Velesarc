@@ -11,7 +11,7 @@
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Kismet/GameplayStatics.h"
 
-static TAutoConsoleVariable<bool> CVarArcDebugDraw(
+TAutoConsoleVariable<bool> CVarArcDebugDraw(
 	TEXT("Arc.ToggleDebug"),
 	false,
 	TEXT("Enable/Disable Arc Gameplay Debugger")
@@ -353,6 +353,39 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 						}
 					}
 
+					if (ImGui::MenuItem("Plan Feasibility"))
+					{
+						if (PlanFeasibilityDebugger.bShow == false)
+						{
+							PlanFeasibilityDebugger.bShow = true;
+							PlanFeasibilityDebugger.Initialize();
+						}
+						else
+						{
+							PlanFeasibilityDebugger.bShow = false;
+							PlanFeasibilityDebugger.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Navigation"))
+				{
+					if (ImGui::MenuItem("Path Debugger"))
+					{
+						if (PathDebugger.bShow == false)
+						{
+							PathDebugger.bShow = true;
+							PathDebugger.Initialize();
+						}
+						else
+						{
+							PathDebugger.bShow = false;
+							PathDebugger.Uninitialize();
+						}
+					}
+
 					ImGui::EndMenu();
 				}
 
@@ -407,7 +440,45 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 
 					ImGui::EndMenu();
 				}
-				
+
+				if (ImGui::BeginMenu("Knowledge"))
+				{
+					if (ImGui::MenuItem("Knowledge Debugger"))
+					{
+						if (KnowledgeDebugger.bShow == false)
+						{
+							KnowledgeDebugger.bShow = true;
+							KnowledgeDebugger.Initialize();
+						}
+						else
+						{
+							KnowledgeDebugger.bShow = false;
+							KnowledgeDebugger.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
+				if (ImGui::BeginMenu("Area"))
+				{
+					if (ImGui::MenuItem("Area Debugger"))
+					{
+						if (AreaDebugger.bShow == false)
+						{
+							AreaDebugger.bShow = true;
+							AreaDebugger.Initialize();
+						}
+						else
+						{
+							AreaDebugger.bShow = false;
+							AreaDebugger.Uninitialize();
+						}
+					}
+
+					ImGui::EndMenu();
+				}
+
 				ImGui::EndMainMenuBar();
 
 				if (DebuggerItems.bShow)
@@ -470,9 +541,25 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					PerceptionDebugger.Draw();
 				}
+				if (PlanFeasibilityDebugger.bShow)
+				{
+					PlanFeasibilityDebugger.Draw();
+				}
+				if (PathDebugger.bShow)
+				{
+					PathDebugger.Draw();
+				}
 				if (VisEntityDebugger.bShow)
 				{
 					VisEntityDebugger.Draw();
+				}
+				if (KnowledgeDebugger.bShow)
+				{
+					KnowledgeDebugger.Draw();
+				}
+				if (AreaDebugger.bShow)
+				{
+					AreaDebugger.Draw();
 				}
 				if (bDrawDebug)
 				{
