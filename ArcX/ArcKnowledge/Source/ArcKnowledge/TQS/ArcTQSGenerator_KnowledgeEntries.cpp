@@ -1,6 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSGenerator_KnowledgeEntries.h"
+#include "ArcTQSKnowledgeHelpers.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeQuery.h"
 #include "ArcKnowledgeFilter.h"
@@ -48,6 +49,10 @@ void FArcTQSGenerator_KnowledgeEntries::GenerateItems(
 	TArray<FArcKnowledgeQueryResult> Results;
 	Subsystem->QueryKnowledge(Query, KnowledgeContext, Results);
 
+	// Build template property bag once for the schema
+	FInstancedPropertyBag TemplateBag;
+	TemplateBag.AddProperty(ArcTQS::Knowledge::Names::Handle, EPropertyBagPropertyType::Struct, FArcKnowledgeHandle::StaticStruct());
+
 	// Convert results to TQS target items
 	OutItems.Reserve(OutItems.Num() + Results.Num());
 
@@ -69,6 +74,15 @@ void FArcTQSGenerator_KnowledgeEntries::GenerateItems(
 			Item.TargetType = EArcTQSTargetType::MassEntity;
 		}
 
+		// Store knowledge handle in ItemData
+		Item.ItemData = TemplateBag;
+		Item.ItemData.SetValueStruct(ArcTQS::Knowledge::Names::Handle, Result.Entry.Handle);
+
 		OutItems.Add(MoveTemp(Item));
 	}
+}
+
+void FArcTQSGenerator_KnowledgeEntries::GetOutputSchema(TArray<FPropertyBagPropertyDesc>& OutDescs) const
+{
+	OutDescs.Emplace(ArcTQS::Knowledge::Names::Handle, EPropertyBagPropertyType::Struct, FArcKnowledgeHandle::StaticStruct());
 }

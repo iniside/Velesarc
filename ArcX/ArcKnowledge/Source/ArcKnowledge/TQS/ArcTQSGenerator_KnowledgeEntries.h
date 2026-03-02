@@ -38,4 +38,6 @@ struct ARCKNOWLEDGE_API FArcTQSGenerator_KnowledgeEntries : public FArcTQSGenera
 	virtual void GenerateItems(
 		const FArcTQSQueryContext& QueryContext,
 		TArray<FArcTQSTargetItem>& OutItems) const override;
+
+	virtual void GetOutputSchema(TArray<FPropertyBagPropertyDesc>& OutDescs) const override;
 };
