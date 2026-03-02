@@ -15,8 +15,8 @@ struct ARCAI_API FArcUtilityEntry
 	UPROPERTY(EditAnywhere, Category = "Entry")
 	FStateTreeStateLink LinkedState;
 
-	UPROPERTY(EditAnywhere, Category = "Entry", meta = (BaseStruct = "/Script/ArcAI.ArcUtilityScorer"))
-	TArray<FInstancedStruct> Scorers;
+	UPROPERTY(EditAnywhere, Category = "Entry", meta = (BaseStruct = "/Script/ArcAI.ArcUtilityConsideration"))
+	TArray<FInstancedStruct> Considerations;
 
 	UPROPERTY(EditAnywhere, Category = "Entry", meta = (ClampMin = 0.01))
 	float Weight = 1.0f;

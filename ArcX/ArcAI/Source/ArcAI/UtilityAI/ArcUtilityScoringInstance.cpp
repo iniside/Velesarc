@@ -1,11 +1,12 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "UtilityAI/ArcUtilityScoringInstance.h"
-#include "UtilityAI/ArcUtilityScorer.h"
+#include "UtilityAI/ArcUtilityConsideration.h"
 #include "ArcAILogs.h"
 #include "HAL/PlatformTime.h"
 #include "VisualLogger/VisualLogger.h"
 #include "GameFramework/Actor.h"
+#include "UtilityAI/Debugger/ArcUtilityTrace.h"
 
 #if ENABLE_VISUAL_LOG
 void FArcUtilityScoringInstance::FlushDebugLog()
@@ -21,6 +22,18 @@ void FArcUtilityScoringInstance::FlushDebugLog()
 	}
 
 	DebugLog.Reset();
+}
+#endif
+
+#if WITH_ARCUTILITY_TRACE
+static FString GetStructDisplayName(const FInstancedStruct& Struct)
+{
+	if (const UScriptStruct* ScriptStruct = Struct.GetScriptStruct())
+	{
+		const FString DisplayName = ScriptStruct->GetMetaData(TEXT("DisplayName"));
+		return DisplayName.IsEmpty() ? ScriptStruct->GetName() : DisplayName;
+	}
+	return TEXT("Unknown");
 }
 #endif
 
@@ -50,9 +63,17 @@ bool FArcUtilityScoringInstance::ExecuteStep(double Deadline)
 		DebugLog += FString::Printf(TEXT("Utility Scoring %d: %d entries x %d targets\n"),
 			RequestId, Entries.Num(), Targets.Num());
 #endif
+
+#if WITH_ARCUTILITY_TRACE
+		bTraceActive = UE_TRACE_CHANNELEXPR_IS_ENABLED(ArcUtilityDebugChannel);
+		if (bTraceActive)
+		{
+			ConsiderationSnapshots.Reserve(Entries.Num() * Targets.Num() * 4);
+		}
+#endif
 	}
 
-	// Phase 2: Score entries × targets
+	// Phase 2: Score entries x targets
 	if (Status == EArcUtilityScoringStatus::Processing)
 	{
 		if (!RunScoring(Deadline))
@@ -106,34 +127,42 @@ bool FArcUtilityScoringInstance::RunScoring(double Deadline)
 	while (CurrentEntryIndex < Entries.Num())
 	{
 		const FArcUtilityEntry& Entry = Entries[CurrentEntryIndex];
-		const int32 NumScorers = Entry.Scorers.Num();
+		const int32 NumConsiderations = Entry.Considerations.Num();
 
 		while (CurrentTargetIndex < Targets.Num())
 		{
 			// Check deadline every 16 items to amortize syscall cost
 			if ((ItemsProcessed & 0xF) == 0 && ItemsProcessed > 0 && FPlatformTime::Seconds() >= Deadline)
 			{
-				return false; // Yield — resume at current entry/target/scorer
+				return false; // Yield — resume at current entry/target/consideration
 			}
 
 			const FArcUtilityTarget& Target = Targets[CurrentTargetIndex];
 			Context.EntryIndex = CurrentEntryIndex;
 
-			// Score this entry × target pair
+			// Score this entry x target pair
 			float Product = 1.0f;
 			bool bEarlyOut = false;
 
-			for (int32 ScorerIdx = CurrentScorerIndex; ScorerIdx < NumScorers; ++ScorerIdx)
+			for (int32 ConsiderationIdx = CurrentConsiderationIndex; ConsiderationIdx < NumConsiderations; ++ConsiderationIdx)
 			{
-				const FArcUtilityScorer* Scorer = Entry.Scorers[ScorerIdx].GetPtr<FArcUtilityScorer>();
-				if (!Scorer)
+				const FArcUtilityConsideration* Consideration = Entry.Considerations[ConsiderationIdx].GetPtr<FArcUtilityConsideration>();
+				if (!Consideration)
 				{
 					continue;
 				}
 
-				const float RawScore = Scorer->Score(Target, Context);
-				const float CurveScore = Scorer->ResponseCurve.Evaluate(FMath::Clamp(RawScore, 0.0f, 1.0f));
-				const float CompensatedScore = FMath::Pow(FMath::Clamp(CurveScore, 0.0f, 1.0f), Scorer->Weight);
+				const float RawScore = Consideration->Score(Target, Context);
+				const float CurveScore = Consideration->ResponseCurve.Evaluate(FMath::Clamp(RawScore, 0.0f, 1.0f));
+				const float CompensatedScore = FMath::Pow(FMath::Clamp(CurveScore, 0.0f, 1.0f), Consideration->Weight);
+#if WITH_ARCUTILITY_TRACE
+				if (bTraceActive)
+				{
+					ConsiderationSnapshots.Add({CurrentEntryIndex, CurrentTargetIndex, ConsiderationIdx,
+						GetStructDisplayName(Entry.Considerations[ConsiderationIdx]),
+						RawScore, CurveScore, CompensatedScore});
+				}
+#endif
 				Product *= CompensatedScore;
 
 				// Early-out: product can only decrease since all values are [0,1]
@@ -144,13 +173,13 @@ bool FArcUtilityScoringInstance::RunScoring(double Deadline)
 				}
 			}
 
-			// Reset scorer index for next target
-			CurrentScorerIndex = 0;
+			// Reset consideration index for next target
+			CurrentConsiderationIndex = 0;
 
-			if (!bEarlyOut && NumScorers > 0)
+			if (!bEarlyOut && NumConsiderations > 0)
 			{
 				// Geometric mean compensation: pow(product, 1/N) to prevent collapse
-				const float Compensated = FMath::Pow(Product, 1.0f / static_cast<float>(NumScorers));
+				const float Compensated = FMath::Pow(Product, 1.0f / static_cast<float>(NumConsiderations));
 				const float FinalScore = Compensated * Entry.Weight;
 
 				if (FinalScore >= MinScore)

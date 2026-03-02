@@ -1,23 +1,23 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
-#include "UtilityAI/ArcUtilityScorer.h"
+#include "UtilityAI/ArcUtilityConsideration.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "MassEntityManager.h"
 
-float FArcUtilityScorer_Distance::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+float FArcUtilityConsideration_Distance::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	const FVector TargetLoc = Target.GetLocation(Context.EntityManager);
 	const float Dist = FVector::Dist(Context.QuerierLocation, TargetLoc);
 	return FMath::Clamp(1.0f - (Dist / MaxDistance), 0.0f, 1.0f);
 }
 
-float FArcUtilityScorer_Constant::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+float FArcUtilityConsideration_Constant::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	return Value;
 }
 
-float FArcUtilityScorer_GameplayTag::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+float FArcUtilityConsideration_GameplayTag::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	AActor* TargetActor = Target.GetActor(Context.EntityManager);
 	if (!TargetActor)
@@ -35,7 +35,7 @@ float FArcUtilityScorer_GameplayTag::Score(const FArcUtilityTarget& Target, cons
 	return 0.0f;
 }
 
-float FArcUtilityScorer_Attribute::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+float FArcUtilityConsideration_Attribute::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	AActor* TargetActor = Target.GetActor(Context.EntityManager);
 	if (!TargetActor)

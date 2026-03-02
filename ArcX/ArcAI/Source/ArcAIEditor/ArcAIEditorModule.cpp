@@ -25,6 +25,9 @@
 #include "Debugger/ArcTQSRewindDebuggerTrack.h"
 #include "Debugger/ArcTQSRewindDebuggerExtensions.h"
 #include "Debugger/ArcTQSTraceModule.h"
+#include "Debugger/ArcUtilityRewindDebuggerTrack.h"
+#include "Debugger/ArcUtilityRewindDebuggerExtensions.h"
+#include "Debugger/ArcUtilityTraceModule.h"
 #include "Features/IModularFeatures.h"
 #include "TraceServices/ModuleService.h"
 
@@ -56,10 +59,62 @@ void FArcAIEditorModule::StartupModule()
 	IModularFeatures::Get().RegisterModularFeature(
 		IRewindDebuggerRuntimeExtension::ModularFeatureName,
 		TQSRecordingExtension.Get());
+
+	// --- Utility AI Rewind Debugger ---
+
+	UtilityTraceModule = MakeUnique<FArcUtilityTraceModule>();
+	IModularFeatures::Get().RegisterModularFeature(TraceServices::ModuleFeatureName, UtilityTraceModule.Get());
+
+	UtilityTrackCreator = MakePimpl<FArcUtilityRewindDebuggerTrackCreator>();
+	IModularFeatures::Get().RegisterModularFeature(
+		RewindDebugger::IRewindDebuggerTrackCreator::ModularFeatureName,
+		UtilityTrackCreator.Get());
+
+	UtilityPlaybackExtension = MakeUnique<FArcUtilityRewindDebuggerPlaybackExtension>();
+	IModularFeatures::Get().RegisterModularFeature(
+		IRewindDebuggerExtension::ModularFeatureName,
+		UtilityPlaybackExtension.Get());
+
+	UtilityRecordingExtension = MakeUnique<FArcUtilityRewindDebuggerRecordingExtension>();
+	IModularFeatures::Get().RegisterModularFeature(
+		IRewindDebuggerRuntimeExtension::ModularFeatureName,
+		UtilityRecordingExtension.Get());
 }
 
 void FArcAIEditorModule::ShutdownModule()
 {
+	// --- Utility AI Rewind Debugger ---
+
+	if (UtilityRecordingExtension)
+	{
+		IModularFeatures::Get().UnregisterModularFeature(
+			IRewindDebuggerRuntimeExtension::ModularFeatureName,
+			UtilityRecordingExtension.Get());
+	}
+
+	if (UtilityPlaybackExtension)
+	{
+		IModularFeatures::Get().UnregisterModularFeature(
+			IRewindDebuggerExtension::ModularFeatureName,
+			UtilityPlaybackExtension.Get());
+	}
+
+	if (UtilityTrackCreator)
+	{
+		IModularFeatures::Get().UnregisterModularFeature(
+			RewindDebugger::IRewindDebuggerTrackCreator::ModularFeatureName,
+			UtilityTrackCreator.Get());
+	}
+
+	if (UtilityTraceModule)
+	{
+		IModularFeatures::Get().UnregisterModularFeature(
+			TraceServices::ModuleFeatureName,
+			UtilityTraceModule.Get());
+	}
+
+	// --- TQS Rewind Debugger ---
+
 	if (TQSRecordingExtension)
 	{
 		IModularFeatures::Get().UnregisterModularFeature(

@@ -3,7 +3,7 @@
 #include "ArcTQSTraceAnalyzer.h"
 #include "ArcTQSTraceProvider.h"
 #include "TraceServices/Model/AnalysisSession.h"
-#include "Serialization/MemoryReader.h" // for FMemoryReaderView
+#include "Serialization/MemoryReader.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcTQSAnalyzer, Log, All);
 
@@ -11,27 +11,22 @@ FArcTQSTraceAnalyzer::FArcTQSTraceAnalyzer(TraceServices::IAnalysisSession& InSe
 	: Session(InSession)
 	, Provider(InProvider)
 {
-	UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] Constructor called"));
 }
 
 void FArcTQSTraceAnalyzer::OnAnalysisBegin(const FOnAnalysisContext& Context)
 {
-	UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] OnAnalysisBegin — routing 3 events from 'ArcTQSDebugger'"));
 	auto& Builder = Context.InterfaceBuilder;
-	Builder.RouteEvent(RouteId_QueryStarted, "ArcTQSDebugger", "QueryStartedEvent");
-	Builder.RouteEvent(RouteId_StepCompleted, "ArcTQSDebugger", "StepCompletedEvent");
 	Builder.RouteEvent(RouteId_QueryCompleted, "ArcTQSDebugger", "QueryCompletedEvent");
 }
 
 bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context)
 {
-	UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] OnEvent: RouteId=%d"), RouteId);
 	TraceServices::FAnalysisSessionEditScope _(Session);
 
 	const auto& EventData = Context.EventData;
 	const double Timestamp = Context.EventTime.AsSeconds(EventData.GetValue<uint64>("Cycle"));
 
-	if (RouteId == RouteId_QueryStarted)
+	if (RouteId == RouteId_QueryCompleted)
 	{
 		FArcTQSTraceQueryRecord Record;
 		Record.QueryId = EventData.GetValue<int32>("QueryId");
@@ -47,8 +42,15 @@ bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventC
 		FString GenName;
 		EventData.GetString("GeneratorName", GenName);
 		Record.GeneratorName = MoveTemp(GenName);
+		Record.GeneratedItemCount = EventData.GetValue<int32>("GeneratedItemCount");
 
-		Record.GeneratedItemCount = EventData.GetValue<int32>("ItemCount");
+		Record.Status = EventData.GetValue<uint8>("Status");
+		Record.SelectionMode = EventData.GetValue<uint8>("SelectionMode");
+		Record.ExecutionTimeMs = EventData.GetValue<float>("ExecutionTimeMs");
+
+		// Timestamp: event time is the query end time. Compute start from execution time.
+		Record.EndTimestamp = Timestamp;
+		Record.Timestamp = Timestamp - static_cast<double>(Record.ExecutionTimeMs) / 1000.0;
 
 		// Deserialize context locations
 		TArrayView<const uint8> CtxBlob = EventData.GetArrayView<uint8>("ContextLocationsBlob");
@@ -66,64 +68,33 @@ bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventC
 			}
 		}
 
-		const uint64 InstanceId = EventData.GetValue<uint64>("InstanceId");
-		UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] QueryStarted: QueryId=%d InstanceId=%llu Gen=%s Items=%d Timestamp=%.4f"),
-			Record.QueryId, InstanceId, *Record.GeneratorName, Record.GeneratedItemCount, Timestamp);
-		Provider.OnQueryStarted(InstanceId, Record.QueryId, Timestamp, MoveTemp(Record));
-	}
-	else if (RouteId == RouteId_StepCompleted)
-	{
-		FArcTQSTraceStepRecord StepRecord;
-		StepRecord.StepIndex = EventData.GetValue<int32>("StepIndex");
-
-		FString StepName;
-		EventData.GetString("StepName", StepName);
-		StepRecord.StepName = MoveTemp(StepName);
-
-		StepRecord.StepKind = EventData.GetValue<uint8>("StepKind");
-		StepRecord.Weight = EventData.GetValue<float>("Weight");
-		StepRecord.ValidRemaining = EventData.GetValue<int32>("ValidRemaining");
-
-		// Deserialize per-item snapshots
-		TArrayView<const uint8> ItemsBlob = EventData.GetArrayView<uint8>("ItemScoresBlob");
-		if (ItemsBlob.Num() > 0)
+		// Deserialize steps
+		TArrayView<const uint8> StepsBlob = EventData.GetArrayView<uint8>("StepsBlob");
+		if (StepsBlob.Num() > 0)
 		{
-			FMemoryReaderView Reader(MakeArrayView(ItemsBlob.GetData(), ItemsBlob.Num()));
-			int32 SnapCount = 0;
-			Reader << SnapCount;
-			StepRecord.ItemSnapshots.Reserve(SnapCount);
-			for (int32 j = 0; j < SnapCount; ++j)
+			FMemoryReaderView StepsReader(MakeArrayView(StepsBlob.GetData(), StepsBlob.Num()));
+			int32 StepCount = 0;
+			StepsReader << StepCount;
+			Record.Steps.Reserve(StepCount);
+			for (int32 i = 0; i < StepCount; ++i)
 			{
-				FArcTQSTraceItemSnapshot Snap;
-				Reader << Snap.ItemIndex;
-				Reader << Snap.Score;
-				uint8 Valid = 0;
-				Reader << Valid;
-				Snap.bValid = Valid != 0;
-				StepRecord.ItemSnapshots.Add(MoveTemp(Snap));
+				FArcTQSTraceStepRecord Step;
+				Step.StepIndex = i;
+				StepsReader << Step.StepName;
+				StepsReader << Step.StepKind;
+				StepsReader << Step.Weight;
+				Record.Steps.Add(MoveTemp(Step));
 			}
 		}
 
-		const int32 QueryId = EventData.GetValue<int32>("QueryId");
-		Provider.OnStepCompleted(QueryId, MoveTemp(StepRecord));
-	}
-	else if (RouteId == RouteId_QueryCompleted)
-	{
-		const int32 QueryId = EventData.GetValue<int32>("QueryId");
-		const uint64 InstanceId = EventData.GetValue<uint64>("InstanceId");
-		const uint8 Status = EventData.GetValue<uint8>("Status");
-		const uint8 SelectionMode = EventData.GetValue<uint8>("SelectionMode");
-		const float ExecTimeMs = EventData.GetValue<float>("ExecutionTimeMs");
-
 		// Deserialize final items
-		TArray<FArcTQSTraceItemRecord> Items;
 		TArrayView<const uint8> ItemsBlob = EventData.GetArrayView<uint8>("ItemsBlob");
 		if (ItemsBlob.Num() > 0)
 		{
 			FMemoryReaderView Reader(MakeArrayView(ItemsBlob.GetData(), ItemsBlob.Num()));
 			int32 ItemCount = 0;
 			Reader << ItemCount;
-			Items.Reserve(ItemCount);
+			Record.FinalItems.Reserve(ItemCount);
 			for (int32 i = 0; i < ItemCount; ++i)
 			{
 				FArcTQSTraceItemRecord Item;
@@ -136,31 +107,40 @@ bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventC
 				Reader << Valid;
 				Item.bValid = Valid != 0;
 				Reader << Item.EntityHandle;
-				Items.Add(MoveTemp(Item));
+				Record.FinalItems.Add(MoveTemp(Item));
 			}
 		}
 
 		// Deserialize result indices
-		TArray<int32> ResultIndices;
 		TArrayView<const uint8> ResultBlob = EventData.GetArrayView<uint8>("ResultIndicesBlob");
 		if (ResultBlob.Num() > 0)
 		{
 			FMemoryReaderView Reader(MakeArrayView(ResultBlob.GetData(), ResultBlob.Num()));
 			int32 ResultCount = 0;
 			Reader << ResultCount;
-			ResultIndices.Reserve(ResultCount);
+			Record.ResultIndices.Reserve(ResultCount);
 			for (int32 i = 0; i < ResultCount; ++i)
 			{
 				int32 Idx;
 				Reader << Idx;
-				ResultIndices.Add(Idx);
+				Record.ResultIndices.Add(Idx);
 			}
 		}
 
-		UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] QueryCompleted: QueryId=%d InstanceId=%llu Status=%d Items=%d Results=%d Timestamp=%.4f"),
-			QueryId, InstanceId, Status, Items.Num(), ResultIndices.Num(), Timestamp);
-		Provider.OnQueryCompleted(QueryId, InstanceId, Status, SelectionMode, ExecTimeMs,
-			MoveTemp(Items), MoveTemp(ResultIndices), Timestamp);
+		const uint64 InstanceId = EventData.GetValue<uint64>("InstanceId");
+
+		FString QuerierName;
+		EventData.GetString("QuerierName", QuerierName);
+		if (InstanceId != 0 && !QuerierName.IsEmpty())
+		{
+			Provider.SetInstanceDisplayName(InstanceId, QuerierName);
+		}
+
+		UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] QueryCompleted: QueryId=%d InstanceId=%llu Status=%d Items=%d Results=%d Time=[%.4f..%.4f]"),
+			Record.QueryId, InstanceId, Record.Status, Record.FinalItems.Num(), Record.ResultIndices.Num(),
+			Record.Timestamp, Record.EndTimestamp);
+
+		Provider.OnQueryCompleted(InstanceId, MoveTemp(Record));
 	}
 
 	return true;

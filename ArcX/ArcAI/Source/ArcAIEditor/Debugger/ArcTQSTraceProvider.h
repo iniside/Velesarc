@@ -10,18 +10,26 @@ class FArcTQSTraceProvider : public TraceServices::IProvider
 public:
 	static const FName ProviderName;
 
-	void OnQueryStarted(uint64 InstanceId, int32 QueryId, double Timestamp, FArcTQSTraceQueryRecord&& Record);
-	void OnStepCompleted(int32 QueryId, FArcTQSTraceStepRecord&& StepRecord);
-	void OnQueryCompleted(int32 QueryId, uint64 InstanceId, uint8 Status, uint8 SelectionMode,
-		float ExecutionTimeMs, TArray<FArcTQSTraceItemRecord>&& Items, TArray<int32>&& ResultIndices, double EndTimestamp);
+	/** Add a fully-completed query record to this querier's instance. */
+	void OnQueryCompleted(uint64 InstanceId, FArcTQSTraceQueryRecord&& Record);
 
-	const FArcTQSTraceQueryRecord* GetQueryByInstanceId(uint64 InstanceId) const;
+	/** Get all queries for a given trace instance (one per querier entity/actor). */
+	const TArray<FArcTQSTraceQueryRecord>* GetQueriesForInstance(uint64 InstanceId) const;
+
+	/** Get all completed queries overlapping a given time (for viewport drawing). */
 	void GetCompletedQueriesAtTime(double Time, TArray<const FArcTQSTraceQueryRecord*>& OutQueries) const;
+
 	bool HasDataForInstance(uint64 InstanceId) const;
 	bool HasData() const { return !Records.IsEmpty(); }
 
+	/** Store a display name for an instance (first occurrence wins). */
+	void SetInstanceDisplayName(uint64 InstanceId, const FString& Name);
+
+	/** Get the display name for an instance, or empty string if not set. */
+	const FString& GetInstanceDisplayName(uint64 InstanceId) const;
+
 	/** Enumerate all stored records (diagnostic). */
-	void EnumerateRecords(TFunctionRef<void(uint64 InstanceId, const FArcTQSTraceQueryRecord&)> Callback) const
+	void EnumerateRecords(TFunctionRef<void(uint64 InstanceId, const TArray<FArcTQSTraceQueryRecord>&)> Callback) const
 	{
 		for (const auto& Pair : Records)
 		{
@@ -30,6 +38,6 @@ public:
 	}
 
 private:
-	TMap<uint64, FArcTQSTraceQueryRecord> Records; // InstanceId -> Record
-	TMap<int32, uint64> ActiveQueryToInstance; // QueryId -> InstanceId (transient routing for StepCompleted)
+	TMap<uint64, TArray<FArcTQSTraceQueryRecord>> Records; // InstanceId (per-querier) -> all queries
+	TMap<uint64, FString> InstanceDisplayNames; // InstanceId -> querier name
 };

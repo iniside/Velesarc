@@ -4,7 +4,6 @@
 #include "ArcTQSTraceProvider.h"
 #include "ArcTQSTraceTypes.h"
 #include "IRewindDebugger.h"
-#include "IGameplayProvider.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "TargetQuery/Debugger/ArcTQSTrace.h" // for ArcTQSDebugChannel
@@ -95,71 +94,6 @@ void FArcTQSRewindDebuggerPlaybackExtension::Update(float DeltaTime, IRewindDebu
 		UE_LOG(LogArcTQSPlayback, Log, TEXT("[TQS Playback] TraceTime=%.4f QueriesFound=%d HasData=%d"),
 			TraceTime, Queries.Num(), Provider->HasData());
 		bLoggedOnce = (Queries.Num() == 0);
-	}
-
-	// --- DIAGNOSTIC: Check GameplayProvider for our TRACE_INSTANCE objects ---
-	static bool bGameplayProviderChecked = false;
-	if (!bGameplayProviderChecked && Provider->HasData())
-	{
-		bGameplayProviderChecked = true;
-		const IGameplayProvider* GameplayProvider = RewindDebugger->GetAnalysisSession()->ReadProvider<IGameplayProvider>(TEXT("GameplayProvider"));
-		if (GameplayProvider)
-		{
-			UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag] === GameplayProvider check ==="));
-
-			// Check each InstanceId from our provider
-			Provider->EnumerateRecords([GameplayProvider](uint64 InstanceId, const FArcTQSTraceQueryRecord& Record)
-			{
-				const FObjectInfo* ObjInfo = GameplayProvider->FindObjectInfo(InstanceId);
-				if (ObjInfo)
-				{
-					UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag] Instance %llu FOUND in GameplayProvider: Name='%s' OuterId=%llu ClassId=%llu"),
-						InstanceId, ObjInfo->Name, ObjInfo->GetOuterUObjectId(), ObjInfo->ClassId);
-
-					// Check if the outer (subsystem) is also present
-					const FObjectInfo* OuterInfo = GameplayProvider->FindObjectInfo(ObjInfo->GetOuterId());
-					if (OuterInfo)
-					{
-						UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag]   Outer FOUND: Name='%s' OuterId=%llu"),
-							OuterInfo->Name, OuterInfo->GetOuterUObjectId());
-
-						// Enumerate sub-objects of the outer to see if our instance is a child
-						int32 SubObjectCount = 0;
-						bool bFoundSelf = false;
-						GameplayProvider->EnumerateSubobjects(ObjInfo->GetOuterId(), [&](const RewindDebugger::FObjectId& SubId)
-						{
-							++SubObjectCount;
-							if (SubId.GetMainId() == InstanceId)
-							{
-								bFoundSelf = true;
-							}
-						});
-						UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag]   Outer has %d sub-objects, self found=%d"),
-							SubObjectCount, bFoundSelf);
-					}
-					else
-					{
-						UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag]   Outer NOT FOUND in GameplayProvider (OuterId=%llu)"),
-							ObjInfo->GetOuterUObjectId());
-					}
-
-					// Check recording lifetime
-					const TRange<double> Lifetime = GameplayProvider->GetObjectRecordingLifetime(InstanceId);
-					UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag]   Lifetime: [%.4f .. %.4f]"),
-						Lifetime.HasLowerBound() ? Lifetime.GetLowerBoundValue() : -1.0,
-						Lifetime.HasUpperBound() ? Lifetime.GetUpperBoundValue() : -1.0);
-				}
-				else
-				{
-					UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag] Instance %llu NOT FOUND in GameplayProvider!"),
-						InstanceId);
-				}
-			});
-		}
-		else
-		{
-			UE_LOG(LogArcTQSPlayback, Warning, TEXT("[TQS Diag] GameplayProvider is null!"));
-		}
 	}
 
 	for (const FArcTQSTraceQueryRecord* Query : Queries)

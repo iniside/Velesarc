@@ -215,17 +215,6 @@ void FGameplayDebuggerCategory_ArcNeeds::CollectData(APlayerController* OwnerPC,
 
 	AddTextLine(FString::Printf(TEXT("{white}Entity: {yellow}%s"), *CachedEntity.DebugGetDescription()));
 
-	// --- FArcNeedsFragment (array-based needs) ---
-	if (const FArcNeedsFragment* NeedsFragment = EntityManager.GetFragmentDataPtr<FArcNeedsFragment>(CachedEntity))
-	{
-		AddTextLine(FString::Printf(TEXT("{cyan}--- Needs (FArcNeedsFragment) --- {white}[%d items]"), NeedsFragment->Needs.Num()));
-		for (const FArcNeedItem& Need : NeedsFragment->Needs)
-		{
-			AddTextLine(FString::Printf(TEXT("  {yellow}%s{white}  Value: {green}%.1f{white}  Rate: %.2f"),
-				*Need.NeedName.ToString(), Need.CurrentValue, Need.ChangeRate));
-		}
-	}
-
 	// --- FArcHungerNeedFragment ---
 	if (const FArcHungerNeedFragment* HungerFragment = EntityManager.GetFragmentDataPtr<FArcHungerNeedFragment>(CachedEntity))
 	{

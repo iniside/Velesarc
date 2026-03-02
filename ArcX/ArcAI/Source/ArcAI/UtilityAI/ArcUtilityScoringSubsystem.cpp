@@ -2,6 +2,7 @@
 
 #include "UtilityAI/ArcUtilityScoringSubsystem.h"
 #include "HAL/PlatformTime.h"
+#include "UtilityAI/Debugger/ArcUtilityTrace.h"
 
 DECLARE_STATS_GROUP(TEXT("ArcUtility"), STATGROUP_ArcUtility, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("ArcUtility Tick"), STAT_ArcUtilityTick, STATGROUP_ArcUtility);
@@ -68,6 +69,8 @@ void UArcUtilityScoringSubsystem::Tick(float DeltaTime)
 
 		if (bCompleted)
 		{
+			TRACE_ARCUTILITY_REQUEST_COMPLETED(*Instance);
+
 #if !UE_BUILD_SHIPPING
 			StoreDebugData(*Instance);
 #endif

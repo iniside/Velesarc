@@ -5,12 +5,12 @@
 #include "Trace/Analyzer.h"
 
 namespace TraceServices { class IAnalysisSession; }
-class FArcTQSTraceProvider;
+class FArcUtilityTraceProvider;
 
-class FArcTQSTraceAnalyzer : public UE::Trace::IAnalyzer
+class FArcUtilityTraceAnalyzer : public UE::Trace::IAnalyzer
 {
 public:
-	FArcTQSTraceAnalyzer(TraceServices::IAnalysisSession& InSession, FArcTQSTraceProvider& InProvider);
+	FArcUtilityTraceAnalyzer(TraceServices::IAnalysisSession& InSession, FArcUtilityTraceProvider& InProvider);
 
 	virtual void OnAnalysisBegin(const FOnAnalysisContext& Context) override;
 	virtual bool OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context) override;
@@ -18,9 +18,9 @@ public:
 private:
 	enum : uint16
 	{
-		RouteId_QueryCompleted
+		RouteId_RequestCompleted
 	};
 
 	TraceServices::IAnalysisSession& Session;
-	FArcTQSTraceProvider& Provider;
+	FArcUtilityTraceProvider& Provider;
 };

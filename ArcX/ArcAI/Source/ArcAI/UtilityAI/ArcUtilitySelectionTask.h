@@ -70,7 +70,7 @@ struct FArcUtilitySelectionTaskInstanceData
 
 /**
  * State Tree task that evaluates a matrix of Options x Targets using
- * FArcUtilityScorer pipelines, time-sliced via UArcUtilityScoringSubsystem.
+ * FArcUtilityConsideration pipelines, time-sliced via UArcUtilityScoringSubsystem.
  *
  * Results are delivered via delegate — the task does NOT tick.
  * On completion, the winning entry's linked state is transitioned to via RequestTransition.

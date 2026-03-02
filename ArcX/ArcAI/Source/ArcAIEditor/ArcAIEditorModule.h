@@ -37,4 +37,10 @@ private:
 	TUniquePtr<class FArcTQSRewindDebuggerPlaybackExtension> TQSPlaybackExtension;
 	TUniquePtr<class FArcTQSRewindDebuggerRecordingExtension> TQSRecordingExtension;
 	TUniquePtr<class FArcTQSTraceModule> TQSTraceModule;
+
+	// Utility AI Rewind Debugger
+	TUniquePtr<class FArcUtilityTraceModule> UtilityTraceModule;
+	TPimplPtr<class FArcUtilityRewindDebuggerTrackCreator> UtilityTrackCreator;
+	TUniquePtr<class FArcUtilityRewindDebuggerPlaybackExtension> UtilityPlaybackExtension;
+	TUniquePtr<class FArcUtilityRewindDebuggerRecordingExtension> UtilityRecordingExtension;
 };

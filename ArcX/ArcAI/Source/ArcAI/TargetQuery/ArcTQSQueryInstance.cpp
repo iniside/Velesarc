@@ -128,7 +128,6 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 		}
 #endif
 
-		TRACE_ARCTQS_QUERY_STARTED(*this);
 		Status = EArcTQSQueryStatus::Processing;
 		TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
 
@@ -290,8 +289,6 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 				CurrentStepIndex, *StepName, Step->Weight, Items.Num());
 		}
 #endif
-
-		TRACE_ARCTQS_STEP_COMPLETED(*this, CurrentStepIndex);
 
 		// Step completed, move to next
 		++CurrentStepIndex;

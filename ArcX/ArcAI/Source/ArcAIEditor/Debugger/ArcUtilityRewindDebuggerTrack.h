@@ -6,11 +6,11 @@
 #include "RewindDebuggerTrack.h"
 #include "SEventTimelineView.h"
 
-class FArcTQSTraceProvider;
-struct FArcTQSTraceQueryRecord;
+class FArcUtilityTraceProvider;
+struct FArcUtilityTraceRequestRecord;
 
 /** Track creator — factory registered as modular feature. */
-class FArcTQSRewindDebuggerTrackCreator : public RewindDebugger::IRewindDebuggerTrackCreator
+class FArcUtilityRewindDebuggerTrackCreator : public RewindDebugger::IRewindDebuggerTrackCreator
 {
 protected:
 	virtual FName GetTargetTypeNameInternal() const override;
@@ -22,11 +22,11 @@ protected:
 	virtual bool IsCreatingPrimaryChildTrackInternal() const override { return true; }
 };
 
-/** Track — one per querier entity/actor, shows all TQS queries from that querier. */
-class FArcTQSRewindDebuggerTrack : public RewindDebugger::FRewindDebuggerTrack
+/** Track — one per querier entity/actor, shows all utility evaluations from that querier. */
+class FArcUtilityRewindDebuggerTrack : public RewindDebugger::FRewindDebuggerTrack
 {
 public:
-	explicit FArcTQSRewindDebuggerTrack(const RewindDebugger::FObjectId& InObjectId);
+	explicit FArcUtilityRewindDebuggerTrack(const RewindDebugger::FObjectId& InObjectId);
 
 private:
 	virtual bool UpdateInternal() override;
@@ -39,7 +39,7 @@ private:
 	virtual bool HasDebugDataInternal() const override;
 
 	RewindDebugger::FObjectId ObjectId;
-	const TArray<FArcTQSTraceQueryRecord>* CachedQueries = nullptr;
+	const TArray<FArcUtilityTraceRequestRecord>* CachedRequests = nullptr;
 
 	TSharedPtr<SEventTimelineView::FTimelineEventData> EventData;
 };

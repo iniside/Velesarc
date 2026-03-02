@@ -14,9 +14,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogArcTQSTrack, Log, All);
 
 FName FArcTQSRewindDebuggerTrackCreator::GetTargetTypeNameInternal() const
 {
-	const FName TypeName = FArcTQSQueryContext::StaticStruct()->GetFName();
-	UE_LOG(LogArcTQSTrack, Log, TEXT("[TQS Track] GetTargetTypeName: returning '%s'"), *TypeName.ToString());
-	return TypeName;
+	return FArcTQSQueryContext::StaticStruct()->GetFName();
 }
 
 FName FArcTQSRewindDebuggerTrackCreator::GetNameInternal() const
@@ -37,34 +35,23 @@ bool FArcTQSRewindDebuggerTrackCreator::HasDebugInfoInternal(
 	const IRewindDebugger* Debugger = IRewindDebugger::Instance();
 	if (!Debugger || !Debugger->GetAnalysisSession())
 	{
-		UE_LOG(LogArcTQSTrack, Warning, TEXT("[TQS Track] HasDebugInfo: No debugger or session for ObjectId=%llu"), InObjectId.GetMainId());
 		return false;
 	}
 
 	const FArcTQSTraceProvider* Provider = Debugger->GetAnalysisSession()->ReadProvider<FArcTQSTraceProvider>(
 		FArcTQSTraceProvider::ProviderName);
-	if (!Provider)
-	{
-		UE_LOG(LogArcTQSTrack, Warning, TEXT("[TQS Track] HasDebugInfo: Provider is null for ObjectId=%llu"), InObjectId.GetMainId());
-		return false;
-	}
 
-	const bool bHasData = Provider->HasDataForInstance(InObjectId.GetMainId());
-	UE_LOG(LogArcTQSTrack, Log, TEXT("[TQS Track] HasDebugInfo: ObjectId=%llu HasData=%d TotalRecords=%d"),
-		InObjectId.GetMainId(), bHasData, Provider->HasData());
-	return bHasData;
+	return Provider && Provider->HasDataForInstance(InObjectId.GetMainId());
 }
 
 TSharedPtr<RewindDebugger::FRewindDebuggerTrack> FArcTQSRewindDebuggerTrackCreator::CreateTrackInternal(
 	const RewindDebugger::FObjectId& InObjectId) const
 {
-	UE_LOG(LogArcTQSTrack, Log, TEXT("[TQS Track] CreateTrackInternal: Creating track for ObjectId=%llu"), InObjectId.GetMainId());
 	return MakeShared<FArcTQSRewindDebuggerTrack>(InObjectId);
 }
 
 // --- Track ---
 
-// Lerp from red (0.0) through yellow (0.5) to green (1.0)
 static FLinearColor StatusToTimelineColor(uint8 Status)
 {
 	switch (static_cast<EArcTQSQueryStatus>(Status))
@@ -80,7 +67,6 @@ FArcTQSRewindDebuggerTrack::FArcTQSRewindDebuggerTrack(const RewindDebugger::FOb
 	: ObjectId(InObjectId)
 {
 	EventData = MakeShared<SEventTimelineView::FTimelineEventData>();
-	UE_LOG(LogArcTQSTrack, Log, TEXT("[TQS Track] Created track for ObjectId=%llu"), InObjectId.GetMainId());
 }
 
 FName FArcTQSRewindDebuggerTrack::GetNameInternal() const
@@ -91,7 +77,21 @@ FName FArcTQSRewindDebuggerTrack::GetNameInternal() const
 
 FText FArcTQSRewindDebuggerTrack::GetDisplayNameInternal() const
 {
-	return NSLOCTEXT("ArcTQS", "TrackDisplayName", "TQS Query");
+	const IRewindDebugger* Debugger = IRewindDebugger::Instance();
+	if (Debugger && Debugger->GetAnalysisSession())
+	{
+		const FArcTQSTraceProvider* Provider = Debugger->GetAnalysisSession()->ReadProvider<FArcTQSTraceProvider>(
+			FArcTQSTraceProvider::ProviderName);
+		if (Provider)
+		{
+			const FString& Name = Provider->GetInstanceDisplayName(ObjectId.GetMainId());
+			if (!Name.IsEmpty())
+			{
+				return FText::FromString(Name);
+			}
+		}
+	}
+	return NSLOCTEXT("ArcTQS", "TrackDisplayName", "TQS Queries");
 }
 
 FSlateIcon FArcTQSRewindDebuggerTrack::GetIconInternal()
@@ -106,19 +106,7 @@ uint64 FArcTQSRewindDebuggerTrack::GetObjectIdInternal() const
 
 bool FArcTQSRewindDebuggerTrack::HasDebugDataInternal() const
 {
-	return CachedQuery != nullptr;
-}
-
-TSharedPtr<SEventTimelineView::FTimelineEventData> FArcTQSRewindDebuggerTrack::GetEventData() const
-{
-	if (!EventData.IsValid())
-	{
-		EventData = MakeShared<SEventTimelineView::FTimelineEventData>();
-	}
-
-	EventUpdateRequested++;
-
-	return EventData;
+	return CachedQueries != nullptr && CachedQueries->Num() > 0;
 }
 
 bool FArcTQSRewindDebuggerTrack::UpdateInternal()
@@ -126,7 +114,7 @@ bool FArcTQSRewindDebuggerTrack::UpdateInternal()
 	const IRewindDebugger* Debugger = IRewindDebugger::Instance();
 	if (!Debugger || !Debugger->GetAnalysisSession())
 	{
-		CachedQuery = nullptr;
+		CachedQueries = nullptr;
 		return false;
 	}
 
@@ -134,126 +122,130 @@ bool FArcTQSRewindDebuggerTrack::UpdateInternal()
 		FArcTQSTraceProvider::ProviderName);
 	if (!Provider)
 	{
-		CachedQuery = nullptr;
+		CachedQueries = nullptr;
 		return false;
 	}
 
-	// Update CachedQuery — this is the record for the instance we represent
-	const FArcTQSTraceQueryRecord* PrevQuery = CachedQuery;
-	CachedQuery = Provider->GetQueryByInstanceId(ObjectId.GetMainId());
+	CachedQueries = Provider->GetQueriesForInstance(ObjectId.GetMainId());
 
-	if (CachedQuery != PrevQuery)
+	// Convert profiler-time timestamps to recording time using the linear mapping
+	// between the two time bases (all engine tracks use recording time + GetCurrentViewRange).
+	const TRange<double>& TraceRange = Debugger->GetCurrentTraceRange();
+	const TRange<double>& ViewRange = Debugger->GetCurrentViewRange();
+	const double TraceSize = TraceRange.Size<double>();
+	const double ViewSize = ViewRange.Size<double>();
+
+	auto ProfileToRecording = [&](double ProfileTime) -> double
 	{
-		UE_LOG(LogArcTQSTrack, Log, TEXT("[TQS Track] UpdateInternal: ObjectId=%llu CachedQuery=%s Completed=%s"),
-			ObjectId.GetMainId(),
-			CachedQuery ? TEXT("Valid") : TEXT("null"),
-			(CachedQuery && CachedQuery->bCompleted) ? TEXT("true") : TEXT("false"));
-	}
-
-	// Rebuild timeline event data periodically (similar to engine pattern — lazy update)
-	if (EventUpdateRequested > 0)
-	{
-		EventUpdateRequested = 0;
-		EventData->Points.SetNum(0, EAllowShrinking::No);
-		EventData->Windows.SetNum(0, EAllowShrinking::No);
-
-		if (CachedQuery && CachedQuery->bCompleted)
+		if (TraceSize <= 0.0)
 		{
-			// Show the query as a colored window spanning its execution duration
-			SEventTimelineView::FTimelineEventData::EventWindow& Window = EventData->Windows.AddDefaulted_GetRef();
-			Window.TimeStart = CachedQuery->Timestamp;
-			Window.TimeEnd = CachedQuery->EndTimestamp;
-			Window.Color = StatusToTimelineColor(CachedQuery->Status);
-			Window.Description = FText::FromString(CachedQuery->GeneratorName);
+			return 0.0;
+		}
+		return ViewRange.GetLowerBoundValue() + (ProfileTime - TraceRange.GetLowerBoundValue()) * (ViewSize / TraceSize);
+	};
 
-			UE_LOG(LogArcTQSTrack, Log, TEXT("[TQS Track] Timeline window: [%.4f..%.4f] Generator=%s"),
-				Window.TimeStart, Window.TimeEnd, *CachedQuery->GeneratorName);
+	const int32 PrevNumPoints = EventData->Points.Num();
+	const int32 PrevNumWindows = EventData->Windows.Num();
+
+	EventData->Points.SetNum(0, EAllowShrinking::No);
+	EventData->Windows.SetNum(0, EAllowShrinking::No);
+
+	if (CachedQueries)
+	{
+		for (const FArcTQSTraceQueryRecord& Q : *CachedQueries)
+		{
+			SEventTimelineView::FTimelineEventData::EventWindow& Window = EventData->Windows.AddDefaulted_GetRef();
+			Window.TimeStart = ProfileToRecording(Q.Timestamp);
+			Window.TimeEnd = ProfileToRecording(Q.EndTimestamp);
+			Window.Color = StatusToTimelineColor(Q.Status);
+			Window.Description = FText::FromString(FString::Printf(TEXT("#%d %s"), Q.QueryId, *Q.GeneratorName));
 		}
 	}
 
-	return false; // No children
+	return (PrevNumPoints != EventData->Points.Num() || PrevNumWindows != EventData->Windows.Num());
 }
 
 TSharedPtr<SWidget> FArcTQSRewindDebuggerTrack::GetTimelineViewInternal()
 {
-	// Use GetCurrentTraceRange() — our EventData timestamps are in profile/trace time
-	// (from FEventTime::AsSeconds(Cycle)), matching GetCurrentTraceRange() coordinates.
+	TWeakPtr<SEventTimelineView::FTimelineEventData> WeakEventData = EventData;
 	return SNew(SEventTimelineView)
-		.ViewRange_Lambda([]() { return IRewindDebugger::Instance()->GetCurrentTraceRange(); })
-		.EventData_Raw(this, &FArcTQSRewindDebuggerTrack::GetEventData);
+		.ViewRange_Lambda([]() { return IRewindDebugger::Instance()->GetCurrentViewRange(); })
+		.EventData_Lambda([WeakEventData]()
+		{
+			return WeakEventData.Pin();
+		});
+}
+
+static void AppendQueryText(FString& Text, const FArcTQSTraceQueryRecord& Q)
+{
+	const TCHAR* StatusStr = TEXT("?");
+	switch (static_cast<EArcTQSQueryStatus>(Q.Status))
+	{
+	case EArcTQSQueryStatus::Pending:    StatusStr = TEXT("Pending"); break;
+	case EArcTQSQueryStatus::Generating: StatusStr = TEXT("Generating"); break;
+	case EArcTQSQueryStatus::Processing: StatusStr = TEXT("Processing"); break;
+	case EArcTQSQueryStatus::Selecting:  StatusStr = TEXT("Selecting"); break;
+	case EArcTQSQueryStatus::Completed:  StatusStr = TEXT("Completed"); break;
+	case EArcTQSQueryStatus::Failed:     StatusStr = TEXT("Failed"); break;
+	case EArcTQSQueryStatus::Aborted:    StatusStr = TEXT("Aborted"); break;
+	}
+
+	Text += FString::Printf(TEXT("Query #%d  |  %s  |  %s (%d items)  |  %.2fms\n"),
+		Q.QueryId, StatusStr, *Q.GeneratorName, Q.GeneratedItemCount, Q.ExecutionTimeMs);
+
+	// Steps (definitions only)
+	for (const FArcTQSTraceStepRecord& Step : Q.Steps)
+	{
+		const TCHAR* KindStr = Step.StepKind == 0 ? TEXT("Filter") : TEXT("Score");
+		if (Step.StepKind == 1)
+		{
+			Text += FString::Printf(TEXT("  Step %d: %s [%s, w=%.2f]\n"),
+				Step.StepIndex, *Step.StepName, KindStr, Step.Weight);
+		}
+		else
+		{
+			Text += FString::Printf(TEXT("  Step %d: %s [%s]\n"),
+				Step.StepIndex, *Step.StepName, KindStr);
+		}
+	}
+
+	// Final items summary
+	int32 ValidCount = 0;
+	for (const FArcTQSTraceItemRecord& Item : Q.FinalItems)
+	{
+		if (Item.bValid) ++ValidCount;
+	}
+	Text += FString::Printf(TEXT("  Items: %d total, %d valid\n"), Q.FinalItems.Num(), ValidCount);
+
+	// Results
+	for (int32 i = 0; i < Q.ResultIndices.Num(); ++i)
+	{
+		const int32 Idx = Q.ResultIndices[i];
+		if (Q.FinalItems.IsValidIndex(Idx))
+		{
+			const FArcTQSTraceItemRecord& Item = Q.FinalItems[Idx];
+			Text += FString::Printf(TEXT("  Result #%d: Score=%.4f  Loc=(%.0f, %.0f, %.0f)\n"),
+				i, Item.Score, Item.Location.X, Item.Location.Y, Item.Location.Z);
+		}
+	}
 }
 
 TSharedPtr<SWidget> FArcTQSRewindDebuggerTrack::GetDetailsViewInternal()
 {
-	auto BuildQueryText = [this]() -> FText
+	auto BuildDetailsText = [this]() -> FText
 	{
-		if (!CachedQuery || !CachedQuery->bCompleted)
+		if (!CachedQueries || CachedQueries->Num() == 0)
 		{
-			return FText::FromString(TEXT("No TQS query data at current time."));
+			return FText::FromString(TEXT("No TQS query data."));
 		}
 
-		const FArcTQSTraceQueryRecord& Q = *CachedQuery;
 		FString Text;
+		Text += FString::Printf(TEXT("%d queries recorded\n\n"), CachedQueries->Num());
 
-		// Header
-		const TCHAR* StatusStr = TEXT("?");
-		switch (static_cast<EArcTQSQueryStatus>(Q.Status))
+		for (const FArcTQSTraceQueryRecord& Q : *CachedQueries)
 		{
-		case EArcTQSQueryStatus::Pending:    StatusStr = TEXT("Pending"); break;
-		case EArcTQSQueryStatus::Generating: StatusStr = TEXT("Generating"); break;
-		case EArcTQSQueryStatus::Processing: StatusStr = TEXT("Processing"); break;
-		case EArcTQSQueryStatus::Selecting:  StatusStr = TEXT("Selecting"); break;
-		case EArcTQSQueryStatus::Completed:  StatusStr = TEXT("Completed"); break;
-		case EArcTQSQueryStatus::Failed:     StatusStr = TEXT("Failed"); break;
-		case EArcTQSQueryStatus::Aborted:    StatusStr = TEXT("Aborted"); break;
-		}
-
-		Text += FString::Printf(TEXT("Query #%d  |  %s  |  %s (%d items)  |  %.2fms\n\n"),
-			Q.QueryId, StatusStr, *Q.GeneratorName, Q.GeneratedItemCount, Q.ExecutionTimeMs);
-
-		// Steps
-		for (const FArcTQSTraceStepRecord& Step : Q.Steps)
-		{
-			const TCHAR* KindStr = Step.StepKind == 0 ? TEXT("Filter") : TEXT("Score");
-
-			if (Step.StepKind == 0)
-			{
-				const int32 Filtered = Q.GeneratedItemCount - Step.ValidRemaining;
-				Text += FString::Printf(TEXT("Step %d: %s [%s] \u2014 %d passed, %d filtered\n"),
-					Step.StepIndex, *Step.StepName, KindStr, Step.ValidRemaining, Filtered);
-			}
-			else
-			{
-				float Best = 0.0f, Worst = 1.0f, Sum = 0.0f;
-				int32 Count = 0;
-				for (const FArcTQSTraceItemSnapshot& Snap : Step.ItemSnapshots)
-				{
-					if (Snap.bValid)
-					{
-						Best = FMath::Max(Best, Snap.Score);
-						Worst = FMath::Min(Worst, Snap.Score);
-						Sum += Snap.Score;
-						++Count;
-					}
-				}
-				const float Mean = Count > 0 ? Sum / Count : 0.0f;
-
-				Text += FString::Printf(TEXT("Step %d: %s [%s, w=%.2f] \u2014 Best: %.3f  Worst: %.3f  Mean: %.3f\n"),
-					Step.StepIndex, *Step.StepName, KindStr, Step.Weight, Best, Worst, Mean);
-			}
-		}
-
-		// Results
-		Text += TEXT("\n--- Results ---\n");
-		for (int32 i = 0; i < Q.ResultIndices.Num(); ++i)
-		{
-			const int32 Idx = Q.ResultIndices[i];
-			if (Q.FinalItems.IsValidIndex(Idx))
-			{
-				const FArcTQSTraceItemRecord& Item = Q.FinalItems[Idx];
-				Text += FString::Printf(TEXT("Winner #%d: Score=%.4f  Loc=(%.0f, %.0f, %.0f)\n"),
-					i, Item.Score, Item.Location.X, Item.Location.Y, Item.Location.Z);
-			}
+			AppendQueryText(Text, Q);
+			Text += TEXT("\n");
 		}
 
 		return FText::FromString(Text);
@@ -265,6 +257,6 @@ TSharedPtr<SWidget> FArcTQSRewindDebuggerTrack::GetDetailsViewInternal()
 			SNew(SMultiLineEditableText)
 			.IsReadOnly(true)
 			.AutoWrapText(true)
-			.Text_Lambda(BuildQueryText)
+			.Text_Lambda(BuildDetailsText)
 		];
 }
