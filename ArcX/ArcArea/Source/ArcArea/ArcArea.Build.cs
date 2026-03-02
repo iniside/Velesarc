@@ -33,7 +33,8 @@ public class ArcArea : ModuleRules
 				"MassCommon",
 				"SmartObjectsModule",
 				"ArcCore",
-				"ArcKnowledge"
+				"ArcKnowledge",
+				"ArcAI"
 			}
 		);
 
@@ -50,8 +51,7 @@ public class ArcArea : ModuleRules
 				"MassAIBehavior",
 				"StateTreeModule",
 				"GameplayStateTreeModule",
-				"ArcMass",
-				"ArcAI"
+				"ArcMass"
 			}
 		);
 
