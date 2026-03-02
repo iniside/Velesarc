@@ -11,7 +11,7 @@
  * For each entity, iterates the fragment values and copies matching fragment data.
  */
 UCLASS(DisplayName = "Set Fragment Values")
-class ARCMASS_API UArcSetFragmentValuesInitializer : public UArcEntityInitializer
+class ARCENTITYSPAWNER_API UArcSetFragmentValuesInitializer : public UArcEntityInitializer
 {
 	GENERATED_BODY()
 
@@ -29,7 +29,7 @@ protected:
  * Tags are added directly while the creation context is alive.
  */
 UCLASS(DisplayName = "Add Tags")
-class ARCMASS_API UArcAddTagsInitializer : public UArcEntityInitializer
+class ARCENTITYSPAWNER_API UArcAddTagsInitializer : public UArcEntityInitializer
 {
 	GENERATED_BODY()
 

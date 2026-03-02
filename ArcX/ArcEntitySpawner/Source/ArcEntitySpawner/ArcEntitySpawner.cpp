@@ -5,11 +5,17 @@
 #include "Components/SceneComponent.h"
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
+#include "MassAgentComponent.h"
 #include "MassEntityConfigAsset.h"
+#include "MassEntityFragments.h"
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "MassSimulationSubsystem.h"
 #include "MassSpawnerSubsystem.h"
+#include "TargetQuery/ArcTQSQueryDefinition.h"
+#include "TargetQuery/ArcTQSQueryInstance.h"
+#include "TargetQuery/ArcTQSQuerySubsystem.h"
+#include "TargetQuery/ArcTQSTypes.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcEntitySpawner)
 
@@ -17,6 +23,8 @@ AArcEntitySpawner::AArcEntitySpawner()
 {
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneComp"));
 	RootComponent->Mobility = EComponentMobility::Static;
+
+	AgentComponent = CreateDefaultSubobject<UMassAgentComponent>(TEXT("MassAgent"));
 
 	SetCanBeDamaged(false);
 	bAutoSpawnOnBeginPlay = true;
@@ -30,14 +38,27 @@ void AArcEntitySpawner::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!bAutoSpawnOnBeginPlay)
+	check(GEngine);
+	const ENetMode NetMode = GEngine->GetNetMode(GetWorld());
+	if (NetMode == NM_Client)
 	{
 		return;
 	}
 
-	check(GEngine);
-	const ENetMode NetMode = GEngine->GetNetMode(GetWorld());
-	if (NetMode == NM_Client)
+	switch (SpawnMode)
+	{
+	case EArcEntitySpawnMode::Default:
+		BeginPlayDefault();
+		break;
+	case EArcEntitySpawnMode::StateTree:
+		BeginPlayStateTree();
+		break;
+	}
+}
+
+void AArcEntitySpawner::BeginPlayDefault()
+{
+	if (!bAutoSpawnOnBeginPlay)
 	{
 		return;
 	}
@@ -59,6 +80,14 @@ void AArcEntitySpawner::BeginPlay()
 	}
 }
 
+void AArcEntitySpawner::BeginPlayStateTree()
+{
+	if (AgentComponent)
+	{
+		AgentComponent->Enable();
+	}
+}
+
 void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	UMassSimulationSubsystem::GetOnSimulationStarted().Remove(SimulationStartedHandle);
@@ -66,6 +95,16 @@ void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (StreamingHandle.IsValid() && StreamingHandle->IsActive())
 	{
 		StreamingHandle->CancelHandle();
+	}
+
+	// Abort any running TQS query
+	if (ActiveTQSQueryId != INDEX_NONE)
+	{
+		if (UArcTQSQuerySubsystem* TQS = UWorld::GetSubsystem<UArcTQSQuerySubsystem>(GetWorld()))
+		{
+			TQS->AbortQuery(ActiveTQSQueryId);
+		}
+		ActiveTQSQueryId = INDEX_NONE;
 	}
 
 	DoDespawning();
@@ -104,33 +143,15 @@ int32 AArcEntitySpawner::GetSpawnCount() const
 
 void AArcEntitySpawner::DoSpawning()
 {
-	if (SpawnDataGenerators.Num() == 0)
-	{
-		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: No Spawn Data Generators configured."), *GetName());
-		return;
-	}
-
 	if (EntityTypes.Num() == 0)
 	{
 		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: No EntityTypes configured."), *GetName());
 		return;
 	}
 
-	AllGeneratedResults.Reset();
-
-	float TotalProportion = 0.0f;
-	for (FMassSpawnDataGenerator& Generator : SpawnDataGenerators)
+	if (!SpawnQuery)
 	{
-		if (Generator.GeneratorInstance)
-		{
-			Generator.bDataGenerated = false;
-			TotalProportion += Generator.Proportion;
-		}
-	}
-
-	if (TotalProportion <= 0.0f)
-	{
-		UE_LOG(LogArcEntitySpawner, Error, TEXT("%s: Total generator proportion must be > 0."), *GetName());
+		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: No SpawnQuery configured."), *GetName());
 		return;
 	}
 
@@ -150,50 +171,49 @@ void AArcEntitySpawner::DoSpawning()
 		}
 	}
 
-	const int32 TotalSpawnCount = GetSpawnCount();
-
-	auto GenerateSpawnData = [this, TotalSpawnCount, TotalProportion]()
+	auto RunTQSQuery = [this]()
 	{
-		int32 SpawnCountRemaining = TotalSpawnCount;
-		float ProportionRemaining = TotalProportion;
-
-		for (FMassSpawnDataGenerator& Generator : SpawnDataGenerators)
+		UArcTQSQuerySubsystem* TQSSubsystem = UWorld::GetSubsystem<UArcTQSQuerySubsystem>(GetWorld());
+		if (!TQSSubsystem)
 		{
-			if (Generator.Proportion == 0.0f || ProportionRemaining <= 0.0f)
-			{
-				Generator.bDataGenerated = true;
-				continue;
-			}
-
-			if (Generator.GeneratorInstance)
-			{
-				const float ProportionRatio = FMath::Min(Generator.Proportion / ProportionRemaining, 1.0f);
-				const int32 SpawnCount = FMath::CeilToInt(static_cast<float>(SpawnCountRemaining) * ProportionRatio);
-
-				FFinishedGeneratingSpawnDataSignature Delegate = FFinishedGeneratingSpawnDataSignature::CreateUObject(
-					this, &AArcEntitySpawner::OnSpawnDataGenerationFinished, &Generator);
-				Generator.GeneratorInstance->Generate(*this, EntityTypes, SpawnCount, Delegate);
-
-				SpawnCountRemaining -= SpawnCount;
-				ProportionRemaining -= Generator.Proportion;
-			}
+			UE_LOG(LogArcEntitySpawner, Error, TEXT("%s: UArcTQSQuerySubsystem missing."), *GetName());
+			return;
 		}
+
+		// Build query context: querier is the spawner actor at its location
+		FArcTQSQueryContext QueryContext;
+		QueryContext.QuerierLocation = GetActorLocation();
+		QueryContext.QuerierForward = GetActorForwardVector();
+		QueryContext.World = GetWorld();
+		QueryContext.QuerierActor = this;
+
+		if (UMassEntitySubsystem* MassSubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(GetWorld()))
+		{
+			QueryContext.EntityManager = &MassSubsystem->GetMutableEntityManager();
+		}
+
+		ActiveTQSQueryId = TQSSubsystem->RunQuery(
+			SpawnQuery,
+			QueryContext,
+			FArcTQSQueryFinished::CreateUObject(this, &AArcEntitySpawner::OnTQSQueryCompleted));
 	};
 
 	if (AssetsToLoad.Num() > 0)
 	{
 		FStreamableManager& StreamableManager = UAssetManager::GetStreamableManager();
 		StreamingHandle = StreamableManager.RequestAsyncLoad(AssetsToLoad,
-			FStreamableDelegate::CreateWeakLambda(this, GenerateSpawnData));
+			FStreamableDelegate::CreateWeakLambda(this, RunTQSQuery));
 	}
 	else
 	{
-		GenerateSpawnData();
+		RunTQSQuery();
 	}
 }
 
-void AArcEntitySpawner::OnSpawnDataGenerationFinished(TConstArrayView<FMassEntitySpawnDataGeneratorResult> Results, FMassSpawnDataGenerator* FinishedGenerator)
+void AArcEntitySpawner::OnTQSQueryCompleted(FArcTQSQueryInstance& CompletedQuery)
 {
+	ActiveTQSQueryId = INDEX_NONE;
+
 	if (UWorld* World = GetWorld())
 	{
 		if (World->bIsTearingDown || World->IsCleanedUp())
@@ -202,26 +222,41 @@ void AArcEntitySpawner::OnSpawnDataGenerationFinished(TConstArrayView<FMassEntit
 		}
 	}
 
-	AllGeneratedResults.Append(Results.GetData(), Results.Num());
-
-	bool bAllGenerated = true;
-	for (FMassSpawnDataGenerator& Generator : SpawnDataGenerators)
+	if (CompletedQuery.Status != EArcTQSQueryStatus::Completed || CompletedQuery.Results.Num() == 0)
 	{
-		if (&Generator == FinishedGenerator)
-		{
-			Generator.bDataGenerated = true;
-		}
-		bAllGenerated &= Generator.bDataGenerated;
+		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: TQS query returned no results."), *GetName());
+		OnSpawningFinished.Broadcast();
+		return;
 	}
 
-	if (bAllGenerated)
-	{
-		SpawnGeneratedEntities(AllGeneratedResults);
-		AllGeneratedResults.Reset();
-	}
+	SpawnEntitiesFromResults(CompletedQuery.Results);
 }
 
-void AArcEntitySpawner::SpawnGeneratedEntities(TConstArrayView<FMassEntitySpawnDataGeneratorResult> Results)
+void AArcEntitySpawner::SpawnEntitiesFromResults(TConstArrayView<FArcTQSTargetItem> Results)
+{
+	TArray<FVector> Locations;
+	Locations.Reserve(Results.Num());
+
+	for (const FArcTQSTargetItem& Item : Results)
+	{
+		Locations.Add(Item.Location);
+	}
+
+	SpawnEntitiesAtLocations(GetSpawnCount(), Locations);
+}
+
+void AArcEntitySpawner::SpawnEntitiesAtLocations(int32 InCount, TConstArrayView<FVector> Locations)
+{
+	if (InCount <= 0 || EntityTypes.Num() == 0)
+	{
+		OnSpawningFinished.Broadcast();
+		return;
+	}
+
+	SpawnEntitiesInternal(Locations);
+}
+
+void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations)
 {
 	UMassSpawnerSubsystem* SpawnerSystem = UWorld::GetSubsystem<UMassSpawnerSubsystem>(GetWorld());
 	if (SpawnerSystem == nullptr)
@@ -233,16 +268,13 @@ void AArcEntitySpawner::SpawnGeneratedEntities(TConstArrayView<FMassEntitySpawnD
 	UWorld* World = GetWorld();
 	check(World);
 
-	for (const FMassEntitySpawnDataGeneratorResult& Result : Results)
+	const int32 TotalCount = GetSpawnCount();
+	const int32 NumLocations = Locations.Num();
+
+	// Distribute entities across entity types proportionally
+	for (int32 TypeIndex = 0; TypeIndex < EntityTypes.Num(); ++TypeIndex)
 	{
-		if (Result.NumEntities <= 0)
-		{
-			continue;
-		}
-
-		check(EntityTypes.IsValidIndex(Result.EntityConfigIndex));
-
-		const FMassSpawnedEntityType& EntityType = EntityTypes[Result.EntityConfigIndex];
+		const FMassSpawnedEntityType& EntityType = EntityTypes[TypeIndex];
 		const UMassEntityConfigAsset* EntityConfig = EntityType.GetEntityConfig();
 		if (EntityConfig == nullptr)
 		{
@@ -255,18 +287,36 @@ void AArcEntitySpawner::SpawnGeneratedEntities(TConstArrayView<FMassEntitySpawnD
 			continue;
 		}
 
+		// For single entity type, spawn all. For multiple, distribute by proportion.
+		const int32 SpawnCount = (EntityTypes.Num() == 1)
+			? TotalCount
+			: FMath::Max(1, FMath::RoundToInt(TotalCount * EntityType.Proportion));
+
 		FSpawnedEntities& SpawnedEntities = AllSpawnedEntities.AddDefaulted_GetRef();
 		SpawnedEntities.TemplateID = EntityTemplate.GetTemplateID();
 
-		// Spawn entities and capture the creation context
+		// Spawn entities — no SpawnData/Processor, we set transforms manually
 		TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
-			SpawnerSystem->SpawnEntities(EntityTemplate.GetTemplateID(), Result.NumEntities,
-				Result.SpawnData, Result.SpawnDataProcessor, SpawnedEntities.Entities);
+			SpawnerSystem->SpawnEntities(EntityTemplate.GetTemplateID(), SpawnCount,
+				FConstStructView(), nullptr, SpawnedEntities.Entities);
+
+		// Set transforms from location array while creation context is alive
+		FMassEntityManager& EntityManager = SpawnerSystem->GetEntityManagerChecked();
+		for (int32 i = 0; i < SpawnedEntities.Entities.Num(); ++i)
+		{
+			if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntities.Entities[i]))
+			{
+				const FVector& Location = (NumLocations > 0)
+					? Locations[i % NumLocations]
+					: GetActorLocation();
+				TransformFrag->GetMutableTransform().SetLocation(Location);
+			}
+		}
 
 		// Run initializers while the creation context is alive — observers haven't fired yet
 		if (PostSpawnInitializers.Num() > 0 && SpawnedEntities.Entities.Num() > 0)
 		{
-			RunInitializers(SpawnerSystem->GetEntityManagerChecked(), SpawnedEntities.Entities);
+			RunInitializers(EntityManager, SpawnedEntities.Entities);
 		}
 
 		// CreationContext released here → deferred commands flush → observers fire
@@ -309,6 +359,14 @@ void AArcEntitySpawner::DoDespawning()
 	OnDespawningFinished.Broadcast();
 }
 
+void AArcEntitySpawner::DespawnEntities(TConstArrayView<FMassEntityHandle> Entities)
+{
+	for (const FMassEntityHandle& Entity : Entities)
+	{
+		DespawnEntity(Entity);
+	}
+}
+
 bool AArcEntitySpawner::DespawnEntity(const FMassEntityHandle Entity)
 {
 	UMassSpawnerSubsystem* SpawnerSystem = UWorld::GetSubsystem<UMassSpawnerSubsystem>(GetWorld());
@@ -329,4 +387,12 @@ bool AArcEntitySpawner::DespawnEntity(const FMassEntityHandle Entity)
 		}
 	}
 	return false;
+}
+
+void AArcEntitySpawner::GetAllSpawnedEntities(TArray<FMassEntityHandle>& OutEntities) const
+{
+	for (const FSpawnedEntities& SpawnedEntities : AllSpawnedEntities)
+	{
+		OutEntities.Append(SpawnedEntities.Entities);
+	}
 }
