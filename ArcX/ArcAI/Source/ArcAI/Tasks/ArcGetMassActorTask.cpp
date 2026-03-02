@@ -51,3 +51,10 @@ EStateTreeRunStatus FArcGetMassActorTask::EnterState(FStateTreeExecutionContext&
 	
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcGetMassActorTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "GetMassActorDesc", "Get Mass Actor");
+}
+#endif

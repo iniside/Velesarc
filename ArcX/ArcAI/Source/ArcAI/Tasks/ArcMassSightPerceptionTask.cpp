@@ -114,6 +114,7 @@ EStateTreeRunStatus FArcMassPerceptionSelectActorTask::Tick(FStateTreeExecutionC
 	
 	if (InstanceData.PerceivedEntity.Entity != InstanceData.OutPerceivedEntity.Entity)
 	{
+
 		InstanceData.OutPerceivedEntity = InstanceData.PerceivedEntity;
 		if (GlobalStore && InstanceData.DataStoreTag.IsValid())
 		{
@@ -141,6 +142,18 @@ EStateTreeRunStatus FArcMassPerceptionSelectActorTask::Tick(FStateTreeExecutionC
 		Context.BroadcastDelegate(InstanceData.OnSelectedActorChanged);
 		SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassContext.GetEntity()});
 	}
-	
+
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassSightPerceptionTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "SightPerceptionDesc", "Gather Sight Perception");
+}
+
+FText FArcMassPerceptionSelectActorTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "PerceptionSelectActorDesc", "Select Perceived Actor");
+}
+#endif

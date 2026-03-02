@@ -62,3 +62,10 @@ void FArcMassActorRotateToFaceTargetTask::ExitState(FStateTreeExecutionContext& 
 
 	AIController->ClearFocus(EAIFocusPriority::Gameplay);
 }
+
+#if WITH_EDITOR
+FText FArcMassActorRotateToFaceTargetTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "RotateToFaceTargetDesc", "Rotate to Face Target");
+}
+#endif

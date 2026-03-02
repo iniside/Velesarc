@@ -140,7 +140,11 @@ public:
 
 	bool RequestPath(FStateTreeExecutionContext& Context, const FMassTargetLocation& TargetLocation) const;
 	bool UpdateShortPath(FStateTreeExecutionContext& Context) const;
-	
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
+
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorFragment;
 	TStateTreeExternalDataHandle<FMassMoveTargetFragment> MoveTargetHandle;
 

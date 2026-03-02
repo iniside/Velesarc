@@ -89,3 +89,18 @@ void FArcAddAbilityGameplayTagTask::ExitState(FStateTreeExecutionContext& Contex
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	ASC->RemoveLooseGameplayTags(InstanceData.TagsToAdd);
 }
+
+#if WITH_EDITOR
+FText FArcAddAbilityGameplayTagTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "AddAbilityTagDesc", "Add Ability Tags: {0}"), FText::FromString(InstanceData->TagsToAdd.ToStringSimple()));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

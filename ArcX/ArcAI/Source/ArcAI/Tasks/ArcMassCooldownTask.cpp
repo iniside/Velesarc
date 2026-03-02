@@ -59,6 +59,21 @@ EStateTreeRunStatus FArcMassCooldownTask::EnterState(FStateTreeExecutionContext&
 	return EStateTreeRunStatus::Running;
 }
 
+#if WITH_EDITOR
+FText FArcMassCooldownTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "CooldownTaskDesc", "Cooldown {0} for {1}s"), FText::FromString(InstanceData->CooldownTag.ToString()), FText::AsNumber(InstanceData->Duration));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "CooldownTaskDescDefault", "Cooldown");
+}
+#endif
+
 bool FArcMassIsOnCooldownCondition::Link(FStateTreeLinker& Linker)
 {
 	Linker.LinkExternalData(MassGameplayTagsHandle);
@@ -86,6 +101,22 @@ bool FArcMassIsOnCooldownCondition::TestCondition(FStateTreeExecutionContext& Co
 	const bool bHasTag = MassGameplayTags->Tags.HasTagExact(InstanceData.CooldownTag);
 	return !bHasTag;
 }
+
+#if WITH_EDITOR
+FText FArcMassIsOnCooldownCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "IsOnCooldownDesc", "On Cooldown: {0}"),
+				FText::FromString(InstanceData->CooldownTag.ToString()));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif
 
 UArcMassCooldownTaskProcessor::UArcMassCooldownTaskProcessor()
 	: EntityQuery_Conditional(*this)

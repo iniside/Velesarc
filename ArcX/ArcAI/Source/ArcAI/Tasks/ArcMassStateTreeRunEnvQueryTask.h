@@ -82,7 +82,7 @@ struct FArcMassStateTreeRunEnvQueryTask : public FMassStateTreeTaskBase
 
 	UPROPERTY(EditAnywhere, Meta = (EditCondition="bFinishOnEnd==false"))
 	bool bSignalOnResultChange = true;
-	
+
 //#if WITH_EDITOR
 //	UE_API virtual void PostEditInstanceDataChangeChainProperty(const FPropertyChangedChainEvent& PropertyChangedEvent, FStateTreeDataView InstanceDataView) override;
 //	UE_API virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
@@ -95,6 +95,10 @@ struct FArcMassStateTreeRunEnvQueryTask : public FMassStateTreeTaskBase
 //		return UE::StateTree::Colors::Grey;
 //	}
 //#endif // WITH_EDITOR
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 /** Gathers actors perceived by context */

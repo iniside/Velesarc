@@ -57,3 +57,10 @@ EStateTreeRunStatus FArcGetMassAIControllerTask::EnterState(FStateTreeExecutionC
 	
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcGetMassAIControllerTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "GetMassAIControllerDesc", "Get Mass AI Controller");
+}
+#endif

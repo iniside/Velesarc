@@ -36,6 +36,10 @@ public:
 	virtual bool Link(FStateTreeLinker& Linker) override;
 	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
 	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
-	
+
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorHandle;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };

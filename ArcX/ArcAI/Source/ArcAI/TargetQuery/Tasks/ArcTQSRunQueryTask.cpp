@@ -260,3 +260,22 @@ int32 FArcTQSRunQueryTask::SubmitQuery(
 			MoveTemp(OnFinished));
 	}
 }
+
+#if WITH_EDITOR
+FText FArcTQSRunQueryTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			if (!InstanceData->bUseInlineDefinition)
+			{
+				return FText::Format(NSLOCTEXT("ArcAI", "TQSRunQueryDesc", "Run Target Query: {0}"), FText::FromString(GetNameSafe(InstanceData->QueryDefinition)));
+			}
+			return NSLOCTEXT("ArcAI", "TQSRunQueryInlineDesc", "Run Target Query (Inline)");
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

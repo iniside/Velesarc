@@ -30,6 +30,7 @@
 #include "StateTreePropertyRef.h"
 #include "EnvironmentQuery/EnvQueryManager.h"
 #include "EnvironmentQuery/EnvQueryTypes.h"
+#include "EnvironmentQuery/EnvQuery.h"
 
 EStateTreeRunStatus FArcAISTT_ActivateAbility::EnterState(FStateTreeExecutionContext& Context
 														  , const FStateTreeTransitionResult& Transition) const
@@ -198,3 +199,31 @@ void FArcAIStateTreeRunEnvQueryTask::ExitState(FStateTreeExecutionContext& Conte
 	//}
 	//InstanceData.QueryResult.Reset();
 }
+
+#if WITH_EDITOR
+FText FArcAISTT_ActivateAbility::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ActivateAbilityDesc", "Activate Ability: {0}"), FText::FromString(GetNameSafe(InstanceData->AbilityClass)));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "ActivateAbilityDescDefault", "Activate Ability");
+}
+
+FText FArcAIStateTreeRunEnvQueryTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "RunEnvQueryDesc", "Run EQS: {0}"), FText::FromString(GetNameSafe(InstanceData->QueryTemplate)));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "RunEnvQueryDescDefault", "Run EQS");
+}
+#endif

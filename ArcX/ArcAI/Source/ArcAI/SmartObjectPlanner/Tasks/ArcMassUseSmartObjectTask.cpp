@@ -202,3 +202,10 @@ void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, 
 	USmartObjectSubsystem* SOSubsystem = Context.GetWorld()->GetSubsystem<USmartObjectSubsystem>();
 	SOSubsystem->Release(InstanceData.SmartObjectClaimHandle);
 }
+
+#if WITH_EDITOR
+FText FArcMassUseSmartObjectTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "UseSmartObjectDesc", "Use Smart Object");
+}
+#endif

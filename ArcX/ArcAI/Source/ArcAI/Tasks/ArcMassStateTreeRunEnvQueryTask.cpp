@@ -13,6 +13,7 @@
 #include "Items/EnvQueryItemType_MassEntityHandle.h"
 #include "SmartObjects/ArcEnvQueryItemType_EntitySmartObject.h"
 #include "SmartObjects/ArcMassSmartObjectTypes.h"
+#include "EnvironmentQuery/EnvQuery.h"
 
 FArcMassStateTreeRunEnvQueryTask::FArcMassStateTreeRunEnvQueryTask()
 {
@@ -549,9 +550,24 @@ void FArcMassStateTreeRunEnvQueryTask::ExecuteQueryCallback(TSharedPtr<FEnvQuery
 		if (bInSignalOnResultChange && bChanged)
 		{
 			StrongContext.BroadcastDelegate(InstanceDataPtr->OnResultChanged);
-			SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});	
+			SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
 		}
-		
-		
+
+
 	}
 }
+
+#if WITH_EDITOR
+FText FArcMassStateTreeRunEnvQueryTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "MassRunEnvQueryDesc", "Run Mass EQS: {0}"), FText::FromString(GetNameSafe(InstanceData->QueryTemplate)));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "MassRunEnvQueryDescDefault", "Run Mass EQS");
+}
+#endif

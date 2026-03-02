@@ -32,3 +32,10 @@ void FArcMassTickStateTreeTask::ExitState(FStateTreeExecutionContext& Context, c
 	
 	EntityManager.Defer().RemoveTag<FArcMassTickStateTreeTag>(MassCtx.GetEntity());
 }
+
+#if WITH_EDITOR
+FText FArcMassTickStateTreeTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "TickStateTreeDesc", "Tick Child StateTree");
+}
+#endif

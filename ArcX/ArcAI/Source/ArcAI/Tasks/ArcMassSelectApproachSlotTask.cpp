@@ -105,3 +105,18 @@ void FArcMassSelectApproachSlotTask::ExitState(FStateTreeExecutionContext& Conte
 {
 	FMassStateTreeTaskBase::ExitState(Context, Transition);
 }
+
+#if WITH_EDITOR
+FText FArcMassSelectApproachSlotTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "SelectApproachSlotDesc", "Select Approach Slot: {0}"), FText::FromString(InstanceData->SlotTag.ToString()));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "SelectApproachSlotDescDefault", "Select Approach Slot");
+}
+#endif

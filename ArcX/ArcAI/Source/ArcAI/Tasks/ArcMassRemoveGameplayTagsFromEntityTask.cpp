@@ -35,6 +35,21 @@ EStateTreeRunStatus FArcMassRemoveGameplayTagsFromEntityTask::EnterState(FStateT
 	}
 
 	MassTags->Tags.RemoveTags(InstanceData.Tags);
-	
+
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcMassRemoveGameplayTagsFromEntityTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "RemoveTagsDesc", "Remove Tags: {0}"), FText::FromString(InstanceData->Tags.ToStringSimple()));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

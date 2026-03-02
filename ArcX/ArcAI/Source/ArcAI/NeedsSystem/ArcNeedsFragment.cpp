@@ -298,6 +298,23 @@ bool FArcMassHungerNeedCondition::TestCondition(FStateTreeExecutionContext& Cont
 	return false;
 }
 
+#if WITH_EDITOR
+FText FArcMassHungerNeedCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "HungerNeedCondDesc", "Hunger {0} {1}"),
+				UEnum::GetDisplayValueAsText(Operator),
+				FText::AsNumber(InstanceData->NeedValue));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif
+
 float FArcMassThirstNeedConsideration::GetScore(FStateTreeExecutionContext& Context) const
 {
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
@@ -375,9 +392,25 @@ EStateTreeRunStatus FArcMassModifyHungerNeedTask::EnterState(FStateTreeExecution
 	
 	HungerNeed->CurrentValue += InstanceData.AddValue;
 	HungerNeed->CurrentValue = FMath::Clamp(HungerNeed->CurrentValue, 0.f, 100.f);
-	
+
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcMassModifyHungerNeedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ModifyHungerNeedDesc", "Modify Hunger by {0}"),
+				FText::AsNumber(InstanceData->AddValue));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "ModifyHungerNeedDescDefault", "Modify Hunger Need");
+}
+#endif
 
 FArcMassModifyThirstNeedTask::FArcMassModifyThirstNeedTask()
 {
@@ -408,9 +441,25 @@ EStateTreeRunStatus FArcMassModifyThirstNeedTask::EnterState(FStateTreeExecution
 	
 	ThirstNeed->CurrentValue += InstanceData.AddValue;
 	ThirstNeed->CurrentValue = FMath::Clamp(ThirstNeed->CurrentValue, 0.f, 100.f);
-	
+
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcMassModifyThirstNeedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ModifyThirstNeedDesc", "Modify Thirst by {0}"),
+				FText::AsNumber(InstanceData->AddValue));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "ModifyThirstNeedDescDefault", "Modify Thirst Need");
+}
+#endif
 
 FArcMassModifyFatigueNeedTask::FArcMassModifyFatigueNeedTask()
 {
@@ -441,9 +490,25 @@ EStateTreeRunStatus FArcMassModifyFatigueNeedTask::EnterState(FStateTreeExecutio
 	
 	FatigueNeed->CurrentValue += InstanceData.AddValue;
 	FatigueNeed->CurrentValue = FMath::Clamp(FatigueNeed->CurrentValue, 0.f, 100.f);
-	
+
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcMassModifyFatigueNeedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ModifyFatigueNeedDesc", "Modify Fatigue by {0}"),
+				FText::AsNumber(InstanceData->AddValue));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "ModifyFatigueNeedDescDefault", "Modify Fatigue Need");
+}
+#endif
 
 FArcMassModifyNeedTask::FArcMassModifyNeedTask()
 {
@@ -788,3 +853,85 @@ EStateTreeRunStatus FArcMassInjectStateTreeTask::EnterState(FStateTreeExecutionC
 	Signal->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcNeedstConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "NeedsConsiderationDesc", "Need: {0}"), FText::FromName(InstanceData->NeedName));
+		}
+	}
+	return FText::GetEmpty();
+}
+
+FText FArcMassNeedsConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "MassNeedsConsiderationDesc", "Mass Need: {0}"), FText::FromName(InstanceData->NeedName));
+		}
+	}
+	return FText::GetEmpty();
+}
+
+FText FArcMassHungerNeedConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "HungerNeedConsDesc", "Hunger Need");
+}
+
+FText FArcMassThirstNeedConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "ThirstNeedConsDesc", "Thirst Need");
+}
+
+FText FArcMassFatigueNeedConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "FatigueNeedConsDesc", "Fatigue Need");
+}
+
+FText FArcMassNeedConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "MassNeedConsDesc", "Need: {0}"), FText::FromString(GetNameSafe(InstanceData->NeedType)));
+		}
+	}
+	return FText::GetEmpty();
+}
+
+FText FArcMassInjectStateTreeTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "InjectStateTreeDesc", "Inject StateTree: {0}"), FText::FromString(GetNameSafe(InstanceData->StateTree)));
+		}
+	}
+	return FText::GetEmpty();
+}
+
+FText FArcProvideNextStateTreeTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ProvideNextSTDesc", "Provide Next StateTree ({0} queued)"), FText::AsNumber(InstanceData->StateTrees.Num()));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

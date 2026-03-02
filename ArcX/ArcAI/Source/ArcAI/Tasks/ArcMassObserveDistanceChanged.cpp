@@ -118,3 +118,15 @@ void FArcMassObserveDistanceChangedTask::ExitState(FStateTreeExecutionContext& C
 	
 	FTSTicker::RemoveTicker(InstanceData.TickDelegate);
 }
+
+#if WITH_EDITOR
+FText FArcMassObserveDistanceChangedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		return FText::Format(NSLOCTEXT("ArcAI", "ObserveDistanceDesc", "Observe Distance Changed (Threshold={0})"), FText::AsNumber(InstanceData->DistanceThreshold));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+#endif

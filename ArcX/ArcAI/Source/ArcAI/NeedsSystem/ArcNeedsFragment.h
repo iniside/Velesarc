@@ -236,6 +236,10 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -258,7 +262,7 @@ struct FArcMassNeedsConsideration : public FStateTreeConsiderationCommonBase
 	using FInstanceDataType = FArcMassNeedsConsiderationInstanceData;
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
-	
+
 protected:
 	//~ Begin FStateTreeConsiderationBase Interface
 	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
@@ -267,6 +271,10 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -289,7 +297,7 @@ struct FArcMassHungerNeedConsideration : public FStateTreeConsiderationCommonBas
 	using FInstanceDataType = FArcMassHungerNeedConsiderationInstanceData;
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
-	
+
 protected:
 	//~ Begin FStateTreeConsiderationBase Interface
 	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
@@ -298,6 +306,10 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -330,7 +342,10 @@ protected:
 	
 	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (InvalidEnumValues = "IsTrue"))
 	UE::StateTree::EComparisonOperator Operator = UE::StateTree::EComparisonOperator::Equal;
-	
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -353,7 +368,7 @@ struct FArcMassThirstNeedConsideration : public FStateTreeConsiderationCommonBas
 	using FInstanceDataType = FArcMassThirstNeedConsiderationInstanceData;
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
-	
+
 protected:
 	//~ Begin FStateTreeConsiderationBase Interface
 	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
@@ -362,6 +377,10 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -384,7 +403,7 @@ struct FArcMassFatigueNeedConsideration : public FStateTreeConsiderationCommonBa
 	using FInstanceDataType = FArcMassFatigueNeedConsiderationInstanceData;
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
-	
+
 protected:
 	//~ Begin FStateTreeConsiderationBase Interface
 	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
@@ -393,6 +412,10 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -426,6 +449,10 @@ public:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	
 	TStateTreeExternalDataHandle<FArcHungerNeedFragment> HungerNeedHandle;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -459,6 +486,10 @@ public:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	
 	TStateTreeExternalDataHandle<FArcThirstNeedFragment> ThirstNeedHandle;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 USTRUCT()
@@ -491,6 +522,10 @@ public:
 	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	TStateTreeExternalDataHandle<FArcFatigueNeedFragment> FatigueNeedHandle;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 UENUM()
@@ -600,7 +635,7 @@ struct FArcMassNeedConsideration : public FStateTreeConsiderationCommonBase
 	using FInstanceDataType = FArcMassNeedConsiderationInstanceData;
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
-	
+
 protected:
 	//~ Begin FStateTreeConsiderationBase Interface
 	virtual float GetScore(FStateTreeExecutionContext& Context) const override;
@@ -609,6 +644,10 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, Category = "Default")
 	FStateTreeConsiderationResponseCurve ResponseCurve;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 
@@ -668,6 +707,10 @@ public:
 	}
 	
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };
 
 class UStateTree;
@@ -713,4 +756,8 @@ public:
 	}
 	
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };

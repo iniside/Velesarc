@@ -604,3 +604,15 @@ bool FArcMassHybridMoveToTask::UpdateShortPath(FStateTreeExecutionContext& Conte
 
 	return true;
 }
+
+#if WITH_EDITOR
+FText FArcMassHybridMoveToTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		return FText::Format(NSLOCTEXT("ArcAI", "HybridMoveToDesc", "Hybrid Move To (Radius={0})"), FText::AsNumber(InstanceData->AcceptableRadius));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+#endif

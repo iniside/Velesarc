@@ -158,6 +158,7 @@ struct ARCAI_API FArcTQSRunQueryTask : public FMassStateTreeTaskBase
 	{
 		return FColor(64, 180, 220);
 	}
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
 #endif
 
 private:

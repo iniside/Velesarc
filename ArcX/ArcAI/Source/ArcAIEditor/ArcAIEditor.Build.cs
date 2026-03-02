@@ -71,8 +71,13 @@ public class ArcAIEditor : ModuleRules
 		        "AppFramework",
 		        "KismetCompiler",
 		        "ArcEditorTools"
-				
-		        // ... add private dependencies that you statically link with here ...	
+		        , "TraceLog"
+		        , "TraceAnalysis"
+		        , "TraceServices"
+		        , "RewindDebuggerRuntimeInterface"
+		        , "GameplayInsights"
+
+		        // ... add private dependencies that you statically link with here ...
 	        }
         );
     }

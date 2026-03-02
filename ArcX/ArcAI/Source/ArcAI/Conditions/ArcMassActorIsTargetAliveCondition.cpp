@@ -31,3 +31,10 @@ bool FArcMassActorIsTargetAliveConditionCondition::TestCondition(FStateTreeExecu
 	
 	return false;
 }
+
+#if WITH_EDITOR
+FText FArcMassActorIsTargetAliveConditionCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "IsTargetAliveDesc", "Is Target Alive");
+}
+#endif

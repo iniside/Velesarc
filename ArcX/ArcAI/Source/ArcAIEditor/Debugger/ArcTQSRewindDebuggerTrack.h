@@ -1,0 +1,47 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "IRewindDebuggerTrackCreator.h"
+#include "RewindDebuggerTrack.h"
+#include "SEventTimelineView.h"
+
+class FArcTQSTraceProvider;
+struct FArcTQSTraceQueryRecord;
+
+/** Track creator — factory registered as modular feature. */
+class FArcTQSRewindDebuggerTrackCreator : public RewindDebugger::IRewindDebuggerTrackCreator
+{
+protected:
+	virtual FName GetTargetTypeNameInternal() const override;
+	virtual FName GetNameInternal() const override;
+	virtual void GetTrackTypesInternal(TArray<RewindDebugger::FRewindDebuggerTrackType>& Types) const override;
+	virtual TSharedPtr<RewindDebugger::FRewindDebuggerTrack> CreateTrackInternal(
+		const RewindDebugger::FObjectId& InObjectId) const override;
+	virtual bool HasDebugInfoInternal(const RewindDebugger::FObjectId& InObjectId) const override;
+};
+
+/** Track — one per query instance, shows TQS query details. */
+class FArcTQSRewindDebuggerTrack : public RewindDebugger::FRewindDebuggerTrack
+{
+public:
+	explicit FArcTQSRewindDebuggerTrack(const RewindDebugger::FObjectId& InObjectId);
+
+private:
+	virtual bool UpdateInternal() override;
+	virtual TSharedPtr<SWidget> GetTimelineViewInternal() override;
+	virtual TSharedPtr<SWidget> GetDetailsViewInternal() override;
+	virtual FSlateIcon GetIconInternal() override;
+	virtual FName GetNameInternal() const override;
+	virtual FText GetDisplayNameInternal() const override;
+	virtual uint64 GetObjectIdInternal() const override;
+	virtual bool HasDebugDataInternal() const override;
+
+	TSharedPtr<SEventTimelineView::FTimelineEventData> GetEventData() const;
+
+	RewindDebugger::FObjectId ObjectId;
+	const FArcTQSTraceQueryRecord* CachedQuery = nullptr;
+
+	mutable TSharedPtr<SEventTimelineView::FTimelineEventData> EventData;
+	mutable int32 EventUpdateRequested = 0;
+};

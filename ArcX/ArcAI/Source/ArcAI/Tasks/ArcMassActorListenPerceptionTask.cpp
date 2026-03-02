@@ -292,3 +292,38 @@ float FUtilityTargetSelectionTask:: EvaluateStateUtilityForTarget(
     
     return Score;
 }
+
+#if WITH_EDITOR
+FText FArcMassActorListenPerceptionTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "ListenPerceptionDesc", "Listen Perception Changes");
+}
+
+FText FArcMassActorListenSightPerceptionTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "ListenSightPerceptionDesc", "Listen Sight Perception");
+}
+
+FText FUtilityTargetSelectionTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		return FText::Format(NSLOCTEXT("ArcAI", "UtilityTargetSelectionDesc", "Evaluate Utility ({0} Actions, Threshold={1})"), FText::AsNumber(InstanceData->ActionStates.Num()), FText::AsNumber(InstanceData->MinimumScoreThreshold));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+
+FText FTargetDistanceConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "TargetDistConsDesc", "Target Distance (Max={0})"), FText::AsNumber(InstanceData->MaxDistance));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

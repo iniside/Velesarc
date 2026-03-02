@@ -52,6 +52,10 @@ protected:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
+
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorFragment;
 };
 
@@ -98,6 +102,10 @@ protected:
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorFragment;
 };
@@ -155,8 +163,12 @@ struct FUtilityTargetSelectionTask :  public FMassStateTreeTaskBase
     }
     
     virtual EStateTreeRunStatus EnterState(
-        FStateTreeExecutionContext& Context, 
+        FStateTreeExecutionContext& Context,
         const FStateTreeTransitionResult& Transition) const override;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 
 protected:
     float EvaluateStateUtilityForTarget(
@@ -199,8 +211,12 @@ protected:
 		// Calculate normalized score based on distance to target
 		float Distance = FVector::Dist(InstanceData.OwnerLocation, InstanceData.TargetLocation);
 		return FMath::GetMappedRangeValueClamped(
-			FVector2D(0.f, InstanceData.MaxDistance), 
-			FVector2D(1.f, 0.f), 
+			FVector2D(0.f, InstanceData.MaxDistance),
+			FVector2D(1.f, 0.f),
 			Distance);
 	}
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
 };

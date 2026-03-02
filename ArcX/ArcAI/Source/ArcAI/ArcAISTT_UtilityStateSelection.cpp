@@ -252,6 +252,21 @@ EStateTreeRunStatus FArcAISTT_UtilityStateSelectionTask::Tick(FStateTreeExecutio
 	return EStateTreeRunStatus::Running;
 }
 
+#if WITH_EDITOR
+FText FArcAISTT_UtilityStateSelectionTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "UtilityStateSelectionDesc", "Evaluate Utility for {0} States"), FText::AsNumber(InstanceData->ConsideredStates.Num()));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "UtilityStateSelectionDescDefault", "Evaluate Utility States");
+}
+#endif
+
 float FArcActorConsideration::GetScore(FStateTreeExecutionContext& Context) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
@@ -262,4 +277,11 @@ float FArcActorConsideration::GetScore(FStateTreeExecutionContext& Context) cons
 
 	return 0.f;
 }
+
+#if WITH_EDITOR
+FText FArcActorConsideration::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "ActorConsiderationDesc", "Actor Consideration");
+}
+#endif
 

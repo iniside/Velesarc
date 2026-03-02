@@ -72,3 +72,21 @@ bool FArcMassActorGameplayAttributeCondition::TestCondition(FStateTreeExecutionC
 	
 	return false;
 }
+
+#if WITH_EDITOR
+FText FArcMassActorGameplayAttributeCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "GameplayAttributeCondDesc", "{0} {1} {2}"),
+				FText::FromString(InstanceData->Attribute.GetName()),
+				UEnum::GetDisplayValueAsText(Operator),
+				FText::AsNumber(InstanceData->Value));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

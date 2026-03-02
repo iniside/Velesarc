@@ -6,6 +6,7 @@
 #include "MassEntityHandle.h"
 #include "MassEntityTypes.h"
 #include "SmartObjectTypes.h"
+#include "StructUtils/PropertyBag.h"
 #include "ArcTQSTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -89,6 +90,11 @@ struct ARCAI_API FArcTQSTargetItem
 	// Index into QueryContext.ContextLocations identifying which context generated this item.
 	// Set automatically by the generator. INDEX_NONE if not associated with a specific context.
 	int32 ContextIndex = INDEX_NONE;
+
+	/** Generator-specific metadata as a property bag.
+	  * The generator declares its output schema via GetOutputSchema().
+	  * Filters/scorers access properties by name. */
+	FInstancedPropertyBag ItemData;
 
 	// Resolve the world location regardless of target type
 	FVector GetLocation(const FMassEntityManager* EntityManager = nullptr) const;

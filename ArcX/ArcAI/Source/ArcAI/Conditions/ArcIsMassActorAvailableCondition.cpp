@@ -39,3 +39,15 @@ bool FArcIsSmartObjectHandleValidCondition::TestCondition(FStateTreeExecutionCon
 
 	return InstanceData.SmartObjectHandle.IsValid();
 }
+
+#if WITH_EDITOR
+FText FArcIsMassActorAvailableCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "IsMassActorAvailableDesc", "Mass Actor Available");
+}
+
+FText FArcIsSmartObjectHandleValidCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "IsSmartObjectHandleValidDesc", "Smart Object Handle Valid");
+}
+#endif

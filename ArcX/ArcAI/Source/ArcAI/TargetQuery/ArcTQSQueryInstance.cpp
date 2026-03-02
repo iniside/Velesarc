@@ -6,6 +6,7 @@
 #include "ArcTQSGenerator.h"
 #include "ArcAILogs.h"
 #include "HAL/PlatformTime.h"
+#include "Debugger/ArcTQSTrace.h"
 #include "VisualLogger/VisualLogger.h"
 #include "MassActorSubsystem.h"
 #include "MassEntityManager.h"
@@ -109,6 +110,7 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 			DebugLog += FString::Printf(TEXT("TQS Query %d: Generator produced 0 items — query failed.\n"), QueryId);
 			FlushDebugLog();
 #endif
+			TRACE_ARCTQS_QUERY_COMPLETED(*this);
 			return true;
 		}
 
@@ -126,6 +128,7 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 		}
 #endif
 
+		TRACE_ARCTQS_QUERY_STARTED(*this);
 		Status = EArcTQSQueryStatus::Processing;
 		TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
 
@@ -154,6 +157,7 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 		RunSelection();
 		Status = EArcTQSQueryStatus::Completed;
 		TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
+		TRACE_ARCTQS_QUERY_COMPLETED(*this);
 
 #if ENABLE_VISUAL_LOG
 		DebugLog += FString::Printf(TEXT("Completed in %.3fms — %d results selected (mode: %s)\n"),
@@ -286,6 +290,8 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 				CurrentStepIndex, *StepName, Step->Weight, Items.Num());
 		}
 #endif
+
+		TRACE_ARCTQS_STEP_COMPLETED(*this, CurrentStepIndex);
 
 		// Step completed, move to next
 		++CurrentStepIndex;

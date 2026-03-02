@@ -59,3 +59,10 @@ void FArcListenTargetAbilityActivatedTask::ExitState(FStateTreeExecutionContext&
 
 	ASI->GetAbilitySystemComponent()->AbilityActivatedCallbacks.Remove(InstanceData.OnAbilityActivatedHandle);
 }
+
+#if WITH_EDITOR
+FText FArcListenTargetAbilityActivatedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "ListenTargetAbilityDesc", "Listen Target Ability Activated");
+}
+#endif

@@ -65,3 +65,18 @@ EStateTreeRunStatus FArcMassMakePlanMultipleGoalsTask::EnterState(FStateTreeExec
 
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassMakePlanMultipleGoalsTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "MakePlanMultiGoalsDesc", "Make Plan for {0} Goals (R={1})"), FText::AsNumber(InstanceData->GoalRequiredTags.Num()), FText::AsNumber(InstanceData->SearchRadius));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

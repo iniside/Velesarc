@@ -56,3 +56,18 @@ void FArcMassGiveGameplayTagsToEntityTask::ExitState(FStateTreeExecutionContext&
 		MassTags->Tags.RemoveTags(InstanceData.Tags);
 	}
 }
+
+#if WITH_EDITOR
+FText FArcMassGiveGameplayTagsToEntityTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "GiveTagsDesc", "Give Tags: {0}{1}"), FText::FromString(InstanceData->Tags.ToStringSimple()), bRemoveOnExit ? FText::FromString(TEXT(" (remove on exit)")) : FText::GetEmpty());
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

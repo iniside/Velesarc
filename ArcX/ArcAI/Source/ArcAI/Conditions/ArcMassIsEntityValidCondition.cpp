@@ -10,3 +10,12 @@ bool FArcMassIsEntityValidCondition::TestCondition(FStateTreeExecutionContext& C
 	bool bResult = InstanceData.TargetInput.GetEntityHandle().IsValid();
 	return bResult ^ bInvert;
 }
+
+#if WITH_EDITOR
+FText FArcMassIsEntityValidCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return bInvert
+		? NSLOCTEXT("ArcAI", "IsEntityInvalidDesc", "Entity Is NOT Valid")
+		: NSLOCTEXT("ArcAI", "IsEntityValidDesc", "Entity Is Valid");
+}
+#endif

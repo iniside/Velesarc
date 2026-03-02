@@ -88,6 +88,13 @@ EStateTreeRunStatus FArcMassActorListenToAsyncMessageTask::Tick(FStateTreeExecut
 			}
 			, FAsyncMessageBindingOptions()
 			, EndpointInterface->GetEndpoint());
-	
+
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassActorListenToAsyncMessageTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "ListenAsyncMessageDesc", "Listen Async Message");
+}
+#endif

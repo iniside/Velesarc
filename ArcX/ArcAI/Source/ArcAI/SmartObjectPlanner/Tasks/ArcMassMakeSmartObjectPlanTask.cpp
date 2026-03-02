@@ -65,6 +65,21 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 	});
 	
 	PreconSubsystem->AddRequest(Request);
-	
+
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassMakeSmartObjectPlanTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "MakeSOPlanDesc", "Make SO Plan: {0} (R={1})"), FText::FromString(InstanceData->RequiredTags.ToStringSimple()), FText::AsNumber(InstanceData->SearchRadius));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

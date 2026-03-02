@@ -113,3 +113,15 @@ EStateTreeRunStatus FArcMassActorListenGameplayAttributeChangedTask::Tick(FState
 {
 	return FMassStateTreeTaskBase::Tick(Context, DeltaTime);
 }
+
+#if WITH_EDITOR
+FText FArcMassActorListenGameplayAttributeChangedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		return FText::Format(NSLOCTEXT("ArcAI", "ListenAttributeChangedDesc", "Listen Attribute Changed: {0}"), FText::FromString(InstanceData->Attribute.GetName()));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+#endif

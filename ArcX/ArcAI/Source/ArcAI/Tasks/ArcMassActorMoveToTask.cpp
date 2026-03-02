@@ -303,6 +303,21 @@ EStateTreeRunStatus FArcMassDrawDebugSphereTask::EnterState(FStateTreeExecutionC
 	return EStateTreeRunStatus::Running;
 }
 
+#if WITH_EDITOR
+FText FArcMassDrawDebugSphereTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "DrawDebugSphereDesc", "Draw Debug Sphere (R={0})"), FText::AsNumber(InstanceData->Radius));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "DrawDebugSphereDescDefault", "Draw Debug Sphere");
+}
+#endif
+
 UArcMassActorMoveToProcessor::UArcMassActorMoveToProcessor()
 	: EntityQuery_Conditional(*this)
 {
@@ -403,3 +418,15 @@ void UArcMassActorMoveToProcessor::Execute(FMassEntityManager& EntityManager, FM
 		SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, EntitiesToSignalPathDone);
 	}
 }
+
+#if WITH_EDITOR
+FText FArcMassActorMoveToTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		return FText::Format(NSLOCTEXT("ArcAI", "ActorMoveToDesc", "Move To (Radius={0})"), FText::AsNumber(InstanceData->AcceptableRadius));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+#endif

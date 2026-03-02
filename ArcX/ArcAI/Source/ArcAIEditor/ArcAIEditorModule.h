@@ -23,10 +23,18 @@
 
 
 #include "Modules/ModuleManager.h"
+#include "Templates/PimplPtr.h"
 
 class FArcAIEditorModule : public IModuleInterface
 {
 public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
+
+private:
+	//TUniquePtr<class FArcTQSRewindDebuggerTrackCreator> TQSTrackCreator;
+	TPimplPtr<class FArcTQSRewindDebuggerTrackCreator> TQSTrackCreator;
+	TUniquePtr<class FArcTQSRewindDebuggerPlaybackExtension> TQSPlaybackExtension;
+	TUniquePtr<class FArcTQSRewindDebuggerRecordingExtension> TQSRecordingExtension;
+	TUniquePtr<class FArcTQSTraceModule> TQSTraceModule;
 };

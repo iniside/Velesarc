@@ -182,6 +182,34 @@ EStateTreeRunStatus FArcMassApplyGameplayEffectToOwnerTask::EnterState(FStateTre
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
 	ASC->ApplyGameplayEffectToSelf(InstanceData.GameplayEffectClass.GetDefaultObject(), 1.0f, ASC->MakeEffectContext());
-	
+
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassUseGameplayAbilityTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "UseGameplayAbilityDesc", "Use Ability: {0}"), FText::FromString(GetNameSafe(InstanceData->AbilityClassToActivate)));
+		}
+	}
+	return FText::GetEmpty();
+}
+
+FText FArcMassApplyGameplayEffectToOwnerTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ApplyGEToOwnerDesc", "Apply Effect: {0}"), FText::FromString(GetNameSafe(InstanceData->GameplayEffectClass)));
+		}
+	}
+	return FText::GetEmpty();
+}
+#endif

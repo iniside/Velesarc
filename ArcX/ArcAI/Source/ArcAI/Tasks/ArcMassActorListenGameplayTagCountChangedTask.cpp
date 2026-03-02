@@ -80,3 +80,15 @@ EStateTreeRunStatus FArcMassActorListenGameplayTagCountChangedTask::Tick(FStateT
 {
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassActorListenGameplayTagCountChangedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		return FText::Format(NSLOCTEXT("ArcAI", "ListenTagCountChangedDesc", "Listen Tag Count: {0}"), FText::FromString(InstanceData->Tag.ToString()));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+#endif

@@ -43,3 +43,10 @@ bool FArcIsMassAIControllerCondition::TestCondition(FStateTreeExecutionContext& 
 
 	return true;
 }
+
+#if WITH_EDITOR
+FText FArcIsMassAIControllerCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "IsMassAIControllerDesc", "AI Controller Available");
+}
+#endif

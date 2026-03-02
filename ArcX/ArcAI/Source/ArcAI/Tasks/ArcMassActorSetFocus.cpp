@@ -45,3 +45,10 @@ void FArcMassActorSetFocusTask::ExitState(FStateTreeExecutionContext& Context, c
 	
 	InstanceData.AIController->ClearFocus(EAIFocusPriority::Gameplay);
 }
+
+#if WITH_EDITOR
+FText FArcMassActorSetFocusTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "SetFocusDesc", "Set Focus on Target");
+}
+#endif

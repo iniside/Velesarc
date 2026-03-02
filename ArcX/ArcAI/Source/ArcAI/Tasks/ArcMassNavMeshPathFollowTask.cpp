@@ -241,3 +241,15 @@ EStateTreeRunStatus FArcMassNavMeshPathFollowTask::Tick(FStateTreeExecutionConte
 	
 	return ShortPathFragment.IsDone() ? EStateTreeRunStatus::Succeeded : EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassNavMeshPathFollowTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FArcMassNavMeshPathFollowTaskInstanceData* InstanceData = InstanceDataView.GetPtr<FArcMassNavMeshPathFollowTaskInstanceData>();
+		return FText::Format(NSLOCTEXT("ArcAI", "NavMeshPathFollowDesc", "Follow NavMesh Path (Speed={0})"), FText::AsNumber(InstanceData->SpeedScale));
+	}
+	return FMassStateTreeTaskBase::GetDescription(ID, InstanceDataView, BindingLookup, Formatting);
+}
+#endif

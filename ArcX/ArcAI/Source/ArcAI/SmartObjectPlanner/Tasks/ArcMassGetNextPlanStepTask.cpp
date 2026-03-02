@@ -84,3 +84,10 @@ EStateTreeRunStatus FArcMassGetNextPlanStepTask::EnterState(FStateTreeExecutionC
 	//SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcMassGetNextPlanStepTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "GetNextPlanStepDesc", "Get Next Plan Step");
+}
+#endif

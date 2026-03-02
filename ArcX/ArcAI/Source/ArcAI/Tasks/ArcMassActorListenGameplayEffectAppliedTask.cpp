@@ -87,3 +87,18 @@ EStateTreeRunStatus FArcMassActorListenGameplayEffectAppliedTask::Tick(FStateTre
 {
 	return EStateTreeRunStatus::Running;
 }
+
+#if WITH_EDITOR
+FText FArcMassActorListenGameplayEffectAppliedTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (!InstanceData->RequiredTags.IsEmpty())
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "ListenEffectAppliedDesc", "Listen Effect Applied ({0})"), FText::FromString(InstanceData->RequiredTags.ToStringSimple()));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "ListenEffectAppliedSimpleDesc", "Listen Effect Applied");
+}
+#endif

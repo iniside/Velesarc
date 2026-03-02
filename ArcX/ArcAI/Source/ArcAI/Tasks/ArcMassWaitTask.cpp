@@ -71,6 +71,21 @@ EStateTreeRunStatus FArcMassWaitTask::Tick(FStateTreeExecutionContext& Context, 
 	return EStateTreeRunStatus::Running;
 }
 
+#if WITH_EDITOR
+FText FArcMassWaitTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData)
+		{
+			return FText::Format(NSLOCTEXT("ArcAI", "WaitTaskDesc", "Wait {0}s"), FText::AsNumber(InstanceData->Duration));
+		}
+	}
+	return NSLOCTEXT("ArcAI", "WaitTaskDescDefault", "Wait");
+}
+#endif
+
 UArcMassWaitTaskProcessor::UArcMassWaitTaskProcessor()
 	: EntityQuery_Conditional(*this)
 {

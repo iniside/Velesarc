@@ -44,3 +44,10 @@ EStateTreeRunStatus FArcMassSelectSmartObjectPlanTask::EnterState(FStateTreeExec
 	
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcMassSelectSmartObjectPlanTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcAI", "SelectSOPlanDesc", "Select Smart Object Plan");
+}
+#endif
