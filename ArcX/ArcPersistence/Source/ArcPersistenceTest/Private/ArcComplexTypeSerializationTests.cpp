@@ -13,6 +13,13 @@
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "Components/ActorTestSpawner.h"
+#include "NativeGameplayTags.h"
+
+// ---- Test gameplay tags (must be registered as native tags) ----
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_ArcTest_Status_Burning, "ArcTest.Status.Burning");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_ArcTest_Status_Frozen, "ArcTest.Status.Frozen");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_ArcTest_Status_Poisoned, "ArcTest.Status.Poisoned");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_ArcTest_Class_Warrior, "ArcTest.Class.Warrior");
 
 // =============================================================================
 // TEST_CLASS 1: Complex reference type round-trip serialization
@@ -377,7 +384,116 @@ TEST_CLASS(ArcComplexTypes_Set, "ArcPersistence.Serialization.ComplexTypes.Set")
 };
 
 // =============================================================================
-// TEST_CLASS 4: Entity-level complex fragment serialization
+// TEST_CLASS 4: Gameplay tag round-trip serialization
+// =============================================================================
+
+TEST_CLASS(ArcComplexTypes_GameplayTag, "ArcPersistence.Serialization.ComplexTypes.GameplayTag")
+{
+	template<typename T>
+	void RoundTrip(const T& Source, T& Target)
+	{
+		FArcJsonSaveArchive SaveAr;
+		SaveAr.SetVersion(1);
+		FArcReflectionSerializer::Save(T::StaticStruct(), &Source, SaveAr);
+		TArray<uint8> Data = SaveAr.Finalize();
+
+		FArcJsonLoadArchive LoadAr;
+		check(LoadAr.InitializeFromData(Data));
+		FArcReflectionSerializer::Load(T::StaticStruct(), &Target, LoadAr);
+	}
+
+	TEST_METHOD(SingleTag_RoundTrip)
+	{
+		FArcPersistenceTestTagStruct Source;
+		Source.SingleTag = TAG_ArcTest_Status_Burning;
+
+		FArcPersistenceTestTagStruct Target;
+		RoundTrip(Source, Target);
+
+		bool bEqual = Target.SingleTag.MatchesTagExact(TAG_ArcTest_Status_Burning);
+		ASSERT_THAT(IsTrue(bEqual));
+	}
+
+	TEST_METHOD(SingleTag_Invalid_RoundTrip)
+	{
+		FArcPersistenceTestTagStruct Source;
+		// Source.SingleTag is default (invalid)
+
+		FArcPersistenceTestTagStruct Target;
+		Target.SingleTag = TAG_ArcTest_Status_Burning;
+
+		RoundTrip(Source, Target);
+
+		ASSERT_THAT(IsFalse(Target.SingleTag.IsValid()));
+	}
+
+	TEST_METHOD(TagContainer_RoundTrip)
+	{
+		FArcPersistenceTestTagStruct Source;
+		Source.TagContainer.AddTag(TAG_ArcTest_Status_Burning);
+		Source.TagContainer.AddTag(TAG_ArcTest_Status_Frozen);
+		Source.TagContainer.AddTag(TAG_ArcTest_Status_Poisoned);
+
+		FArcPersistenceTestTagStruct Target;
+		RoundTrip(Source, Target);
+
+		ASSERT_THAT(AreEqual(3, Target.TagContainer.Num()));
+		ASSERT_THAT(IsTrue(Target.TagContainer.HasTag(TAG_ArcTest_Status_Burning)));
+		ASSERT_THAT(IsTrue(Target.TagContainer.HasTag(TAG_ArcTest_Status_Frozen)));
+		ASSERT_THAT(IsTrue(Target.TagContainer.HasTag(TAG_ArcTest_Status_Poisoned)));
+	}
+
+	TEST_METHOD(TagContainer_Empty_RoundTrip)
+	{
+		FArcPersistenceTestTagStruct Source;
+		// Source.TagContainer is default (empty)
+
+		FArcPersistenceTestTagStruct Target;
+		Target.TagContainer.AddTag(TAG_ArcTest_Status_Burning);
+		Target.TagContainer.AddTag(TAG_ArcTest_Status_Frozen);
+
+		RoundTrip(Source, Target);
+
+		ASSERT_THAT(AreEqual(0, Target.TagContainer.Num()));
+	}
+
+	TEST_METHOD(TagContainer_Overwrites_ExistingData)
+	{
+		FArcPersistenceTestTagStruct Source;
+		Source.TagContainer.AddTag(TAG_ArcTest_Class_Warrior);
+
+		FArcPersistenceTestTagStruct Target;
+		Target.TagContainer.AddTag(TAG_ArcTest_Status_Burning);
+		Target.TagContainer.AddTag(TAG_ArcTest_Status_Frozen);
+
+		RoundTrip(Source, Target);
+
+		ASSERT_THAT(AreEqual(1, Target.TagContainer.Num()));
+		ASSERT_THAT(IsTrue(Target.TagContainer.HasTag(TAG_ArcTest_Class_Warrior)));
+		ASSERT_THAT(IsFalse(Target.TagContainer.HasTag(TAG_ArcTest_Status_Burning)));
+	}
+
+	TEST_METHOD(CombinedTagsAndLabel)
+	{
+		FArcPersistenceTestTagStruct Source;
+		Source.SingleTag = TAG_ArcTest_Class_Warrior;
+		Source.TagContainer.AddTag(TAG_ArcTest_Status_Burning);
+		Source.TagContainer.AddTag(TAG_ArcTest_Status_Poisoned);
+		Source.Label = TEXT("TestCombined");
+
+		FArcPersistenceTestTagStruct Target;
+		RoundTrip(Source, Target);
+
+		ASSERT_THAT(IsTrue(Target.SingleTag.MatchesTagExact(TAG_ArcTest_Class_Warrior)));
+		ASSERT_THAT(AreEqual(2, Target.TagContainer.Num()));
+		ASSERT_THAT(IsTrue(Target.TagContainer.HasTag(TAG_ArcTest_Status_Burning)));
+		ASSERT_THAT(IsTrue(Target.TagContainer.HasTag(TAG_ArcTest_Status_Poisoned)));
+		ASSERT_THAT(AreEqual(FString(TEXT("TestCombined")), Target.Label));
+	}
+};
+
+// =============================================================================
+// TEST_CLASS 5: Entity-level complex fragment serialization
 // =============================================================================
 
 TEST_CLASS(ArcComplexTypes_Entity, "ArcPersistence.Serialization.ComplexTypes.Entity")

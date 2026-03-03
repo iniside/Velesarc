@@ -204,6 +204,22 @@ struct FArcPersistenceTestSetStruct
 	TSet<FString> StringSet;
 };
 
+/** Test struct with gameplay tag properties. */
+USTRUCT()
+struct FArcPersistenceTestTagStruct
+{
+	GENERATED_BODY()
+
+	UPROPERTY(SaveGame)
+	FGameplayTag SingleTag;
+
+	UPROPERTY(SaveGame)
+	FGameplayTagContainer TagContainer;
+
+	UPROPERTY(SaveGame)
+	FString Label;
+};
+
 /** Mass fragment with complex types for entity-level testing. */
 USTRUCT()
 struct FArcTestComplexFragment : public FMassFragment

@@ -23,8 +23,12 @@
 		},
 		{
 			"Name": "ArcPersistenceTest",
-			"Type": "DeveloperTool",
-			"LoadingPhase": "Default"
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [
+				"Editor",
+				"Program"
+			]
 		}
 	],
 	"Plugins": [
