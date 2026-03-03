@@ -23,6 +23,7 @@
 #include "ArcVisEntityDebugger.h"
 #include "ArcKnowledgeDebugger.h"
 #include "ArcAreaDebugger.h"
+#include "ArcLootTableDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -72,6 +73,8 @@ private:
 	FArcKnowledgeDebugger KnowledgeDebugger;
 
 	FArcAreaDebugger AreaDebugger;
+
+	FArcLootTableDebugger LootTableDebugger;
 
 	void Toggle();
 	

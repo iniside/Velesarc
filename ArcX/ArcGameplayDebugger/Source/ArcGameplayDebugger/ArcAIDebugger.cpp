@@ -394,20 +394,6 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 	{
 		bool bHasAnyNeeds = false;
 
-		if (const FArcNeedsFragment* NeedsFragment = Manager->GetFragmentDataPtr<FArcNeedsFragment>(Entity))
-		{
-			bHasAnyNeeds = true;
-			for (const FArcNeedItem& Need : NeedsFragment->Needs)
-			{
-				float Ratio = Need.CurrentValue / 100.f;
-				ImGui::Text("%s", TCHAR_TO_ANSI(*Need.NeedName.ToString()));
-				ImGui::SameLine(150);
-				ImGui::ProgressBar(Ratio, ImVec2(200, 0));
-				ImGui::SameLine();
-				ImGui::Text("%.1f (Rate: %.2f)", Need.CurrentValue, Need.ChangeRate);
-			}
-		}
-
 		if (const FArcHungerNeedFragment* Hunger = Manager->GetFragmentDataPtr<FArcHungerNeedFragment>(Entity))
 		{
 			bHasAnyNeeds = true;

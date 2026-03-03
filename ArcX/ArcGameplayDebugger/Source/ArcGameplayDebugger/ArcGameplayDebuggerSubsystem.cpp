@@ -122,452 +122,144 @@ bool UArcGameplayDebuggerSubsystem::IsTickable() const
 	return true;
 }
 
+namespace
+{
+	/** Helper to toggle a debugger panel from a menu item. */
+	template<typename T>
+	void ToggleDebuggerMenuItem(const char* Label, T& Debugger)
+	{
+		if (ImGui::MenuItem(Label))
+		{
+			if (!Debugger.bShow)
+			{
+				Debugger.bShow = true;
+				Debugger.Initialize();
+			}
+			else
+			{
+				Debugger.bShow = false;
+				Debugger.Uninitialize();
+			}
+		}
+	}
+
+	template<typename T>
+	void DrawIfVisible(T& Debugger)
+	{
+		if (Debugger.bShow)
+		{
+			Debugger.Draw();
+		}
+	}
+}
+
 void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 {
 	if (CVarArcDebugDraw.GetValueOnGameThread())
-	{		
+	{
 		const ImGui::FScopedContext ScopedContext;
 		if (ScopedContext)
 		{
 			if (ImGui::BeginMainMenuBar())
 			{
+				// ---- File ----
 				if (ImGui::BeginMenu("File"))
 				{
-					if (ImGui::MenuItem("Show Demo", "CTRL+Z"))
+					if (ImGui::MenuItem("Show Demo"))
 					{
 						bDrawDebug = true;
-						
 					}
 					ImGui::EndMenu();
 				}
+
+				// ---- Items ----
 				if (ImGui::BeginMenu("Items"))
 				{
-					if (ImGui::MenuItem("Items Store"))
-					{
-						if (DebuggerItems.bShow == false)
-						{
-							DebuggerItems.bShow = true;
-							DebuggerItems.Initialize();
-						}
-						else
-						{
-							DebuggerItems.bShow = false;
-							DebuggerItems.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Equipment"))
-					{
-						if (EquipmentDebugger.bShow == false)
-						{
-							EquipmentDebugger.bShow = true;
-							EquipmentDebugger.Initialize();
-						}
-						else
-						{
-							EquipmentDebugger.bShow = false;
-							EquipmentDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Quick Bar"))
-					{
-						if (QuickBarDebugger.bShow == false)
-						{
-							QuickBarDebugger.bShow = true;
-							QuickBarDebugger.Initialize();
-						}
-						else
-						{
-							QuickBarDebugger.bShow = false;
-							QuickBarDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Item Attachment"))
-					{
-						if (ItemAttachmentDebugger.bShow == false)
-						{
-							ItemAttachmentDebugger.bShow = true;
-							ItemAttachmentDebugger.Initialize();
-						}
-						else
-						{
-							ItemAttachmentDebugger.bShow = false;
-							ItemAttachmentDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Make Item"))
-					{
-					}
-					
+					ToggleDebuggerMenuItem("Items Store", DebuggerItems);
+					ToggleDebuggerMenuItem("Equipment", EquipmentDebugger);
+					ToggleDebuggerMenuItem("Quick Bar", QuickBarDebugger);
+					ToggleDebuggerMenuItem("Item Attachment", ItemAttachmentDebugger);
+					ToggleDebuggerMenuItem("Loot Tables", LootTableDebugger);
 					ImGui::EndMenu();
 				}
-				
-				if (ImGui::BeginMenu("Local Ability System"))
+
+				// ---- Ability System ----
+				if (ImGui::BeginMenu("Ability System"))
 				{
-					if (ImGui::MenuItem("Gameplay Abilities"))
-					{
-						if (GameplayAbilitiesDebugger.bShow == false)
-						{
-							GameplayAbilitiesDebugger.bShow = true;
-							GameplayAbilitiesDebugger.Initialize();
-						}
-						else
-						{
-							GameplayAbilitiesDebugger.bShow = false;
-							GameplayAbilitiesDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Gameplay Effects"))
-					{
-						if (GameplayEffectsDebugger.bShow == false)
-						{
-							GameplayEffectsDebugger.bShow = true;
-							GameplayEffectsDebugger.Initialize();
-						}
-						else
-						{
-							GameplayEffectsDebugger.bShow = false;
-							GameplayEffectsDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Attributes"))
-					{
-						if (AttributesDebugger.bShow == false)
-						{
-							AttributesDebugger.bShow = true;
-							AttributesDebugger.Initialize();
-						}
-						else
-						{
-							AttributesDebugger.bShow = false;
-							AttributesDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Targeting"))
-					{
-						if (GlobalTargetingDebugger.bShow == false)
-						{
-							GlobalTargetingDebugger.bShow = true;
-							GlobalTargetingDebugger.Initialize();
-						}
-						else
-						{
-							GlobalTargetingDebugger.bShow = false;
-							GlobalTargetingDebugger.Uninitialize();
-						}
-					}
-					
+					ToggleDebuggerMenuItem("Gameplay Abilities", GameplayAbilitiesDebugger);
+					ToggleDebuggerMenuItem("Gameplay Effects", GameplayEffectsDebugger);
+					ToggleDebuggerMenuItem("Attributes", AttributesDebugger);
+					ToggleDebuggerMenuItem("Targeting", GlobalTargetingDebugger);
 					ImGui::EndMenu();
 				}
 
-				if (ImGui::BeginMenu("Arc Gun"))
+				// ---- Combat ----
+				if (ImGui::BeginMenu("Combat"))
 				{
-					if (ImGui::MenuItem("Debugger"))
-					{
-						if (ArcGunDebugger.bShow == false)
-						{
-							ArcGunDebugger.bShow = true;
-							ArcGunDebugger.Initialize();
-						}
-						else
-						{
-							ArcGunDebugger.bShow = false;
-							ArcGunDebugger.Uninitialize();
-						}
-					}
-
+					ToggleDebuggerMenuItem("Arc Gun", ArcGunDebugger);
 					ImGui::EndMenu();
 				}
 
-				if (ImGui::BeginMenu("Tools"))
+				// ---- Gameplay (Builder, Craft, Knowledge, Area, Tags) ----
+				if (ImGui::BeginMenu("Gameplay"))
 				{
-					if (ImGui::MenuItem("Gameplay Tag Tree"))
-					{
-						if (GameplayTagTreeWidget.bShow == false)
-						{
-							GameplayTagTreeWidget.bShow = true;
-							GameplayTagTreeWidget.Initialize();
-						}
-						else
-						{
-							GameplayTagTreeWidget.bShow = false;
-							GameplayTagTreeWidget.Uninitialize();
-						}
-					}
-
+					ToggleDebuggerMenuItem("Builder", BuilderDebugger);
+					ToggleDebuggerMenuItem("Craft", CraftDebugger);
+					ToggleDebuggerMenuItem("Knowledge", KnowledgeDebugger);
+					ToggleDebuggerMenuItem("Area", AreaDebugger);
+					ImGui::Separator();
+					ToggleDebuggerMenuItem("Gameplay Tag Tree", GameplayTagTreeWidget);
 					ImGui::EndMenu();
 				}
 
-				if (ImGui::BeginMenu("Arc Builder"))
-				{
-					if (ImGui::MenuItem("Builder Debug"))
-					{
-						if (BuilderDebugger.bShow == false)
-						{
-							BuilderDebugger.bShow = true;
-							BuilderDebugger.Initialize();
-						}
-						else
-						{
-							BuilderDebugger.bShow = false;
-							BuilderDebugger.Uninitialize();
-						}
-					}
-
-					ImGui::EndMenu();
-				}
-
+				// ---- AI (includes Navigation) ----
 				if (ImGui::BeginMenu("AI"))
 				{
-					if (ImGui::MenuItem("AI Debugger"))
-					{
-						if (AIDebugger.bShow == false)
-						{
-							AIDebugger.bShow = true;
-							AIDebugger.Initialize();
-						}
-						else
-						{
-							AIDebugger.bShow = false;
-							AIDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Perception Debugger"))
-					{
-						if (PerceptionDebugger.bShow == false)
-						{
-							PerceptionDebugger.bShow = true;
-							PerceptionDebugger.Initialize();
-						}
-						else
-						{
-							PerceptionDebugger.bShow = false;
-							PerceptionDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Plan Feasibility"))
-					{
-						if (PlanFeasibilityDebugger.bShow == false)
-						{
-							PlanFeasibilityDebugger.bShow = true;
-							PlanFeasibilityDebugger.Initialize();
-						}
-						else
-						{
-							PlanFeasibilityDebugger.bShow = false;
-							PlanFeasibilityDebugger.Uninitialize();
-						}
-					}
-
+					ToggleDebuggerMenuItem("AI Debugger", AIDebugger);
+					ToggleDebuggerMenuItem("Perception", PerceptionDebugger);
+					ToggleDebuggerMenuItem("Plan Feasibility", PlanFeasibilityDebugger);
+					ImGui::Separator();
+					ToggleDebuggerMenuItem("Path Debugger", PathDebugger);
 					ImGui::EndMenu();
 				}
 
-				if (ImGui::BeginMenu("Navigation"))
+				// ---- Mass ----
+				if (ImGui::BeginMenu("Mass"))
 				{
-					if (ImGui::MenuItem("Path Debugger"))
-					{
-						if (PathDebugger.bShow == false)
-						{
-							PathDebugger.bShow = true;
-							PathDebugger.Initialize();
-						}
-						else
-						{
-							PathDebugger.bShow = false;
-							PathDebugger.Uninitialize();
-						}
-					}
-
-					ImGui::EndMenu();
-				}
-
-				if (ImGui::BeginMenu("Arc Mass"))
-				{
-					if (ImGui::MenuItem("Entity Debugger"))
-					{
-						if (MassEntityDebugger.bShow == false)
-						{
-							MassEntityDebugger.bShow = true;
-							MassEntityDebugger.Initialize();
-						}
-						else
-						{
-							MassEntityDebugger.bShow = false;
-							MassEntityDebugger.Uninitialize();
-						}
-					}
-
-					if (ImGui::MenuItem("Arc Entity Visualization"))
-					{
-						if (VisEntityDebugger.bShow == false)
-						{
-							VisEntityDebugger.bShow = true;
-							VisEntityDebugger.Initialize();
-						}
-						else
-						{
-							VisEntityDebugger.bShow = false;
-							VisEntityDebugger.Uninitialize();
-						}
-					}
-
-					ImGui::EndMenu();
-				}
-
-				if (ImGui::BeginMenu("Arc Craft"))
-				{
-					if (ImGui::MenuItem("Craft Debug"))
-					{
-						if (CraftDebugger.bShow == false)
-						{
-							CraftDebugger.bShow = true;
-							CraftDebugger.Initialize();
-						}
-						else
-						{
-							CraftDebugger.bShow = false;
-							CraftDebugger.Uninitialize();
-						}
-					}
-
-					ImGui::EndMenu();
-				}
-
-				if (ImGui::BeginMenu("Knowledge"))
-				{
-					if (ImGui::MenuItem("Knowledge Debugger"))
-					{
-						if (KnowledgeDebugger.bShow == false)
-						{
-							KnowledgeDebugger.bShow = true;
-							KnowledgeDebugger.Initialize();
-						}
-						else
-						{
-							KnowledgeDebugger.bShow = false;
-							KnowledgeDebugger.Uninitialize();
-						}
-					}
-
-					ImGui::EndMenu();
-				}
-
-				if (ImGui::BeginMenu("Area"))
-				{
-					if (ImGui::MenuItem("Area Debugger"))
-					{
-						if (AreaDebugger.bShow == false)
-						{
-							AreaDebugger.bShow = true;
-							AreaDebugger.Initialize();
-						}
-						else
-						{
-							AreaDebugger.bShow = false;
-							AreaDebugger.Uninitialize();
-						}
-					}
-
+					ToggleDebuggerMenuItem("Entity Debugger", MassEntityDebugger);
+					ToggleDebuggerMenuItem("Entity Visualization", VisEntityDebugger);
 					ImGui::EndMenu();
 				}
 
 				ImGui::EndMainMenuBar();
 
-				if (DebuggerItems.bShow)
-				{
-					DebuggerItems.Draw();
-				}
-				if (EquipmentDebugger.bShow)
-				{
-					EquipmentDebugger.Draw();
-				}
-				if (QuickBarDebugger.bShow)
-				{
-					QuickBarDebugger.Draw();
-				}
-				if (ItemAttachmentDebugger.bShow)
-				{
-					ItemAttachmentDebugger.Draw();
-				}
-				if (GameplayAbilitiesDebugger.bShow)
-				{
-					GameplayAbilitiesDebugger.Draw();
-				}
-				if (GameplayEffectsDebugger.bShow)
-				{
-					GameplayEffectsDebugger.Draw();
-				}
-				if (AttributesDebugger.bShow)
-				{
-					AttributesDebugger.Draw();
-				}
-				if (GlobalTargetingDebugger.bShow)
-				{
-					GlobalTargetingDebugger.Draw();
-				}
-				if (ArcGunDebugger.bShow)
-				{
-					ArcGunDebugger.Draw();
-				}
-				if (BuilderDebugger.bShow)
-				{
-					BuilderDebugger.Draw();
-				}
-				if (CraftDebugger.bShow)
-				{
-					CraftDebugger.Draw();
-				}
-				if (GameplayTagTreeWidget.bShow)
-				{
-					GameplayTagTreeWidget.Draw();
-				}
-				if (MassEntityDebugger.bShow)
-				{
-					MassEntityDebugger.Draw();
-				}
-				if (AIDebugger.bShow)
-				{
-					AIDebugger.Draw();
-				}
-				if (PerceptionDebugger.bShow)
-				{
-					PerceptionDebugger.Draw();
-				}
-				if (PlanFeasibilityDebugger.bShow)
-				{
-					PlanFeasibilityDebugger.Draw();
-				}
-				if (PathDebugger.bShow)
-				{
-					PathDebugger.Draw();
-				}
-				if (VisEntityDebugger.bShow)
-				{
-					VisEntityDebugger.Draw();
-				}
-				if (KnowledgeDebugger.bShow)
-				{
-					KnowledgeDebugger.Draw();
-				}
-				if (AreaDebugger.bShow)
-				{
-					AreaDebugger.Draw();
-				}
+				// ---- Draw all visible debuggers ----
+				DrawIfVisible(DebuggerItems);
+				DrawIfVisible(EquipmentDebugger);
+				DrawIfVisible(QuickBarDebugger);
+				DrawIfVisible(ItemAttachmentDebugger);
+				DrawIfVisible(LootTableDebugger);
+				DrawIfVisible(GameplayAbilitiesDebugger);
+				DrawIfVisible(GameplayEffectsDebugger);
+				DrawIfVisible(AttributesDebugger);
+				DrawIfVisible(GlobalTargetingDebugger);
+				DrawIfVisible(ArcGunDebugger);
+				DrawIfVisible(BuilderDebugger);
+				DrawIfVisible(CraftDebugger);
+				DrawIfVisible(GameplayTagTreeWidget);
+				DrawIfVisible(MassEntityDebugger);
+				DrawIfVisible(AIDebugger);
+				DrawIfVisible(PerceptionDebugger);
+				DrawIfVisible(PlanFeasibilityDebugger);
+				DrawIfVisible(PathDebugger);
+				DrawIfVisible(VisEntityDebugger);
+				DrawIfVisible(KnowledgeDebugger);
+				DrawIfVisible(AreaDebugger);
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();
 				}
 			}
-			// Your ImGui code goes here!
-			//ImGui::ShowDemoWindow();
 		}
 	}
 }

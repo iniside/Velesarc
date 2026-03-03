@@ -125,15 +125,6 @@ void FArcNeedsDebugger::Draw()
 
 	UMassEntitySubsystem* MassSub = PC->GetWorld()->GetSubsystem<UMassEntitySubsystem>();
 	const FMassEntityManager& Manager =  MassSub->GetEntityManager();
-	const FArcNeedsFragment* NeedsFragment = Manager.GetFragmentDataPtr<FArcNeedsFragment>(Entities[SelectedEntityIdx]);
-
-	if (NeedsFragment)
-	{
-		for (const FArcNeedItem& NeedItem : NeedsFragment->Needs)
-		{
-			FString Need = FString::Printf(TEXT("%s Current: %.3f ChangeRate: %.3f"), *NeedItem.NeedName.ToString(), NeedItem.CurrentValue, NeedItem.ChangeRate);
-			ImGui::Text(TCHAR_TO_ANSI(*Need));
-		}
-	}
+	
 	ImGui::End();
 }
