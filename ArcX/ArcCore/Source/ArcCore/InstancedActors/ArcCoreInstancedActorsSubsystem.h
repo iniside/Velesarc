@@ -7,12 +7,9 @@
 #include "InstancedActorsComponent.h"
 #include "InstancedActorsData.h"
 #include "InstancedActorsSubsystem.h"
-#include "MassEntityTraitBase.h"
-#include "SmartObjectTypes.h"
+#include "ArcMass/ArcMassSmartObjectFragments.h"
 #include "Engine/DeveloperSettings.h"
 #include "ArcCoreInstancedActorsSubsystem.generated.h"
-
-class USmartObjectDefinition;
 
 USTRUCT()
 struct FArcActorInstanceTag : public FMassTag
@@ -21,7 +18,7 @@ struct FArcActorInstanceTag : public FMassTag
 };
 
 USTRUCT()
-struct FArcActorInstanceFragment : public FMassFragment 
+struct FArcActorInstanceFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
@@ -45,47 +42,6 @@ struct TMassFragmentTraits<FArcActorInstanceFragment> final
 	{
 		AuthorAcceptsItsNotTriviallyCopyable = true
 	};
-};
-
-USTRUCT()
-struct FArcSmartObjectDefinitionSharedFragment : public FMassConstSharedFragment
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<USmartObjectDefinition> SmartObjectDefinition;
-};
-
-template<>
-struct TMassFragmentTraits<FArcSmartObjectDefinitionSharedFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-USTRUCT()
-struct FArcSmartObjectOwnerFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(VisibleAnywhere)
-	FSmartObjectHandle SmartObjectHandle;
-};
-
-UCLASS(MinimalAPI)
-class UArcMassSmartObjectOwnerTrait : public UMassEntityTraitBase
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere)
-	FArcSmartObjectDefinitionSharedFragment SmartObjectDefinition;
-	
-	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
 UCLASS(Blueprintable, BlueprintType)

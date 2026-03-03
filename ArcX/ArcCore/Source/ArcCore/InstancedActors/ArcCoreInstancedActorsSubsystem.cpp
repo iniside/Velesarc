@@ -7,9 +7,8 @@
 #include "Algo/NoneOf.h"
 #include "EngineUtils.h"
 #include "MassCommonFragments.h"
-#include "MassEntityTemplateRegistry.h"
-#include "MassEntityTraitBase.h"
 #include "SmartObjectSubsystem.h"
+#include "ArcMass/ArcMassSmartObjectFragments.h"
 #include "UObject/UObjectBase.h"
 
 AArcCoreInstancedActorsManager::AArcCoreInstancedActorsManager()
@@ -57,16 +56,6 @@ UInstancedActorsData* AArcCoreInstancedActorsManager::CreateNextInstanceActorDat
 AActor* AArcCoreInstancedActorsManager::ArcFindActor(const FActorInstanceHandle& Handle)
 {
 	return FindActor(Handle);
-}
-
-void UArcMassSmartObjectOwnerTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
-{
-	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(World);
-
-	BuildContext.AddFragment<FArcSmartObjectOwnerFragment>();
-
-	const FConstSharedStruct SmartObjectDefFragment = EntityManager.GetOrCreateConstSharedFragment(SmartObjectDefinition);
-	BuildContext.AddConstSharedFragment(SmartObjectDefFragment);
 }
 
 void UArcCoreInstancedActorsData::ApplyInstanceDelta(FMassEntityManager& EntityManager, const FInstancedActorsDelta& InstanceDelta

@@ -33,4 +33,22 @@ public:
 	{
 		return InstanceHandle;
 	}
+
+	// ── Persistence (Flow 2) ──────────────────────────────────────────
+
+	/** Fragment types to persist beyond engine defaults. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Persistence",
+		meta = (AllowAbstract = "false"))
+	TArray<TObjectPtr<UScriptStruct>> PersistenceAllowedFragments;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Persistence",
+		meta = (AllowAbstract = "false"))
+	TArray<TObjectPtr<UScriptStruct>> PersistenceDisallowedFragments;
+
+	virtual uint32 GetInstancePersistenceDataID() const override;
+	virtual bool ShouldSerializeInstancePersistenceData(const FArchive& Archive,
+		UInstancedActorsData* InstanceData, int64 TimeDelta) const override;
+	virtual void SerializeInstancePersistenceData(
+		FStructuredArchive::FRecord Record, UInstancedActorsData* InstanceData,
+		int64 TimeDelta) const override;
 };

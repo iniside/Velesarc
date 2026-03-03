@@ -135,7 +135,8 @@ public class ArcCore : ModuleRules
 			new string[]
 			{
 				"MassEntity", "AIModule", "MassCommon", "StateTreeModule", "SmartObjectsModule",
-				"GameplayInteractionsModule", "MassActors", "MassSpawner", "MassLOD", "MassRepresentation", "InstancedActors"
+				"GameplayInteractionsModule", "MassActors", "MassSpawner", "MassLOD", "MassRepresentation", "InstancedActors",
+				"ArcMass"
 			});
 
 		PublicDependencyModuleNames.AddRange(

@@ -42,6 +42,7 @@ public class ArcMass : ModuleRules
 				, "InstancedActors"
 				, "AsyncMessageSystem"
 				, "SmartObjectsModule"
+				, "ArcPersistence"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
