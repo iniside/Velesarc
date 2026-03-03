@@ -68,7 +68,8 @@ public class ArcPersistence : ModuleRules
 				"Json",
 				"JsonUtilities",
 				"AssetRegistry",
-				// ... add private dependencies that you statically link with here ...	
+				"DeveloperSettings",
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
 		

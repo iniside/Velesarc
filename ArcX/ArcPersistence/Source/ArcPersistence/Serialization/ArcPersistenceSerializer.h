@@ -25,13 +25,16 @@
 
 class FArcSaveArchive;
 class FArcLoadArchive;
+class UWorld;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Function pointer types for external serializers
 // ─────────────────────────────────────────────────────────────────────────────
 
-using FArcPersistenceSaveFunc = void(*)(const void* Source, FArcSaveArchive& Ar);
-using FArcPersistenceLoadFunc = void(*)(void* Target, FArcLoadArchive& Ar);
+using FArcPersistenceSaveFunc = TFunction<void(const void* Source, FArcSaveArchive& Ar)>;
+using FArcPersistenceLoadFunc = TFunction<void(void* Target, FArcLoadArchive& Ar)>;
+using FArcPersistencePreSaveFunc  = void(*)(const void* Source, UWorld& World);
+using FArcPersistencePostLoadFunc = void(*)(void* Target, UWorld& World);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FArcPersistenceSerializerInfo — runtime descriptor for a registered serializer
@@ -44,6 +47,8 @@ struct ARCPERSISTENCE_API FArcPersistenceSerializerInfo
 	bool bSupportsTombstones = false;
 	FArcPersistenceSaveFunc SaveFunc = nullptr;
 	FArcPersistenceLoadFunc LoadFunc = nullptr;
+	FArcPersistencePreSaveFunc  PreSaveFunc  = nullptr;
+	FArcPersistencePostLoadFunc PostLoadFunc = nullptr;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +65,42 @@ template<typename U>
 struct TArcHasTombstoneSupport<U, std::void_t<decltype(U::bSupportsTombstones)>>
 {
 	static constexpr bool Value = U::bSupportsTombstones;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SFINAE helper — detects static PreSave(const SourceType&, UWorld&)
+// ─────────────────────────────────────────────────────────────────────────────
+
+template<typename U, typename = void>
+struct TArcHasPreSave
+{
+	static constexpr bool Value = false;
+};
+
+template<typename U>
+struct TArcHasPreSave<U, std::void_t<decltype(U::PreSave(
+	std::declval<const typename U::SourceType&>(),
+	std::declval<UWorld&>()))>>
+{
+	static constexpr bool Value = true;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SFINAE helper — detects static PostLoad(SourceType&, UWorld&)
+// ─────────────────────────────────────────────────────────────────────────────
+
+template<typename U, typename = void>
+struct TArcHasPostLoad
+{
+	static constexpr bool Value = false;
+};
+
+template<typename U>
+struct TArcHasPostLoad<U, std::void_t<decltype(U::PostLoad(
+	std::declval<typename U::SourceType&>(),
+	std::declval<UWorld&>()))>>
+{
+	static constexpr bool Value = true;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,6 +124,23 @@ struct TArcPersistenceSerializerTraits
 		{
 			T::Load(*static_cast<typename T::SourceType*>(Target), Ar);
 		};
+
+		if constexpr (TArcHasPreSave<T>::Value)
+		{
+			Info.PreSaveFunc = [](const void* Source, UWorld& World)
+			{
+				T::PreSave(*static_cast<const typename T::SourceType*>(Source), World);
+			};
+		}
+
+		if constexpr (TArcHasPostLoad<T>::Value)
+		{
+			Info.PostLoadFunc = [](void* Target, UWorld& World)
+			{
+				T::PostLoad(*static_cast<typename T::SourceType*>(Target), World);
+			};
+		}
+
 		return Info;
 	}
 };

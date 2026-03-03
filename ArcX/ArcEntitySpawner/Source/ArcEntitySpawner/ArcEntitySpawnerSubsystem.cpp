@@ -2,7 +2,10 @@
 
 #include "ArcEntitySpawnerSubsystem.h"
 
+#include "ArcEntitySpawner.h"
 #include "ArcEntitySpawnerTypes.h"
+#include "ArcMass/Persistence/ArcMassEntityPersistenceSubsystem.h"
+#include "ArcMass/Persistence/ArcMassPersistence.h"
 #include "AsyncGameplayMessageSystem.h"
 #include "AsyncMessageWorldSubsystem.h"
 
@@ -86,5 +89,52 @@ void UArcEntitySpawnerSubsystem::BroadcastSpawnEvent(const FArcEntitiesSpawnedMe
 	{
 		FAsyncMessageId MessageId(Channel);
 		MessageSystem->QueueMessageForBroadcast(MessageId, FConstStructView::Make(Message));
+	}
+}
+
+void UArcEntitySpawnerSubsystem::RegisterActorSpawner(const FGuid& SpawnerGuid, AActor* SpawnerActor)
+{
+	if (SpawnerGuid.IsValid() && SpawnerActor)
+	{
+		SpawnerGuidToActor.Add(SpawnerGuid, SpawnerActor);
+	}
+}
+
+void UArcEntitySpawnerSubsystem::UnregisterActorSpawner(const FGuid& SpawnerGuid)
+{
+	SpawnerGuidToActor.Remove(SpawnerGuid);
+}
+
+AActor* UArcEntitySpawnerSubsystem::GetActorSpawnerByGuid(const FGuid& SpawnerGuid) const
+{
+	if (const TWeakObjectPtr<AActor>* Found = SpawnerGuidToActor.Find(SpawnerGuid))
+	{
+		return Found->Get();
+	}
+	return nullptr;
+}
+
+void UArcEntitySpawnerSubsystem::OnSpawnedEntityDied(const FGuid& SpawnerGuid,
+	const FGuid& EntityPersistenceGuid, FMassEntityHandle EntityHandle)
+{
+	// Remove from persistence
+	if (UArcMassEntityPersistenceSubsystem* PersistSub =
+		GetWorld()->GetSubsystem<UArcMassEntityPersistenceSubsystem>())
+	{
+		PersistSub->ActiveEntities.Remove(EntityPersistenceGuid);
+
+		for (auto& Pair : PersistSub->CellEntityMap)
+		{
+			Pair.Value.Remove(EntityPersistenceGuid);
+		}
+	}
+
+	// Notify actor-mode spawner
+	if (AActor* SpawnerActor = GetActorSpawnerByGuid(SpawnerGuid))
+	{
+		if (AArcEntitySpawner* Spawner = Cast<AArcEntitySpawner>(SpawnerActor))
+		{
+			Spawner->OnSpawnedEntityDied(EntityPersistenceGuid, EntityHandle);
+		}
 	}
 }

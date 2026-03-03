@@ -7,14 +7,14 @@
 #include "MassElement.h"
 #include "Serialization/ArcSaveArchive.h"
 #include "Serialization/ArcLoadArchive.h"
-#include "Serialization/ArcReflectionSerializer.h"
 #include "Serialization/ArcSerializerRegistry.h"
 
 void FArcMassFragmentSerializer::SaveEntityFragments(
 	FMassEntityManager& EntityManager,
 	FMassEntityHandle Entity,
 	const FArcMassPersistenceConfigFragment& Config,
-	FArcSaveArchive& Ar)
+	FArcSaveArchive& Ar,
+	UWorld* World)
 {
 	if (!EntityManager.IsEntityValid(Entity))
 	{
@@ -49,6 +49,12 @@ void FArcMassFragmentSerializer::SaveEntityFragments(
 		{
 			Ar.BeginArrayElement(i);
 			Ar.WriteProperty(FName("_type"), FString(FragmentType->GetPathName()));
+			const FArcPersistenceSerializerInfo* HookInfo =
+				FArcSerializerRegistry::Get().Find(FragmentType);
+			if (HookInfo && HookInfo->PreSaveFunc && World)
+			{
+				HookInfo->PreSaveFunc(FragmentData.GetMemory(), *World);
+			}
 			SaveFragment(FragmentType, FragmentData.GetMemory(), Ar);
 			Ar.EndArrayElement();
 		}
@@ -60,7 +66,8 @@ void FArcMassFragmentSerializer::SaveEntityFragments(
 void FArcMassFragmentSerializer::LoadEntityFragments(
 	FMassEntityManager& EntityManager,
 	FMassEntityHandle Entity,
-	FArcLoadArchive& Ar)
+	FArcLoadArchive& Ar,
+	UWorld* World)
 {
 	if (!EntityManager.IsEntityValid(Entity))
 	{
@@ -94,6 +101,12 @@ void FArcMassFragmentSerializer::LoadEntityFragments(
 				if (FragmentData.IsValid())
 				{
 					LoadFragment(FragmentType, FragmentData.GetMemory(), Ar);
+					const FArcPersistenceSerializerInfo* HookInfo =
+						FArcSerializerRegistry::Get().Find(FragmentType);
+					if (HookInfo && HookInfo->PostLoadFunc && World)
+					{
+						HookInfo->PostLoadFunc(FragmentData.GetMemory(), *World);
+					}
 				}
 			}
 		}
@@ -109,20 +122,11 @@ void FArcMassFragmentSerializer::SaveFragment(
 	const void* Data,
 	FArcSaveArchive& Ar)
 {
-	const FArcPersistenceSerializerInfo* SerializerInfo =
-		FArcSerializerRegistry::Get().Find(FragmentType);
+	const FArcPersistenceSerializerInfo* Info =
+		FArcSerializerRegistry::Get().FindOrDefault(FragmentType);
 
-	if (SerializerInfo)
-	{
-		Ar.WriteProperty(FName("_version"), SerializerInfo->Version);
-		SerializerInfo->SaveFunc(Data, Ar);
-	}
-	else
-	{
-		const uint32 SchemaVersion = FArcReflectionSerializer::ComputeSchemaVersion(FragmentType);
-		Ar.WriteProperty(FName("_version"), SchemaVersion);
-		FArcReflectionSerializer::Save(FragmentType, Data, Ar);
-	}
+	Ar.WriteProperty(FName("_version"), Info->Version);
+	Info->SaveFunc(Data, Ar);
 }
 
 void FArcMassFragmentSerializer::LoadFragment(
@@ -140,20 +144,10 @@ void FArcMassFragmentSerializer::LoadFragment(
 		return;
 	}
 
-	const FArcPersistenceSerializerInfo* SerializerInfo =
-		FArcSerializerRegistry::Get().Find(FragmentType);
+	const FArcPersistenceSerializerInfo* Info =
+		FArcSerializerRegistry::Get().FindOrDefault(FragmentType);
 
-	uint32 ExpectedVersion;
-	if (SerializerInfo)
-	{
-		ExpectedVersion = SerializerInfo->Version;
-	}
-	else
-	{
-		ExpectedVersion = FArcReflectionSerializer::ComputeSchemaVersion(FragmentType);
-	}
-
-	if (SavedVersion != ExpectedVersion)
+	if (SavedVersion != Info->Version)
 	{
 		UE_LOG(LogTemp, Log,
 			TEXT("ArcMassPersistence: Version mismatch for %s — discarding"),
@@ -161,14 +155,7 @@ void FArcMassFragmentSerializer::LoadFragment(
 		return;
 	}
 
-	if (SerializerInfo)
-	{
-		SerializerInfo->LoadFunc(Data, Ar);
-	}
-	else
-	{
-		FArcReflectionSerializer::Load(FragmentType, Data, Ar);
-	}
+	Info->LoadFunc(Data, Ar);
 }
 
 bool FArcMassFragmentSerializer::ShouldSerializeFragment(

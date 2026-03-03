@@ -51,9 +51,19 @@ public:
 	 */
 	const FArcPersistenceSerializerInfo* Find(const UStruct* Type) const;
 
+	/**
+	 * Find a serializer for the given type, falling back to a reflection-based
+	 * default if no custom serializer is registered. Always returns non-null.
+	 * The reflection fallback captures the UStruct* and delegates to FArcReflectionSerializer.
+	 */
+	const FArcPersistenceSerializerInfo* FindOrDefault(const UStruct* Type) const;
+
 	/** Direct lookup by FName without inheritance walking. */
 	const FArcPersistenceSerializerInfo* FindByName(FName StructName) const;
 
 private:
 	TMap<FName, FArcPersistenceSerializerInfo> Serializers;
+
+	/** Transient reflection fallback, rebuilt per FindOrDefault call. */
+	mutable FArcPersistenceSerializerInfo ReflectionFallback;
 };

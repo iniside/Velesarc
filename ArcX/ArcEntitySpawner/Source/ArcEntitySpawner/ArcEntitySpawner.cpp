@@ -16,6 +16,8 @@
 #include "TargetQuery/ArcTQSQueryInstance.h"
 #include "TargetQuery/ArcTQSQuerySubsystem.h"
 #include "TargetQuery/ArcTQSTypes.h"
+#include "ArcEntitySpawnerSubsystem.h"
+#include "ArcMass/Persistence/ArcMassPersistence.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcEntitySpawner)
 
@@ -28,6 +30,7 @@ AArcEntitySpawner::AArcEntitySpawner()
 
 	SetCanBeDamaged(false);
 	bAutoSpawnOnBeginPlay = true;
+	SpawnerGuid = FGuid::NewGuid();
 
 #if UE_BUILD_SHIPPING || UE_BUILD_TEST
 	SetActorHiddenInGame(true);
@@ -43,6 +46,11 @@ void AArcEntitySpawner::BeginPlay()
 	if (NetMode == NM_Client)
 	{
 		return;
+	}
+
+	if (UArcEntitySpawnerSubsystem* SpawnerSub = UWorld::GetSubsystem<UArcEntitySpawnerSubsystem>(GetWorld()))
+	{
+		SpawnerSub->RegisterActorSpawner(SpawnerGuid, this);
 	}
 
 	switch (SpawnMode)
@@ -63,20 +71,48 @@ void AArcEntitySpawner::BeginPlayDefault()
 		return;
 	}
 
+	auto DoSpawnOrReconcile = [this]()
+	{
+		if (bHasSpawned)
+		{
+			// Loaded from save — PostLoad hook already reconciled entity handles.
+			// Just check if we need to fill a gap with fresh spawns.
+			const int32 RestoredCount = SpawnedEntityGuids.Num();
+			const int32 Gap = GetSpawnCount() - RestoredCount;
+
+			if (Gap > 0 && bAutoRespawnOnDeath)
+			{
+				const int32 OriginalCount = Count;
+				Count = Gap;
+				DoSpawning();
+				Count = OriginalCount;
+			}
+			else
+			{
+				OnSpawningFinished.Broadcast();
+			}
+		}
+		else
+		{
+			DoSpawning();
+		}
+	};
+
 	const UMassSimulationSubsystem* SimSubsystem = UWorld::GetSubsystem<UMassSimulationSubsystem>(GetWorld());
 	if (SimSubsystem == nullptr || SimSubsystem->IsSimulationStarted())
 	{
-		DoSpawning();
+		DoSpawnOrReconcile();
 	}
 	else
 	{
-		SimulationStartedHandle = UMassSimulationSubsystem::GetOnSimulationStarted().AddLambda([this](UWorld* InWorld)
-		{
-			if (GetWorld() == InWorld)
+		SimulationStartedHandle = UMassSimulationSubsystem::GetOnSimulationStarted().AddLambda(
+			[this, DoSpawnOrReconcile](UWorld* InWorld)
 			{
-				DoSpawning();
-			}
-		});
+				if (GetWorld() == InWorld)
+				{
+					DoSpawnOrReconcile();
+				}
+			});
 	}
 }
 
@@ -108,6 +144,11 @@ void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	DoDespawning();
+
+	if (UArcEntitySpawnerSubsystem* SpawnerSub = UWorld::GetSubsystem<UArcEntitySpawnerSubsystem>(GetWorld()))
+	{
+		SpawnerSub->UnregisterActorSpawner(SpawnerGuid);
+	}
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -319,8 +360,13 @@ void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations
 			RunInitializers(EntityManager, SpawnedEntities.Entities);
 		}
 
+		// Stamp SpawnerGuid on spawned entities and track their PersistenceGuids
+		TrackSpawnedEntities(EntityManager, SpawnedEntities.Entities);
+
 		// CreationContext released here → deferred commands flush → observers fire
 	}
+
+	bHasSpawned = true;
 
 	OnSpawningFinished.Broadcast();
 }
@@ -395,4 +441,44 @@ void AArcEntitySpawner::GetAllSpawnedEntities(TArray<FMassEntityHandle>& OutEnti
 	{
 		OutEntities.Append(SpawnedEntities.Entities);
 	}
+}
+
+void AArcEntitySpawner::TrackSpawnedEntities(FMassEntityManager& EntityManager,
+	TArrayView<const FMassEntityHandle> Entities)
+{
+	for (const FMassEntityHandle& Entity : Entities)
+	{
+		if (FArcSpawnedByFragment* SpawnedBy =
+			EntityManager.GetFragmentDataPtr<FArcSpawnedByFragment>(Entity))
+		{
+			SpawnedBy->SpawnerGuid = SpawnerGuid;
+		}
+
+		if (const FArcMassPersistenceFragment* PersistFrag =
+			EntityManager.GetFragmentDataPtr<FArcMassPersistenceFragment>(Entity))
+		{
+			if (PersistFrag->PersistenceGuid.IsValid())
+			{
+				SpawnedEntityGuids.Add(PersistFrag->PersistenceGuid);
+			}
+		}
+	}
+}
+
+void AArcEntitySpawner::OnSpawnedEntityDied(const FGuid& EntityGuid, FMassEntityHandle EntityHandle)
+{
+	SpawnedEntityGuids.Remove(EntityGuid);
+
+	for (FSpawnedEntities& Bucket : AllSpawnedEntities)
+	{
+		const int32 Index = Bucket.Entities.Find(EntityHandle);
+		if (Index != INDEX_NONE)
+		{
+			Bucket.Entities.RemoveAtSwap(Index, EAllowShrinking::No);
+			break;
+		}
+	}
+
+	UE_LOG(LogArcEntitySpawner, Log, TEXT("%s: Entity %s died, %d remaining"),
+		*GetName(), *EntityGuid.ToString(), SpawnedEntityGuids.Num());
 }

@@ -24,7 +24,6 @@
 #include "ArcPersistenceSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Serialization/ArcSerializerRegistry.h"
-#include "Serialization/ArcReflectionSerializer.h"
 #include "Serialization/ArcJsonSaveArchive.h"
 #include "Serialization/ArcJsonLoadArchive.h"
 #include "Storage/ArcPersistenceBackend.h"
@@ -224,7 +223,7 @@ void UArcPlayerPersistenceSubsystem::ApplyDataToProvider(
 	}
 
 	const UStruct* Type = Source->GetClass();
-	const FArcPersistenceSerializerInfo* SerializerInfo = FArcSerializerRegistry::Get().Find(Type);
+	const FArcPersistenceSerializerInfo* Info = FArcSerializerRegistry::Get().FindOrDefault(Type);
 
 	FArcJsonLoadArchive LoadAr;
 	if (!LoadAr.InitializeFromData(Data))
@@ -234,33 +233,15 @@ void UArcPlayerPersistenceSubsystem::ApplyDataToProvider(
 		return;
 	}
 
-	// Version check
-	uint32 ExpectedVersion;
-	if (SerializerInfo)
-	{
-		ExpectedVersion = SerializerInfo->Version;
-	}
-	else
-	{
-		ExpectedVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
-	}
-
-	if (LoadAr.GetVersion() != ExpectedVersion)
+	if (LoadAr.GetVersion() != Info->Version)
 	{
 		UE_LOG(LogTemp, Log,
 			TEXT("ArcPlayerPersistence: Version mismatch for domain '%s' (saved: %u, current: %u) — discarding"),
-			*Provider.Domain, LoadAr.GetVersion(), ExpectedVersion);
+			*Provider.Domain, LoadAr.GetVersion(), Info->Version);
 		return;
 	}
 
-	if (SerializerInfo)
-	{
-		SerializerInfo->LoadFunc(Source, LoadAr);
-	}
-	else
-	{
-		FArcReflectionSerializer::Load(Type, Source, LoadAr);
-	}
+	Info->LoadFunc(Source, LoadAr);
 }
 
 void UArcPlayerPersistenceSubsystem::SaveProvider(
@@ -279,21 +260,11 @@ void UArcPlayerPersistenceSubsystem::SaveProvider(
 	}
 
 	const UStruct* Type = Source->GetClass();
-	const FArcPersistenceSerializerInfo* SerializerInfo = FArcSerializerRegistry::Get().Find(Type);
+	const FArcPersistenceSerializerInfo* Info = FArcSerializerRegistry::Get().FindOrDefault(Type);
 
 	FArcJsonSaveArchive SaveAr;
-
-	if (SerializerInfo)
-	{
-		SaveAr.SetVersion(SerializerInfo->Version);
-		SerializerInfo->SaveFunc(Source, SaveAr);
-	}
-	else
-	{
-		uint32 SchemaVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
-		SaveAr.SetVersion(SchemaVersion);
-		FArcReflectionSerializer::Save(Type, Source, SaveAr);
-	}
+	SaveAr.SetVersion(Info->Version);
+	Info->SaveFunc(Source, SaveAr);
 
 	TArray<uint8> Data = SaveAr.Finalize();
 

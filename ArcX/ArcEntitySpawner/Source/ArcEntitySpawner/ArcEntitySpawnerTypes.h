@@ -26,6 +26,10 @@ struct ARCENTITYSPAWNER_API FArcSpawnerFragment : public FMassFragment
 	GENERATED_BODY()
 
 	TArray<FMassEntityHandle> SpawnedEntities;
+
+	/** Persisted stable GUIDs of currently alive spawned entities. */
+	UPROPERTY(SaveGame)
+	TArray<FGuid> SpawnedEntityGuids;
 };
 
 template<>
@@ -44,6 +48,10 @@ struct ARCENTITYSPAWNER_API FArcSpawnedByFragment : public FMassFragment
 	GENERATED_BODY()
 
 	FMassEntityHandle SpawnerEntity;
+
+	/** Stable spawner GUID — persisted, links entity back to its spawner across save/load. */
+	UPROPERTY(SaveGame)
+	FGuid SpawnerGuid;
 };
 
 /** Async message payload broadcast when entities are spawned. */

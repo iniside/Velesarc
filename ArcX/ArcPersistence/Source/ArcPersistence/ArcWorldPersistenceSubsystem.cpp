@@ -24,11 +24,11 @@
 #include "ArcPersistenceSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Serialization/ArcSerializerRegistry.h"
-#include "Serialization/ArcReflectionSerializer.h"
 #include "Serialization/ArcJsonSaveArchive.h"
 #include "Serialization/ArcJsonLoadArchive.h"
 #include "Storage/ArcPersistenceBackend.h"
 
+#include "ArcPersistenceClassRegistry.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 
@@ -166,6 +166,16 @@ void UArcWorldPersistenceSubsystem::RegisterActor(AActor* Actor, const FString& 
 	check(Actor);
 	check(!Key.IsEmpty());
 
+	if (!ArcPersistence::IsClassPersistent(Actor->GetClass()))
+	{
+#if WITH_EDITOR
+		UE_LOG(LogTemp, Warning,
+			TEXT("ArcWorldPersistence: Class %s is not whitelisted for persistence. Skipping registration with key '%s'."),
+			*Actor->GetClass()->GetName(), *Key);
+#endif
+		return;
+	}
+
 	RegisteredObjects.Add(Key, Actor);
 
 	if (const TArray<uint8>* Data = CachedData.Find(Key))
@@ -274,7 +284,7 @@ void UArcWorldPersistenceSubsystem::SaveObject(const FString& StorageKey, UObjec
 	}
 
 	const UStruct* Type = Object->GetClass();
-	const FArcPersistenceSerializerInfo* SerializerInfo = FArcSerializerRegistry::Get().Find(Type);
+	const FArcPersistenceSerializerInfo* Info = FArcSerializerRegistry::Get().FindOrDefault(Type);
 
 	FArcJsonSaveArchive SaveAr;
 
@@ -282,17 +292,21 @@ void UArcWorldPersistenceSubsystem::SaveObject(const FString& StorageKey, UObjec
 	SaveAr.WriteProperty(FName("type"), FString(Type->GetFName().ToString()));
 	SaveAr.EndStruct();
 
-	if (SerializerInfo)
+	if (Info->PreSaveFunc)
 	{
-		SaveAr.SetVersion(SerializerInfo->Version);
-		SerializerInfo->SaveFunc(Object, SaveAr);
+		UWorld* World = nullptr;
+		if (AActor* Actor = Cast<AActor>(Object))
+		{
+			World = Actor->GetWorld();
+		}
+		if (World)
+		{
+			Info->PreSaveFunc(Object, *World);
+		}
 	}
-	else
-	{
-		uint32 SchemaVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
-		SaveAr.SetVersion(SchemaVersion);
-		FArcReflectionSerializer::Save(Type, Object, SaveAr);
-	}
+
+	SaveAr.SetVersion(Info->Version);
+	Info->SaveFunc(Object, SaveAr);
 
 	TArray<uint8> Data = SaveAr.Finalize();
 	Backend->SaveEntry(StorageKey, Data);
@@ -301,7 +315,7 @@ void UArcWorldPersistenceSubsystem::SaveObject(const FString& StorageKey, UObjec
 void UArcWorldPersistenceSubsystem::ApplyDataToObject(const TArray<uint8>& Data, UObject* Object)
 {
 	const UStruct* Type = Object->GetClass();
-	const FArcPersistenceSerializerInfo* SerializerInfo = FArcSerializerRegistry::Get().Find(Type);
+	const FArcPersistenceSerializerInfo* Info = FArcSerializerRegistry::Get().FindOrDefault(Type);
 
 	FArcJsonLoadArchive LoadAr;
 	if (!LoadAr.InitializeFromData(Data))
@@ -310,30 +324,27 @@ void UArcWorldPersistenceSubsystem::ApplyDataToObject(const TArray<uint8>& Data,
 		return;
 	}
 
-	uint32 ExpectedVersion;
-	if (SerializerInfo)
-	{
-		ExpectedVersion = SerializerInfo->Version;
-	}
-	else
-	{
-		ExpectedVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
-	}
-
-	if (LoadAr.GetVersion() != ExpectedVersion)
+	if (LoadAr.GetVersion() != Info->Version)
 	{
 		UE_LOG(LogTemp, Log, TEXT("ArcWorldPersistence: Version mismatch (saved: %u, current: %u) — discarding"),
-			LoadAr.GetVersion(), ExpectedVersion);
+			LoadAr.GetVersion(), Info->Version);
 		return;
 	}
 
-	if (SerializerInfo)
+	Info->LoadFunc(Object, LoadAr);
+
+	// Call PostLoad hook after data is applied
+	if (Info->PostLoadFunc)
 	{
-		SerializerInfo->LoadFunc(Object, LoadAr);
-	}
-	else
-	{
-		FArcReflectionSerializer::Load(Type, Object, LoadAr);
+		UWorld* World = nullptr;
+		if (AActor* Actor = Cast<AActor>(Object))
+		{
+			World = Actor->GetWorld();
+		}
+		if (World)
+		{
+			Info->PostLoadFunc(Object, *World);
+		}
 	}
 }
 

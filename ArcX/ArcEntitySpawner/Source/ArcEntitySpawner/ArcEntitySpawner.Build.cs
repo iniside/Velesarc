@@ -26,6 +26,7 @@ public class ArcEntitySpawner : ModuleRules
 				, "GameplayStateTreeModule"
 				, "ArcAI"
 				, "ArcMass"
+				, "ArcPersistence"
 			}
 		);
 

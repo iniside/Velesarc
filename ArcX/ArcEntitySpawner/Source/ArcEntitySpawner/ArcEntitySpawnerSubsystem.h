@@ -10,6 +10,7 @@
 #include "ArcEntitySpawnerSubsystem.generated.h"
 
 struct FArcEntitiesSpawnedMessage;
+class AArcEntitySpawner;
 
 /**
  * Registry for spawner-to-spawned entity mappings and spawn event broadcasting.
@@ -45,10 +46,30 @@ public:
 	/** Broadcast a spawn event via AsyncMessageSystem on the given channel tag. */
 	void BroadcastSpawnEvent(const FArcEntitiesSpawnedMessage& Message, FGameplayTag Channel);
 
+	// --- GUID-Based Registry (persistence integration) ---
+
+	/** Register a spawner GUID -> actor mapping for actor-mode spawners. */
+	void RegisterActorSpawner(const FGuid& SpawnerGuid, AActor* SpawnerActor);
+
+	/** Unregister an actor-mode spawner. */
+	void UnregisterActorSpawner(const FGuid& SpawnerGuid);
+
+	/** Get the actor spawner for a given GUID. Returns nullptr if not found. */
+	AActor* GetActorSpawnerByGuid(const FGuid& SpawnerGuid) const;
+
+	// --- Death Cleanup ---
+
+	/** Called by death cleanup processor when a spawner-owned entity dies. */
+	void OnSpawnedEntityDied(const FGuid& SpawnerGuid, const FGuid& EntityPersistenceGuid,
+		FMassEntityHandle EntityHandle);
+
 private:
 	/** Spawner entity -> array of spawned entity handles */
 	TMap<FMassEntityHandle, TArray<FMassEntityHandle>> SpawnerToEntities;
 
 	/** Spawned entity -> spawner entity (reverse lookup) */
 	TMap<FMassEntityHandle, FMassEntityHandle> EntityToSpawner;
+
+	/** Spawner GUID -> actor pointer for actor-mode spawners. */
+	TMap<FGuid, TWeakObjectPtr<AActor>> SpawnerGuidToActor;
 };

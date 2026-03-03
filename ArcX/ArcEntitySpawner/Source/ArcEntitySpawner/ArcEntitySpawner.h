@@ -67,6 +67,12 @@ public:
 	/** Get all currently tracked spawned entity handles. */
 	void GetAllSpawnedEntities(TArray<FMassEntityHandle>& OutEntities) const;
 
+	/** Called by UArcEntitySpawnerSubsystem when a spawned entity dies. */
+	void OnSpawnedEntityDied(const FGuid& EntityGuid, FMassEntityHandle EntityHandle);
+
+	/** Get this spawner's stable GUID. */
+	const FGuid& GetSpawnerGuid() const { return SpawnerGuid; }
+
 	UFUNCTION(BlueprintCallable, Category = "Mass|Spawn")
 	int32 GetCount() const { return Count; }
 
@@ -106,6 +112,9 @@ protected:
 	/** Start Default mode: run TQS query and spawn. */
 	void BeginPlayDefault();
 
+	/** Stamp SpawnerGuid and track PersistenceGuid on freshly spawned entities. */
+	void TrackSpawnedEntities(FMassEntityManager& EntityManager, TArrayView<const FMassEntityHandle> Entities);
+
 protected:
 	// --- Shared properties (both modes) ---
 
@@ -144,6 +153,24 @@ protected:
 	/** Mass agent component for StateTree mode. Configure its EntityConfig with StateTree + Transform traits. */
 	UPROPERTY(VisibleAnywhere, Category = "Mass|Spawn|StateTree", meta = (EditCondition = "SpawnMode == EArcEntitySpawnMode::StateTree", EditConditionHides))
 	TObjectPtr<UMassAgentComponent> AgentComponent;
+
+	// --- Persistence properties ---
+
+	/** Stable GUID for this spawner. Generated once, persisted across save/load. */
+	UPROPERTY(SaveGame)
+	FGuid SpawnerGuid;
+
+	/** Stable GUIDs of all currently alive spawned entities. */
+	UPROPERTY(SaveGame)
+	TArray<FGuid> SpawnedEntityGuids;
+
+	/** Whether this spawner has performed its initial spawn. */
+	UPROPERTY(SaveGame)
+	bool bHasSpawned = false;
+
+	/** Whether to automatically spawn fresh replacements when entities die. */
+	UPROPERTY(EditAnywhere, Category = "Mass|Spawn|Persistence")
+	bool bAutoRespawnOnDeath = true;
 
 private:
 	struct FSpawnedEntities

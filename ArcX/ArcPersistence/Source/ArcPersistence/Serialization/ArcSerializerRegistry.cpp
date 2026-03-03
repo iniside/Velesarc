@@ -20,6 +20,7 @@
  */
 
 #include "Serialization/ArcSerializerRegistry.h"
+#include "Serialization/ArcReflectionSerializer.h"
 #include "UObject/Class.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +60,34 @@ const FArcPersistenceSerializerInfo* FArcSerializerRegistry::Find(const UStruct*
 		}
 	}
 	return nullptr;
+}
+
+const FArcPersistenceSerializerInfo* FArcSerializerRegistry::FindOrDefault(const UStruct* Type) const
+{
+	// Custom serializer takes priority
+	if (const FArcPersistenceSerializerInfo* Custom = Find(Type))
+	{
+		return Custom;
+	}
+
+	if (!Type)
+	{
+		return nullptr;
+	}
+
+	// Rebuild the transient reflection fallback for this type
+	ReflectionFallback = {};
+	ReflectionFallback.StructName = Type->GetFName();
+	ReflectionFallback.SaveFunc = [Type](const void* Source, FArcSaveArchive& Ar)
+	{
+		FArcReflectionSerializer::Save(Type, Source, Ar);
+	};
+	ReflectionFallback.LoadFunc = [Type](void* Target, FArcLoadArchive& Ar)
+	{
+		FArcReflectionSerializer::Load(Type, Target, Ar);
+	};
+
+	return &ReflectionFallback;
 }
 
 const FArcPersistenceSerializerInfo* FArcSerializerRegistry::FindByName(FName StructName) const

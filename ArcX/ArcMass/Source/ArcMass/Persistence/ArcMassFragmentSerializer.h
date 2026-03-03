@@ -10,6 +10,7 @@ class FArcSaveArchive;
 class FArcLoadArchive;
 struct FMassEntityManager;
 struct FArcMassPersistenceConfigFragment;
+class UWorld;
 
 /**
  * Serializes/deserializes a set of Mass entity fragments to/from
@@ -30,7 +31,8 @@ public:
 		FMassEntityManager& EntityManager,
 		FMassEntityHandle Entity,
 		const FArcMassPersistenceConfigFragment& Config,
-		FArcSaveArchive& Ar);
+		FArcSaveArchive& Ar,
+		UWorld* World = nullptr);
 
 	/**
 	 * Deserialize fragments from the archive and apply to an entity.
@@ -39,7 +41,8 @@ public:
 	static void LoadEntityFragments(
 		FMassEntityManager& EntityManager,
 		FMassEntityHandle Entity,
-		FArcLoadArchive& Ar);
+		FArcLoadArchive& Ar,
+		UWorld* World = nullptr);
 
 	/** Serialize a single UScriptStruct fragment. */
 	static void SaveFragment(

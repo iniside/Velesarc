@@ -10,6 +10,7 @@
 #include "MassSignalSubsystem.h"
 #include "MassSpawnerSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
+#include "ArcMass/Persistence/ArcMassPersistence.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcSpawnEntitiesTask)
 
@@ -65,6 +66,14 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 	const int32 NumLocations = Locations.Num();
 	const int32 SpawnCount = InstanceData.Count;
 
+	// Read spawner's PersistenceGuid for stamping on spawned entities
+	FGuid SpawnerPersistenceGuid;
+	if (const FArcMassPersistenceFragment* SpawnerPersistFrag =
+		EntityManager.GetFragmentDataPtr<FArcMassPersistenceFragment>(SpawnerEntity))
+	{
+		SpawnerPersistenceGuid = SpawnerPersistFrag->PersistenceGuid;
+	}
+
 	// Spawn entities — hold CreationContext alive for fragment modification
 	InstanceData.SpawnedEntities.Reset();
 	TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
@@ -90,6 +99,7 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 			if (FArcSpawnedByFragment* SpawnedByFrag = EntityManager.GetFragmentDataPtr<FArcSpawnedByFragment>(SpawnedEntity))
 			{
 				SpawnedByFrag->SpawnerEntity = SpawnerEntity;
+				SpawnedByFrag->SpawnerGuid = SpawnerPersistenceGuid;
 			}
 		}
 	}
@@ -101,6 +111,19 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 	if (FArcSpawnerFragment* SpawnerFrag = EntityManager.GetFragmentDataPtr<FArcSpawnerFragment>(SpawnerEntity))
 	{
 		SpawnerFrag->SpawnedEntities.Append(InstanceData.SpawnedEntities);
+
+		// Track spawned entity GUIDs for persistence
+		for (const FMassEntityHandle& Spawned : InstanceData.SpawnedEntities)
+		{
+			if (const FArcMassPersistenceFragment* PersistFrag =
+				EntityManager.GetFragmentDataPtr<FArcMassPersistenceFragment>(Spawned))
+			{
+				if (PersistFrag->PersistenceGuid.IsValid())
+				{
+					SpawnerFrag->SpawnedEntityGuids.Add(PersistFrag->PersistenceGuid);
+				}
+			}
+		}
 	}
 
 	// Register with subsystem
