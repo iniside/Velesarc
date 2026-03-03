@@ -114,13 +114,13 @@ void FArcMassFragmentSerializer::SaveFragment(
 
 	if (SerializerInfo)
 	{
-		Ar.SetVersion(SerializerInfo->Version);
+		Ar.WriteProperty(FName("_version"), SerializerInfo->Version);
 		SerializerInfo->SaveFunc(Data, Ar);
 	}
 	else
 	{
-		uint32 SchemaVersion = FArcReflectionSerializer::ComputeSchemaVersion(FragmentType);
-		Ar.SetVersion(SchemaVersion);
+		const uint32 SchemaVersion = FArcReflectionSerializer::ComputeSchemaVersion(FragmentType);
+		Ar.WriteProperty(FName("_version"), SchemaVersion);
 		FArcReflectionSerializer::Save(FragmentType, Data, Ar);
 	}
 }
@@ -130,6 +130,16 @@ void FArcMassFragmentSerializer::LoadFragment(
 	void* Data,
 	FArcLoadArchive& Ar)
 {
+	// Read the per-fragment version stored in the fragment's array element scope
+	uint32 SavedVersion = 0;
+	if (!Ar.ReadProperty(FName("_version"), SavedVersion))
+	{
+		UE_LOG(LogTemp, Log,
+			TEXT("ArcMassPersistence: No version found for %s — discarding"),
+			*FragmentType->GetName());
+		return;
+	}
+
 	const FArcPersistenceSerializerInfo* SerializerInfo =
 		FArcSerializerRegistry::Get().Find(FragmentType);
 
@@ -143,7 +153,7 @@ void FArcMassFragmentSerializer::LoadFragment(
 		ExpectedVersion = FArcReflectionSerializer::ComputeSchemaVersion(FragmentType);
 	}
 
-	if (Ar.GetVersion() != ExpectedVersion)
+	if (SavedVersion != ExpectedVersion)
 	{
 		UE_LOG(LogTemp, Log,
 			TEXT("ArcMassPersistence: Version mismatch for %s — discarding"),
