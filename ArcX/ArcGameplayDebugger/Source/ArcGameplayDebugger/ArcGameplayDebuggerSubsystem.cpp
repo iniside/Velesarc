@@ -180,6 +180,8 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ToggleDebuggerMenuItem("Quick Bar", QuickBarDebugger);
 					ToggleDebuggerMenuItem("Item Attachment", ItemAttachmentDebugger);
 					ToggleDebuggerMenuItem("Loot Tables", LootTableDebugger);
+					ImGui::Separator();
+					ToggleDebuggerMenuItem("Character Persistence", CharacterPersistenceDebugger);
 					ImGui::EndMenu();
 				}
 
@@ -239,6 +241,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				DrawIfVisible(QuickBarDebugger);
 				DrawIfVisible(ItemAttachmentDebugger);
 				DrawIfVisible(LootTableDebugger);
+				DrawIfVisible(CharacterPersistenceDebugger);
 				DrawIfVisible(GameplayAbilitiesDebugger);
 				DrawIfVisible(GameplayEffectsDebugger);
 				DrawIfVisible(AttributesDebugger);

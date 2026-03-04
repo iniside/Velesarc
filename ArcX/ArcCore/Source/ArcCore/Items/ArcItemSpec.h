@@ -343,6 +343,7 @@ public:
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = Other.InstanceData;
 		ItemDefinition = Other.ItemDefinition;
+		InitialInstanceData = Other.InitialInstanceData;
 	}
 	FArcItemSpec(FArcItemSpec&& Other)
 	{
@@ -352,6 +353,7 @@ public:
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = MoveTemp(Other.InstanceData);
 		ItemDefinition = MoveTemp(Other.ItemDefinition);
+		InitialInstanceData = MoveTemp(Other.InitialInstanceData);
 		Other.ItemDefinition = nullptr;
 	}
 
@@ -395,7 +397,8 @@ public:
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = Other.InstanceData;
 		ItemDefinition = Other.ItemDefinition;
-		
+		InitialInstanceData = Other.InitialInstanceData;
+
 		return *this;
 	}
 
@@ -407,8 +410,9 @@ public:
 		ItemDefinitionId = Other.ItemDefinitionId;
 		InstanceData = MoveTemp(Other.InstanceData);
 		ItemDefinition = MoveTemp(Other.ItemDefinition);
+		InitialInstanceData = MoveTemp(Other.InitialInstanceData);
 		Other.ItemDefinition = nullptr;
-		
+
 		return *this;
 	}
 

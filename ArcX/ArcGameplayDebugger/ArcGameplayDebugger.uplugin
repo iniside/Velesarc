@@ -63,6 +63,10 @@
 		{
 			"Name": "ArcKnowledge",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcPersistence",
+			"Enabled": true
 		}
 	]
 }

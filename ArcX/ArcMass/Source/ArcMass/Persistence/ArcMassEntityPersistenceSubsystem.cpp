@@ -10,6 +10,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Storage/ArcPersistenceBackend.h"
+#include "Storage/ArcPersistenceKeyConvention.h"
 
 bool UArcMassEntityPersistenceSubsystem::ShouldCreateSubsystem(
 	UObject* Outer) const
@@ -54,9 +55,9 @@ void UArcMassEntityPersistenceSubsystem::Configure(
 FString UArcMassEntityPersistenceSubsystem::MakeCellStorageKey(
 	const FIntVector& Cell) const
 {
-	return FString::Printf(TEXT("world/%s/cells/%s"),
-		*WorldId.ToString(),
+	const FString SubKey = FString::Printf(TEXT("cells/%s"),
 		*UE::ArcMass::Persistence::CellToKey(Cell));
+	return UE::ArcPersistence::MakeWorldKey(WorldId.ToString(), SubKey);
 }
 
 // ── Cell Operations ──────────────────────────────────────────────────────

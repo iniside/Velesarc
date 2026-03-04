@@ -52,7 +52,8 @@ public class ArcGameplayDebugger : ModuleRules
 				"ArcKnowledge",
 				"ArcArea",
 				"SmartObjectsModule",
-				"StructUtils"
+				"StructUtils",
+				"ArcPersistence"
 
 				// ... add other public dependencies that you statically link with here ...
 			}

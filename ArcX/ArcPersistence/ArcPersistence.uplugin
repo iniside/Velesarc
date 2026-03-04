@@ -35,6 +35,10 @@
 		{
 			"Name": "ArcJson",
 			"Enabled": true
+		},
+		{
+			"Name": "SQLiteCore",
+			"Enabled": true
 		}
 	]
 }

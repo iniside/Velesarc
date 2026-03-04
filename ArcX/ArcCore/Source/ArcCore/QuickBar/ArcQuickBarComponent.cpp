@@ -73,8 +73,6 @@ void FArcSelectedQuickBarSlot::PreReplicatedRemove(const struct FArcSelectedQuic
 		const FArcQuickBar* QuickBarStruct = &InArraySerializer.QuickBar->QuickBars[BarIdx];
 		const FArcQuickBarSlot* QuickSlot = &InArraySerializer.QuickBar->QuickBars[BarIdx].Slots[OldSlotIdx];
 
-		UArcItemsStoreComponent* ItemsStoreComponent = InArraySerializer.QuickBar->GetItemStoreComponent(QuickBarStruct->BarId);
-		
 		const FArcItemData* OldData = InArraySerializer.QuickBar->FindQuickSlotItem(BarId, QuickSlotId);
 	
 		if (OldData == nullptr)
@@ -198,8 +196,15 @@ const FArcQuickBarSlot* UArcQuickBarComponent::FindQuickSlot(const FGameplayTag&
 	, const FGameplayTag& QuickBarSlotId) const
 {
 	const int32 BarIdx = QuickBars.IndexOfByKey(BarId);
+	if (BarIdx == INDEX_NONE)
+	{
+		return nullptr;
+	}
 	const int32 QuickSlotIdx = QuickBars[BarIdx].Slots.IndexOfByKey(QuickBarSlotId);
-
+	if (QuickSlotIdx == INDEX_NONE)
+	{
+		return nullptr;
+	}
 	return &QuickBars[BarIdx].Slots[QuickSlotIdx];
 }
 
@@ -371,24 +376,16 @@ void UArcQuickBarComponent::AddAndActivateQuickSlot(const FGameplayTag& BarId, c
 	const FArcQuickBar* QuickBar = &QuickBars[QuickBarIdx];
 
 	ReplicatedSelectedSlots.AddQuickSlot(BarId, QuickSlotId, ItemId, ItemData->GetSlotId());
-	
-	UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
 
 	if (QuickBar->QuickSlotsMode == EArcQuickSlotsMode::AutoActivateOnly || QukcBarSlot.bAutoSelect)
 	{
 		HandleSlotActivated(BarId, QuickSlotId, ItemId);	
 	}
 		
-	QuickBarSubsystem->BroadcastActorOnQuickSlotActivated(this->GetOwner()
-		, this
-		, BarId
-		, QuickSlotId
-		, ItemData->GetItemId());
-	
-	QuickBarSubsystem->OnQuickSlotActivated.Broadcast(this, BarId, QuickSlotId, ItemData->GetItemId());
+	BroadcastSlotActivated(BarId, QuickSlotId, ItemData->GetItemId());
 
 	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
-	
+
 	if (const FArcItemFragment_QuickBarItems* Fragment = ArcItemsHelper::FindFragment<FArcItemFragment_QuickBarItems>(ItemData))
 	{
 		int32 ChildBarIdx = QuickBars.IndexOfByPredicate([QuickSlotId](const FArcQuickBar& QuickBar)
@@ -406,11 +403,18 @@ void UArcQuickBarComponent::AddAndActivateQuickSlot(const FGameplayTag& BarId, c
 			int32 Idx = 0;
 			for (const FArcQuickBarItem& Item : Fragment->ItemsToAdd)
 			{
+				if (Idx >= ChildQuickBar->Slots.Num())
+				{
+					UE_LOG(LogArcQuickBar, Warning, TEXT("AddAndActivateQuickSlot: More items (%d) than child bar slots (%d)"), Fragment->ItemsToAdd.Num(), ChildQuickBar->Slots.Num());
+					break;
+				}
+
 				FArcItemSpec Spec = FArcItemSpec::NewItem(Item.Item, 1, 1);
 				FArcItemId Id = ItemsStoreComponent->AddItem(Spec, FArcItemId());
 				ItemsStoreComponent->AddItemToSlot(Id, FArcCoreGameplayTags::Get().Item_SlotActive);
-				
+
 				AddAndActivateQuickSlot(ChildQuickBar->BarId, ChildQuickBar->Slots[Idx].QuickBarSlotId, Id);
+				Idx++;
 			}
 		}
 	}
@@ -423,14 +427,8 @@ void UArcQuickBarComponent::RemoveQuickSlot(const FGameplayTag& BarId, const FGa
 	FArcItemId ItemId = ReplicatedSelectedSlots.FindItemId(BarId, QuickSlotId);
 
 	HandleSlotDeactivated(BarId, QuickSlotId);
-	
-	QuickBarSubsystem->BroadcastActorOnQuickSlotDeactivated(GetOwner()
-		, this
-		, BarId
-		, QuickSlotId
-		, ItemId);
 
-	QuickBarSubsystem->OnQuickSlotDeactivated.Broadcast(this, BarId, QuickSlotId, ItemId);
+	BroadcastSlotDeactivated(BarId, QuickSlotId, ItemId);
 
 	QuickBarSubsystem->BroadcastActorOnQuickSlotRemoved(this->GetOwner()
 				, this
@@ -447,75 +445,16 @@ void UArcQuickBarComponent::RemoveQuickSlot(const FGameplayTag& BarId, const FGa
 
 bool UArcQuickBarComponent::HandleSlotActivated(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId, const FArcItemId& ItemId)
 {
-	UArcCoreAbilitySystemComponent* ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
-	
-	int32 QuickBarIdx = QuickBars.IndexOfByKey(BarId);
-	int32 QuickSlotIdx = QuickBars[QuickBarIdx].Slots.IndexOfByKey(QuickSlotId);
-
-	if (QuickBarIdx == INDEX_NONE || QuickSlotIdx == INDEX_NONE)
-	{
-		UE_LOG(LogArcQuickBar, Warning, TEXT("HandleSlotActivated: QuickBar or QuickSlot not found for BarId: %s, QuickSlotId: %s"), *BarId.ToString(), *QuickSlotId.ToString());
-		return false;
-	}
-	
-	FArcQuickBarSlot& QukcBarSlot = QuickBars[QuickBarIdx].Slots[QuickSlotIdx];
-	const FArcQuickBar* QuickBar = &QuickBars[QuickBarIdx];
-
-	UArcItemsStoreComponent* ItemsStoreComponent = GetItemStoreComponent(BarId);
-	const FArcItemData* ItemData = ItemsStoreComponent->GetItemPtr(ItemId);
-	
-	for (const FInstancedStruct& IS : QukcBarSlot.SelectedHandlers)
-	{
-		IS.GetPtr<FArcQuickSlotHandler>()->OnSlotSelected(ArcASC
-			, this
-			, ItemData
-			, QuickBar
-			, &QukcBarSlot);
-	}
-
-	InternalTryBindInput(QuickBarIdx, QuickSlotIdx, ArcASC);
-	ReplicatedSelectedSlots.ActivateQuickSlot(BarId, QuickSlotId);
-
-	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
-	return true;
+	int32 BarIdx = QuickBars.IndexOfByKey(BarId);
+	int32 SlotIdx = (BarIdx != INDEX_NONE) ? QuickBars[BarIdx].Slots.IndexOfByKey(QuickSlotId) : INDEX_NONE;
+	return ExecuteSlotActivation(BarIdx, SlotIdx, ItemId, true);
 }
 
 void UArcQuickBarComponent::HandleSlotDeactivated(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId)
-{	
-	UArcCoreAbilitySystemComponent* ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
-	
+{
 	int32 BarIdx = QuickBars.IndexOfByKey(BarId);
-	int32 OldSlotIdx = QuickBars[BarIdx].Slots.IndexOfByKey(QuickSlotId);
-	
-	if (OldSlotIdx != INDEX_NONE)
-	{
-		const FArcQuickBar* QuickBar = &QuickBars[BarIdx];
-		const FArcQuickBarSlot* QuickSlot = &QuickBars[BarIdx].Slots[OldSlotIdx];
-
-		UArcItemsStoreComponent* ItemsStoreComponent = GetItemStoreComponent(QuickBar->BarId);
-		
-		const FArcItemData* OldData = FindQuickSlotItem(BarId, QuickSlotId);
-	
-		if (OldData == nullptr)
-		{
-			return;
-		}
-		
-		for (const FInstancedStruct& IS : QuickBars[BarIdx].Slots[OldSlotIdx].SelectedHandlers)
-		{
-			IS.GetPtr<FArcQuickSlotHandler>()->OnSlotDeselected(ArcASC
-				, this
-				, OldData
-				, QuickBar
-				, QuickSlot);
-		}	
-	
-		InternalTryUnbindInput(BarIdx, OldSlotIdx, ArcASC);
-
-		ReplicatedSelectedSlots.DeactivateQuickSlot(BarId, QuickSlotId);
-
-		MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
-	}
+	int32 SlotIdx = (BarIdx != INDEX_NONE) ? QuickBars[BarIdx].Slots.IndexOfByKey(QuickSlotId) : INDEX_NONE;
+	ExecuteSlotDeactivation(BarIdx, SlotIdx, true);
 }
 
 FGameplayTag UArcQuickBarComponent::FindQuickSlotForItem(const FArcItemId& InItemId)
@@ -546,40 +485,25 @@ FGameplayTag UArcQuickBarComponent::FindSubQuickBarForSlot(const FGameplayTag& I
 
 void UArcQuickBarComponent::ActivateQuickBar(const FGameplayTag& InBarId)
 {
-	UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
-	UArcItemsStoreComponent* ItemsStoreComponent = GetItemStoreComponent(InBarId);
-	
 	int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
 	
 	for (const FArcQuickBarSlot& QuickSlot : QuickBars[BarIdx].Slots)
 	{
 		FArcItemId ItemId = GetItemId(InBarId, QuickSlot.QuickBarSlotId);
 		HandleSlotActivated(InBarId, QuickSlot.QuickBarSlotId, ItemId);
-		QuickBarSubsystem->BroadcastActorOnQuickSlotActivated(this->GetOwner()
-			, this
-			, InBarId
-			, QuickSlot.QuickBarSlotId
-			, ItemId);	
+		BroadcastSlotActivated(InBarId, QuickSlot.QuickBarSlotId, ItemId);
 	}
 }
 
 void UArcQuickBarComponent::DeactivateQuickBar(const FGameplayTag& InBarId)
 {
-	UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
-	UArcItemsStoreComponent* ItemsStoreComponent = GetItemStoreComponent(InBarId);
-	
 	int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
 	
 	for (const FArcQuickBarSlot& QuickSlot : QuickBars[BarIdx].Slots)
 	{
 		FArcItemId ItemId = GetItemId(InBarId, QuickSlot.QuickBarSlotId);
 		HandleSlotDeactivated(InBarId, QuickSlot.QuickBarSlotId);
-		
-		QuickBarSubsystem->BroadcastActorOnQuickSlotDeactivated(GetOwner()
-			, this
-			, InBarId
-			, QuickSlot.QuickBarSlotId
-			, ItemId);
+		BroadcastSlotDeactivated(InBarId, QuickSlot.QuickBarSlotId, ItemId);
 	}
 }
 
@@ -587,156 +511,69 @@ FGameplayTag UArcQuickBarComponent::CycleSlotForward(const FGameplayTag& BarId
 													 , const FGameplayTag& CurrentSlotId
 													 , TFunction<bool(const FArcItemData*)> SlotValidCondition)
 {
-	int32 BarIdx = INDEX_NONE;
-	if (InternalCanCycle(BarId, BarIdx) == false)
-	{
-		return FGameplayTag::EmptyTag;
-	}
-	
-	int32 StartSlotIdx = QuickBars[BarIdx].Slots.IndexOfByKey(CurrentSlotId);
-
-	int32 OldSlotIdx = StartSlotIdx;
-
-	const int32 SlotNum = QuickBars[BarIdx].Slots.Num();
-
-	UArcCoreAbilitySystemComponent* ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
-
-	bool bFoundNewSlot = false;
-	int32 NewSlotIdx = StartSlotIdx;
-	
-	UE_LOG(LogArcQuickBar
-		, Log
-		, TEXT("CycleSlotForward Start [SlotIdx %d] [NewSlotIdx %d]")
-		, StartSlotIdx
-		, NewSlotIdx);
-
-	bFoundNewSlot = InternalCycleSlot(StartSlotIdx
-									  , BarIdx
-									  , 1
-									  , SlotValidCondition
-									  , NewSlotIdx);
-	
-	if (bFoundNewSlot)
-	{
-		return InternalSelectCycledSlot(BarId
-			, BarIdx
-			, OldSlotIdx
-			, ArcASC
-			, NewSlotIdx);
-	}
-	return FGameplayTag::EmptyTag;
+	return CycleSlotInternal(BarId, CurrentSlotId, 1, MoveTemp(SlotValidCondition));
 }
 
 FGameplayTag UArcQuickBarComponent::CycleSlotBackward(const FGameplayTag& BarId
 													  , const FGameplayTag& CurrentSlotId
 													  , TFunction<bool(const FArcItemData*)> SlotValidCondition)
 {
+	return CycleSlotInternal(BarId, CurrentSlotId, -1, MoveTemp(SlotValidCondition));
+}
+
+FGameplayTag UArcQuickBarComponent::CycleSlotInternal(const FGameplayTag& BarId
+													  , const FGameplayTag& CurrentSlotId
+													  , int32 Direction
+													  , TFunction<bool(const FArcItemData*)> SlotValidCondition)
+{
 	int32 BarIdx = INDEX_NONE;
-	if (InternalCanCycle(BarId, BarIdx) == false)
+	if (!InternalCanCycle(BarId, BarIdx))
 	{
 		return FGameplayTag::EmptyTag;
 	}
-	
+
 	int32 StartSlotIdx = QuickBars[BarIdx].Slots.IndexOfByKey(CurrentSlotId);
-
 	int32 OldSlotIdx = StartSlotIdx;
-
-	const int32 SlotNum = QuickBars[BarIdx].Slots.Num();
-
-	UArcCoreAbilitySystemComponent* ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
-
-	bool bFoundNewSlot = false;
 	int32 NewSlotIdx = StartSlotIdx;
-	
+
 	UE_LOG(LogArcQuickBar
 		, Log
-		, TEXT("CycleSlotForward Start [SlotIdx %d] [NewSlotIdx %d]")
-		, StartSlotIdx
-		, NewSlotIdx);
+		, TEXT("CycleSlot Direction=%d [SlotIdx %d]")
+		, Direction
+		, StartSlotIdx);
 
-	bFoundNewSlot = InternalCycleSlot(StartSlotIdx
-									  , BarIdx
-									  , -1
-									  , SlotValidCondition
-									  , NewSlotIdx);
-	
-	if (bFoundNewSlot)
+	if (InternalCycleSlot(StartSlotIdx, BarIdx, Direction, SlotValidCondition, NewSlotIdx))
 	{
-		return InternalSelectCycledSlot(BarId
-			, BarIdx
-			, OldSlotIdx
-			, ArcASC
-			, NewSlotIdx);
+		return InternalSelectCycledSlot(BarId, BarIdx, OldSlotIdx, NewSlotIdx);
 	}
 	return FGameplayTag::EmptyTag;
 }
 
 void UArcQuickBarComponent::DeselectCurrentQuickSlot(FGameplayTag InBarId)
 {
-	FGameplayTag SelectedQuickSlot = GetFirstActiveSlot(InBarId);
-	if (!SelectedQuickSlot.IsValid())
+	FGameplayTag SelectedSlot = GetFirstActiveSlot(InBarId);
+	if (!SelectedSlot.IsValid())
 	{
 		return;
 	}
-	
+
 	int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
-	int32 OldSlotIdx = QuickBars[BarIdx].Slots.IndexOfByKey(SelectedQuickSlot);
-	
-	const FArcQuickBar* QuickBar = &QuickBars[BarIdx];
-	
-	TSubclassOf<UArcCoreAbilitySystemComponent> C = UArcCoreAbilitySystemComponent::StaticClass(); 
-	UArcCoreAbilitySystemComponent* ArcASC = Arcx::Utils::GetComponent(GetOwner(), C);
-	
+	int32 OldSlotIdx = QuickBars[BarIdx].Slots.IndexOfByKey(SelectedSlot);
+
+	FArcItemId ItemId = ReplicatedSelectedSlots.FindItemId(InBarId, SelectedSlot);
 	FArcCycledSlotRPCData RPCData;
-	/**
-	 * If OldSlotIdx is valid it means there was something on old slot, so we let it clean up after itself.
-	 */
-	if (OldSlotIdx != INDEX_NONE)
-	{	
-		const FArcItemData* OldData = FindQuickSlotItem(InBarId, SelectedQuickSlot);
-		const FArcQuickBarSlot* QuickSlot = &QuickBars[BarIdx].Slots[OldSlotIdx];
-		
-		if (OldData)
-		{
-			for (const FInstancedStruct& IS : QuickBars[BarIdx].Slots[OldSlotIdx].SelectedHandlers)
-			{
-				IS.GetPtr<FArcQuickSlotHandler>()->OnSlotDeselected(ArcASC
-					, this
-					, OldData
-					, QuickBar
-					, QuickSlot);
-			}
-			
-			RPCData.DeactivateBarIdx = BarIdx;
-			RPCData.DeactivateSlotIdx = OldSlotIdx;
 
-		}
+	if (ExecuteSlotDeactivation(BarIdx, OldSlotIdx, true))
+	{
+		RPCData.DeactivateBarIdx = BarIdx;
+		RPCData.DeactivateSlotIdx = OldSlotIdx;
 
-		if (SelectedQuickSlot.IsValid())
-		{
-			InternalTryUnbindInput(BarIdx, OldSlotIdx, ArcASC);
-			
-			ReplicatedSelectedSlots.DeactivateQuickSlot(InBarId, SelectedQuickSlot);
-		}
+		BroadcastSlotDeactivated(InBarId, SelectedSlot, ItemId);
 
-		UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
-		QuickBarSubsystem->BroadcastActorOnQuickSlotDeactivated(GetOwner()
-				, this
-				, QuickBars[BarIdx].BarId
-				, SelectedQuickSlot
-				, OldData->GetItemId());
-		
-		QuickBarSubsystem->OnQuickSlotDeactivated.Broadcast(this
-				, QuickBars[BarIdx].BarId
-				, SelectedQuickSlot
-				, OldData->GetItemId());
-				
-		QuickBarSubsystem->OnQuickSlotDeselected.Broadcast(this
-				, QuickBars[BarIdx].BarId
-				, SelectedQuickSlot
-				, OldData->GetItemId());
+		UArcQuickBarSubsystem* Sub = UArcQuickBarSubsystem::Get(this);
+		Sub->OnQuickSlotDeselected.Broadcast(this, InBarId, SelectedSlot, ItemId);
 	}
-	
+
 	if (GetOwnerRole() < ENetRole::ROLE_Authority)
 	{
 		ServerHandleCycledSlot(RPCData);
@@ -793,122 +630,56 @@ bool UArcQuickBarComponent::InternalCanCycle(const FGameplayTag& BarId
 FGameplayTag UArcQuickBarComponent::InternalSelectCycledSlot(const FGameplayTag& BarId
 	, const int32 BarIdx
 	, const int32 OldSlotIdx
-	, UArcCoreAbilitySystemComponent* ArcASC
 	, const int32 NewSlotIdx)
 {
 	if (GetOwnerRole() < ENetRole::ROLE_Authority)
 	{
-		LockSlotCycle = 1;	
+		LockSlotCycle = 1;
 	}
-	
-	UArcItemsStoreComponent* SlotComp = Arcx::Utils::GetComponent(GetOwner(), GetItemsStoreClass(BarIdx));
-	
-	/**
-	 * Data we will send to server, with changed being made on client, to redo them.
-	 */
+
 	FArcCycledSlotRPCData RPCData;
 	FGameplayTag NewQuickSlotId;
-	FGameplayTag OldSlotTag;
-	if (OldSlotIdx != INDEX_NONE)
-	{
-		OldSlotTag = QuickBars[BarIdx].Slots[OldSlotIdx].QuickBarSlotId;
-	}
-	if (NewSlotIdx != INDEX_NONE)
-	{
-		NewQuickSlotId = QuickBars[BarIdx].Slots[NewSlotIdx].QuickBarSlotId;
-	}
 
-	const FArcQuickBar* QuickBar = &QuickBars[BarIdx];
-	/**
-	 * If OldSlotIdx is valid it means there was something on old slot, so we let it clean up after itself.
-	 */
+	// Deactivate old slot
 	if (OldSlotIdx != INDEX_NONE)
-	{	
-		const FArcItemData* OldData = FindQuickSlotItem(BarId, OldSlotTag);
-		const FArcQuickBarSlot* QuickSlot = &QuickBars[BarIdx].Slots[OldSlotIdx];
-		
-		if (OldData)
+	{
+		FGameplayTag OldSlotTag = QuickBars[BarIdx].Slots[OldSlotIdx].QuickBarSlotId;
+		FArcItemId OldItemId = ReplicatedSelectedSlots.FindItemId(BarId, OldSlotTag);
+
+		if (ExecuteSlotDeactivation(BarIdx, OldSlotIdx, true))
 		{
-			for (const FInstancedStruct& IS : QuickBars[BarIdx].Slots[OldSlotIdx].SelectedHandlers)
-			{
-				IS.GetPtr<FArcQuickSlotHandler>()->OnSlotDeselected(ArcASC
-					, this
-					, OldData
-					, QuickBar
-					, QuickSlot);
-			}
-			
 			RPCData.DeactivateBarIdx = BarIdx;
 			RPCData.DeactivateSlotIdx = OldSlotIdx;
-
+			BroadcastSlotDeactivated(BarId, OldSlotTag, OldItemId);
 		}
-
-		if (OldSlotTag.IsValid())
-		{
-			InternalTryUnbindInput(BarIdx, OldSlotIdx, ArcASC);
-			
-			ReplicatedSelectedSlots.DeactivateQuickSlot(BarId, OldSlotTag);
-		}
-
-		UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
-		QuickBarSubsystem->BroadcastActorOnQuickSlotDeactivated(GetOwner()
-				, this
-				, QuickBars[BarIdx].BarId
-				, NewQuickSlotId
-				, OldData->GetItemId());
-		
-		QuickBarSubsystem->OnQuickSlotDeactivated.Broadcast(this
-				, QuickBars[BarIdx].BarId
-				, NewQuickSlotId
-				, OldData->GetItemId());
 	}
 
-	/**
-	 * We found new valid slot, let it call all handlers and bind inputs.
-	 */
+	// Activate new slot
 	if (NewSlotIdx != INDEX_NONE)
 	{
 		NewQuickSlotId = QuickBars[BarIdx].Slots[NewSlotIdx].QuickBarSlotId;
+		FArcItemId NewItemId = ReplicatedSelectedSlots.FindItemId(BarId, NewQuickSlotId);
 
-		const FArcItemData* NewData = FindQuickSlotItem(BarId, NewQuickSlotId);
-		const FArcQuickBarSlot* QuickSlot = &QuickBars[BarIdx].Slots[NewSlotIdx];
-
-		ReplicatedSelectedSlots.ActivateQuickSlot(QuickBars[BarIdx].BarId, NewQuickSlotId);
-		
-		for (const FInstancedStruct& IS : QuickBars[BarIdx].Slots[NewSlotIdx].SelectedHandlers)
+		if (ExecuteSlotActivation(BarIdx, NewSlotIdx, NewItemId, true))
 		{
-			IS.GetPtr<FArcQuickSlotHandler>()->OnSlotSelected(ArcASC
-				, this
-				, NewData
-				, QuickBar
-				, QuickSlot);
+			RPCData.ActivateBarIdx = BarIdx;
+			RPCData.ActivateSlotIdx = NewSlotIdx;
+
+			// Cycle-specific broadcasts (not part of core activate)
+			const FArcItemData* NewData = FindQuickSlotItem(BarId, NewQuickSlotId);
+			if (NewData)
+			{
+				UArcQuickBarSubsystem* Sub = UArcQuickBarSubsystem::Get(this);
+				Sub->BroadcastActorOnQuickSlotCycled(GetOwner(), this, BarId, NewQuickSlotId, NewData->GetItemId());
+				Sub->OnQuickSlotSelected.Broadcast(this, BarId, NewQuickSlotId, NewData->GetItemId());
+			}
 		}
-
-		RPCData.ActivateBarIdx = BarIdx;
-		RPCData.DeactivateSlotIdx = NewSlotIdx;
-
-		InternalTryBindInput(BarIdx, NewSlotIdx, ArcASC);
-
-		UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
-		QuickBarSubsystem->BroadcastActorOnQuickSlotCycled(GetOwner()
-				, this
-				, QuickBars[BarIdx].BarId
-				, NewQuickSlotId
-				, NewData->GetItemId());
-		
-		QuickBarSubsystem->OnQuickSlotSelected.Broadcast(this
-				, QuickBars[BarIdx].BarId
-				, NewQuickSlotId
-				, NewData->GetItemId());
 	}
 
-
-	
 	if (GetOwnerRole() < ENetRole::ROLE_Authority)
 	{
 		ServerHandleCycledSlot(RPCData);
 	}
-	
 	return NewQuickSlotId;
 }
 
@@ -925,8 +696,7 @@ bool UArcQuickBarComponent::InternalCycleSlot(const int32 StartSlotIdx
 	
 	do
 	{
-		int32 Test = (NewSlotIdx + Direction);
-		NewSlotIdx = Test % SlotNum;
+		NewSlotIdx = ((NewSlotIdx + Direction) % SlotNum + SlotNum) % SlotNum;
 
 		/**
 		 * We can set slot on bar to be explictly ignored during cycling.
@@ -992,90 +762,28 @@ bool UArcQuickBarComponent::InternalCycleSlot(const int32 StartSlotIdx
 
 void UArcQuickBarComponent::ServerHandleCycledSlot_Implementation(const FArcCycledSlotRPCData& RPCData)
 {
-	UArcCoreAbilitySystemComponent* ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
-
-	UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
-	
+	// Deactivate old slot on server (no input unbinding — input is client-only)
 	if (RPCData.DeactivateBarIdx >= 0 && RPCData.DeactivateSlotIdx >= 0)
 	{
 		FGameplayTag OldBarId = QuickBars[RPCData.DeactivateBarIdx].BarId;
-		FGameplayTag OldQuickSlotId = QuickBars[RPCData.DeactivateBarIdx].Slots[RPCData.DeactivateSlotIdx].QuickBarSlotId;
-		
-		const FArcItemData* NewData = FindQuickSlotItem(OldBarId, OldQuickSlotId);
+		FGameplayTag OldSlotId = QuickBars[RPCData.DeactivateBarIdx].Slots[RPCData.DeactivateSlotIdx].QuickBarSlotId;
+		FArcItemId OldItemId = ReplicatedSelectedSlots.FindItemId(OldBarId, OldSlotId);
 
-		if (NewData)
-		{
-			const FArcQuickBar* QuickBar = &QuickBars[RPCData.DeactivateBarIdx];
-			const FArcQuickBarSlot* QuickSlot = &QuickBars[RPCData.DeactivateBarIdx].Slots[RPCData.DeactivateSlotIdx];
-			
-			for (const FInstancedStruct& IS : QuickBars[RPCData.DeactivateBarIdx].Slots[RPCData.DeactivateSlotIdx].
-				 SelectedHandlers)
-			{
-				IS.GetPtr<FArcQuickSlotHandler>()->OnSlotDeselected(ArcASC
-					, this
-					, NewData
-					, QuickBar
-					, QuickSlot);
-			}
-		}
-
-		QuickBarSubsystem->BroadcastActorOnQuickSlotDeactivated(GetOwner()
-				, this
-				, OldBarId
-				, OldQuickSlotId
-				, NewData->GetItemId());
-		
-		QuickBarSubsystem->OnQuickSlotDeactivated.Broadcast(this
-				, OldBarId
-				, OldQuickSlotId
-				, NewData->GetItemId());
-		
-		ReplicatedSelectedSlots.DeactivateQuickSlot(OldBarId, OldQuickSlotId);
+		ExecuteSlotDeactivation(RPCData.DeactivateBarIdx, RPCData.DeactivateSlotIdx, false);
+		BroadcastSlotDeactivated(OldBarId, OldSlotId, OldItemId);
 	}
 
+	// Activate new slot on server (no input binding — input is client-only)
 	if (RPCData.ActivateBarIdx >= 0 && RPCData.ActivateSlotIdx >= 0)
 	{
 		FGameplayTag BarId = QuickBars[RPCData.ActivateBarIdx].BarId;
-		FGameplayTag QuickSlotId = QuickBars[RPCData.ActivateBarIdx].Slots[RPCData.ActivateSlotIdx].QuickBarSlotId;
-		
-		const FArcItemData* NewData = FindQuickSlotItem(BarId, QuickSlotId);
-			
-		if (NewData)
-		{
-			const FArcQuickBar* QuickBar = &QuickBars[RPCData.ActivateBarIdx];
-			const FArcQuickBarSlot* QuickSlot = &QuickBars[RPCData.ActivateBarIdx].Slots[RPCData.ActivateSlotIdx];
+		FGameplayTag SlotId = QuickBars[RPCData.ActivateBarIdx].Slots[RPCData.ActivateSlotIdx].QuickBarSlotId;
+		FArcItemId ItemId = ReplicatedSelectedSlots.FindItemId(BarId, SlotId);
 
-			ReplicatedSelectedSlots.ActivateQuickSlot(BarId, QuickSlotId);
-			
-			for (const FInstancedStruct& IS : QuickBars[RPCData.ActivateBarIdx].Slots[RPCData.ActivateSlotIdx].
-				 SelectedHandlers)
-			{
-				IS.GetPtr<FArcQuickSlotHandler>()->OnSlotSelected(ArcASC
-					, this
-					, NewData
-					, QuickBar
-					, QuickSlot);
-			}
-
-			QuickBarSubsystem->BroadcastActorOnQuickSlotActivated(GetOwner()
-					, this
-					, BarId
-					, QuickSlotId
-					, NewData->GetItemId());
-		
-			QuickBarSubsystem->OnQuickSlotActivated.Broadcast(this
-					, BarId
-					, QuickSlotId
-					, NewData->GetItemId());
-			
-		}
-		
+		ExecuteSlotActivation(RPCData.ActivateBarIdx, RPCData.ActivateSlotIdx, ItemId, false);
+		BroadcastSlotActivated(BarId, SlotId, ItemId);
 	}
-	
-	InternalTryUnbindInput(RPCData.DeactivateBarIdx, RPCData.DeactivateSlotIdx, ArcASC);
-	InternalTryBindInput(RPCData.ActivateBarIdx, RPCData.ActivateSlotIdx, ArcASC);
-	
-	// We want to send it regardless. May consider using replicated variable instead.
+
 	ClientConfirmSlotCycled();
 }
 
@@ -1089,6 +797,92 @@ void UArcQuickBarComponent::ClientConfirmSlotCycled_Implementation()
 	
 	UArcQuickBarSubsystem* QuickBarSubsystem = UArcQuickBarSubsystem::Get(this);
 	QuickBarSubsystem->BroadcastActorOnSlotCycleConfirmed(this->GetOwner(), this);	
+}
+
+bool UArcQuickBarComponent::ExecuteSlotActivation(int32 BarIdx, int32 SlotIdx
+	, const FArcItemId& ItemId, bool bBindInput)
+{
+	if (BarIdx == INDEX_NONE || SlotIdx == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const FArcQuickBar* QB = &QuickBars[BarIdx];
+	const FArcQuickBarSlot* QS = &QB->Slots[SlotIdx];
+
+	UArcItemsStoreComponent* Store = GetItemStoreComponent(QB->BarId);
+	const FArcItemData* Data = Store ? Store->GetItemPtr(ItemId) : nullptr;
+	if (!Data)
+	{
+		return false;
+	}
+
+	UArcCoreAbilitySystemComponent* ASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+
+	for (const FInstancedStruct& IS : QS->SelectedHandlers)
+	{
+		IS.GetPtr<FArcQuickSlotHandler>()->OnSlotSelected(ASC, this, Data, QB, QS);
+	}
+
+	if (bBindInput)
+	{
+		InternalTryBindInput(BarIdx, SlotIdx, ASC);
+	}
+
+	ReplicatedSelectedSlots.ActivateQuickSlot(QB->BarId, QS->QuickBarSlotId);
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
+	return true;
+}
+
+bool UArcQuickBarComponent::ExecuteSlotDeactivation(int32 BarIdx, int32 SlotIdx, bool bUnbindInput)
+{
+	if (BarIdx == INDEX_NONE || SlotIdx == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const FArcQuickBar* QB = &QuickBars[BarIdx];
+	const FArcQuickBarSlot* QS = &QB->Slots[SlotIdx];
+
+	const FArcItemData* Data = FindQuickSlotItem(QB->BarId, QS->QuickBarSlotId);
+	if (!Data)
+	{
+		return false;
+	}
+
+	UArcCoreAbilitySystemComponent* ASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
+
+	for (const FInstancedStruct& IS : QS->SelectedHandlers)
+	{
+		IS.GetPtr<FArcQuickSlotHandler>()->OnSlotDeselected(ASC, this, Data, QB, QS);
+	}
+
+	if (bUnbindInput)
+	{
+		InternalTryUnbindInput(BarIdx, SlotIdx, ASC);
+	}
+
+	ReplicatedSelectedSlots.DeactivateQuickSlot(QB->BarId, QS->QuickBarSlotId);
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedSelectedSlots, this);
+	return true;
+}
+
+void UArcQuickBarComponent::BroadcastSlotActivated(const FGameplayTag& BarId
+	, const FGameplayTag& QuickSlotId
+	, const FArcItemId& ItemId)
+{
+	UArcQuickBarSubsystem* Sub = UArcQuickBarSubsystem::Get(this);
+	Sub->BroadcastActorOnQuickSlotActivated(GetOwner(), this, BarId, QuickSlotId, ItemId);
+	Sub->OnQuickSlotActivated.Broadcast(this, BarId, QuickSlotId, ItemId);
+}
+
+void UArcQuickBarComponent::BroadcastSlotDeactivated(const FGameplayTag& BarId
+	, const FGameplayTag& QuickSlotId
+	, const FArcItemId& ItemId)
+{
+	UArcQuickBarSubsystem* Sub = UArcQuickBarSubsystem::Get(this);
+	Sub->BroadcastActorOnQuickSlotDeactivated(GetOwner(), this, BarId, QuickSlotId, ItemId);
+	Sub->OnQuickSlotDeactivated.Broadcast(this, BarId, QuickSlotId, ItemId);
 }
 
 bool UArcQuickBarComponent::InternalTryBindInput(const int32 BarIdx
@@ -1130,13 +924,13 @@ bool UArcQuickBarComponent::InternalTryUnbindInput(const int32 BarIdx
 		const FArcItemData* Data = FindQuickSlotItem(BarId, QuickSlotId);
 		if (Data)
 		{
-			TArray<const FArcItemData*> Extensions = SlotComp->GetItemsAttachedTo(Data->GetOwnerId());
+			TArray<const FArcItemData*> Extensions = SlotComp->GetItemsAttachedTo(Data->GetItemId());
 			Extensions.Add(Data);
 			return Handling->OnRemovedFromQuickBar(InArcASC, Extensions);
 		}
 	}
 
-	return false;
+	return true;
 }
 
 void UArcQuickBarComponent::ActivateBar(const FGameplayTag& InBarId)
@@ -1204,16 +998,12 @@ bool UArcQuickBarComponent::AreAllBarSlotsValid(const int32 BarIdx) const
 
 void UArcQuickBarComponent::ActivateSlotsOnBarInternal(const FGameplayTag& InBarId)
 {
-	int32 QuickBarIdx = QuickBars.IndexOfByKey(InBarId);
-	
-	for (int32 QuickSlotIdx = 0; QuickSlotIdx < QuickBars[QuickBarIdx].Slots.Num(); QuickSlotIdx++)
+	int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
+
+	for (int32 i = 0; i < QuickBars[BarIdx].Slots.Num(); i++)
 	{
-		FArcQuickBarSlot& QBS = QuickBars[QuickBarIdx].Slots[QuickSlotIdx];
-		
-		ReplicatedSelectedSlots.ActivateQuickSlot(InBarId, QBS.QuickBarSlotId);
-		FArcItemId ItemId = ReplicatedSelectedSlots.FindItemId(InBarId, QBS.QuickBarSlotId);
-		
-		HandleSlotActivated(InBarId, QBS.QuickBarSlotId, ItemId);
+		FArcItemId ItemId = ReplicatedSelectedSlots.FindItemId(InBarId, QuickBars[BarIdx].Slots[i].QuickBarSlotId);
+		ExecuteSlotActivation(BarIdx, i, ItemId, true);
 	}
 }
 
@@ -1234,35 +1024,32 @@ void UArcQuickBarComponent::DeactivateBar(const FGameplayTag& InBarId)
 		LockQuickBar = 1;
 	}
 	
-	for (int8 Idx = 0; Idx < QuickBars.Num(); Idx++)
+	int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
+	if (BarIdx == INDEX_NONE)
 	{
-		if (QuickBars[Idx].BarId == InBarId)
+		UE_LOG(LogArcQuickBar, Warning, TEXT("UArcQuickBarComponent::DeactivateBar BarId %s not found"), *InBarId.ToString());
+		return;
+	}
+
+	ServerDeselectBar(BarIdx);
+	for (FInstancedStruct& IS : QuickBars[BarIdx].QuickBarSelectedActions)
+	{
+		if (FArcQuickBarSelectedAction* QBA = IS.GetMutablePtr<FArcQuickBarSelectedAction>())
 		{
-			ServerDeselectBar(Idx);
-			for (FInstancedStruct& IS : QuickBars[Idx].QuickBarSelectedActions)
-			{
-				if (FArcQuickBarSelectedAction* QBA = IS.GetMutablePtr<FArcQuickBarSelectedAction>())
-				{
-					QBA->QuickBarActivated(this, &QuickBars[Idx]);
-				}
-			}
-			
-			DeactivateSlotsOnBarInternal(InBarId);
-			break;
+			QBA->QuickBarDeactivated(this, &QuickBars[BarIdx]);
 		}
 	}
+
+	DeactivateSlotsOnBarInternal(InBarId);
 }
 
 void UArcQuickBarComponent::DeactivateSlotsOnBarInternal(const FGameplayTag& InBarId)
 {
-	int32 QuickBarIdx = QuickBars.IndexOfByKey(InBarId);
-	
-	for (int32 QuickSlotIdx = 0; QuickSlotIdx < QuickBars[QuickBarIdx].Slots.Num(); QuickSlotIdx++)
-	{
-		FArcQuickBarSlot& QBS = QuickBars[QuickBarIdx].Slots[QuickSlotIdx];
+	int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
 
-		ReplicatedSelectedSlots.DeactivateQuickSlot(InBarId, QBS.QuickBarSlotId);
-		HandleSlotDeactivated(InBarId, QBS.QuickBarSlotId);
+	for (int32 i = 0; i < QuickBars[BarIdx].Slots.Num(); i++)
+	{
+		ExecuteSlotDeactivation(BarIdx, i, true);
 	}
 }
 
@@ -1272,8 +1059,6 @@ FGameplayTag UArcQuickBarComponent::CycleBarForward(const FGameplayTag& InOldBar
 	int32 NewBarIdx = StartBarIdx;
 	
 	const int32 BarsNum = QuickBars.Num();
-
-	UArcCoreAbilitySystemComponent* ArcASC = GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 
 	bool bFoundNewSlot = false;
 
@@ -1339,10 +1124,10 @@ void UArcQuickBarComponent::ServerDeselectBar_Implementation(int8 BarIdx)
 	{
 		if (FArcQuickBarSelectedAction* QBA = IS.GetMutablePtr<FArcQuickBarSelectedAction>())
 		{
-			QBA->QuickBarActivated(this, &QuickBars[BarIdx]);
+			QBA->QuickBarDeactivated(this, &QuickBars[BarIdx]);
 		}
 	}
-	
+
 	DeactivateSlotsOnBarInternal(QuickBars[BarIdx].BarId);
 }
 

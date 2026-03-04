@@ -21,6 +21,16 @@ struct ARCPERSISTENCE_API FArcPersistenceClassEntry
 	bool bIncludeChildren = true;
 };
 
+UENUM()
+enum class EArcPersistenceBackendType : uint8
+{
+	/** Filesystem-backed — one .json file per key under Saved/ArcPersistence/. */
+	JsonFile,
+
+	/** SQLite database — all data in a single .db file under Saved/ArcPersistence/. */
+	SQLite
+};
+
 /**
  * Settings for ArcPersistence. Configurable in Project Settings > Plugins > Arc Persistence.
  * Also editable via DefaultArcPersistence.ini.
@@ -36,6 +46,10 @@ public:
 	/** Classes allowed to participate in world actor persistence. */
 	UPROPERTY(EditAnywhere, config, Category = "Persistence|Classes")
 	TArray<FArcPersistenceClassEntry> AllowedClasses;
+
+	/** Which storage backend to use. Changing this requires a restart. */
+	UPROPERTY(EditAnywhere, config, Category = "Persistence|Storage")
+	EArcPersistenceBackendType BackendType = EArcPersistenceBackendType::JsonFile;
 
 	virtual FName GetCategoryName() const override { return FName("Plugins"); }
 };

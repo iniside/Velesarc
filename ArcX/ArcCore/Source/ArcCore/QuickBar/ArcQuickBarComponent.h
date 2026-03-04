@@ -41,7 +41,6 @@ class UArcCoreAbilitySystemComponent;
 class UArcItemsStoreComponent;
 
 struct FArcItemData;
-struct FArcItemData;
 struct FGameplayAbilitySpec;
 struct FArcItemDataHandle;
 
@@ -55,7 +54,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogArcQuickBar
  * It contains several configuration options.
  *
  * If @link FArcQuickBarSlot::ItemSlotId is set, this slot will automatically listen for
- * item added to this slot, and if added it will be automatically added to @link UArcQuickBarComponent::ItemSlotMapping
+ * item added to this slot, and if added it will be automatically added to @link UArcQuickBarComponent::ReplicatedSelectedSlots
  * but nothing else will happen.
  *
  * If @link FArcQuickBarSlot::InputBind have @link FArcQuickBarInputBindHandling::ItemSlotId set
@@ -68,7 +67,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogArcQuickBar
  * If you want to handle it manually later (like when QuickSlot or QuickBar changes its state), only assign
  * @link FArcQuickBarSlot::ItemSlotId.
  *
- * If you want to handle everything manually (like allow Player to drag items to QuickBar), leve both empty.
+ * If you want to handle everything manually (like allow Player to drag items to QuickBar), leave both empty.
  */
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcQuickBarSlot
@@ -77,8 +76,8 @@ struct ARCCORE_API FArcQuickBarSlot
 
 public:
 	/**
-	 * If true it will be automatically set in selected/deselected state when item is added to Slot which is mapped
-	 * to this QuickSlot.
+	 * If true the slot will be automatically activated when an item is added to the mapped ItemSlot.
+	 * For Cyclable bars, only one slot should have this set to true.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Arc Core")
 	bool bAutoSelect = true;
@@ -86,7 +85,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core", meta = (Categories = "QuickSlot"))
 	FGameplayTag QuickBarSlotId;
 
-	/*&
+	/**
 	 * Items slot to which item should be added when added to this QuickSlot.
 	 * It can be different than ItemSlotId.
 	 */
@@ -96,7 +95,7 @@ public:
 	/**
 	 * Optional. This is the ItemSlot (as on ItemSlotComponent), to which this quick bar slot maps.
 	 * If set it will register delegate and when item is added to slot and replicated it will be added to
-	 * @link UArcQuickBarComponent::ItemSlotMapping
+	 * @link UArcQuickBarComponent::ReplicatedSelectedSlots
 	 * If this slot is bound to delegates it will also call
 	 * @link FArcQuickBarInputBindHandling::OnAddedToQuickBar
 	 * @link FArcQuickBarInputBindHandling::OnRemovedFromQuickBar
@@ -113,7 +112,7 @@ public:
 	FGameplayTagContainer ItemRequiredTags;
 	
 	/**
-	 * 
+	 * Polymorphic input bind handling. Determines how inputs are bound/unbound when this slot is activated.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Arc Core", meta = (BaseStruct = "/Script/ArcCore.ArcQuickBarInputBindHandling"))
 	FInstancedStruct InputBind;
@@ -192,8 +191,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arc Core")
 	FGameplayTagContainer ItemRequiredTags;
 	
-	/*
-	 * Actions called when ActivateBar or CycleBarForward is executed.
+	/**
+	 * Actions called when bar is activated or deactivated.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Arc Core", meta = (BaseStruct = "/Script/ArcCore.ArcQuickBarSelectedAction", ShowTreeView, ExcludeBaseStruct))
 	TArray<FInstancedStruct> QuickBarSelectedActions;
@@ -355,12 +354,6 @@ protected:
 	UPROPERTY(Replicated)
 	FArcSelectedQuickBarSlotList ReplicatedSelectedSlots;
 	
-	/**
-	 * Hold delegates, while we wait for newly slotted item to be replicated back to clients.
-	 * Right now only used @link AddItemToBarTrySelectOrRegisterDelegate
-	 */
-	TMap<FArcItemId, FDelegateHandle> WaitItemInitializeDelegateHandles;
-
 	// TODO:: Should implement some client aurthoritative cycling. Just need a way to detect when client is "done" cycling to not send every update.
 	/** Indicates if cycling slot is locked ie. waiting for server to confirm changes. */
 	int8 LockSlotCycle = 0;
@@ -415,10 +408,10 @@ public:
 		return LockQuickBar > 0;
 	}
 	/**
-	 * @brief Tries To find SlotData by looking @ItemSlotMapping to find item Id, and then at assigned ItemSlotComponent.
-	 * @param BarId Bar For SlotData
-	 * @param QuickBarSlotId Slot On Bar 
-	 * @return SlotData from bound ItemSlotComponent
+	 * @brief Looks up the item ID from ReplicatedSelectedSlots, then retrieves the FArcItemData from the bound ItemsStoreComponent.
+	 * @param BarId Bar to look up
+	 * @param QuickBarSlotId Slot on bar
+	 * @return FArcItemData pointer from ItemsStoreComponent, or nullptr if not found
 	 */
 	const FArcItemData* FindQuickSlotItem(const FGameplayTag& BarId, const FGameplayTag& QuickBarSlotId) const;
 
@@ -458,18 +451,17 @@ protected:
 	virtual void BeginPlay() override;
 
 	/**
-	 * We override it to register delegates from @link UArcItemSlotComponent
-	 * which will listen to Items added/removed from slot.
-	 *
-	 * In simplest case we will add item to @link ItemSlotMapping when it is added to slot.
-	 * In More complex case we will also call @link FArcQuickBarInputBindHandling
-	 *
-	 * QuickSlots which will react to these delegates will not call @link FArcQuickBarSlot::SelectedHandlers
-	 * I may change it later though. Right now these handlers are only called when Player decides
-	 * to perform some action on this component.
+	 * Sets the back-pointer on ReplicatedSelectedSlots so the fast array serializer
+	 * can access the owning component.
 	 */
 	virtual void OnRegister() override;
 
+	/**
+	 * On authority, registers delegates from @link UArcItemsSubsystem
+	 * which listen to items added/removed from mapped ItemSlots.
+	 * When bCanAutoSelectOnItemAddedToSlot is set, item additions trigger
+	 * @link HandleOnItemAddedToSlot and removals trigger @link HandleOnItemRemovedFromSlot.
+	 */
 	virtual void InitializeComponent() override;
 	
 public:
@@ -543,12 +535,41 @@ private:
 	FGameplayTag InternalSelectCycledSlot(const FGameplayTag& BarId
 										  , const int32 BarIdx
 										  , const int32 OldSlotIdx
-										  , UArcCoreAbilitySystemComponent* ArcASC
 										  , const int32 NewSlotIdx);
 	
 
 	/**
-	 * Helper function which loops over slots, and selects first one which meet conditions.
+	 * Core slot activation: runs SelectedHandlers.OnSlotSelected, optionally binds input,
+	 * activates in ReplicatedSelectedSlots, marks dirty. Does NOT broadcast.
+	 * @param bBindInput true for client/listen-server, false for dedicated server RPC
+	 * @return true if item data was found and activation succeeded
+	 */
+	bool ExecuteSlotActivation(int32 BarIdx, int32 SlotIdx, const FArcItemId& ItemId, bool bBindInput);
+
+	/**
+	 * Core slot deactivation: runs SelectedHandlers.OnSlotDeselected, optionally unbinds input,
+	 * deactivates in ReplicatedSelectedSlots, marks dirty. Does NOT broadcast.
+	 * @param bUnbindInput true for client/listen-server, false for dedicated server RPC
+	 * @return true if item data was found and deactivation succeeded
+	 */
+	bool ExecuteSlotDeactivation(int32 BarIdx, int32 SlotIdx, bool bUnbindInput);
+
+	/** Broadcasts OnQuickSlotActivated via channel delegate and dynamic multicast. */
+	void BroadcastSlotActivated(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId, const FArcItemId& ItemId);
+
+	/** Broadcasts OnQuickSlotDeactivated via channel delegate and dynamic multicast. */
+	void BroadcastSlotDeactivated(const FGameplayTag& BarId, const FGameplayTag& QuickSlotId, const FArcItemId& ItemId);
+
+	/**
+	 * Shared implementation for CycleSlotForward / CycleSlotBackward.
+	 */
+	FGameplayTag CycleSlotInternal(const FGameplayTag& BarId
+		, const FGameplayTag& CurrentSlotId
+		, int32 Direction
+		, TFunction<bool(const FArcItemData*)> SlotValidCondition);
+
+	/**
+	 * Helper function which loops over slots, and returns the index of the first one which meets conditions.
 	 */
 	bool InternalCycleSlot(const int32 StartSlotIdx
 						  , const int32 BarIdx
@@ -638,16 +659,8 @@ public:
 	
 private:
 	/**
-	 * These functions should be used along with ItemSlot Component.
-	 * If you have item, which is not currently slotted and it not on QuickSlot
-	 * you can use @link AddItemToBarTrySelectOrRegisterDelegate To listen for item,
-	 * till it get added to slot, and replicated back to clients.
-	 *
-	 * If item is already on ItemSlot, this function, will call the events (InputBinding and SlotSelected handlers).
-	 * TODO: Might want to make calling those events optional (just indicate that something is on bar).
-	 *
-	 * When you want to remove item (either only from QuickSlot or QuickSlot and ItemSlot), you can use
-	 * @link RemoveItemFromBar which will also correctly call all events. 
+	 * Use @link AddAndActivateQuickSlot to add an item to a QuickSlot (calls SelectedHandlers and broadcasts events).
+	 * Use @link RemoveQuickSlot to remove an item from a QuickSlot (calls deselection handlers and broadcasts events).
 	 */
 public:
 	bool IsItemOnQuickSlot(const FGameplayTag& InBarId, const FGameplayTag& InQuickSlotId) const
@@ -670,6 +683,10 @@ public:
 	TSubclassOf<UArcItemsStoreComponent> GetItemsStoreClass(const FGameplayTag& InBarId) const
 	{
 		int32 BarIdx = QuickBars.IndexOfByKey(InBarId);
+		if (BarIdx == INDEX_NONE)
+		{
+			return nullptr;
+		}
 		return QuickBars[BarIdx].ItemsStoreClass;
 	}
 
@@ -690,16 +707,15 @@ protected:
 
 	/**
 	 * Called when bar has been deactivated on client.
-	 * It will perform Binding Inputs on slots and calling Handlers; 
+	 * It will perform unbinding inputs on slots and calling deactivation handlers.
 	 */
 	UFUNCTION(Server, Reliable)
 	void ServerDeselectBar(int8 BarIdx);
 
 	/**
-	 * Called when new item is added to slot. It is only bound on non Dedicated Servers
-	 * Will call Input binds and replicate back to server to also tell it to bind inputs,
-	 *
-	 * Does not call any handlers on slot.
+	 * Called on authority when an item is added to an ItemSlot mapped to this QuickSlot.
+	 * Calls @link AddAndActivateQuickSlot which runs SelectedHandlers, binds inputs,
+	 * and broadcasts events.
 	 *
 	 * It is only called when @link FArcQuickBarSlot::ItemSlotId is set.
 	 */
@@ -709,11 +725,10 @@ protected:
 									 , FGameplayTag InQuickSlotId);
 
 	/**
-	 * Called when item is removed from slot. It is only bound on non Dedicated Servers
-	 * Will unbind any inputs and replicate back to server to also tell it to unbind as well.,
+	 * Called on authority when an item is removed from an ItemSlot mapped to this QuickSlot.
+	 * Calls @link RemoveQuickSlot which runs SelectedHandlers, unbinds inputs,
+	 * and broadcasts events.
 	 *
-	 * Does not call any handlers on slot.
-	 * 
 	 * It is only called when @link FArcQuickBarSlot::ItemSlotId is set.
 	 */
 	virtual void HandleOnItemRemovedFromSlot(UArcItemsStoreComponent* InItemsStore

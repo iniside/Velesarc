@@ -25,17 +25,20 @@
 
 #include "ArcPlayerPersistenceSubsystem.generated.h"
 
+struct FArcPlayerProviderDescriptor;
+
 /**
- * Manages per-player data that survives map transitions and server hops.
+ * Manages per-player persistent data.
  *
- * Uses a "data provider" pattern: game code registers UObjects as the source
- * for named domains (e.g., "inventory", "attributes"). The subsystem handles
- * serialization/deserialization via the serializer registry or reflection fallback.
+ * Supports two modes:
+ * 1. Descriptor-based (automatic): Provider descriptors registered at module load
+ *    map component classes to domains. The subsystem hooks PostLogin/Logout to track
+ *    players and resolves components at save/load time via the provider tree.
  *
- * Data is loaded into a memory cache per player. When a provider is registered,
- * cached data is applied automatically.
+ * 2. Direct (explicit): SaveObject/LoadObject for callers needing full control
+ *    over the domain string (e.g., debugger saving under "characters/{name}/...").
  *
- * GameInstanceSubsystem so data persists across map transitions.
+ * GameInstanceSubsystem — persists across map transitions.
  */
 UCLASS()
 class ARCPERSISTENCE_API UArcPlayerPersistenceSubsystem : public UGameInstanceSubsystem
@@ -47,49 +50,102 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	// ── Core API ────────────────────────────────────────────────────────
+	// ── Player Tracking ────────────────────────────────────────────────
 
-	/** Load all data for a player into memory cache. */
-	void LoadPlayerData(const FGuid& PlayerId);
+	/** Manual player registration for editor/debugger (no real login flow). */
+	void RegisterPlayer(const FGuid& PlayerId, APlayerController* PC);
+	void UnregisterPlayer(const FGuid& PlayerId);
 
-	/** Save all registered providers for a player. */
+	// ── Descriptor-Based API (automatic) ───────────────────────────────
+
+	/** Save all resolved provider components for a player. */
 	void SavePlayerData(const FGuid& PlayerId);
 
-	/** Save data for all connected players. */
+	/** Load all data for a player into cache, apply to resolved providers. */
+	void LoadPlayerData(const FGuid& PlayerId);
+
+	/** Save data for all tracked players. */
 	void SaveAllPlayerData();
 
-	// ── Data Provider Registration ──────────────────────────────────────
+	// ── Direct API (explicit domain + object) ──────────────────────────
 
-	/**
-	 * Register an object as the data source for a specific domain.
-	 * If cached data already exists for this player+domain, applies it immediately.
-	 *
-	 * @param PlayerId  The player's unique identifier
-	 * @param Domain    A plain string: "inventory", "attributes", "quickbar", etc.
-	 * @param Source    The UObject whose SaveGame properties will be serialized
-	 */
-	void RegisterPlayerDataProvider(const FGuid& PlayerId, const FString& Domain, UObject* Source);
+	/** Save a specific object under an explicit domain. */
+	void SaveObject(const FGuid& PlayerId, const FString& Domain, UObject* Source);
 
-	void UnregisterPlayerDataProvider(const FGuid& PlayerId, const FString& Domain);
+	/** Load data for an explicit domain and apply to target object. */
+	void LoadObject(const FGuid& PlayerId, const FString& Domain, UObject* Target);
 
-	/** Apply cached data to a registered provider. Called automatically on registration. */
-	void ApplyPlayerData(const FGuid& PlayerId, const FString& Domain);
+	// ── Query + Management ─────────────────────────────────────────────
+
+	/** List all stored domain strings for a player from the backend. */
+	TArray<FString> ListPlayerDomains(const FGuid& PlayerId);
+
+	/** Delete a single domain from backend and cache. */
+	void DeletePlayerDomain(const FGuid& PlayerId, const FString& Domain);
+
+	/** Clear in-memory cache for a player. */
+	void ClearPlayerCache(const FGuid& PlayerId);
 
 	/** Check if data has been loaded into cache for a player. */
 	bool IsPlayerDataLoaded(const FGuid& PlayerId) const;
 
+	/** Get cached raw bytes for a specific domain. Returns nullptr if not cached. */
+	const TArray<uint8>* GetCachedData(const FGuid& PlayerId, const FString& Domain) const;
+
+	// ── Legacy Instance-Bound API ──────────────────────────────────────
+
+	void RegisterPlayerDataProvider(const FGuid& PlayerId, const FString& Domain, UObject* Source);
+	void UnregisterPlayerDataProvider(const FGuid& PlayerId, const FString& Domain);
+	void ApplyPlayerData(const FGuid& PlayerId, const FString& Domain);
+
 private:
+	// ── Legacy ─────────────────────────────────────────────────────────
+
 	struct FPlayerDataProvider
 	{
 		FString Domain;
 		TWeakObjectPtr<UObject> Source;
 	};
 
-	/** PlayerId -> (Domain -> Provider) */
 	TMap<FGuid, TMap<FString, FPlayerDataProvider>> PlayerProviders;
 
-	/** Cached save data: PlayerId -> (Domain -> bytes) */
+	// ── Player tracking ────────────────────────────────────────────────
+
+	/** PlayerId -> PlayerController (root of provider tree). */
+	TMap<FGuid, TWeakObjectPtr<APlayerController>> TrackedPlayers;
+
+	/** Cached save data: PlayerId -> (Domain -> bytes). */
 	TMap<FGuid, TMap<FString, TArray<uint8>>> CachedPlayerData;
+
+	// ── Internal helpers ───────────────────────────────────────────────
+
+	class IArcPersistenceBackend* GetBackend() const;
+
+	/** Resolved leaf provider: object + full domain path. */
+	struct FResolvedProvider
+	{
+		UObject* Object = nullptr;
+		FString DomainPath;
+	};
+
+	/** Walk the provider tree from root (PC) to all serializable leaves. */
+	TArray<FResolvedProvider> ResolveAllProviders(const FGuid& PlayerId) const;
+
+	/** Apply serialized data to a UObject using the serializer registry. */
+	void ApplyDataToObject(UObject* Target, const TArray<uint8>& Data, const FString& Domain);
+
+	/** Serialize a UObject and persist via backend. */
+	void SaveObjectInternal(const FGuid& PlayerId, const FString& Domain, UObject* Source);
+
+	/** Extract domain from a full key by stripping the player prefix. */
+	static FString ExtractDomain(const FString& Key, const FString& PlayerPrefix);
+
+	// ── PostLogin / Logout hooks ───────────────────────────────────────
+
+	void OnPlayerPostLogin(AGameModeBase* GameMode, APlayerController* NewPlayer);
+	void OnPlayerLogout(AGameModeBase* GameMode, AController* Exiting);
+
+	// ── Legacy internal ────────────────────────────────────────────────
 
 	void ApplyDataToProvider(const FPlayerDataProvider& Provider, const TArray<uint8>& Data);
 	void SaveProvider(const FGuid& PlayerId, const FPlayerDataProvider& Provider);

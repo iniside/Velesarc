@@ -2,9 +2,9 @@
 
 using UnrealBuildTool;
 
-public class ArcPersistenceTest : ModuleRules
+public class ArcMassPlayerPersistence : ModuleRules
 {
-	public ArcPersistenceTest(ReadOnlyTargetRules Target) : base(Target)
+	public ArcMassPlayerPersistence(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -12,6 +12,9 @@ public class ArcPersistenceTest : ModuleRules
 			new string[]
 			{
 				"Core",
+				"MassEntity",
+				"ArcMass",
+				"ArcPersistence",
 			}
 		);
 
@@ -19,15 +22,11 @@ public class ArcPersistenceTest : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
+				"CoreOnline",
 				"Engine",
-				"CQTest",
-				"ArcPersistence",
-				"ArcJson",
-				"GameplayTags",
-				"StructUtils",
-				"ArcMass",
-				"MassEntity",
-				"SQLiteCore",
+				"MassActors",
+				"ArcCore",
+				"MassSpawner"
 			}
 		);
 	}

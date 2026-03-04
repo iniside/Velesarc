@@ -23,15 +23,35 @@
 
 #include "Misc/Paths.h"
 #include "Storage/ArcJsonFileBackend.h"
+#include "Storage/ArcSQLiteBackend.h"
+#include "ArcPersistenceSettings.h"
 
 void UArcPersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
 	const FString SaveDir = FPaths::ProjectSavedDir() / TEXT("ArcPersistence");
-	Backend = MakeUnique<FArcJsonFileBackend>(SaveDir);
 
-	UE_LOG(LogTemp, Log, TEXT("ArcPersistence: Initialized with JsonFileBackend at %s"), *SaveDir);
+	const UArcPersistenceSettings* Settings = GetDefault<UArcPersistenceSettings>();
+	const EArcPersistenceBackendType BackendType = Settings
+		? Settings->BackendType
+		: EArcPersistenceBackendType::JsonFile;
+
+	switch (BackendType)
+	{
+	case EArcPersistenceBackendType::SQLite:
+	{
+		const FString DbPath = SaveDir / TEXT("ArcPersistence.db");
+		Backend = MakeUnique<FArcSQLiteBackend>(DbPath);
+		UE_LOG(LogTemp, Log, TEXT("ArcPersistence: Initialized with SQLite backend at %s"), *DbPath);
+		break;
+	}
+	case EArcPersistenceBackendType::JsonFile:
+	default:
+		Backend = MakeUnique<FArcJsonFileBackend>(SaveDir);
+		UE_LOG(LogTemp, Log, TEXT("ArcPersistence: Initialized with JsonFile backend at %s"), *SaveDir);
+		break;
+	}
 }
 
 void UArcPersistenceSubsystem::Deinitialize()

@@ -31,6 +31,7 @@
 #include "ArcPersistenceClassRegistry.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Storage/ArcPersistenceKeyConvention.h"
 
 void UArcWorldPersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -58,7 +59,7 @@ void UArcWorldPersistenceSubsystem::Deinitialize()
 
 FString UArcWorldPersistenceSubsystem::MakeStorageKey(const FString& Key) const
 {
-	return FString::Printf(TEXT("world/%s/%s"), *CurrentWorldId.ToString(), *Key);
+	return UE::ArcPersistence::MakeWorldKey(CurrentWorldId.ToString(), Key);
 }
 
 // -----------------------------------------------------------------------------

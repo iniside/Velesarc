@@ -65,10 +65,12 @@ public class ArcPersistence : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"CoreOnline",
 				"Json",
 				"JsonUtilities",
 				"AssetRegistry",
 				"DeveloperSettings",
+				"SQLiteCore",
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
