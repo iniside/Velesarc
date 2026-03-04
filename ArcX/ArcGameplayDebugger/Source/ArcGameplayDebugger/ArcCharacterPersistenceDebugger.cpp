@@ -9,6 +9,8 @@
 #include "GameFramework/Pawn.h"
 #include "Items/ArcItemsStoreComponent.h"
 #include "ArcPlayerPersistenceSubsystem.h"
+#include "AbilitySystemComponent.h"
+#include "AttributeSet.h"
 #include "Engine/GameInstance.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcCharacterPersistence, Log, All);
@@ -60,6 +62,9 @@ void FArcCharacterPersistenceDebugger::Uninitialize()
 	CachedPlayerId.Invalidate();
 	SelectedCharacterIndex = -1;
 	SelectedSaveCharacterIndex = -1;
+	SelectedAttributeSetIndex = -1;
+	EditedAttributeValues.Reset();
+	AttributeStatus.Reset();
 	SaveMode = ECharacterSaveMode::SelectExisting;
 }
 
@@ -85,6 +90,11 @@ void FArcCharacterPersistenceDebugger::Draw()
 		if (ImGui::BeginTabItem("Load"))
 		{
 			DrawLoadTab();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Attributes"))
+		{
+			DrawAttributesTab();
 			ImGui::EndTabItem();
 		}
 		ImGui::EndTabBar();
@@ -353,6 +363,167 @@ void FArcCharacterPersistenceDebugger::DrawLoadTab()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Attributes Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+void FArcCharacterPersistenceDebugger::DrawAttributesTab()
+{
+	UAbilitySystemComponent* ASC = GetASC();
+	if (!ASC)
+	{
+		ImGui::TextDisabled("No AbilitySystemComponent found.");
+		return;
+	}
+
+	const TArray<UAttributeSet*>& Sets = ASC->GetSpawnedAttributes();
+	const float LeftPanelWidth = 180.0f;
+
+	// Left panel: AttributeSet list
+	if (ImGui::BeginChild("AttrSetList", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+	{
+		ImGui::Text("Attribute Sets");
+		ImGui::Separator();
+
+		if (Sets.IsEmpty())
+		{
+			ImGui::TextDisabled("(none)");
+		}
+		else
+		{
+			for (int32 i = 0; i < Sets.Num(); ++i)
+			{
+				if (!Sets[i]) continue;
+				FString SetName = Sets[i]->GetClass()->GetName();
+				const bool bIsSelected = (SelectedAttributeSetIndex == i);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*SetName), bIsSelected))
+				{
+					SelectedAttributeSetIndex = i;
+				}
+			}
+		}
+	}
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	// Right panel: Attribute values
+	if (ImGui::BeginChild("AttrDetails", ImVec2(0, 0)))
+	{
+		if (Sets.IsValidIndex(SelectedAttributeSetIndex) && Sets[SelectedAttributeSetIndex])
+		{
+			UAttributeSet* Set = Sets[SelectedAttributeSetIndex];
+			FString SetClassName = Set->GetClass()->GetName();
+
+			ImGui::Text("%s", TCHAR_TO_ANSI(*SetClassName));
+			ImGui::Separator();
+
+			for (TFieldIterator<FStructProperty> It(Set->GetClass()); It; ++It)
+			{
+				FStructProperty* StructProp = *It;
+				if (!StructProp || !StructProp->Struct ||
+					!StructProp->Struct->IsChildOf(FGameplayAttributeData::StaticStruct()))
+				{
+					continue;
+				}
+
+				const FGameplayAttributeData* AttrData =
+					StructProp->ContainerPtrToValuePtr<FGameplayAttributeData>(Set);
+				if (!AttrData) continue;
+
+				FString AttrName = StructProp->GetName();
+				FString EditKey = FString::Printf(TEXT("%s.%s"), *SetClassName, *AttrName);
+				bool bSaveGame = StructProp->HasAnyPropertyFlags(CPF_SaveGame);
+
+				float CurrentValue = AttrData->GetCurrentValue();
+				float BaseValue = AttrData->GetBaseValue();
+
+				// Initialize edit value if not yet tracked
+				if (!EditedAttributeValues.Contains(EditKey))
+				{
+					EditedAttributeValues.Add(EditKey, BaseValue);
+				}
+
+				float& EditValue = EditedAttributeValues[EditKey];
+
+				FString Label = bSaveGame
+					? FString::Printf(TEXT("[S] %s"), *AttrName)
+					: AttrName;
+
+				ImGui::PushItemWidth(100.0f);
+				FString InputLabel = FString::Printf(TEXT("##%s"), *EditKey);
+				ImGui::InputFloat(TCHAR_TO_ANSI(*InputLabel), &EditValue, 0.0f, 0.0f, "%.2f");
+				ImGui::PopItemWidth();
+
+				ImGui::SameLine();
+				ImGui::Text("%s", TCHAR_TO_ANSI(*Label));
+
+				if (!FMath::IsNearlyEqual(CurrentValue, BaseValue))
+				{
+					ImGui::SameLine();
+					ImGui::TextDisabled("(cur: %.1f)", CurrentValue);
+				}
+			}
+
+			ImGui::Separator();
+
+			if (ImGui::Button("Apply Changes"))
+			{
+				int32 Applied = 0;
+				for (TFieldIterator<FStructProperty> It(Set->GetClass()); It; ++It)
+				{
+					FStructProperty* StructProp = *It;
+					if (!StructProp || !StructProp->Struct ||
+						!StructProp->Struct->IsChildOf(FGameplayAttributeData::StaticStruct()))
+					{
+						continue;
+					}
+
+					FString AttrName = StructProp->GetName();
+					FString EditKey = FString::Printf(TEXT("%s.%s"), *SetClassName, *AttrName);
+
+					if (float* EditValue = EditedAttributeValues.Find(EditKey))
+					{
+						FGameplayAttribute Attribute(StructProp);
+						ASC->SetNumericAttributeBase(Attribute, *EditValue);
+						++Applied;
+					}
+				}
+				AttributeStatus = FString::Printf(TEXT("Applied %d attributes."), Applied);
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Reset to Live"))
+			{
+				TArray<FString> KeysToRemove;
+				for (auto& Pair : EditedAttributeValues)
+				{
+					if (Pair.Key.StartsWith(SetClassName + TEXT(".")))
+					{
+						KeysToRemove.Add(Pair.Key);
+					}
+				}
+				for (const FString& Key : KeysToRemove)
+				{
+					EditedAttributeValues.Remove(Key);
+				}
+				AttributeStatus = TEXT("Reset to live values.");
+			}
+		}
+		else
+		{
+			ImGui::TextDisabled("Select an attribute set.");
+		}
+
+		if (!AttributeStatus.IsEmpty())
+		{
+			ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*AttributeStatus));
+		}
+	}
+	ImGui::EndChild();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Save / Load / Delete
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -387,7 +558,16 @@ void FArcCharacterPersistenceDebugger::SaveCharacter(const FString& Name)
 		++StoresSaved;
 	}
 
-	SaveStatus = FString::Printf(TEXT("Saved %d stores for '%s'."), StoresSaved, *Name);
+	// Save attribute sets
+	TArray<UAttributeSet*> Sets = GetAttributeSets();
+	for (UAttributeSet* Set : Sets)
+	{
+		if (!Set) continue;
+		FString Domain = MakeAttributeDomain(Name, Set->GetClass()->GetName());
+		Sub->SaveObject(CachedPlayerId, Domain, Set);
+	}
+
+	SaveStatus = FString::Printf(TEXT("Saved %d stores, %d attribute sets for '%s'."), StoresSaved, Sets.Num(), *Name);
 
 	// Refresh the character list so it shows up in Load tab
 	RefreshSavedCharacters();
@@ -420,7 +600,19 @@ void FArcCharacterPersistenceDebugger::LoadCharacter(const FString& Name)
 		++StoresAttempted;
 	}
 
-	LoadStatus = FString::Printf(TEXT("Load applied to %d stores for '%s'."), StoresAttempted, *Name);
+	// Load attribute sets
+	TArray<UAttributeSet*> Sets = GetAttributeSets();
+	for (UAttributeSet* Set : Sets)
+	{
+		if (!Set) continue;
+		FString Domain = MakeAttributeDomain(Name, Set->GetClass()->GetName());
+		Sub->LoadObject(CachedPlayerId, Domain, Set);
+	}
+
+	// Clear stale edited attribute values so the Attributes tab picks up fresh live values
+	EditedAttributeValues.Reset();
+
+	LoadStatus = FString::Printf(TEXT("Load applied to %d stores, %d attribute sets for '%s'."), StoresAttempted, Sets.Num(), *Name);
 }
 
 void FArcCharacterPersistenceDebugger::DeleteCharacter(const FString& Name)
@@ -604,4 +796,44 @@ FString FArcCharacterPersistenceDebugger::MakeDomain(
 	const FString& CharacterName, const FString& StoreClassName) const
 {
 	return FString::Printf(TEXT("characters/%s/PlayerState/%s"), *CharacterName, *StoreClassName);
+}
+
+UAbilitySystemComponent* FArcCharacterPersistenceDebugger::GetASC() const
+{
+	UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
+	if (!World) return nullptr;
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (!PC) return nullptr;
+
+	if (APawn* Pawn = PC->GetPawn())
+	{
+		if (UAbilitySystemComponent* ASC = Pawn->FindComponentByClass<UAbilitySystemComponent>())
+		{
+			return ASC;
+		}
+	}
+	if (APlayerState* PS = PC->GetPlayerState<APlayerState>())
+	{
+		if (UAbilitySystemComponent* ASC = PS->FindComponentByClass<UAbilitySystemComponent>())
+		{
+			return ASC;
+		}
+	}
+	return nullptr;
+}
+
+TArray<UAttributeSet*> FArcCharacterPersistenceDebugger::GetAttributeSets() const
+{
+	if (UAbilitySystemComponent* ASC = GetASC())
+	{
+		return TArray<UAttributeSet*>(ASC->GetSpawnedAttributes());
+	}
+	return {};
+}
+
+FString FArcCharacterPersistenceDebugger::MakeAttributeDomain(
+	const FString& CharacterName, const FString& SetClassName) const
+{
+	return FString::Printf(TEXT("characters/%s/Attributes/%s"), *CharacterName, *SetClassName);
 }

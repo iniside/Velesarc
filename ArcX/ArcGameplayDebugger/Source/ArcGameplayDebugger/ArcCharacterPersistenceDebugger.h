@@ -6,6 +6,8 @@
 
 class UArcItemsStoreComponent;
 class UArcPlayerPersistenceSubsystem;
+class UAbilitySystemComponent;
+class UAttributeSet;
 
 enum class ECharacterSaveMode : uint8
 {
@@ -28,6 +30,7 @@ private:
 	void DrawSaveTab_NewCharacter();
 	void DrawStoreCheckboxes(const char* IdPrefix);
 	void DrawLoadTab();
+	void DrawAttributesTab();
 
 	TArray<UArcItemsStoreComponent*> GetPlayerStores() const;
 	UArcPlayerPersistenceSubsystem* GetSubsystem() const;
@@ -41,6 +44,10 @@ private:
 	FString GetStoreKeyName(const UArcItemsStoreComponent* Store) const;
 	FGuid GetPlayerId() const;
 	FString MakeDomain(const FString& CharacterName, const FString& StoreClassName) const;
+
+	UAbilitySystemComponent* GetASC() const;
+	TArray<UAttributeSet*> GetAttributeSets() const;
+	FString MakeAttributeDomain(const FString& CharacterName, const FString& SetClassName) const;
 
 	// Player ID (derived from machine name in editor)
 	FGuid CachedPlayerId;
@@ -61,4 +68,9 @@ private:
 	// Load tab state
 	int32 SelectedCharacterIndex = -1;
 	FString LoadStatus;
+
+	// Attributes tab state
+	int32 SelectedAttributeSetIndex = -1;
+	TMap<FString, float> EditedAttributeValues; // "SetName.AttrName" -> edited base value
+	FString AttributeStatus;
 };
