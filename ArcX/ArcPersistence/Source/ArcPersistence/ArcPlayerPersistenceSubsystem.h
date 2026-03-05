@@ -22,6 +22,7 @@
 #pragma once
 
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Async/Future.h"
 
 #include "ArcPlayerPersistenceSubsystem.generated.h"
 
@@ -74,6 +75,23 @@ public:
 
 	/** Load data for an explicit domain and apply to target object. */
 	void LoadObject(const FGuid& PlayerId, const FString& Domain, UObject* Target);
+
+	// ── Async API ─────────────────────────────────────────────────────
+
+	/** Async save all resolved providers for a player. Broadcasts persistence events. */
+	TFuture<void> SavePlayerDataAsync(const FGuid& PlayerId);
+
+	/** Async load all data for a player into cache and apply to providers. */
+	TFuture<void> LoadPlayerDataAsync(const FGuid& PlayerId);
+
+	/** Async save data for all tracked players. */
+	TFuture<void> SaveAllPlayerDataAsync();
+
+	/** Async save a specific object under an explicit domain. */
+	TFuture<void> SaveObjectAsync(const FGuid& PlayerId, const FString& Domain, UObject* Source);
+
+	/** Async load data for an explicit domain and apply to target object. */
+	TFuture<void> LoadObjectAsync(const FGuid& PlayerId, const FString& Domain, UObject* Target);
 
 	// ── Query + Management ─────────────────────────────────────────────
 
@@ -134,8 +152,11 @@ private:
 	/** Apply serialized data to a UObject using the serializer registry. */
 	void ApplyDataToObject(UObject* Target, const TArray<uint8>& Data, const FString& Domain);
 
-	/** Serialize a UObject and persist via backend. */
+	/** Serialize a UObject and persist via backend (blocking). */
 	void SaveObjectInternal(const FGuid& PlayerId, const FString& Domain, UObject* Source);
+
+	/** Serialize a UObject to bytes without persisting. For use in batch saves. */
+	TArray<uint8> SerializeObject(UObject* Source) const;
 
 	/** Extract domain from a full key by stripping the player prefix. */
 	static FString ExtractDomain(const FString& Key, const FString& PlayerPrefix);

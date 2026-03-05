@@ -22,6 +22,7 @@
 #include "ArcWorldPersistenceSubsystem.h"
 
 #include "ArcPersistenceSubsystem.h"
+#include "ArcPersistenceEvents.h"
 #include "Engine/GameInstance.h"
 #include "Serialization/ArcSerializerRegistry.h"
 #include "Serialization/ArcJsonSaveArchive.h"
@@ -29,6 +30,7 @@
 #include "Storage/ArcPersistenceBackend.h"
 
 #include "ArcPersistenceClassRegistry.h"
+#include "Async/Async.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Storage/ArcPersistenceKeyConvention.h"
@@ -68,86 +70,187 @@ FString UArcWorldPersistenceSubsystem::MakeStorageKey(const FString& Key) const
 
 void UArcWorldPersistenceSubsystem::LoadWorldData(const FGuid& WorldId)
 {
-	IArcPersistenceBackend* Backend = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>()->GetBackend();
+	LoadWorldDataAsync(WorldId).Get();
+}
+
+TFuture<void> UArcWorldPersistenceSubsystem::LoadWorldDataAsync(const FGuid& WorldId)
+{
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
+	UArcPersistenceSubsystem* PersistenceSub = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>();
+	IArcPersistenceBackend* Backend = PersistenceSub->GetBackend();
 	if (!Backend)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ArcWorldPersistence: No backend available for LoadWorldData"));
-		return;
+		Promise->SetValue();
+		return Future;
 	}
 
 	ClearAll();
 	CurrentWorldId = WorldId;
 
-	const FString Prefix = FString::Printf(TEXT("world/%s"), *WorldId.ToString());
-	TArray<FString> StorageKeys = Backend->ListEntries(Prefix);
-
-	// Strip prefix to recover the original key the caller used
-	const FString PrefixWithSlash = Prefix / TEXT("");
-	for (const FString& StorageKey : StorageKeys)
+	// Broadcast started event on game thread
 	{
-		FString OriginalKey = StorageKey;
-		if (OriginalKey.StartsWith(PrefixWithSlash))
-		{
-			OriginalKey.RightChopInline(PrefixWithSlash.Len());
-		}
-
-		TArray<uint8> Data;
-		if (!Backend->LoadEntry(StorageKey, Data))
-		{
-			continue;
-		}
-
-		// Parse metadata for type name and tombstone state
-		FArcJsonLoadArchive TempAr;
-		if (TempAr.InitializeFromData(Data))
-		{
-			if (TempAr.BeginStruct(FName("_meta")))
-			{
-				FString TypeNameStr;
-				if (TempAr.ReadProperty(FName("type"), TypeNameStr))
-				{
-					CachedTypeNames.Add(OriginalKey, FName(*TypeNameStr));
-				}
-
-				bool bTombstoned = false;
-				if (TempAr.ReadProperty(FName("tombstoned"), bTombstoned) && bTombstoned)
-				{
-					TombstonedKeys.Add(OriginalKey);
-				}
-				TempAr.EndStruct();
-			}
-		}
-
-		CachedData.Add(OriginalKey, MoveTemp(Data));
+		FArcPersistenceEvent Event;
+		Event.Operation = EArcPersistenceOperation::Load;
+		Event.Scope = EArcPersistenceScope::World;
+		Event.ContextId = WorldId;
+		PersistenceSub->OnPersistenceStarted.Broadcast(Event);
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("ArcWorldPersistence: Loaded %d entries for world %s (%d tombstoned)"),
-		CachedData.Num(), *WorldId.ToString(), TombstonedKeys.Num());
+	const FString Prefix = FString::Printf(TEXT("world/%s"), *WorldId.ToString());
+	TFuture<FArcPersistenceListResult> ListFuture = Backend->ListEntries(Prefix);
+
+	// Move to background to wait for list result and load entries
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Promise, Backend, PersistenceSub, WorldId, Prefix, ListFuture = MoveTemp(ListFuture)]() mutable
+	{
+		FArcPersistenceListResult ListResult = ListFuture.Get();
+
+		if (!ListResult.bSuccess)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ArcWorldPersistence: ListEntries failed: %s"), *ListResult.Error);
+			AsyncTask(ENamedThreads::GameThread, [Promise]()
+			{
+				Promise->SetValue();
+			});
+			return;
+		}
+
+		// Load each entry serially in background
+		const FString PrefixWithSlash = Prefix / TEXT("");
+		TArray<TPair<FString, TArray<uint8>>> LoadedEntries;
+
+		for (const FString& StorageKey : ListResult.Keys)
+		{
+			FString OriginalKey = StorageKey;
+			if (OriginalKey.StartsWith(PrefixWithSlash))
+			{
+				OriginalKey.RightChopInline(PrefixWithSlash.Len());
+			}
+
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(StorageKey).Get();
+			if (!LoadResult.bSuccess)
+			{
+				continue;
+			}
+
+			LoadedEntries.Emplace(MoveTemp(OriginalKey), MoveTemp(LoadResult.Data));
+		}
+
+		// Back to game thread: populate caches and broadcast completed
+		AsyncTask(ENamedThreads::GameThread, [this, Promise, PersistenceSub, WorldId, LoadedEntries = MoveTemp(LoadedEntries)]() mutable
+		{
+			for (auto& Entry : LoadedEntries)
+			{
+				const FString& OriginalKey = Entry.Key;
+
+				// Parse metadata for type name and tombstone state
+				FArcJsonLoadArchive TempAr;
+				if (TempAr.InitializeFromData(Entry.Value))
+				{
+					if (TempAr.BeginStruct(FName("_meta")))
+					{
+						FString TypeNameStr;
+						if (TempAr.ReadProperty(FName("type"), TypeNameStr))
+						{
+							CachedTypeNames.Add(OriginalKey, FName(*TypeNameStr));
+						}
+
+						bool bTombstoned = false;
+						if (TempAr.ReadProperty(FName("tombstoned"), bTombstoned) && bTombstoned)
+						{
+							TombstonedKeys.Add(OriginalKey);
+						}
+						TempAr.EndStruct();
+					}
+				}
+
+				CachedData.Add(OriginalKey, MoveTemp(Entry.Value));
+			}
+
+			UE_LOG(LogTemp, Log, TEXT("ArcWorldPersistence: Loaded %d entries for world %s (%d tombstoned)"),
+				CachedData.Num(), *WorldId.ToString(), TombstonedKeys.Num());
+
+			// Broadcast completed event
+			{
+				FArcPersistenceEvent Event;
+				Event.Operation = EArcPersistenceOperation::Load;
+				Event.Scope = EArcPersistenceScope::World;
+				Event.ContextId = WorldId;
+				PersistenceSub->OnPersistenceCompleted.Broadcast(Event);
+			}
+
+			Promise->SetValue();
+		});
+	});
+
+	return Future;
 }
 
 void UArcWorldPersistenceSubsystem::SaveWorldData(const FGuid& WorldId)
 {
-	IArcPersistenceBackend* Backend = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>()->GetBackend();
+	SaveWorldDataAsync(WorldId).Get();
+}
+
+TFuture<void> UArcWorldPersistenceSubsystem::SaveWorldDataAsync(const FGuid& WorldId)
+{
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
+	UArcPersistenceSubsystem* PersistenceSub = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>();
+	IArcPersistenceBackend* Backend = PersistenceSub->GetBackend();
 	if (!Backend)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ArcWorldPersistence: No backend available for SaveWorldData"));
-		return;
+		Promise->SetValue();
+		return Future;
 	}
 
-	Backend->BeginTransaction();
+	// Broadcast started event on game thread
+	{
+		FArcPersistenceEvent Event;
+		Event.Operation = EArcPersistenceOperation::Save;
+		Event.Scope = EArcPersistenceScope::World;
+		Event.ContextId = WorldId;
+		PersistenceSub->OnPersistenceStarted.Broadcast(Event);
+	}
 
+	// Game thread: serialize all registered objects into key-data pairs
+	TArray<TPair<FString, TArray<uint8>>> Entries;
 	for (auto& Pair : RegisteredObjects)
 	{
 		if (Pair.Value.IsValid())
 		{
-			SaveObject(MakeStorageKey(Pair.Key), Pair.Value.Get());
+			TArray<uint8> Data = SerializeObject(Pair.Value.Get());
+			Entries.Emplace(MakeStorageKey(Pair.Key), MoveTemp(Data));
 		}
 	}
 
-	Backend->CommitTransaction();
+	UE_LOG(LogTemp, Log, TEXT("ArcWorldPersistence: Saving %d objects for world %s"),
+		Entries.Num(), *WorldId.ToString());
 
-	UE_LOG(LogTemp, Log, TEXT("ArcWorldPersistence: Saved %d objects for world %s"),
-		RegisteredObjects.Num(), *WorldId.ToString());
+	// Submit to backend asynchronously
+	TFuture<FArcPersistenceResult> SaveFuture = Backend->SaveEntries(MoveTemp(Entries));
+
+	// Wait in background, then broadcast completed on game thread
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [Promise, PersistenceSub, WorldId, SaveFuture = MoveTemp(SaveFuture)]() mutable
+	{
+		SaveFuture.Get();
+
+		AsyncTask(ENamedThreads::GameThread, [Promise, PersistenceSub, WorldId]()
+		{
+			FArcPersistenceEvent Event;
+			Event.Operation = EArcPersistenceOperation::Save;
+			Event.Scope = EArcPersistenceScope::World;
+			Event.ContextId = WorldId;
+			PersistenceSub->OnPersistenceCompleted.Broadcast(Event);
+
+			Promise->SetValue();
+		});
+	});
+
+	return Future;
 }
 
 // -----------------------------------------------------------------------------
@@ -224,7 +327,7 @@ void UArcWorldPersistenceSubsystem::OnActorDestroyed(AActor* Actor, const FStrin
 		IArcPersistenceBackend* Backend = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>()->GetBackend();
 		if (Backend)
 		{
-			Backend->SaveEntry(MakeStorageKey(Key), Data);
+			Backend->SaveEntry(MakeStorageKey(Key), MoveTemp(Data));
 		}
 
 		TombstonedKeys.Add(Key);
@@ -276,14 +379,8 @@ bool UArcWorldPersistenceSubsystem::IsTombstoned(const FString& Key) const
 // Internal: Serialization
 // -----------------------------------------------------------------------------
 
-void UArcWorldPersistenceSubsystem::SaveObject(const FString& StorageKey, UObject* Object)
+TArray<uint8> UArcWorldPersistenceSubsystem::SerializeObject(UObject* Object)
 {
-	IArcPersistenceBackend* Backend = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>()->GetBackend();
-	if (!Backend)
-	{
-		return;
-	}
-
 	const UStruct* Type = Object->GetClass();
 	const FArcPersistenceSerializerInfo* Info = FArcSerializerRegistry::Get().FindOrDefault(Type);
 
@@ -309,8 +406,7 @@ void UArcWorldPersistenceSubsystem::SaveObject(const FString& StorageKey, UObjec
 	SaveAr.SetVersion(Info->Version);
 	Info->SaveFunc(Object, SaveAr);
 
-	TArray<uint8> Data = SaveAr.Finalize();
-	Backend->SaveEntry(StorageKey, Data);
+	return SaveAr.Finalize();
 }
 
 void UArcWorldPersistenceSubsystem::ApplyDataToObject(const TArray<uint8>& Data, UObject* Object)

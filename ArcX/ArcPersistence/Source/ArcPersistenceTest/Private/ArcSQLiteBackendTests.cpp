@@ -2,6 +2,7 @@
 
 #include "CQTest.h"
 #include "Storage/ArcSQLiteBackend.h"
+#include "Storage/ArcPersistenceResult.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 
@@ -37,15 +38,15 @@ TEST_CLASS(ArcSQLiteBackend_CRUD, "ArcPersistence.SQLiteBackend.CRUD")
 		const FString Key = TEXT("world/testworld/actors/npc_01");
 		const TArray<uint8> SourceData = {'{', '"', 'a', '"', ':', '1', '}'};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, SourceData)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, SourceData).Get().bSuccess));
 
-		TArray<uint8> LoadedData;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, LoadedData)));
-		ASSERT_THAT(AreEqual(SourceData.Num(), LoadedData.Num()));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(SourceData.Num(), LoadResult.Data.Num()));
 
 		for (int32 i = 0; i < SourceData.Num(); ++i)
 		{
-			ASSERT_THAT(AreEqual(SourceData[i], LoadedData[i]));
+			ASSERT_THAT(AreEqual(SourceData[i], LoadResult.Data[i]));
 		}
 	}
 
@@ -54,11 +55,11 @@ TEST_CLASS(ArcSQLiteBackend_CRUD, "ArcPersistence.SQLiteBackend.CRUD")
 		const FString Key = TEXT("players/player1/inventory");
 		const TArray<uint8> SourceData = {'{', '"', 'b', '"', ':', '2', '}'};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, SourceData)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, SourceData).Get().bSuccess));
 
-		TArray<uint8> LoadedData;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, LoadedData)));
-		ASSERT_THAT(AreEqual(SourceData.Num(), LoadedData.Num()));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(SourceData.Num(), LoadResult.Data.Num()));
 	}
 
 	TEST_METHOD(Overwrite_LatestDataWins)
@@ -67,85 +68,88 @@ TEST_CLASS(ArcSQLiteBackend_CRUD, "ArcPersistence.SQLiteBackend.CRUD")
 		const TArray<uint8> DataV1 = {'v', '1'};
 		const TArray<uint8> DataV2 = {'v', '2', '!'};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV1)));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV2)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV1).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV2).Get().bSuccess));
 
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Loaded)));
-		ASSERT_THAT(AreEqual(3, Loaded.Num()));
-		ASSERT_THAT(AreEqual(static_cast<uint8>('v'), Loaded[0]));
-		ASSERT_THAT(AreEqual(static_cast<uint8>('2'), Loaded[1]));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(3, LoadResult.Data.Num()));
+		ASSERT_THAT(AreEqual(static_cast<uint8>('v'), LoadResult.Data[0]));
+		ASSERT_THAT(AreEqual(static_cast<uint8>('2'), LoadResult.Data[1]));
 	}
 
 	TEST_METHOD(LoadMissingKey_ReturnsFalse)
 	{
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsFalse(Backend->LoadEntry(TEXT("world/w1/nonexistent"), Loaded)));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(TEXT("world/w1/nonexistent")).Get();
+		ASSERT_THAT(IsFalse(LoadResult.bSuccess));
 	}
 
 	TEST_METHOD(EntryExists_TrueForPresent)
 	{
 		const FString Key = TEXT("world/w1/exists");
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {'1'})));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 	}
 
 	TEST_METHOD(EntryExists_FalseForMissing)
 	{
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/nope"))));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/nope")).Get().bSuccess));
 	}
 
 	TEST_METHOD(DeleteEntry_RemovesFromDB)
 	{
 		const FString Key = TEXT("players/p1/to_delete");
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {1, 2, 3})));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {1, 2, 3}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 
-		ASSERT_THAT(IsTrue(Backend->DeleteEntry(Key)));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->DeleteEntry(Key).Get().bSuccess));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(Key).Get().bSuccess));
 	}
 
 	TEST_METHOD(ListEntries_FindsWorldPrefix)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/cells/0_0"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/cells/1_0"), {'2'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/cells/0_1"), {'3'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'4'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/cells/0_0"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/cells/1_0"), {'2'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/cells/0_1"), {'3'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'4'}).Get().bSuccess));
 
-		TArray<FString> CellKeys = Backend->ListEntries(TEXT("world/w1/cells"));
-		ASSERT_THAT(AreEqual(3, CellKeys.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("world/w1/cells")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(3, ListResult.Keys.Num()));
 	}
 
 	TEST_METHOD(ListEntries_FindsPlayerPrefix)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/stats"), {'2'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'3'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/stats"), {'2'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'3'}).Get().bSuccess));
 
-		TArray<FString> PlayerKeys = Backend->ListEntries(TEXT("players/p1"));
-		ASSERT_THAT(AreEqual(2, PlayerKeys.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("players/p1")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
 	}
 
 	TEST_METHOD(ListEntries_EmptyPrefix_FindsAll)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/b"), {'2'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/b"), {'2'}).Get().bSuccess));
 
-		TArray<FString> AllKeys = Backend->ListEntries(TEXT(""));
-		ASSERT_THAT(AreEqual(2, AllKeys.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
 	}
 
 	TEST_METHOD(InvalidKey_SaveReturnsFalse)
 	{
-		ASSERT_THAT(IsFalse(Backend->SaveEntry(TEXT("invalid_key"), {'1'})));
+		ASSERT_THAT(IsFalse(Backend->SaveEntry(TEXT("invalid_key"), {'1'}).Get().bSuccess));
 	}
 };
 
 // =============================================================================
-// Transactions
+// Batch save (replaces transaction tests)
 // =============================================================================
 
-TEST_CLASS(ArcSQLiteBackend_Transactions, "ArcPersistence.SQLiteBackend.Transactions")
+TEST_CLASS(ArcSQLiteBackend_BatchSave, "ArcPersistence.SQLiteBackend.BatchSave")
 {
 	FString TestDbPath;
 	TUniquePtr<FArcSQLiteBackend> Backend;
@@ -163,38 +167,34 @@ TEST_CLASS(ArcSQLiteBackend_Transactions, "ArcPersistence.SQLiteBackend.Transact
 		IFileManager::Get().DeleteDirectory(*FPaths::GetPath(TestDbPath), false, true);
 	}
 
-	TEST_METHOD(Commit_DataPersists)
+	TEST_METHOD(SaveEntries_DataPersists)
 	{
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/tx_a"), {1, 2})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/tx_b"), {3, 4})));
-		Backend->CommitTransaction();
+		TArray<TPair<FString, TArray<uint8>>> Entries;
+		Entries.Emplace(TEXT("world/w1/tx_a"), TArray<uint8>{1, 2});
+		Entries.Emplace(TEXT("world/w1/tx_b"), TArray<uint8>{3, 4});
 
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/tx_a"))));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/tx_b"))));
+		ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
+
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/tx_a")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/tx_b")).Get().bSuccess));
 	}
 
-	TEST_METHOD(Rollback_DataDisappears)
+	TEST_METHOD(MultipleBatchSaves_Independent)
 	{
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/roll_a"), {10})));
-		Backend->RollbackTransaction();
+		{
+			TArray<TPair<FString, TArray<uint8>>> Entries;
+			Entries.Emplace(TEXT("world/w1/batch1"), TArray<uint8>{1});
+			ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
+		}
 
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/roll_a"))));
-	}
+		{
+			TArray<TPair<FString, TArray<uint8>>> Entries;
+			Entries.Emplace(TEXT("world/w1/batch2"), TArray<uint8>{2});
+			ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
+		}
 
-	TEST_METHOD(MultipleTransactions_Independent)
-	{
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/batch1"), {1})));
-		Backend->CommitTransaction();
-
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/batch2"), {2})));
-		Backend->RollbackTransaction();
-
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/batch1"))));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/batch2"))));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/batch1")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w1/batch2")).Get().bSuccess));
 	}
 };
 
@@ -222,65 +222,74 @@ TEST_CLASS(ArcSQLiteBackend_ExtendedAPI, "ArcPersistence.SQLiteBackend.ExtendedA
 
 	TEST_METHOD(ListWorlds_ReturnsCreatedWorlds)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w2/b"), {'2'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w2/b"), {'2'}).Get().bSuccess));
 
-		TArray<FString> Worlds = Backend->ListWorlds();
-		ASSERT_THAT(AreEqual(2, Worlds.Num()));
-		ASSERT_THAT(IsTrue(Worlds.Contains(TEXT("w1"))));
-		ASSERT_THAT(IsTrue(Worlds.Contains(TEXT("w2"))));
+		FArcPersistenceListResult ListResult = Backend->ListWorlds().Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
+		ASSERT_THAT(IsTrue(ListResult.Keys.Contains(TEXT("w1"))));
+		ASSERT_THAT(IsTrue(ListResult.Keys.Contains(TEXT("w2"))));
 	}
 
 	TEST_METHOD(DeleteWorld_RemovesAllWorldEntries)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/b"), {'2'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w2/c"), {'3'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/a"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/b"), {'2'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w2/c"), {'3'}).Get().bSuccess));
 
-		ASSERT_THAT(IsTrue(Backend->DeleteWorld(TEXT("w1"))));
+		ASSERT_THAT(IsTrue(Backend->DeleteWorld(TEXT("w1")).Get().bSuccess));
 
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/a"))));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/b"))));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w2/c"))));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/a")).Get().bSuccess));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/b")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("world/w2/c")).Get().bSuccess));
 
-		TArray<FString> Worlds = Backend->ListWorlds();
-		ASSERT_THAT(AreEqual(1, Worlds.Num()));
-		ASSERT_THAT(AreEqual(FString(TEXT("w2")), Worlds[0]));
+		FArcPersistenceListResult ListResult = Backend->ListWorlds().Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(1, ListResult.Keys.Num()));
+		ASSERT_THAT(AreEqual(FString(TEXT("w2")), ListResult.Keys[0]));
 	}
 
 	TEST_METHOD(ListPlayers_ReturnsDistinctPlayerIds)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/stats"), {'2'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p2/inv"), {'3'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/stats"), {'2'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p2/inv"), {'3'}).Get().bSuccess));
 
-		TArray<FString> Players = Backend->ListPlayers();
-		ASSERT_THAT(AreEqual(2, Players.Num()));
-		ASSERT_THAT(IsTrue(Players.Contains(TEXT("p1"))));
-		ASSERT_THAT(IsTrue(Players.Contains(TEXT("p2"))));
+		FArcPersistenceListResult ListResult = Backend->ListPlayers().Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
+		ASSERT_THAT(IsTrue(ListResult.Keys.Contains(TEXT("p1"))));
+		ASSERT_THAT(IsTrue(ListResult.Keys.Contains(TEXT("p2"))));
 	}
 
 	TEST_METHOD(DeletePlayer_RemovesAllPlayerEntries)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'1'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/stats"), {'2'})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p2/inv"), {'3'})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/inv"), {'1'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p1/stats"), {'2'}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/p2/inv"), {'3'}).Get().bSuccess));
 
-		ASSERT_THAT(IsTrue(Backend->DeletePlayer(TEXT("p1"))));
+		ASSERT_THAT(IsTrue(Backend->DeletePlayer(TEXT("p1")).Get().bSuccess));
 
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("players/p1/inv"))));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("players/p1/stats"))));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("players/p2/inv"))));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("players/p1/inv")).Get().bSuccess));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("players/p1/stats")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("players/p2/inv")).Get().bSuccess));
 	}
 
 	TEST_METHOD(WorldAutoCreated_OnFirstSave)
 	{
-		ASSERT_THAT(AreEqual(0, Backend->ListWorlds().Num()));
+		FArcPersistenceListResult EmptyResult = Backend->ListWorlds().Get();
+		ASSERT_THAT(IsTrue(EmptyResult.bSuccess));
+		ASSERT_THAT(AreEqual(0, EmptyResult.Keys.Num()));
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/auto_w/a"), {'1'})));
-		ASSERT_THAT(AreEqual(1, Backend->ListWorlds().Num()));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/auto_w/a"), {'1'}).Get().bSuccess));
+		FArcPersistenceListResult OneResult = Backend->ListWorlds().Get();
+		ASSERT_THAT(IsTrue(OneResult.bSuccess));
+		ASSERT_THAT(AreEqual(1, OneResult.Keys.Num()));
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/auto_w/b"), {'2'})));
-		ASSERT_THAT(AreEqual(1, Backend->ListWorlds().Num()));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/auto_w/b"), {'2'}).Get().bSuccess));
+		FArcPersistenceListResult StillOneResult = Backend->ListWorlds().Get();
+		ASSERT_THAT(IsTrue(StillOneResult.bSuccess));
+		ASSERT_THAT(AreEqual(1, StillOneResult.Keys.Num()));
 	}
 };

@@ -21,6 +21,7 @@
 
 #include "CQTest.h"
 #include "Storage/ArcJsonFileBackend.h"
+#include "Storage/ArcPersistenceResult.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 
@@ -51,15 +52,15 @@ TEST_CLASS(ArcJsonFileBackend_Basic, "ArcPersistence.Storage.JsonFileBackend")
 		Original.Add(0x6C); // l
 		Original.Add(0x6F); // o
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Original)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Original).Get().bSuccess));
 
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Loaded)));
-		ASSERT_THAT(AreEqual(Original.Num(), Loaded.Num()));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(Original.Num(), LoadResult.Data.Num()));
 
 		for (int32 i = 0; i < Original.Num(); ++i)
 		{
-			ASSERT_THAT(AreEqual(Original[i], Loaded[i]));
+			ASSERT_THAT(AreEqual(Original[i], LoadResult.Data[i]));
 		}
 	}
 
@@ -69,19 +70,19 @@ TEST_CLASS(ArcJsonFileBackend_Basic, "ArcPersistence.Storage.JsonFileBackend")
 		TArray<uint8> Data;
 		Data.Add(0x01);
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 	}
 
 	TEST_METHOD(EntryExists_FalseBeforeSave)
 	{
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("nonexistent/key"))));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("nonexistent/key")).Get().bSuccess));
 	}
 
 	TEST_METHOD(LoadNonexistent_ReturnsFalse)
 	{
-		TArray<uint8> OutData;
-		ASSERT_THAT(IsFalse(Backend->LoadEntry(TEXT("missing/key"), OutData)));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(TEXT("missing/key")).Get();
+		ASSERT_THAT(IsFalse(LoadResult.bSuccess));
 	}
 
 	TEST_METHOD(DeleteEntry_Removes)
@@ -90,12 +91,12 @@ TEST_CLASS(ArcJsonFileBackend_Basic, "ArcPersistence.Storage.JsonFileBackend")
 		TArray<uint8> Data;
 		Data.Add(0xFF);
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 
-		Backend->DeleteEntry(Key);
+		Backend->DeleteEntry(Key).Get();
 
-		ASSERT_THAT(IsFalse(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(Key).Get().bSuccess));
 	}
 
 	TEST_METHOD(ListEntries_FindsByPrefix)
@@ -103,16 +104,17 @@ TEST_CLASS(ArcJsonFileBackend_Basic, "ArcPersistence.Storage.JsonFileBackend")
 		TArray<uint8> Data;
 		Data.Add(0x01);
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/abc/inventory"), Data)));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/abc/stats"), Data)));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/xyz/inventory"), Data)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/abc/inventory"), Data).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/abc/stats"), Data).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/xyz/inventory"), Data).Get().bSuccess));
 
-		TArray<FString> Results = Backend->ListEntries(TEXT("players/abc"));
-		ASSERT_THAT(AreEqual(2, Results.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("players/abc")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
 
 		// Verify both keys are present (order not guaranteed)
-		bool bFoundInventory = Results.Contains(TEXT("players/abc/inventory"));
-		bool bFoundStats = Results.Contains(TEXT("players/abc/stats"));
+		bool bFoundInventory = ListResult.Keys.Contains(TEXT("players/abc/inventory"));
+		bool bFoundStats = ListResult.Keys.Contains(TEXT("players/abc/stats"));
 		ASSERT_THAT(IsTrue(bFoundInventory));
 		ASSERT_THAT(IsTrue(bFoundStats));
 	}
@@ -122,52 +124,37 @@ TEST_CLASS(ArcJsonFileBackend_Basic, "ArcPersistence.Storage.JsonFileBackend")
 		TArray<uint8> Data;
 		Data.Add(0x01);
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("alpha/one"), Data)));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("beta/two"), Data)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("alpha/one"), Data).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("beta/two"), Data).Get().bSuccess));
 
-		TArray<FString> Results = Backend->ListEntries(TEXT(""));
-		ASSERT_THAT(AreEqual(2, Results.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
 
-		bool bFoundAlpha = Results.Contains(TEXT("alpha/one"));
-		bool bFoundBeta = Results.Contains(TEXT("beta/two"));
+		bool bFoundAlpha = ListResult.Keys.Contains(TEXT("alpha/one"));
+		bool bFoundBeta = ListResult.Keys.Contains(TEXT("beta/two"));
 		ASSERT_THAT(IsTrue(bFoundAlpha));
 		ASSERT_THAT(IsTrue(bFoundBeta));
 	}
 
-	TEST_METHOD(Transaction_CommitPersists)
+	TEST_METHOD(SaveEntries_BatchPersists)
 	{
 		const FString Key = TEXT("txn/commit");
 		TArray<uint8> Data;
 		Data.Add(0xAA);
 		Data.Add(0xBB);
 
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
-		Backend->CommitTransaction();
+		TArray<TPair<FString, TArray<uint8>>> Entries;
+		Entries.Emplace(Key, Data);
 
-		// After commit, entry should be loadable
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Loaded)));
-		ASSERT_THAT(AreEqual(2, Loaded.Num()));
-		ASSERT_THAT(AreEqual(static_cast<uint8>(0xAA), Loaded[0]));
-		ASSERT_THAT(AreEqual(static_cast<uint8>(0xBB), Loaded[1]));
-	}
+		ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
 
-	TEST_METHOD(Transaction_RollbackDiscards)
-	{
-		const FString Key = TEXT("txn/rollback");
-		TArray<uint8> Data;
-		Data.Add(0xCC);
-
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
-		Backend->RollbackTransaction();
-
-		// After rollback, entry should not exist
-		ASSERT_THAT(IsFalse(Backend->EntryExists(Key)));
-
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsFalse(Backend->LoadEntry(Key, Loaded)));
+		// After batch save, entry should be loadable
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, LoadResult.Data.Num()));
+		ASSERT_THAT(AreEqual(static_cast<uint8>(0xAA), LoadResult.Data[0]));
+		ASSERT_THAT(AreEqual(static_cast<uint8>(0xBB), LoadResult.Data[1]));
 	}
 
 	TEST_METHOD(NestedDirectoryKeys_Work)
@@ -179,15 +166,15 @@ TEST_CLASS(ArcJsonFileBackend_Basic, "ArcPersistence.Storage.JsonFileBackend")
 		Original.Add(0xBE);
 		Original.Add(0xEF);
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Original)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Original).Get().bSuccess));
 
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Loaded)));
-		ASSERT_THAT(AreEqual(Original.Num(), Loaded.Num()));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(Original.Num(), LoadResult.Data.Num()));
 
 		for (int32 i = 0; i < Original.Num(); ++i)
 		{
-			ASSERT_THAT(AreEqual(Original[i], Loaded[i]));
+			ASSERT_THAT(AreEqual(Original[i], LoadResult.Data[i]));
 		}
 	}
 };

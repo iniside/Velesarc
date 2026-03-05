@@ -41,7 +41,7 @@ void UArcMassPersistenceSourceTrackingProcessor::Execute(
 
 	TArray<FVector> SourcePositions;
 
-	SourceQuery.ForEachEntityChunk(EntityManager, Context,
+	SourceQuery.ForEachEntityChunk(Context,
 		[&SourcePositions](FMassExecutionContext& Ctx)
 		{
 			const auto Transforms =
@@ -97,7 +97,7 @@ void UArcMassPersistenceCellTrackingProcessor::Execute(
 
 	const float CellSize = Subsystem->GetCellSize();
 
-	EntityQuery.ForEachEntityChunk(EntityManager, Context,
+	EntityQuery.ForEachEntityChunk(Context,
 		[Subsystem, CellSize](FMassExecutionContext& Ctx)
 		{
 			const auto Transforms =
@@ -156,7 +156,7 @@ void UArcMassPersistenceInitObserver::Execute(
 
 	const float CellSize = Subsystem ? Subsystem->GetCellSize() : 10000.f;
 
-	EntityQuery.ForEachEntityChunk(EntityManager, Context,
+	EntityQuery.ForEachEntityChunk(Context,
 		[Subsystem, CellSize](FMassExecutionContext& Ctx)
 		{
 			const auto Transforms =

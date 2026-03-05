@@ -23,6 +23,7 @@
 
 #include "Engine/World.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Async/Future.h"
 
 #include "ArcWorldPersistenceSubsystem.generated.h"
 
@@ -70,6 +71,12 @@ public:
 	/** Save all registered objects. Call on world cleanup or manual checkpoint. */
 	void SaveWorldData(const FGuid& WorldId);
 
+	/** Async variant of LoadWorldData. Returns a future that completes when done. */
+	TFuture<void> LoadWorldDataAsync(const FGuid& WorldId);
+
+	/** Async variant of SaveWorldData. Returns a future that completes when done. */
+	TFuture<void> SaveWorldDataAsync(const FGuid& WorldId);
+
 	// ── Actor Registration ──────────────────────────────────────────────
 
 	/** Register an actor by key. If cached data exists, applies immediately. */
@@ -112,7 +119,7 @@ private:
 	/** Keys that are tombstoned. */
 	TSet<FString> TombstonedKeys;
 
-	void SaveObject(const FString& StorageKey, UObject* Object);
+	TArray<uint8> SerializeObject(UObject* Object);
 	void ApplyDataToObject(const TArray<uint8>& Data, UObject* Object);
 	FString MakeStorageKey(const FString& Key) const;
 

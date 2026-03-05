@@ -22,33 +22,40 @@
 #pragma once
 
 #include "Storage/ArcPersistenceBackend.h"
+#include "Storage/ArcPersistenceTaskQueue.h"
 
 /**
  * Filesystem-backed persistence storage.
  * Maps logical keys to JSON files under a base directory.
  * Example: Key "players/abc/inventory" -> BaseDirectory/players/abc/inventory.json
+ *
+ * All public methods enqueue work onto a serial task queue so file I/O
+ * happens on a background thread without contention.
  */
 class ARCPERSISTENCE_API FArcJsonFileBackend : public IArcPersistenceBackend
 {
 public:
 	explicit FArcJsonFileBackend(const FString& InBaseDirectory);
 
-	// IArcPersistenceBackend
-	virtual bool SaveEntry(const FString& Key, const TArray<uint8>& Data) override;
-	virtual bool LoadEntry(const FString& Key, TArray<uint8>& OutData) override;
-	virtual bool DeleteEntry(const FString& Key) override;
-	virtual bool EntryExists(const FString& Key) override;
-	virtual TArray<FString> ListEntries(const FString& KeyPrefix) override;
-	virtual void BeginTransaction() override;
-	virtual void CommitTransaction() override;
-	virtual void RollbackTransaction() override;
+	virtual TFuture<FArcPersistenceResult> SaveEntry(const FString& Key, TArray<uint8> Data) override;
+	virtual TFuture<FArcPersistenceLoadResult> LoadEntry(const FString& Key) override;
+	virtual TFuture<FArcPersistenceResult> DeleteEntry(const FString& Key) override;
+	virtual TFuture<FArcPersistenceResult> EntryExists(const FString& Key) override;
+	virtual TFuture<FArcPersistenceListResult> ListEntries(const FString& KeyPrefix) override;
+	virtual TFuture<FArcPersistenceResult> SaveEntries(TArray<TPair<FString, TArray<uint8>>> Entries) override;
 	virtual FName GetBackendName() const override { return FName("JsonFile"); }
+	virtual void Flush() override;
 
 private:
 	FString BaseDirectory;
-	bool bInTransaction = false;
-	TArray<TPair<FString, FString>> PendingWrites; // TempPath -> FinalPath
+	FArcPersistenceTaskQueue TaskQueue;
 
 	FString KeyToFilePath(const FString& Key) const;
-	FString KeyToTempPath(const FString& Key) const;
+
+	FArcPersistenceResult SaveEntrySync(const FString& Key, const TArray<uint8>& Data);
+	FArcPersistenceLoadResult LoadEntrySync(const FString& Key);
+	FArcPersistenceResult DeleteEntrySync(const FString& Key);
+	FArcPersistenceResult EntryExistsSync(const FString& Key);
+	FArcPersistenceListResult ListEntriesSync(const FString& KeyPrefix);
+	FArcPersistenceResult SaveEntriesSync(const TArray<TPair<FString, TArray<uint8>>>& Entries);
 };

@@ -572,7 +572,7 @@ void UArcMassNetIdAssignObserver::Execute(FMassEntityManager& EntityManager, FMa
 		return;
 	}
 
-	ObserverQuery.ForEachEntityChunk(EntityManager, Context,
+	ObserverQuery.ForEachEntityChunk(Context,
 		[Subsystem](FMassExecutionContext& Context)
 		{
 			const int32 NumEntities = Context.GetNumEntities();

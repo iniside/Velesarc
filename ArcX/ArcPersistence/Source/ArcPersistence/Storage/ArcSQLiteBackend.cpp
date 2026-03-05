@@ -56,6 +56,8 @@ FArcSQLiteBackend::FArcSQLiteBackend(const FString& InDatabasePath)
 
 FArcSQLiteBackend::~FArcSQLiteBackend()
 {
+	TaskQueue.Flush();
+
 	StmtSaveWorldEntry.Destroy();
 	StmtLoadWorldEntry.Destroy();
 	StmtDeleteWorldEntry.Destroy();
@@ -76,6 +78,11 @@ FArcSQLiteBackend::~FArcSQLiteBackend()
 bool FArcSQLiteBackend::IsValid() const
 {
 	return Database.IsValid();
+}
+
+void FArcSQLiteBackend::Flush()
+{
+	TaskQueue.Flush();
 }
 
 bool FArcSQLiteBackend::CreateSchema()
@@ -154,10 +161,104 @@ bool FArcSQLiteBackend::PrepareStatements()
 }
 
 // ---------------------------------------------------------------------------
-// Core CRUD
+// Public async API — enqueue onto TaskQueue
 // ---------------------------------------------------------------------------
 
-bool FArcSQLiteBackend::SaveEntry(const FString& Key, const TArray<uint8>& Data)
+TFuture<FArcPersistenceResult> FArcSQLiteBackend::SaveEntry(const FString& Key, TArray<uint8> Data)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Key, Data = MoveTemp(Data)]() mutable -> FArcPersistenceResult
+		{
+			return SaveEntrySync(Key, Data);
+		});
+}
+
+TFuture<FArcPersistenceLoadResult> FArcSQLiteBackend::LoadEntry(const FString& Key)
+{
+	return TaskQueue.Enqueue<FArcPersistenceLoadResult>(
+		[this, Key]() -> FArcPersistenceLoadResult
+		{
+			return LoadEntrySync(Key);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcSQLiteBackend::DeleteEntry(const FString& Key)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Key]() -> FArcPersistenceResult
+		{
+			return DeleteEntrySync(Key);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcSQLiteBackend::EntryExists(const FString& Key)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Key]() -> FArcPersistenceResult
+		{
+			return EntryExistsSync(Key);
+		});
+}
+
+TFuture<FArcPersistenceListResult> FArcSQLiteBackend::ListEntries(const FString& KeyPrefix)
+{
+	return TaskQueue.Enqueue<FArcPersistenceListResult>(
+		[this, KeyPrefix]() -> FArcPersistenceListResult
+		{
+			return ListEntriesSync(KeyPrefix);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcSQLiteBackend::SaveEntries(TArray<TPair<FString, TArray<uint8>>> Entries)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Entries = MoveTemp(Entries)]() -> FArcPersistenceResult
+		{
+			return SaveEntriesSync(Entries);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcSQLiteBackend::DeleteWorld(const FString& WorldId)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, WorldId]() -> FArcPersistenceResult
+		{
+			return DeleteWorldSync(WorldId);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcSQLiteBackend::DeletePlayer(const FString& PlayerId)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, PlayerId]() -> FArcPersistenceResult
+		{
+			return DeletePlayerSync(PlayerId);
+		});
+}
+
+TFuture<FArcPersistenceListResult> FArcSQLiteBackend::ListWorlds()
+{
+	return TaskQueue.Enqueue<FArcPersistenceListResult>(
+		[this]() -> FArcPersistenceListResult
+		{
+			return ListWorldsSync();
+		});
+}
+
+TFuture<FArcPersistenceListResult> FArcSQLiteBackend::ListPlayers()
+{
+	return TaskQueue.Enqueue<FArcPersistenceListResult>(
+		[this]() -> FArcPersistenceListResult
+		{
+			return ListPlayersSync();
+		});
+}
+
+// ---------------------------------------------------------------------------
+// Sync implementations (run on background thread)
+// ---------------------------------------------------------------------------
+
+FArcPersistenceResult FArcSQLiteBackend::SaveEntrySync(const FString& Key, const TArray<uint8>& Data)
 {
 	using namespace UE::ArcPersistence;
 
@@ -179,7 +280,10 @@ bool FArcSQLiteBackend::SaveEntry(const FString& Key, const TArray<uint8>& Data)
 		const bool bOk = StmtSaveWorldEntry.Execute();
 		StmtSaveWorldEntry.ClearBindings();
 		StmtSaveWorldEntry.Reset();
-		return bOk;
+
+		return bOk
+			? FArcPersistenceResult::Success()
+			: FArcPersistenceResult::Failure(TEXT("Failed to save world entry"));
 	}
 	else if (Parsed.Category == EKeyCategory::Player)
 	{
@@ -189,18 +293,23 @@ bool FArcSQLiteBackend::SaveEntry(const FString& Key, const TArray<uint8>& Data)
 		const bool bOk = StmtSavePlayerEntry.Execute();
 		StmtSavePlayerEntry.ClearBindings();
 		StmtSavePlayerEntry.Reset();
-		return bOk;
+
+		return bOk
+			? FArcPersistenceResult::Success()
+			: FArcPersistenceResult::Failure(TEXT("Failed to save player entry"));
 	}
 	else
 	{
 		ValidateKey(Key);
-		return false;
+		return FArcPersistenceResult::Failure(FString::Printf(TEXT("Unknown key category: %s"), *Key));
 	}
 }
 
-bool FArcSQLiteBackend::LoadEntry(const FString& Key, TArray<uint8>& OutData)
+FArcPersistenceLoadResult FArcSQLiteBackend::LoadEntrySync(const FString& Key)
 {
 	using namespace UE::ArcPersistence;
+
+	FArcPersistenceLoadResult Result;
 
 	FParsedKey Parsed = ParseKey(Key);
 	FSQLitePreparedStatement* Stmt = nullptr;
@@ -216,7 +325,9 @@ bool FArcSQLiteBackend::LoadEntry(const FString& Key, TArray<uint8>& OutData)
 	else
 	{
 		ValidateKey(Key);
-		return false;
+		Result.bSuccess = false;
+		Result.Error = FString::Printf(TEXT("Unknown key category: %s"), *Key);
+		return Result;
 	}
 
 	Stmt->SetBindingValueByIndex(1, Key);
@@ -228,8 +339,8 @@ bool FArcSQLiteBackend::LoadEntry(const FString& Key, TArray<uint8>& OutData)
 		if (Row.GetColumnValueByIndex(0, DataStr))
 		{
 			const FTCHARToUTF8 Utf8(*DataStr);
-			OutData.SetNum(Utf8.Length());
-			FMemory::Memcpy(OutData.GetData(), Utf8.Get(), Utf8.Length());
+			Result.Data.SetNum(Utf8.Length());
+			FMemory::Memcpy(Result.Data.GetData(), Utf8.Get(), Utf8.Length());
 			bFound = true;
 		}
 		return ESQLitePreparedStatementExecuteRowResult::Stop;
@@ -237,10 +348,16 @@ bool FArcSQLiteBackend::LoadEntry(const FString& Key, TArray<uint8>& OutData)
 
 	Stmt->ClearBindings();
 	Stmt->Reset();
-	return bFound;
+
+	Result.bSuccess = bFound;
+	if (!bFound)
+	{
+		Result.Error = FString::Printf(TEXT("Entry not found: %s"), *Key);
+	}
+	return Result;
 }
 
-bool FArcSQLiteBackend::DeleteEntry(const FString& Key)
+FArcPersistenceResult FArcSQLiteBackend::DeleteEntrySync(const FString& Key)
 {
 	using namespace UE::ArcPersistence;
 
@@ -258,17 +375,20 @@ bool FArcSQLiteBackend::DeleteEntry(const FString& Key)
 	else
 	{
 		ValidateKey(Key);
-		return false;
+		return FArcPersistenceResult::Failure(FString::Printf(TEXT("Unknown key category: %s"), *Key));
 	}
 
 	Stmt->SetBindingValueByIndex(1, Key);
 	const bool bOk = Stmt->Execute();
 	Stmt->ClearBindings();
 	Stmt->Reset();
-	return bOk;
+
+	return bOk
+		? FArcPersistenceResult::Success()
+		: FArcPersistenceResult::Failure(FString::Printf(TEXT("Failed to delete entry: %s"), *Key));
 }
 
-bool FArcSQLiteBackend::EntryExists(const FString& Key)
+FArcPersistenceResult FArcSQLiteBackend::EntryExistsSync(const FString& Key)
 {
 	using namespace UE::ArcPersistence;
 
@@ -285,7 +405,7 @@ bool FArcSQLiteBackend::EntryExists(const FString& Key)
 	}
 	else
 	{
-		return false;
+		return FArcPersistenceResult::Failure(FString::Printf(TEXT("Unknown key category: %s"), *Key));
 	}
 
 	Stmt->SetBindingValueByIndex(1, Key);
@@ -299,12 +419,15 @@ bool FArcSQLiteBackend::EntryExists(const FString& Key)
 
 	Stmt->ClearBindings();
 	Stmt->Reset();
-	return bExists;
+
+	return bExists
+		? FArcPersistenceResult::Success()
+		: FArcPersistenceResult::Failure(FString::Printf(TEXT("Entry does not exist: %s"), *Key));
 }
 
-TArray<FString> FArcSQLiteBackend::ListEntries(const FString& KeyPrefix)
+FArcPersistenceListResult FArcSQLiteBackend::ListEntriesSync(const FString& KeyPrefix)
 {
-	TArray<FString> Keys;
+	FArcPersistenceListResult Result;
 
 	auto CollectKeys = [&](FSQLitePreparedStatement& Stmt)
 	{
@@ -314,7 +437,7 @@ TArray<FString> FArcSQLiteBackend::ListEntries(const FString& KeyPrefix)
 			FString Key;
 			if (Row.GetColumnValueByIndex(0, Key))
 			{
-				Keys.Add(MoveTemp(Key));
+				Result.Keys.Add(MoveTemp(Key));
 			}
 			return ESQLitePreparedStatementExecuteRowResult::Continue;
 		});
@@ -325,36 +448,34 @@ TArray<FString> FArcSQLiteBackend::ListEntries(const FString& KeyPrefix)
 	CollectKeys(StmtListWorldEntries);
 	CollectKeys(StmtListPlayerEntries);
 
-	return Keys;
+	Result.bSuccess = true;
+	return Result;
 }
 
-// ---------------------------------------------------------------------------
-// Transactions
-// ---------------------------------------------------------------------------
-
-void FArcSQLiteBackend::BeginTransaction()
+FArcPersistenceResult FArcSQLiteBackend::SaveEntriesSync(const TArray<TPair<FString, TArray<uint8>>>& Entries)
 {
-	bInTransaction = true;
 	Database.Execute(TEXT("BEGIN TRANSACTION"));
-}
 
-void FArcSQLiteBackend::CommitTransaction()
-{
+	for (const auto& [Key, Data] : Entries)
+	{
+		FArcPersistenceResult EntryResult = SaveEntrySync(Key, Data);
+		if (!EntryResult.bSuccess)
+		{
+			Database.Execute(TEXT("ROLLBACK"));
+			return FArcPersistenceResult::Failure(
+				FString::Printf(TEXT("Batch save failed on key '%s': %s"), *Key, *EntryResult.Error));
+		}
+	}
+
 	Database.Execute(TEXT("COMMIT"));
-	bInTransaction = false;
-}
-
-void FArcSQLiteBackend::RollbackTransaction()
-{
-	Database.Execute(TEXT("ROLLBACK"));
-	bInTransaction = false;
+	return FArcPersistenceResult::Success();
 }
 
 // ---------------------------------------------------------------------------
-// Extended API
+// Extended sync implementations
 // ---------------------------------------------------------------------------
 
-bool FArcSQLiteBackend::DeleteWorld(const FString& WorldId)
+FArcPersistenceResult FArcSQLiteBackend::DeleteWorldSync(const FString& WorldId)
 {
 	FSQLitePreparedStatement StmtDelEntries = Database.PrepareStatement(
 		TEXT("DELETE FROM world_entries WHERE world_id = ?"));
@@ -368,47 +489,54 @@ bool FArcSQLiteBackend::DeleteWorld(const FString& WorldId)
 	const bool bWorld = StmtDelWorld.Execute();
 	StmtDelWorld.Destroy();
 
-	return bEntries && bWorld;
+	return (bEntries && bWorld)
+		? FArcPersistenceResult::Success()
+		: FArcPersistenceResult::Failure(FString::Printf(TEXT("Failed to delete world: %s"), *WorldId));
 }
 
-bool FArcSQLiteBackend::DeletePlayer(const FString& PlayerId)
+FArcPersistenceResult FArcSQLiteBackend::DeletePlayerSync(const FString& PlayerId)
 {
 	FSQLitePreparedStatement Stmt = Database.PrepareStatement(
 		TEXT("DELETE FROM player_entries WHERE player_id = ?"));
 	Stmt.SetBindingValueByIndex(1, PlayerId);
 	const bool bOk = Stmt.Execute();
 	Stmt.Destroy();
-	return bOk;
+
+	return bOk
+		? FArcPersistenceResult::Success()
+		: FArcPersistenceResult::Failure(FString::Printf(TEXT("Failed to delete player: %s"), *PlayerId));
 }
 
-TArray<FString> FArcSQLiteBackend::ListWorlds()
+FArcPersistenceListResult FArcSQLiteBackend::ListWorldsSync()
 {
-	TArray<FString> Worlds;
+	FArcPersistenceListResult Result;
 	Database.Execute(TEXT("SELECT world_id FROM worlds"),
 		[&](const FSQLitePreparedStatement& Row) -> ESQLitePreparedStatementExecuteRowResult
 	{
 		FString WorldId;
 		if (Row.GetColumnValueByIndex(0, WorldId))
 		{
-			Worlds.Add(MoveTemp(WorldId));
+			Result.Keys.Add(MoveTemp(WorldId));
 		}
 		return ESQLitePreparedStatementExecuteRowResult::Continue;
 	});
-	return Worlds;
+	Result.bSuccess = true;
+	return Result;
 }
 
-TArray<FString> FArcSQLiteBackend::ListPlayers()
+FArcPersistenceListResult FArcSQLiteBackend::ListPlayersSync()
 {
-	TArray<FString> Players;
+	FArcPersistenceListResult Result;
 	Database.Execute(TEXT("SELECT DISTINCT player_id FROM player_entries"),
 		[&](const FSQLitePreparedStatement& Row) -> ESQLitePreparedStatementExecuteRowResult
 	{
 		FString PlayerId;
 		if (Row.GetColumnValueByIndex(0, PlayerId))
 		{
-			Players.Add(MoveTemp(PlayerId));
+			Result.Keys.Add(MoveTemp(PlayerId));
 		}
 		return ESQLitePreparedStatementExecuteRowResult::Continue;
 	});
-	return Players;
+	Result.bSuccess = true;
+	return Result;
 }

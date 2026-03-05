@@ -135,6 +135,12 @@ public:
 		Data.Add(TSharedPtr<FArcItemFragment_ItemInstanceBase>(DataPtr));
 	}
 
+	/** Adds a pre-constructed shared pointer (e.g. with a custom deleter). */
+	void Add(TSharedPtr<FArcItemFragment_ItemInstanceBase> DataPtr)
+	{
+		Data.Add(MoveTemp(DataPtr));
+	}
+
 	/** Does a shallow copy of data from one handle to another */
 	void Append(const FArcItemSpecFragmentInstances& OtherHandle)
 	{

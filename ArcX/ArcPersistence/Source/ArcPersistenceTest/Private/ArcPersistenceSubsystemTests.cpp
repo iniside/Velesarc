@@ -26,6 +26,7 @@
 #include "Serialization/ArcJsonSaveArchive.h"
 #include "Serialization/ArcJsonLoadArchive.h"
 #include "Storage/ArcJsonFileBackend.h"
+#include "Storage/ArcPersistenceResult.h"
 #include "ArcPersistenceTestTypes.h"
 
 #include "HAL/FileManager.h"
@@ -33,7 +34,7 @@
 
 // =============================================================================
 // Full pipeline tests — simulate subsystem data flow.
-// Tests the complete save → backend → load → apply cycle.
+// Tests the complete save -> backend -> load -> apply cycle.
 // =============================================================================
 
 TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
@@ -65,7 +66,7 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 		Source.Location = FVector(100.0, 200.0, 300.0);
 		Source.Scores = {11, 22, 33};
 
-		// Save: serialize → backend
+		// Save: serialize -> backend
 		{
 			FArcJsonSaveArchive SaveAr;
 			uint32 SchemaVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
@@ -73,17 +74,17 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 			FArcReflectionSerializer::Save(Type, &Source, SaveAr);
 			TArray<uint8> Data = SaveAr.Finalize();
 
-			ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("test/pipeline"), Data)));
+			ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("test/pipeline"), MoveTemp(Data)).Get().bSuccess));
 		}
 
-		// Load: backend → deserialize
+		// Load: backend -> deserialize
 		FArcPersistenceTestStruct Target;
 		{
-			TArray<uint8> LoadedData;
-			ASSERT_THAT(IsTrue(Backend->LoadEntry(TEXT("test/pipeline"), LoadedData)));
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(TEXT("test/pipeline")).Get();
+			ASSERT_THAT(IsTrue(LoadResult.bSuccess));
 
 			FArcJsonLoadArchive LoadAr;
-			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadedData)));
+			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadResult.Data)));
 
 			uint32 ExpectedVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
 			ASSERT_THAT(AreEqual(ExpectedVersion, LoadAr.GetVersion()));
@@ -112,16 +113,16 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 			FArcReflectionSerializer::Save(Type, &EmptyData, SaveAr);
 			TArray<uint8> Data = SaveAr.Finalize();
 
-			ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("test/version"), Data)));
+			ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("test/version"), MoveTemp(Data)).Get().bSuccess));
 		}
 
 		// Load and check version mismatch
 		{
-			TArray<uint8> LoadedData;
-			ASSERT_THAT(IsTrue(Backend->LoadEntry(TEXT("test/version"), LoadedData)));
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(TEXT("test/version")).Get();
+			ASSERT_THAT(IsTrue(LoadResult.bSuccess));
 
 			FArcJsonLoadArchive LoadAr;
-			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadedData)));
+			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadResult.Data)));
 
 			uint32 ExpectedVersion = FArcReflectionSerializer::ComputeSchemaVersion(Type);
 
@@ -147,7 +148,7 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 			FArcReflectionSerializer::Save(Type, &Inventory, SaveAr);
 			TArray<uint8> Data = SaveAr.Finalize();
 
-			Backend->SaveEntry(PlayerPrefix / TEXT("inventory"), Data);
+			Backend->SaveEntry(PlayerPrefix / TEXT("inventory"), MoveTemp(Data)).Get();
 		}
 
 		// Save "attributes" domain
@@ -161,21 +162,22 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 			FArcReflectionSerializer::Save(Type, &Attributes, SaveAr);
 			TArray<uint8> Data = SaveAr.Finalize();
 
-			Backend->SaveEntry(PlayerPrefix / TEXT("attributes"), Data);
+			Backend->SaveEntry(PlayerPrefix / TEXT("attributes"), MoveTemp(Data)).Get();
 		}
 
 		// List entries for this player
-		TArray<FString> Keys = Backend->ListEntries(PlayerPrefix);
-		ASSERT_THAT(AreEqual(2, Keys.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(PlayerPrefix).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
 
 		// Load each and verify
-		for (const FString& Key : Keys)
+		for (const FString& Key : ListResult.Keys)
 		{
-			TArray<uint8> Data;
-			ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Data)));
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+			ASSERT_THAT(IsTrue(LoadResult.bSuccess));
 
 			FArcJsonLoadArchive LoadAr;
-			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(Data)));
+			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadResult.Data)));
 
 			FArcPersistenceTestStruct Target;
 			FArcReflectionSerializer::Load(Type, &Target, LoadAr);
@@ -221,16 +223,16 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 			FArcReflectionSerializer::Save(Type, &ActorData, SaveAr);
 			TArray<uint8> Data = SaveAr.Finalize();
 
-			ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
+			ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, MoveTemp(Data)).Get().bSuccess));
 		}
 
 		// Load and parse metadata
 		{
-			TArray<uint8> Data;
-			ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Data)));
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+			ASSERT_THAT(IsTrue(LoadResult.bSuccess));
 
 			FArcJsonLoadArchive LoadAr;
-			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(Data)));
+			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadResult.Data)));
 
 			FString TypeName;
 			ASSERT_THAT(IsTrue(LoadAr.BeginStruct(FName("_meta"))));
@@ -265,16 +267,16 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 			SaveAr.EndStruct();
 
 			TArray<uint8> Data = SaveAr.Finalize();
-			ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
+			ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, MoveTemp(Data)).Get().bSuccess));
 		}
 
 		// Load and detect tombstone
 		{
-			TArray<uint8> Data;
-			ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Data)));
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+			ASSERT_THAT(IsTrue(LoadResult.bSuccess));
 
 			FArcJsonLoadArchive LoadAr;
-			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(Data)));
+			ASSERT_THAT(IsTrue(LoadAr.InitializeFromData(LoadResult.Data)));
 
 			ASSERT_THAT(IsTrue(LoadAr.BeginStruct(FName("_meta"))));
 
@@ -290,22 +292,22 @@ TEST_CLASS(ArcPersistence_Pipeline, "ArcPersistence.Pipeline")
 		}
 	}
 
-	TEST_METHOD(TransactionalSave_MultipleEntries)
+	TEST_METHOD(BatchSave_MultipleEntries)
 	{
-		Backend->BeginTransaction();
-
 		TArray<uint8> Data1 = {0x01, 0x02};
 		TArray<uint8> Data2 = {0x03, 0x04};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/actors/a1"), Data1)));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/w1/actors/a2"), Data2)));
+		TArray<TPair<FString, TArray<uint8>>> Entries;
+		Entries.Emplace(TEXT("world/w1/actors/a1"), MoveTemp(Data1));
+		Entries.Emplace(TEXT("world/w1/actors/a2"), MoveTemp(Data2));
 
-		Backend->CommitTransaction();
+		ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
 
-		TArray<uint8> Loaded1, Loaded2;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(TEXT("world/w1/actors/a1"), Loaded1)));
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(TEXT("world/w1/actors/a2"), Loaded2)));
-		ASSERT_THAT(AreEqual(2, Loaded1.Num()));
-		ASSERT_THAT(AreEqual(2, Loaded2.Num()));
+		FArcPersistenceLoadResult Result1 = Backend->LoadEntry(TEXT("world/w1/actors/a1")).Get();
+		FArcPersistenceLoadResult Result2 = Backend->LoadEntry(TEXT("world/w1/actors/a2")).Get();
+		ASSERT_THAT(IsTrue(Result1.bSuccess));
+		ASSERT_THAT(IsTrue(Result2.bSuccess));
+		ASSERT_THAT(AreEqual(2, Result1.Data.Num()));
+		ASSERT_THAT(AreEqual(2, Result2.Data.Num()));
 	}
 };

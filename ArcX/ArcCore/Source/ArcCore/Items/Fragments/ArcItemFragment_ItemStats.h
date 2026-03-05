@@ -128,11 +128,12 @@ struct ARCCORE_API FArcItemInstance_ItemStats : public FArcItemInstance_ItemData
 	GENERATED_BODY()
 
 	friend struct FArcItemFragment_ItemStats;
+	
 protected:
 	/**
      * Precalculated stats of this item. Only Attribute and FinalValue gets replicated back.
      */
-	UPROPERTY()
+	UPROPERTY(SaveGame)
 	TArray<FArcItemStatReplicated> ReplicatedItemStats;
 
 	TMap<FName, float> Stats;
@@ -222,7 +223,7 @@ struct ARCCORE_API FArcItemFragment_ItemStats : public FArcItemFragment_ItemInst
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data")
+	UPROPERTY(SaveGame, EditAnywhere, Category = "Data")
 	TArray<FArcItemAttributeStat> DefaultStats;
 
 public:

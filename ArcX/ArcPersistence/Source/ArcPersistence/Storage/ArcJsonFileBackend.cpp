@@ -40,73 +40,134 @@ FString FArcJsonFileBackend::KeyToFilePath(const FString& Key) const
 	return BaseDirectory / Key + TEXT(".json");
 }
 
-FString FArcJsonFileBackend::KeyToTempPath(const FString& Key) const
+// ---------------------------------------------------------------------------
+// Public async API — enqueue onto the serial task queue
+// ---------------------------------------------------------------------------
+
+TFuture<FArcPersistenceResult> FArcJsonFileBackend::SaveEntry(const FString& Key, TArray<uint8> Data)
 {
-	return BaseDirectory / Key + TEXT(".tmp");
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Key, Data = MoveTemp(Data)]()
+		{
+			return SaveEntrySync(Key, Data);
+		});
+}
+
+TFuture<FArcPersistenceLoadResult> FArcJsonFileBackend::LoadEntry(const FString& Key)
+{
+	return TaskQueue.Enqueue<FArcPersistenceLoadResult>(
+		[this, Key]()
+		{
+			return LoadEntrySync(Key);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcJsonFileBackend::DeleteEntry(const FString& Key)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Key]()
+		{
+			return DeleteEntrySync(Key);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcJsonFileBackend::EntryExists(const FString& Key)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Key]()
+		{
+			return EntryExistsSync(Key);
+		});
+}
+
+TFuture<FArcPersistenceListResult> FArcJsonFileBackend::ListEntries(const FString& KeyPrefix)
+{
+	return TaskQueue.Enqueue<FArcPersistenceListResult>(
+		[this, KeyPrefix]()
+		{
+			return ListEntriesSync(KeyPrefix);
+		});
+}
+
+TFuture<FArcPersistenceResult> FArcJsonFileBackend::SaveEntries(TArray<TPair<FString, TArray<uint8>>> Entries)
+{
+	return TaskQueue.Enqueue<FArcPersistenceResult>(
+		[this, Entries = MoveTemp(Entries)]()
+		{
+			return SaveEntriesSync(Entries);
+		});
+}
+
+void FArcJsonFileBackend::Flush()
+{
+	TaskQueue.Flush();
 }
 
 // ---------------------------------------------------------------------------
-// Core CRUD
+// Synchronous implementations (run on the task queue thread)
 // ---------------------------------------------------------------------------
 
-bool FArcJsonFileBackend::SaveEntry(const FString& Key, const TArray<uint8>& Data)
+FArcPersistenceResult FArcJsonFileBackend::SaveEntrySync(const FString& Key, const TArray<uint8>& Data)
 {
-	if (bInTransaction)
-	{
-		const FString TempPath = KeyToTempPath(Key);
-		const FString FinalPath = KeyToFilePath(Key);
-
-		// Ensure parent directory exists for the temp file
-		IFileManager::Get().MakeDirectory(*FPaths::GetPath(TempPath), true);
-
-		if (!FFileHelper::SaveArrayToFile(Data, *TempPath))
-		{
-			return false;
-		}
-
-		PendingWrites.Emplace(TempPath, FinalPath);
-		return true;
-	}
-
 	const FString FilePath = KeyToFilePath(Key);
 
 	// Ensure parent directory exists
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(FilePath), true);
 
-	return FFileHelper::SaveArrayToFile(Data, *FilePath);
+	if (!FFileHelper::SaveArrayToFile(Data, *FilePath))
+	{
+		return FArcPersistenceResult::Failure(FString::Printf(TEXT("Failed to save file: %s"), *FilePath));
+	}
+
+	return FArcPersistenceResult::Success();
 }
 
-bool FArcJsonFileBackend::LoadEntry(const FString& Key, TArray<uint8>& OutData)
+FArcPersistenceLoadResult FArcJsonFileBackend::LoadEntrySync(const FString& Key)
 {
+	FArcPersistenceLoadResult Result;
 	const FString FilePath = KeyToFilePath(Key);
 
 	if (!IFileManager::Get().FileExists(*FilePath))
 	{
-		return false;
+		Result.bSuccess = false;
+		Result.Error = FString::Printf(TEXT("File not found: %s"), *FilePath);
+		return Result;
 	}
 
-	return FFileHelper::LoadFileToArray(OutData, *FilePath);
+	if (!FFileHelper::LoadFileToArray(Result.Data, *FilePath))
+	{
+		Result.bSuccess = false;
+		Result.Error = FString::Printf(TEXT("Failed to load file: %s"), *FilePath);
+		return Result;
+	}
+
+	Result.bSuccess = true;
+	return Result;
 }
 
-bool FArcJsonFileBackend::DeleteEntry(const FString& Key)
+FArcPersistenceResult FArcJsonFileBackend::DeleteEntrySync(const FString& Key)
 {
 	const FString FilePath = KeyToFilePath(Key);
 	IFileManager::Get().Delete(*FilePath);
-	return true;
+	return FArcPersistenceResult::Success();
 }
 
-bool FArcJsonFileBackend::EntryExists(const FString& Key)
+FArcPersistenceResult FArcJsonFileBackend::EntryExistsSync(const FString& Key)
 {
 	const FString FilePath = KeyToFilePath(Key);
-	return IFileManager::Get().FileExists(*FilePath);
+
+	if (IFileManager::Get().FileExists(*FilePath))
+	{
+		return FArcPersistenceResult::Success();
+	}
+
+	return FArcPersistenceResult::Failure(FString::Printf(TEXT("Entry does not exist: %s"), *Key));
 }
 
-// ---------------------------------------------------------------------------
-// Prefix scan
-// ---------------------------------------------------------------------------
-
-TArray<FString> FArcJsonFileBackend::ListEntries(const FString& KeyPrefix)
+FArcPersistenceListResult FArcJsonFileBackend::ListEntriesSync(const FString& KeyPrefix)
 {
+	FArcPersistenceListResult Result;
+
 	FString SearchDir = BaseDirectory;
 	if (!KeyPrefix.IsEmpty())
 	{
@@ -120,7 +181,6 @@ TArray<FString> FArcJsonFileBackend::ListEntries(const FString& KeyPrefix)
 	// BaseDirectory is already normalized in the constructor.
 	FString NormalizedBase = BaseDirectory + TEXT("/");
 
-	TArray<FString> Keys;
 	for (const FString& FilePath : FoundFiles)
 	{
 		// Normalize to forward slashes so stripping works cross-platform
@@ -141,50 +201,48 @@ TArray<FString> FArcJsonFileBackend::ListEntries(const FString& KeyPrefix)
 			KeyPart.LeftChopInline(5);
 		}
 
-		Keys.Add(MoveTemp(KeyPart));
+		Result.Keys.Add(MoveTemp(KeyPart));
 	}
 
-	return Keys;
+	Result.bSuccess = true;
+	return Result;
 }
 
-// ---------------------------------------------------------------------------
-// Transactions
-// ---------------------------------------------------------------------------
-
-void FArcJsonFileBackend::BeginTransaction()
+FArcPersistenceResult FArcJsonFileBackend::SaveEntriesSync(const TArray<TPair<FString, TArray<uint8>>>& Entries)
 {
-	bInTransaction = true;
-	PendingWrites.Empty();
-}
+	// Phase 1: Write all entries to .tmp files
+	TArray<TPair<FString, FString>> TempToFinal; // TempPath -> FinalPath
+	TempToFinal.Reserve(Entries.Num());
 
-void FArcJsonFileBackend::CommitTransaction()
-{
-	for (const TPair<FString, FString>& Pending : PendingWrites)
+	for (const TPair<FString, TArray<uint8>>& Entry : Entries)
 	{
-		const FString& TempPath = Pending.Key;
-		const FString& FinalPath = Pending.Value;
+		const FString FinalPath = KeyToFilePath(Entry.Key);
+		const FString TempPath = FinalPath + TEXT(".tmp");
 
-		// Ensure parent directory exists for the final path
-		IFileManager::Get().MakeDirectory(*FPaths::GetPath(FinalPath), true);
+		// Ensure parent directory exists
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(TempPath), true);
 
-		// Move temp file to final location
-		IFileManager::Get().Move(*FinalPath, *TempPath);
+		if (!FFileHelper::SaveArrayToFile(Entry.Value, *TempPath))
+		{
+			// Rollback: delete any temp files we already wrote
+			for (const TPair<FString, FString>& Written : TempToFinal)
+			{
+				IFileManager::Get().Delete(*Written.Key);
+			}
+
+			return FArcPersistenceResult::Failure(
+				FString::Printf(TEXT("Failed to write temp file for key: %s"), *Entry.Key));
+		}
+
+		TempToFinal.Emplace(TempPath, FinalPath);
 	}
 
-	PendingWrites.Empty();
-	bInTransaction = false;
-}
-
-void FArcJsonFileBackend::RollbackTransaction()
-{
-	for (const TPair<FString, FString>& Pending : PendingWrites)
+	// Phase 2: Move all temp files to their final locations
+	for (const TPair<FString, FString>& Pending : TempToFinal)
 	{
-		const FString& TempPath = Pending.Key;
-
-		// Clean up temp files
-		IFileManager::Get().Delete(*TempPath);
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Pending.Value), true);
+		IFileManager::Get().Move(*Pending.Value, *Pending.Key);
 	}
 
-	PendingWrites.Empty();
-	bInTransaction = false;
+	return FArcPersistenceResult::Success();
 }

@@ -56,7 +56,10 @@ void UArcPersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UArcPersistenceSubsystem::Deinitialize()
 {
+	if (Backend)
+	{
+		Backend->Flush();
+	}
 	Backend.Reset();
-
 	Super::Deinitialize();
 }

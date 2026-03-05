@@ -68,6 +68,7 @@ public:
 	void SaveAndUnloadAll();
 
 	bool IsCellLoaded(const FIntVector& Cell) const;
+	bool IsCellLoadingOrLoaded(const FIntVector& Cell) const;
 
 	// ── Source Management ──────────────────────────────────────────────
 
@@ -85,9 +86,8 @@ public:
 	/** Serialize all entities in a cell to a byte blob. */
 	TArray<uint8> SerializeCell(const FIntVector& Cell);
 
-	/** Deserialize a cell blob and spawn entities. */
-	void DeserializeAndSpawnCell(const FIntVector& Cell,
-		const TArray<uint8>& Data);
+	/** Synchronously parse a cell blob and spawn entities into the given cell. */
+	void LoadCellFromData(const FIntVector& Cell, const TArray<uint8>& Data);
 
 	// ── Internal State (public for testing) ────────────────────────────
 
@@ -103,6 +103,9 @@ public:
 	/** Currently loaded cells. */
 	TSet<FIntVector> LoadedCells;
 
+	/** Cells with pending async loads (prevents double-loads). */
+	TSet<FIntVector> PendingCellLoads;
+
 private:
 	FGuid WorldId;
 	float CellSize = 10000.f;
@@ -110,4 +113,7 @@ private:
 
 	/** Cached entity manager pointer. */
 	FMassEntityManager* CachedEntityManager = nullptr;
+
+	/** Flush any in-flight backend I/O. Call during shutdown. */
+	void FlushBackend();
 };

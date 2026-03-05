@@ -5,6 +5,7 @@
 #include "Items/ArcItemsArray.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/ArcItemInstance.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Serialization/ArcSaveArchive.h"
 #include "Serialization/ArcLoadArchive.h"
 #include "Serialization/ArcReflectionSerializer.h"
@@ -44,6 +45,7 @@ void FArcItemStoreSerializer::SaveItemSpec(const FArcItemSpec& Spec, const FGame
 	Ar.WriteProperty(FName(TEXT("SlotId")), SlotId);
 
 	SavePersistentInstances(Spec, Ar);
+	SaveInstanceData(Spec, Ar);
 }
 
 void FArcItemStoreSerializer::SavePersistentInstances(const FArcItemSpec& Spec, FArcSaveArchive& Ar)
@@ -69,6 +71,36 @@ void FArcItemStoreSerializer::SavePersistentInstances(const FArcItemSpec& Spec, 
 
 		Ar.BeginStruct(FName(TEXT("Data")));
 		FArcReflectionSerializer::Save(StructType, Instance, Ar);
+		Ar.EndStruct();
+
+		Ar.EndArrayElement();
+	}
+	Ar.EndArray();
+}
+
+void FArcItemStoreSerializer::SaveInstanceData(const FArcItemSpec& Spec, FArcSaveArchive& Ar)
+{
+	TArray<const FArcItemFragment_ItemInstanceBase*> Fragments;
+	for (int32 i = 0; i < Spec.InstanceData.Num(); ++i)
+	{
+		const FArcItemFragment_ItemInstanceBase* Fragment = Spec.InstanceData.Get(i);
+		if (Fragment && Fragment->GetScriptStruct())
+		{
+			Fragments.Add(Fragment);
+		}
+	}
+
+	Ar.BeginArray(FName(TEXT("InstanceData")), Fragments.Num());
+	for (int32 i = 0; i < Fragments.Num(); ++i)
+	{
+		const FArcItemFragment_ItemInstanceBase* Fragment = Fragments[i];
+		UScriptStruct* StructType = Fragment->GetScriptStruct();
+
+		Ar.BeginArrayElement(i);
+		Ar.WriteProperty(FName(TEXT("StructType")), StructType->GetPathName());
+
+		Ar.BeginStruct(FName(TEXT("Data")));
+		FArcReflectionSerializer::Save(StructType, Fragment, Ar);
 		Ar.EndStruct();
 
 		Ar.EndArrayElement();
@@ -156,6 +188,7 @@ void FArcItemStoreSerializer::LoadItemSpec(FArcItemSpec& OutSpec, FGameplayTag& 
 	Ar.ReadProperty(FName(TEXT("SlotId")), OutSlotId);
 
 	LoadPersistentInstances(OutSpec, Ar);
+	LoadInstanceData(OutSpec, Ar);
 }
 
 void FArcItemStoreSerializer::LoadPersistentInstances(FArcItemSpec& Spec, FArcLoadArchive& Ar)
@@ -200,6 +233,59 @@ void FArcItemStoreSerializer::LoadPersistentInstances(FArcItemSpec& Spec, FArcLo
 
 			Spec.InitialInstanceData.Add(MoveTemp(Instance));
 		}
+
+		Ar.EndArrayElement();
+	}
+	Ar.EndArray();
+}
+
+void FArcItemStoreSerializer::LoadInstanceData(FArcItemSpec& Spec, FArcLoadArchive& Ar)
+{
+	int32 FragmentCount = 0;
+	if (!Ar.BeginArray(FName(TEXT("InstanceData")), FragmentCount))
+	{
+		return;
+	}
+
+	for (int32 i = 0; i < FragmentCount; ++i)
+	{
+		if (!Ar.BeginArrayElement(i))
+		{
+			continue;
+		}
+
+		FString StructTypePath;
+		if (!Ar.ReadProperty(FName(TEXT("StructType")), StructTypePath))
+		{
+			UE_LOG(LogArcItemStoreSerializer, Warning, TEXT("Missing StructType for InstanceData %d, skipping"), i);
+			Ar.EndArrayElement();
+			continue;
+		}
+
+		UScriptStruct* StructType = FindObject<UScriptStruct>(nullptr, *StructTypePath);
+		if (!StructType)
+		{
+			UE_LOG(LogArcItemStoreSerializer, Warning, TEXT("Could not resolve struct type '%s', skipping InstanceData %d"), *StructTypePath, i);
+			Ar.EndArrayElement();
+			continue;
+		}
+
+		void* Mem = FMemory::Malloc(StructType->GetCppStructOps()->GetSize(), StructType->GetCppStructOps()->GetAlignment());
+		StructType->GetCppStructOps()->Construct(Mem);
+		auto* Fragment = static_cast<FArcItemFragment_ItemInstanceBase*>(Mem);
+
+		if (Ar.BeginStruct(FName(TEXT("Data"))))
+		{
+			FArcReflectionSerializer::Load(StructType, Fragment, Ar);
+			Ar.EndStruct();
+		}
+
+		TSharedPtr<FArcItemFragment_ItemInstanceBase> SharedPtr(Fragment, [StructType](FArcItemFragment_ItemInstanceBase* Ptr)
+		{
+			StructType->GetCppStructOps()->Destruct(Ptr);
+			FMemory::Free(Ptr);
+		});
+		Spec.InstanceData.Add(MoveTemp(SharedPtr));
 
 		Ar.EndArrayElement();
 	}

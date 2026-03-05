@@ -3,6 +3,7 @@
 #include "CQTest.h"
 #include "ArcPersistenceTestTypes.h"
 #include "Storage/ArcJsonFileBackend.h"
+#include "Storage/ArcPersistenceResult.h"
 #include "Serialization/ArcReflectionSerializer.h"
 #include "Serialization/ArcJsonSaveArchive.h"
 #include "Serialization/ArcJsonLoadArchive.h"
@@ -44,15 +45,15 @@ TEST_CLASS(ArcFileBackend_CRUD, "ArcPersistence.FileBackend.CRUD")
 		const FString Key = TEXT("test/simple");
 		const TArray<uint8> SourceData = {1, 2, 3, 4, 5, 42, 255};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, SourceData)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, SourceData).Get().bSuccess));
 
-		TArray<uint8> LoadedData;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, LoadedData)));
-		ASSERT_THAT(AreEqual(SourceData.Num(), LoadedData.Num()));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(SourceData.Num(), LoadResult.Data.Num()));
 
 		for (int32 i = 0; i < SourceData.Num(); ++i)
 		{
-			ASSERT_THAT(AreEqual(SourceData[i], LoadedData[i]));
+			ASSERT_THAT(AreEqual(SourceData[i], LoadResult.Data[i]));
 		}
 	}
 
@@ -61,7 +62,7 @@ TEST_CLASS(ArcFileBackend_CRUD, "ArcPersistence.FileBackend.CRUD")
 		const FString Key = TEXT("disk/check");
 		const TArray<uint8> Data = {10, 20};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data).Get().bSuccess));
 
 		// Verify the .json file actually exists on disk
 		const FString ExpectedPath = TestDir / TEXT("disk/check.json");
@@ -73,7 +74,7 @@ TEST_CLASS(ArcFileBackend_CRUD, "ArcPersistence.FileBackend.CRUD")
 		const FString Key = TEXT("world/saves/region_01/cell_0_0");
 		const TArray<uint8> Data = {1};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, Data).Get().bSuccess));
 
 		const FString ExpectedPath = TestDir / TEXT("world/saves/region_01/cell_0_0.json");
 		ASSERT_THAT(IsTrue(IFileManager::Get().FileExists(*ExpectedPath)));
@@ -85,81 +86,85 @@ TEST_CLASS(ArcFileBackend_CRUD, "ArcPersistence.FileBackend.CRUD")
 		const TArray<uint8> DataV1 = {1, 1, 1};
 		const TArray<uint8> DataV2 = {2, 2, 2, 2, 2};
 
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV1)));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV2)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV1).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, DataV2).Get().bSuccess));
 
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(Key, Loaded)));
-		ASSERT_THAT(AreEqual(5, Loaded.Num()));
-		ASSERT_THAT(AreEqual(static_cast<uint8>(2), Loaded[0]));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsTrue(LoadResult.bSuccess));
+		ASSERT_THAT(AreEqual(5, LoadResult.Data.Num()));
+		ASSERT_THAT(AreEqual(static_cast<uint8>(2), LoadResult.Data[0]));
 	}
 
 	TEST_METHOD(LoadMissingKey_ReturnsFalse)
 	{
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsFalse(Backend->LoadEntry(TEXT("nonexistent/key"), Loaded)));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(TEXT("nonexistent/key")).Get();
+		ASSERT_THAT(IsFalse(LoadResult.bSuccess));
 	}
 
 	TEST_METHOD(EntryExists_TrueForPresent)
 	{
 		const FString Key = TEXT("exists/yes");
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {1})));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {1}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 	}
 
 	TEST_METHOD(EntryExists_FalseForMissing)
 	{
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("no/such/key"))));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("no/such/key")).Get().bSuccess));
 	}
 
 	TEST_METHOD(DeleteEntry_RemovesFile)
 	{
 		const FString Key = TEXT("to_delete");
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {1, 2, 3})));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(Key, {1, 2, 3}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 
-		ASSERT_THAT(IsTrue(Backend->DeleteEntry(Key)));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->DeleteEntry(Key).Get().bSuccess));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(Key).Get().bSuccess));
 
-		TArray<uint8> Loaded;
-		ASSERT_THAT(IsFalse(Backend->LoadEntry(Key, Loaded)));
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		ASSERT_THAT(IsFalse(LoadResult.bSuccess));
 	}
 
 	TEST_METHOD(ListEntries_FindsAllUnderPrefix)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/cells/0_0"), {1})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/cells/1_0"), {2})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/cells/0_1"), {3})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/player_1"), {4})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/cells/0_0"), {1}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/cells/1_0"), {2}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("world/cells/0_1"), {3}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("players/player_1"), {4}).Get().bSuccess));
 
-		TArray<FString> CellKeys = Backend->ListEntries(TEXT("world/cells"));
-		ASSERT_THAT(AreEqual(3, CellKeys.Num()));
+		FArcPersistenceListResult CellResult = Backend->ListEntries(TEXT("world/cells")).Get();
+		ASSERT_THAT(IsTrue(CellResult.bSuccess));
+		ASSERT_THAT(AreEqual(3, CellResult.Keys.Num()));
 
-		TArray<FString> PlayerKeys = Backend->ListEntries(TEXT("players"));
-		ASSERT_THAT(AreEqual(1, PlayerKeys.Num()));
+		FArcPersistenceListResult PlayerResult = Backend->ListEntries(TEXT("players")).Get();
+		ASSERT_THAT(IsTrue(PlayerResult.bSuccess));
+		ASSERT_THAT(AreEqual(1, PlayerResult.Keys.Num()));
 	}
 
 	TEST_METHOD(ListEntries_EmptyPrefix_FindsAll)
 	{
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("a"), {1})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("b/c"), {2})));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("a"), {1}).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("b/c"), {2}).Get().bSuccess));
 
-		TArray<FString> AllKeys = Backend->ListEntries(TEXT(""));
-		ASSERT_THAT(AreEqual(2, AllKeys.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, ListResult.Keys.Num()));
 	}
 
 	TEST_METHOD(ListEntries_NoResults_ReturnsEmpty)
 	{
-		TArray<FString> Keys = Backend->ListEntries(TEXT("empty_prefix"));
-		ASSERT_THAT(AreEqual(0, Keys.Num()));
+		FArcPersistenceListResult ListResult = Backend->ListEntries(TEXT("empty_prefix")).Get();
+		ASSERT_THAT(IsTrue(ListResult.bSuccess));
+		ASSERT_THAT(AreEqual(0, ListResult.Keys.Num()));
 	}
 };
 
 // =============================================================================
-// TEST_CLASS 2: FArcJsonFileBackend transactions
+// TEST_CLASS 2: FArcJsonFileBackend batch save (replaces transaction tests)
 // =============================================================================
 
-TEST_CLASS(ArcFileBackend_Transactions, "ArcPersistence.FileBackend.Transactions")
+TEST_CLASS(ArcFileBackend_BatchSave, "ArcPersistence.FileBackend.BatchSave")
 {
 	FString TestDir;
 	TUniquePtr<FArcJsonFileBackend> Backend;
@@ -177,67 +182,50 @@ TEST_CLASS(ArcFileBackend_Transactions, "ArcPersistence.FileBackend.Transactions
 		IFileManager::Get().DeleteDirectory(*TestDir, false, true);
 	}
 
-	TEST_METHOD(Commit_MakesFilesAppear)
+	TEST_METHOD(SaveEntries_MakesFilesAppear)
 	{
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("tx/a"), {1, 2})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("tx/b"), {3, 4})));
-		Backend->CommitTransaction();
+		TArray<TPair<FString, TArray<uint8>>> Entries;
+		Entries.Emplace(TEXT("tx/a"), TArray<uint8>{1, 2});
+		Entries.Emplace(TEXT("tx/b"), TArray<uint8>{3, 4});
 
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("tx/a"))));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("tx/b"))));
+		ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
 
-		TArray<uint8> DataA;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(TEXT("tx/a"), DataA)));
-		ASSERT_THAT(AreEqual(2, DataA.Num()));
-		ASSERT_THAT(AreEqual(static_cast<uint8>(1), DataA[0]));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("tx/a")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("tx/b")).Get().bSuccess));
 
-		TArray<uint8> DataB;
-		ASSERT_THAT(IsTrue(Backend->LoadEntry(TEXT("tx/b"), DataB)));
-		ASSERT_THAT(AreEqual(2, DataB.Num()));
+		FArcPersistenceLoadResult ResultA = Backend->LoadEntry(TEXT("tx/a")).Get();
+		ASSERT_THAT(IsTrue(ResultA.bSuccess));
+		ASSERT_THAT(AreEqual(2, ResultA.Data.Num()));
+		ASSERT_THAT(AreEqual(static_cast<uint8>(1), ResultA.Data[0]));
+
+		FArcPersistenceLoadResult ResultB = Backend->LoadEntry(TEXT("tx/b")).Get();
+		ASSERT_THAT(IsTrue(ResultB.bSuccess));
+		ASSERT_THAT(AreEqual(2, ResultB.Data.Num()));
 	}
 
-	TEST_METHOD(Rollback_FilesDoNotAppear)
+	TEST_METHOD(MultipleBatchSaves_Independent)
 	{
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("tx/roll_a"), {10})));
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("tx/roll_b"), {20})));
-		Backend->RollbackTransaction();
+		// First batch
+		{
+			TArray<TPair<FString, TArray<uint8>>> Entries;
+			Entries.Emplace(TEXT("batch1/a"), TArray<uint8>{1});
+			ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
+		}
 
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("tx/roll_a"))));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("tx/roll_b"))));
-	}
+		// Second batch
+		{
+			TArray<TPair<FString, TArray<uint8>>> Entries;
+			Entries.Emplace(TEXT("batch2/b"), TArray<uint8>{2});
+			ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
+		}
 
-	TEST_METHOD(Rollback_CleansUpTempFiles)
-	{
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("tx/temp_check"), {99})));
-		Backend->RollbackTransaction();
-
-		// Verify no .tmp file left on disk
-		const FString TmpPath = TestDir / TEXT("tx/temp_check.tmp");
-		ASSERT_THAT(IsFalse(IFileManager::Get().FileExists(*TmpPath)));
-	}
-
-	TEST_METHOD(MultipleTransactions_Independent)
-	{
-		// First transaction: commit
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("batch1/a"), {1})));
-		Backend->CommitTransaction();
-
-		// Second transaction: rollback
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("batch2/b"), {2})));
-		Backend->RollbackTransaction();
-
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("batch1/a"))));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("batch2/b"))));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("batch1/a")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("batch2/b")).Get().bSuccess));
 	}
 };
 
 // =============================================================================
-// TEST_CLASS 3: Full struct → serialize → disk → load → deserialize round-trips
+// TEST_CLASS 3: Full struct -> serialize -> disk -> load -> deserialize round-trips
 // =============================================================================
 
 TEST_CLASS(ArcFileBackend_StructRoundTrip, "ArcPersistence.FileBackend.StructRoundTrip")
@@ -266,21 +254,21 @@ TEST_CLASS(ArcFileBackend_StructRoundTrip, "ArcPersistence.FileBackend.StructRou
 		SaveAr.SetVersion(1);
 		FArcReflectionSerializer::Save(T::StaticStruct(), &Source, SaveAr);
 		TArray<uint8> Data = SaveAr.Finalize();
-		return Backend->SaveEntry(Key, Data);
+		return Backend->SaveEntry(Key, MoveTemp(Data)).Get().bSuccess;
 	}
 
 	// Load a struct from disk via backend
 	template<typename T>
 	bool LoadStruct(const FString& Key, T& Target)
 	{
-		TArray<uint8> Data;
-		if (!Backend->LoadEntry(Key, Data))
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		if (!LoadResult.bSuccess)
 		{
 			return false;
 		}
 
 		FArcJsonLoadArchive LoadAr;
-		if (!LoadAr.InitializeFromData(Data))
+		if (!LoadAr.InitializeFromData(LoadResult.Data))
 		{
 			return false;
 		}
@@ -302,7 +290,7 @@ TEST_CLASS(ArcFileBackend_StructRoundTrip, "ArcPersistence.FileBackend.StructRou
 
 		const FString Key = TEXT("structs/simple");
 		ASSERT_THAT(IsTrue(SaveStruct(Key, Source)));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 
 		FArcPersistenceTestStruct Target;
 		ASSERT_THAT(IsTrue(LoadStruct(Key, Target)));
@@ -462,7 +450,7 @@ TEST_CLASS(ArcFileBackend_StructRoundTrip, "ArcPersistence.FileBackend.StructRou
 
 		const FString Key = TEXT("delete/struct");
 		ASSERT_THAT(IsTrue(SaveStruct(Key, Source)));
-		ASSERT_THAT(IsTrue(Backend->DeleteEntry(Key)));
+		ASSERT_THAT(IsTrue(Backend->DeleteEntry(Key).Get().bSuccess));
 
 		FArcPersistenceTestStruct Target;
 		ASSERT_THAT(IsFalse(LoadStruct(Key, Target)));
@@ -470,7 +458,7 @@ TEST_CLASS(ArcFileBackend_StructRoundTrip, "ArcPersistence.FileBackend.StructRou
 };
 
 // =============================================================================
-// TEST_CLASS 4: Mass entity → serialize → disk → load → entity round-trips
+// TEST_CLASS 4: Mass entity -> serialize -> disk -> load -> entity round-trips
 // =============================================================================
 
 TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRoundTrip")
@@ -507,20 +495,20 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 		FArcMassFragmentSerializer::SaveEntityFragments(
 			*EntityManager, Entity, Config, SaveAr);
 		TArray<uint8> Data = SaveAr.Finalize();
-		return Backend->SaveEntry(Key, Data);
+		return Backend->SaveEntry(Key, MoveTemp(Data)).Get().bSuccess;
 	}
 
 	// Load entity fragments from disk
 	bool LoadEntityFromDisk(const FString& Key, FMassEntityHandle Entity)
 	{
-		TArray<uint8> Data;
-		if (!Backend->LoadEntry(Key, Data))
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		if (!LoadResult.bSuccess)
 		{
 			return false;
 		}
 
 		FArcJsonLoadArchive LoadAr;
-		if (!LoadAr.InitializeFromData(Data))
+		if (!LoadAr.InitializeFromData(LoadResult.Data))
 		{
 			return false;
 		}
@@ -542,7 +530,7 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 
 		const FString Key = TEXT("entities/health_only");
 		ASSERT_THAT(IsTrue(SaveEntityToDisk(Key, Source)));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 
 		// Create fresh target entity with same archetype
 		FArcTestHealthFragment EmptyHealth;
@@ -666,8 +654,8 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 		ASSERT_THAT(IsTrue(SaveEntityToDisk(TEXT("entities/mage"), SourceB)));
 
 		// Verify two distinct files on disk
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("entities/warrior"))));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("entities/mage"))));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("entities/warrior")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("entities/mage")).Get().bSuccess));
 
 		// Load warrior
 		FArcTestHealthFragment EmptyH;
@@ -724,7 +712,7 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 
 		// Destroy source — disk data should still be there
 		EntityManager->DestroyEntity(Source);
-		ASSERT_THAT(IsTrue(Backend->EntryExists(Key)));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(Key).Get().bSuccess));
 
 		// Load into fresh entity
 		FArcTestHealthFragment EmptyH;
@@ -777,7 +765,7 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 		ASSERT_THAT(IsNear(99.f, Result.Armor, 0.001f));
 	}
 
-	TEST_METHOD(TransactionCommit_EntityDataOnDisk)
+	TEST_METHOD(BatchSave_EntityDataOnDisk)
 	{
 		FArcTestHealthFragment HealthFrag;
 		HealthFrag.Health = 350;
@@ -791,19 +779,20 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 		Instances.Add(FInstancedStruct::Make(InvFrag));
 		FMassEntityHandle Source = EntityManager->CreateEntity(Instances);
 
-		// Serialize inside a transaction
+		// Serialize entity data
 		FArcJsonSaveArchive SaveAr;
 		FArcMassFragmentSerializer::SaveEntityFragments(
 			*EntityManager, Source, FArcMassPersistenceConfigFragment(), SaveAr);
 		TArray<uint8> Blob = SaveAr.Finalize();
 
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(Backend->SaveEntry(TEXT("tx/entity"), Blob)));
-		Backend->CommitTransaction();
+		// Batch save
+		TArray<TPair<FString, TArray<uint8>>> Entries;
+		Entries.Emplace(TEXT("tx/entity"), MoveTemp(Blob));
+		ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
 
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("tx/entity"))));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("tx/entity")).Get().bSuccess));
 
-		// Load from committed transaction
+		// Load from batch-saved data
 		FArcTestHealthFragment EmptyH;
 		FArcTestInventoryFragment EmptyI;
 		TArray<FInstancedStruct> TargetInsts;
@@ -835,10 +824,12 @@ TEST_CLASS(ArcFileBackend_EntityRoundTrip, "ArcPersistence.FileBackend.EntityRou
 		ASSERT_THAT(IsTrue(SaveEntityToDisk(TEXT("world/entities/npc_002"), E2)));
 		ASSERT_THAT(IsTrue(SaveEntityToDisk(TEXT("players/player_01"), E1)));
 
-		TArray<FString> EntityKeys = Backend->ListEntries(TEXT("world/entities"));
-		ASSERT_THAT(AreEqual(2, EntityKeys.Num()));
+		FArcPersistenceListResult EntityResult = Backend->ListEntries(TEXT("world/entities")).Get();
+		ASSERT_THAT(IsTrue(EntityResult.bSuccess));
+		ASSERT_THAT(AreEqual(2, EntityResult.Keys.Num()));
 
-		TArray<FString> PlayerKeys = Backend->ListEntries(TEXT("players"));
-		ASSERT_THAT(AreEqual(1, PlayerKeys.Num()));
+		FArcPersistenceListResult PlayerResult = Backend->ListEntries(TEXT("players")).Get();
+		ASSERT_THAT(IsTrue(PlayerResult.bSuccess));
+		ASSERT_THAT(AreEqual(1, PlayerResult.Keys.Num()));
 	}
 };

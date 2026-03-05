@@ -22,22 +22,35 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Storage/ArcPersistenceResult.h"
+#include "ArcPersistenceEvents.generated.h"
 
-template<typename T> class TFuture;
-
-class ARCPERSISTENCE_API IArcPersistenceBackend
+UENUM(BlueprintType)
+enum class EArcPersistenceOperation : uint8
 {
-public:
-	virtual ~IArcPersistenceBackend() = default;
-
-	virtual TFuture<FArcPersistenceResult> SaveEntry(const FString& Key, TArray<uint8> Data) = 0;
-	virtual TFuture<FArcPersistenceLoadResult> LoadEntry(const FString& Key) = 0;
-	virtual TFuture<FArcPersistenceResult> DeleteEntry(const FString& Key) = 0;
-	virtual TFuture<FArcPersistenceResult> EntryExists(const FString& Key) = 0;
-	virtual TFuture<FArcPersistenceListResult> ListEntries(const FString& KeyPrefix) = 0;
-	virtual TFuture<FArcPersistenceResult> SaveEntries(TArray<TPair<FString, TArray<uint8>>> Entries) = 0;
-
-	virtual FName GetBackendName() const = 0;
-	virtual void Flush() = 0;
+	Save,
+	Load
 };
+
+UENUM(BlueprintType)
+enum class EArcPersistenceScope : uint8
+{
+	World,
+	Player
+};
+
+USTRUCT(BlueprintType)
+struct ARCPERSISTENCE_API FArcPersistenceEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	EArcPersistenceOperation Operation = EArcPersistenceOperation::Save;
+
+	UPROPERTY(BlueprintReadOnly)
+	EArcPersistenceScope Scope = EArcPersistenceScope::World;
+
+	UPROPERTY(BlueprintReadOnly)
+	FGuid ContextId;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FArcPersistenceEventDelegate, const FArcPersistenceEvent&);

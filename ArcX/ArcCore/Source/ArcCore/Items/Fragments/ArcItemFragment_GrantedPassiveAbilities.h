@@ -82,7 +82,7 @@ struct ARCCORE_API FArcItemFragment_GrantedPassiveAbilities : public FArcItemFra
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (TitleProperty = "Abilities"))
+	UPROPERTY(EditAnywhere, SaveGame, Category = "Data", meta = (TitleProperty = "Abilities"))
 	TArray<TSubclassOf<UGameplayAbility>> Abilities;
 
 	virtual ~FArcItemFragment_GrantedPassiveAbilities() override = default;

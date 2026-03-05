@@ -22,7 +22,9 @@
 #include "ArcPlayerPersistenceSubsystem.h"
 
 #include "ArcPersistenceSubsystem.h"
+#include "ArcPersistenceEvents.h"
 #include "ArcPlayerProviderDescriptor.h"
+#include "Async/Async.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
@@ -242,6 +244,24 @@ void UArcPlayerPersistenceSubsystem::ApplyDataToObject(
 	Info->LoadFunc(Target, LoadAr);
 }
 
+TArray<uint8> UArcPlayerPersistenceSubsystem::SerializeObject(UObject* Source) const
+{
+	if (!Source)
+	{
+		return {};
+	}
+
+	const UStruct* Type = Source->GetClass();
+	const FArcPersistenceSerializerInfo* Info =
+		FArcSerializerRegistry::Get().FindOrDefault(Type);
+
+	FArcJsonSaveArchive SaveAr;
+	SaveAr.SetVersion(Info->Version);
+	Info->SaveFunc(Source, SaveAr);
+
+	return SaveAr.Finalize();
+}
+
 void UArcPlayerPersistenceSubsystem::SaveObjectInternal(
 	const FGuid& PlayerId, const FString& Domain, UObject* Source)
 {
@@ -256,129 +276,262 @@ void UArcPlayerPersistenceSubsystem::SaveObjectInternal(
 		return;
 	}
 
-	const UStruct* Type = Source->GetClass();
-	const FArcPersistenceSerializerInfo* Info =
-		FArcSerializerRegistry::Get().FindOrDefault(Type);
-
-	FArcJsonSaveArchive SaveAr;
-	SaveAr.SetVersion(Info->Version);
-	Info->SaveFunc(Source, SaveAr);
-
-	TArray<uint8> Data = SaveAr.Finalize();
+	TArray<uint8> Data = SerializeObject(Source);
 
 	const FString Key = UE::ArcPersistence::MakePlayerKey(PlayerId.ToString(), Domain);
-	Backend->SaveEntry(Key, Data);
+	Backend->SaveEntry(Key, Data).Get();
 
 	// Update cache
 	CachedPlayerData.FindOrAdd(PlayerId).Add(Domain, Data);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Descriptor-Based API
+// Async API
 // ─────────────────────────────────────────────────────────────────────────────
 
-void UArcPlayerPersistenceSubsystem::SavePlayerData(const FGuid& PlayerId)
+TFuture<void> UArcPlayerPersistenceSubsystem::SavePlayerDataAsync(const FGuid& PlayerId)
 {
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
 	IArcPersistenceBackend* Backend = GetBackend();
 	if (!Backend)
 	{
 		UE_LOG(LogArcPlayerPersistence, Warning,
-			TEXT("No backend available for SavePlayerData"));
-		return;
+			TEXT("No backend available for SavePlayerDataAsync"));
+		Promise->SetValue();
+		return Future;
 	}
+
+	// Broadcast started event
+	if (UArcPersistenceSubsystem* PersistenceSub =
+		GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>())
+	{
+		FArcPersistenceEvent Event;
+		Event.Operation = EArcPersistenceOperation::Save;
+		Event.Scope = EArcPersistenceScope::Player;
+		Event.ContextId = PlayerId;
+		PersistenceSub->OnPersistenceStarted.Broadcast(Event);
+	}
+
+	// Game thread: resolve providers and serialize into entries
+	TArray<TPair<FString, TArray<uint8>>> Entries;
 
 	TArray<FResolvedProvider> Providers = ResolveAllProviders(PlayerId);
-
-	Backend->BeginTransaction();
-
 	for (const FResolvedProvider& Resolved : Providers)
 	{
-		SaveObjectInternal(PlayerId, Resolved.DomainPath, Resolved.Object);
+		if (Resolved.Object)
+		{
+			TArray<uint8> Data = SerializeObject(Resolved.Object);
+			const FString Key = UE::ArcPersistence::MakePlayerKey(
+				PlayerId.ToString(), Resolved.DomainPath);
+			CachedPlayerData.FindOrAdd(PlayerId).Add(Resolved.DomainPath, Data);
+			Entries.Emplace(Key, MoveTemp(Data));
+		}
 	}
 
-	// Also save legacy instance-bound providers
+	// Also serialize legacy instance-bound providers
 	if (TMap<FString, FPlayerDataProvider>* LegacyProviders = PlayerProviders.Find(PlayerId))
 	{
 		for (const auto& ProviderPair : *LegacyProviders)
 		{
 			if (ProviderPair.Value.Source.IsValid())
 			{
-				SaveProvider(PlayerId, ProviderPair.Value);
+				UObject* Source = ProviderPair.Value.Source.Get();
+				TArray<uint8> Data = SerializeObject(Source);
+				const FString Key = UE::ArcPersistence::MakePlayerKey(
+					PlayerId.ToString(), ProviderPair.Value.Domain);
+				CachedPlayerData.FindOrAdd(PlayerId).Add(ProviderPair.Value.Domain, Data);
+				Entries.Emplace(Key, MoveTemp(Data));
 			}
 		}
 	}
 
-	Backend->CommitTransaction();
+	int32 ProviderCount = Providers.Num();
 
-	UE_LOG(LogArcPlayerPersistence, Log,
-		TEXT("Saved %d providers for player %s"), Providers.Num(), *PlayerId.ToString());
+	// Async: batch save all entries
+	TWeakObjectPtr<UArcPlayerPersistenceSubsystem> WeakThis(this);
+	Backend->SaveEntries(MoveTemp(Entries)).Then(
+		[WeakThis, Promise, PlayerId, ProviderCount](TFuture<FArcPersistenceResult> ResultFuture)
+		{
+			FArcPersistenceResult Result = ResultFuture.Get();
+			if (!Result.bSuccess)
+			{
+				UE_LOG(LogArcPlayerPersistence, Warning,
+					TEXT("SavePlayerDataAsync: Backend save failed for player %s: %s"),
+					*PlayerId.ToString(), *Result.Error);
+			}
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Promise, PlayerId, ProviderCount]()
+			{
+				if (UArcPlayerPersistenceSubsystem* This = WeakThis.Get())
+				{
+					UE_LOG(LogArcPlayerPersistence, Log,
+						TEXT("Saved %d providers for player %s"), ProviderCount,
+						*PlayerId.ToString());
+
+					if (UArcPersistenceSubsystem* PersistenceSub =
+						This->GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>())
+					{
+						FArcPersistenceEvent Event;
+						Event.Operation = EArcPersistenceOperation::Save;
+						Event.Scope = EArcPersistenceScope::Player;
+						Event.ContextId = PlayerId;
+						PersistenceSub->OnPersistenceCompleted.Broadcast(Event);
+					}
+				}
+				Promise->SetValue();
+			});
+		});
+
+	return Future;
 }
 
-void UArcPlayerPersistenceSubsystem::LoadPlayerData(const FGuid& PlayerId)
+TFuture<void> UArcPlayerPersistenceSubsystem::LoadPlayerDataAsync(const FGuid& PlayerId)
 {
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
 	IArcPersistenceBackend* Backend = GetBackend();
 	if (!Backend)
 	{
 		UE_LOG(LogArcPlayerPersistence, Warning,
-			TEXT("No backend available for LoadPlayerData"));
-		return;
+			TEXT("No backend available for LoadPlayerDataAsync"));
+		Promise->SetValue();
+		return Future;
 	}
 
-	// Load all keys into cache — fixed domain extraction for multi-segment domains
+	// Broadcast started event
+	if (UArcPersistenceSubsystem* PersistenceSub =
+		GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>())
+	{
+		FArcPersistenceEvent Event;
+		Event.Operation = EArcPersistenceOperation::Load;
+		Event.Scope = EArcPersistenceScope::Player;
+		Event.ContextId = PlayerId;
+		PersistenceSub->OnPersistenceStarted.Broadcast(Event);
+	}
+
 	const FString PlayerPrefix =
 		FString::Printf(TEXT("players/%s/"), *PlayerId.ToString());
-	TArray<FString> Keys = Backend->ListEntries(PlayerPrefix);
 
-	TMap<FString, TArray<uint8>>& PlayerCache = CachedPlayerData.FindOrAdd(PlayerId);
-	PlayerCache.Empty();
+	TWeakObjectPtr<UArcPlayerPersistenceSubsystem> WeakThis(this);
 
-	for (const FString& Key : Keys)
+	// Async: list entries then load on background thread, apply on game thread
+	TFuture<FArcPersistenceListResult> ListFuture = Backend->ListEntries(PlayerPrefix);
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask,
+		[WeakThis, Promise, PlayerId, PlayerPrefix, Backend, ListFuture = MoveTemp(ListFuture)]() mutable
 	{
-		FString Domain = ExtractDomain(Key, PlayerPrefix);
-		if (Domain.IsEmpty())
+		FArcPersistenceListResult ListResult = ListFuture.Get();
+		if (!ListResult.bSuccess)
 		{
-			continue;
-		}
-
-		TArray<uint8> Data;
-		if (Backend->LoadEntry(Key, Data))
-		{
-			PlayerCache.Add(Domain, MoveTemp(Data));
-		}
-	}
-
-	UE_LOG(LogArcPlayerPersistence, Log,
-		TEXT("Loaded %d domains into cache for player %s"),
-		PlayerCache.Num(), *PlayerId.ToString());
-
-	// Apply to resolved descriptor-based providers
-	TArray<FResolvedProvider> Providers = ResolveAllProviders(PlayerId);
-	for (const FResolvedProvider& Resolved : Providers)
-	{
-		if (const TArray<uint8>* Data = PlayerCache.Find(Resolved.DomainPath))
-		{
-			ApplyDataToObject(Resolved.Object, *Data, Resolved.DomainPath);
-		}
-	}
-
-	// Apply to legacy instance-bound providers
-	if (TMap<FString, FPlayerDataProvider>* LegacyProviders = PlayerProviders.Find(PlayerId))
-	{
-		for (auto& ProviderPair : *LegacyProviders)
-		{
-			if (const TArray<uint8>* Data = PlayerCache.Find(ProviderPair.Key))
+			AsyncTask(ENamedThreads::GameThread, [Promise]()
 			{
-				if (ProviderPair.Value.Source.IsValid())
-				{
-					ApplyDataToProvider(ProviderPair.Value, *Data);
-				}
+				Promise->SetValue();
+			});
+			return;
+		}
+
+		// Background: load each entry serially
+		TArray<TPair<FString, TArray<uint8>>> LoadedEntries;
+		for (const FString& Key : ListResult.Keys)
+		{
+			FString Domain = ExtractDomain(Key, PlayerPrefix);
+			if (Domain.IsEmpty())
+			{
+				continue;
+			}
+
+			FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+			if (LoadResult.bSuccess)
+			{
+				LoadedEntries.Emplace(Domain, MoveTemp(LoadResult.Data));
 			}
 		}
-	}
+
+		// Game thread continuation: populate cache and apply to providers
+		AsyncTask(ENamedThreads::GameThread,
+			[WeakThis, Promise, PlayerId, Entries = MoveTemp(LoadedEntries)]() mutable
+		{
+				if (UArcPlayerPersistenceSubsystem* This = WeakThis.Get())
+				{
+					TMap<FString, TArray<uint8>>& PlayerCache =
+						This->CachedPlayerData.FindOrAdd(PlayerId);
+					PlayerCache.Empty();
+
+					for (auto& Entry : Entries)
+					{
+						PlayerCache.Add(Entry.Key, MoveTemp(Entry.Value));
+					}
+
+					UE_LOG(LogArcPlayerPersistence, Log,
+						TEXT("Loaded %d domains into cache for player %s"),
+						PlayerCache.Num(), *PlayerId.ToString());
+
+					// Apply to resolved descriptor-based providers
+					TArray<FResolvedProvider> Providers =
+						This->ResolveAllProviders(PlayerId);
+					for (const FResolvedProvider& Resolved : Providers)
+					{
+						if (const TArray<uint8>* Data =
+							PlayerCache.Find(Resolved.DomainPath))
+						{
+							This->ApplyDataToObject(
+								Resolved.Object, *Data, Resolved.DomainPath);
+						}
+					}
+
+					// Apply to legacy instance-bound providers
+					if (TMap<FString, FPlayerDataProvider>* LegacyProviders =
+						This->PlayerProviders.Find(PlayerId))
+					{
+						for (auto& ProviderPair : *LegacyProviders)
+						{
+							if (const TArray<uint8>* Data =
+								PlayerCache.Find(ProviderPair.Key))
+							{
+								if (ProviderPair.Value.Source.IsValid())
+								{
+									This->ApplyDataToProvider(
+										ProviderPair.Value, *Data);
+								}
+							}
+						}
+					}
+
+					// Broadcast completed event
+					if (UArcPersistenceSubsystem* PersistenceSub =
+						This->GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>())
+					{
+						FArcPersistenceEvent Event;
+						Event.Operation = EArcPersistenceOperation::Load;
+						Event.Scope = EArcPersistenceScope::Player;
+						Event.ContextId = PlayerId;
+						PersistenceSub->OnPersistenceCompleted.Broadcast(Event);
+					}
+				}
+				Promise->SetValue();
+			});
+		});
+
+	return Future;
 }
 
-void UArcPlayerPersistenceSubsystem::SaveAllPlayerData()
+TFuture<void> UArcPlayerPersistenceSubsystem::SaveAllPlayerDataAsync()
 {
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
+	IArcPersistenceBackend* Backend = GetBackend();
+	if (!Backend)
+	{
+		UE_LOG(LogArcPlayerPersistence, Warning,
+			TEXT("No backend available for SaveAllPlayerDataAsync"));
+		Promise->SetValue();
+		return Future;
+	}
+
+	// Collect all player IDs
 	TSet<FGuid> AllPlayerIds;
 	for (const auto& Pair : TrackedPlayers)
 	{
@@ -389,61 +542,216 @@ void UArcPlayerPersistenceSubsystem::SaveAllPlayerData()
 		AllPlayerIds.Add(Pair.Key);
 	}
 
-	for (const FGuid& PlayerId : AllPlayerIds)
+	// Game thread: serialize ALL providers for all players into one batch
+	TArray<TPair<FString, TArray<uint8>>> AllEntries;
+
+	for (const FGuid& PId : AllPlayerIds)
 	{
-		SavePlayerData(PlayerId);
+		TArray<FResolvedProvider> Providers = ResolveAllProviders(PId);
+		for (const FResolvedProvider& Resolved : Providers)
+		{
+			if (Resolved.Object)
+			{
+				TArray<uint8> Data = SerializeObject(Resolved.Object);
+				const FString Key = UE::ArcPersistence::MakePlayerKey(
+					PId.ToString(), Resolved.DomainPath);
+				CachedPlayerData.FindOrAdd(PId).Add(Resolved.DomainPath, Data);
+				AllEntries.Emplace(Key, MoveTemp(Data));
+			}
+		}
+
+		// Legacy providers
+		if (TMap<FString, FPlayerDataProvider>* LegacyProviders = PlayerProviders.Find(PId))
+		{
+			for (const auto& ProviderPair : *LegacyProviders)
+			{
+				if (ProviderPair.Value.Source.IsValid())
+				{
+					UObject* Source = ProviderPair.Value.Source.Get();
+					TArray<uint8> Data = SerializeObject(Source);
+					const FString Key = UE::ArcPersistence::MakePlayerKey(
+						PId.ToString(), ProviderPair.Value.Domain);
+					CachedPlayerData.FindOrAdd(PId).Add(ProviderPair.Value.Domain, Data);
+					AllEntries.Emplace(Key, MoveTemp(Data));
+				}
+			}
+		}
 	}
+
+	int32 EntryCount = AllEntries.Num();
+	int32 PlayerCount = AllPlayerIds.Num();
+
+	// Single batch save
+	TWeakObjectPtr<UArcPlayerPersistenceSubsystem> WeakThis(this);
+	Backend->SaveEntries(MoveTemp(AllEntries)).Then(
+		[WeakThis, Promise, EntryCount, PlayerCount](TFuture<FArcPersistenceResult> ResultFuture)
+		{
+			FArcPersistenceResult Result = ResultFuture.Get();
+			if (!Result.bSuccess)
+			{
+				UE_LOG(LogArcPlayerPersistence, Warning,
+					TEXT("SaveAllPlayerDataAsync: Backend save failed: %s"), *Result.Error);
+			}
+			AsyncTask(ENamedThreads::GameThread,
+				[WeakThis, Promise, EntryCount, PlayerCount]()
+			{
+				UE_LOG(LogArcPlayerPersistence, Log,
+					TEXT("SaveAllPlayerDataAsync: Saved %d entries for %d players"),
+					EntryCount, PlayerCount);
+				Promise->SetValue();
+			});
+		});
+
+	return Future;
+}
+
+TFuture<void> UArcPlayerPersistenceSubsystem::SaveObjectAsync(
+	const FGuid& PlayerId, const FString& Domain, UObject* Source)
+{
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
+	if (!Source)
+	{
+		Promise->SetValue();
+		return Future;
+	}
+
+	IArcPersistenceBackend* Backend = GetBackend();
+	if (!Backend)
+	{
+		UE_LOG(LogArcPlayerPersistence, Warning,
+			TEXT("No backend available for SaveObjectAsync"));
+		Promise->SetValue();
+		return Future;
+	}
+
+	// Game thread: serialize
+	TArray<uint8> Data = SerializeObject(Source);
+	const FString Key = UE::ArcPersistence::MakePlayerKey(PlayerId.ToString(), Domain);
+
+	// Update cache immediately
+	CachedPlayerData.FindOrAdd(PlayerId).Add(Domain, Data);
+
+	// Async: save entry
+	TWeakObjectPtr<UArcPlayerPersistenceSubsystem> WeakThis(this);
+	Backend->SaveEntry(Key, MoveTemp(Data)).Then(
+		[Promise, Domain](TFuture<FArcPersistenceResult> ResultFuture)
+		{
+			FArcPersistenceResult Result = ResultFuture.Get();
+			if (!Result.bSuccess)
+			{
+				UE_LOG(LogArcPlayerPersistence, Warning,
+					TEXT("SaveObjectAsync: Backend save failed for domain '%s': %s"),
+					*Domain, *Result.Error);
+			}
+			AsyncTask(ENamedThreads::GameThread, [Promise]()
+			{
+				Promise->SetValue();
+			});
+		});
+
+	return Future;
+}
+
+TFuture<void> UArcPlayerPersistenceSubsystem::LoadObjectAsync(
+	const FGuid& PlayerId, const FString& Domain, UObject* Target)
+{
+	auto Promise = MakeShared<TPromise<void>>();
+	TFuture<void> Future = Promise->GetFuture();
+
+	if (!Target)
+	{
+		Promise->SetValue();
+		return Future;
+	}
+
+	// Check cache first (game thread, no async needed)
+	if (const TMap<FString, TArray<uint8>>* PlayerCache = CachedPlayerData.Find(PlayerId))
+	{
+		if (const TArray<uint8>* CachedBytes = PlayerCache->Find(Domain))
+		{
+			ApplyDataToObject(Target, *CachedBytes, Domain);
+			Promise->SetValue();
+			return Future;
+		}
+	}
+
+	// Cache miss — load from backend
+	IArcPersistenceBackend* Backend = GetBackend();
+	if (!Backend)
+	{
+		UE_LOG(LogArcPlayerPersistence, Warning,
+			TEXT("No backend available for LoadObjectAsync"));
+		Promise->SetValue();
+		return Future;
+	}
+
+	const FString Key = UE::ArcPersistence::MakePlayerKey(PlayerId.ToString(), Domain);
+	TWeakObjectPtr<UObject> WeakTarget(Target);
+	TWeakObjectPtr<UArcPlayerPersistenceSubsystem> WeakThis(this);
+
+	Backend->LoadEntry(Key).Then(
+		[WeakThis, WeakTarget, Promise, PlayerId, Domain](
+			TFuture<FArcPersistenceLoadResult> LoadFuture)
+		{
+			FArcPersistenceLoadResult LoadResult = LoadFuture.Get();
+			AsyncTask(ENamedThreads::GameThread,
+				[WeakThis, WeakTarget, Promise, PlayerId, Domain,
+				 Data = MoveTemp(LoadResult.Data), bSuccess = LoadResult.bSuccess]()
+			{
+				if (bSuccess)
+				{
+					if (UArcPlayerPersistenceSubsystem* This = WeakThis.Get())
+					{
+						This->CachedPlayerData.FindOrAdd(PlayerId).Add(Domain, Data);
+
+						if (UObject* Obj = WeakTarget.Get())
+						{
+							This->ApplyDataToObject(Obj, Data, Domain);
+						}
+					}
+				}
+				Promise->SetValue();
+			});
+		});
+
+	return Future;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Direct API
+// Descriptor-Based API (sync wrappers)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UArcPlayerPersistenceSubsystem::SavePlayerData(const FGuid& PlayerId)
+{
+	SavePlayerDataAsync(PlayerId).Get();
+}
+
+void UArcPlayerPersistenceSubsystem::LoadPlayerData(const FGuid& PlayerId)
+{
+	LoadPlayerDataAsync(PlayerId).Get();
+}
+
+void UArcPlayerPersistenceSubsystem::SaveAllPlayerData()
+{
+	SaveAllPlayerDataAsync().Get();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Direct API (sync wrappers)
 // ─────────────────────────────────────────────────────────────────────────────
 
 void UArcPlayerPersistenceSubsystem::SaveObject(
 	const FGuid& PlayerId, const FString& Domain, UObject* Source)
 {
-	IArcPersistenceBackend* Backend = GetBackend();
-	if (!Backend)
-	{
-		UE_LOG(LogArcPlayerPersistence, Warning,
-			TEXT("No backend available for SaveObject"));
-		return;
-	}
-
-	Backend->BeginTransaction();
-	SaveObjectInternal(PlayerId, Domain, Source);
-	Backend->CommitTransaction();
+	SaveObjectAsync(PlayerId, Domain, Source).Get();
 }
 
 void UArcPlayerPersistenceSubsystem::LoadObject(
 	const FGuid& PlayerId, const FString& Domain, UObject* Target)
 {
-	// Check cache first
-	if (const TMap<FString, TArray<uint8>>* PlayerCache = CachedPlayerData.Find(PlayerId))
-	{
-		if (const TArray<uint8>* CachedData = PlayerCache->Find(Domain))
-		{
-			ApplyDataToObject(Target, *CachedData, Domain);
-			return;
-		}
-	}
-
-	// Not in cache — load from backend
-	IArcPersistenceBackend* Backend = GetBackend();
-	if (!Backend)
-	{
-		UE_LOG(LogArcPlayerPersistence, Warning,
-			TEXT("No backend available for LoadObject"));
-		return;
-	}
-
-	const FString Key = UE::ArcPersistence::MakePlayerKey(PlayerId.ToString(), Domain);
-	TArray<uint8> Data;
-	if (Backend->LoadEntry(Key, Data))
-	{
-		CachedPlayerData.FindOrAdd(PlayerId).Add(Domain, Data);
-		ApplyDataToObject(Target, Data, Domain);
-	}
+	LoadObjectAsync(PlayerId, Domain, Target).Get();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -462,14 +770,17 @@ TArray<FString> UArcPlayerPersistenceSubsystem::ListPlayerDomains(const FGuid& P
 
 	const FString PlayerPrefix =
 		FString::Printf(TEXT("players/%s/"), *PlayerId.ToString());
-	TArray<FString> Keys = Backend->ListEntries(PlayerPrefix);
+	FArcPersistenceListResult ListResult = Backend->ListEntries(PlayerPrefix).Get();
 
-	for (const FString& Key : Keys)
+	if (ListResult.bSuccess)
 	{
-		FString Domain = ExtractDomain(Key, PlayerPrefix);
-		if (!Domain.IsEmpty())
+		for (const FString& Key : ListResult.Keys)
 		{
-			Domains.Add(Domain);
+			FString Domain = ExtractDomain(Key, PlayerPrefix);
+			if (!Domain.IsEmpty())
+			{
+				Domains.Add(Domain);
+			}
 		}
 	}
 
@@ -479,6 +790,12 @@ TArray<FString> UArcPlayerPersistenceSubsystem::ListPlayerDomains(const FGuid& P
 void UArcPlayerPersistenceSubsystem::DeletePlayerDomain(
 	const FGuid& PlayerId, const FString& Domain)
 {
+	// Update cache immediately on game thread
+	if (TMap<FString, TArray<uint8>>* PlayerCache = CachedPlayerData.Find(PlayerId))
+	{
+		PlayerCache->Remove(Domain);
+	}
+
 	IArcPersistenceBackend* Backend = GetBackend();
 	if (!Backend)
 	{
@@ -486,12 +803,9 @@ void UArcPlayerPersistenceSubsystem::DeletePlayerDomain(
 	}
 
 	const FString Key = UE::ArcPersistence::MakePlayerKey(PlayerId.ToString(), Domain);
-	Backend->DeleteEntry(Key);
 
-	if (TMap<FString, TArray<uint8>>* PlayerCache = CachedPlayerData.Find(PlayerId))
-	{
-		PlayerCache->Remove(Domain);
-	}
+	// Fire-and-forget async delete
+	Backend->DeleteEntry(Key);
 }
 
 void UArcPlayerPersistenceSubsystem::ClearPlayerCache(const FGuid& PlayerId)

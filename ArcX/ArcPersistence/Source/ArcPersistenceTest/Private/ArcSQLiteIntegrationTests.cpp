@@ -3,6 +3,7 @@
 #include "CQTest.h"
 #include "ArcPersistenceTestTypes.h"
 #include "Storage/ArcSQLiteBackend.h"
+#include "Storage/ArcPersistenceResult.h"
 #include "Serialization/ArcReflectionSerializer.h"
 #include "Serialization/ArcJsonSaveArchive.h"
 #include "Serialization/ArcJsonLoadArchive.h"
@@ -34,20 +35,20 @@ TEST_CLASS(ArcSQLiteBackend_StructRoundTrip, "ArcPersistence.SQLiteBackend.Struc
 		SaveAr.SetVersion(1);
 		FArcReflectionSerializer::Save(T::StaticStruct(), &Source, SaveAr);
 		TArray<uint8> Data = SaveAr.Finalize();
-		return Backend->SaveEntry(Key, Data);
+		return Backend->SaveEntry(Key, MoveTemp(Data)).Get().bSuccess;
 	}
 
 	template<typename T>
 	bool LoadStruct(const FString& Key, T& Target)
 	{
-		TArray<uint8> Data;
-		if (!Backend->LoadEntry(Key, Data))
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		if (!LoadResult.bSuccess)
 		{
 			return false;
 		}
 
 		FArcJsonLoadArchive LoadAr;
-		if (!LoadAr.InitializeFromData(Data))
+		if (!LoadAr.InitializeFromData(LoadResult.Data))
 		{
 			return false;
 		}
@@ -117,20 +118,25 @@ TEST_CLASS(ArcSQLiteBackend_StructRoundTrip, "ArcPersistence.SQLiteBackend.Struc
 		ASSERT_THAT(AreEqual(100, LoadedPlayer.Health));
 
 		// Delete world doesn't affect player
-		ASSERT_THAT(IsTrue(Backend->DeleteWorld(TEXT("w1"))));
-		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/npc"))));
-		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("players/p1/stats"))));
+		ASSERT_THAT(IsTrue(Backend->DeleteWorld(TEXT("w1")).Get().bSuccess));
+		ASSERT_THAT(IsFalse(Backend->EntryExists(TEXT("world/w1/npc")).Get().bSuccess));
+		ASSERT_THAT(IsTrue(Backend->EntryExists(TEXT("players/p1/stats")).Get().bSuccess));
 	}
 
-	TEST_METHOD(TransactionCommit_StructDataPersists)
+	TEST_METHOD(BatchSave_StructDataPersists)
 	{
 		FArcPersistenceTestStruct Source;
 		Source.Health = 999;
 		Source.Name = TEXT("TxTest");
 
-		Backend->BeginTransaction();
-		ASSERT_THAT(IsTrue(SaveStruct(TEXT("world/w1/tx_struct"), Source)));
-		Backend->CommitTransaction();
+		FArcJsonSaveArchive SaveAr;
+		SaveAr.SetVersion(1);
+		FArcReflectionSerializer::Save(FArcPersistenceTestStruct::StaticStruct(), &Source, SaveAr);
+		TArray<uint8> Data = SaveAr.Finalize();
+
+		TArray<TPair<FString, TArray<uint8>>> Entries;
+		Entries.Emplace(TEXT("world/w1/tx_struct"), MoveTemp(Data));
+		ASSERT_THAT(IsTrue(Backend->SaveEntries(MoveTemp(Entries)).Get().bSuccess));
 
 		FArcPersistenceTestStruct Target;
 		ASSERT_THAT(IsTrue(LoadStruct(TEXT("world/w1/tx_struct"), Target)));

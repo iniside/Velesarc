@@ -10,7 +10,207 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Storage/ArcPersistenceBackend.h"
+#include "Storage/ArcPersistenceResult.h"
 #include "Storage/ArcPersistenceKeyConvention.h"
+#include "Async/Async.h"
+#include "MassEntityManager.h"
+#include "MassEntityView.h"
+#include "MassCommandBuffer.h"
+
+namespace
+{
+	struct FCellEntityRecord
+	{
+		FGuid Guid;
+		TArray<FInstancedStruct> Fragments;
+	};
+
+	// Parses a cell blob into per-entity records with fully deserialized
+	// fragment data.  Safe to call on any thread (no shared state access).
+	TArray<FCellEntityRecord> ParseCellBlob(const TArray<uint8>& Data)
+	{
+		TArray<FCellEntityRecord> Records;
+
+		FArcJsonLoadArchive LoadAr;
+		if (!LoadAr.InitializeFromData(Data))
+		{
+			return Records;
+		}
+
+		int32 EntityCount = 0;
+		if (!LoadAr.BeginArray(FName("entities"), EntityCount))
+		{
+			return Records;
+		}
+
+		Records.Reserve(EntityCount);
+
+		for (int32 i = 0; i < EntityCount; ++i)
+		{
+			if (!LoadAr.BeginArrayElement(i))
+			{
+				continue;
+			}
+
+			FCellEntityRecord Record;
+			if (!LoadAr.ReadProperty(FName("_guid"), Record.Guid))
+			{
+				LoadAr.EndArrayElement();
+				continue;
+			}
+
+			// Parse fragment data (mirrors LoadEntityFragments but into
+			// standalone FInstancedStruct instead of live entity memory)
+			int32 FragCount = 0;
+			if (LoadAr.BeginArray(FName("fragments"), FragCount))
+			{
+				Record.Fragments.Reserve(FragCount);
+
+				for (int32 f = 0; f < FragCount; ++f)
+				{
+					if (!LoadAr.BeginArrayElement(f))
+					{
+						continue;
+					}
+
+					FString TypePath;
+					if (!LoadAr.ReadProperty(FName("_type"), TypePath))
+					{
+						LoadAr.EndArrayElement();
+						continue;
+					}
+
+					const UScriptStruct* FragType =
+						FindObject<UScriptStruct>(nullptr, *TypePath);
+					if (!FragType)
+					{
+						LoadAr.EndArrayElement();
+						continue;
+					}
+
+					FInstancedStruct Instance;
+					Instance.InitializeAs(FragType);
+
+					// LoadFragment reads _version, checks it, and loads data
+					FArcMassFragmentSerializer::LoadFragment(
+						FragType, Instance.GetMutableMemory(), LoadAr);
+
+					Record.Fragments.Add(MoveTemp(Instance));
+					LoadAr.EndArrayElement();
+				}
+
+				LoadAr.EndArray();
+			}
+
+			Records.Add(MoveTemp(Record));
+			LoadAr.EndArrayElement();
+		}
+
+		LoadAr.EndArray();
+		return Records;
+	}
+
+	// Batch-create entities from parsed records.  Runs during EM command flush.
+	void SpawnParsedEntities(
+		UArcMassEntityPersistenceSubsystem* Sub,
+		const FIntVector& Cell,
+		TArray<FCellEntityRecord>& Records)
+	{
+		FMassEntityManager& EM = Sub->GetEntityManager();
+
+		// Group records by archetype (identical set of fragment types)
+		struct FArchetypeGroup
+		{
+			TArray<const UScriptStruct*> FragmentTypes;
+			TArray<int32> RecordIndices;
+		};
+
+		TArray<FArchetypeGroup> Groups;
+
+		for (int32 i = 0; i < Records.Num(); ++i)
+		{
+			if (Sub->ActiveEntities.Contains(Records[i].Guid))
+			{
+				continue;
+			}
+
+			TArray<const UScriptStruct*> Types;
+			for (const FInstancedStruct& Frag : Records[i].Fragments)
+			{
+				Types.AddUnique(Frag.GetScriptStruct());
+			}
+			// Ensure persistence fragment is always present
+			Types.AddUnique(FArcMassPersistenceFragment::StaticStruct());
+			Types.Sort();
+
+			int32 GroupIdx = Groups.IndexOfByPredicate(
+				[&Types](const FArchetypeGroup& G)
+				{
+					return G.FragmentTypes == Types;
+				});
+
+			if (GroupIdx == INDEX_NONE)
+			{
+				GroupIdx = Groups.Num();
+				Groups.Add({Types, {}});
+			}
+			Groups[GroupIdx].RecordIndices.Add(i);
+		}
+
+		for (const FArchetypeGroup& Group : Groups)
+		{
+			FMassElementBitSet Elements;
+			for (const UScriptStruct* Type : Group.FragmentTypes)
+			{
+				Elements.Add(TNotNull<const UScriptStruct*>(Type));
+			}
+			Elements.Add<FArcMassPersistenceTag>();
+
+			const FMassArchetypeHandle Archetype =
+				EM.CreateArchetype(Elements);
+
+			TArray<FMassEntityHandle> Handles;
+			{
+				auto Context = EM.BatchCreateEntities(
+					Archetype, Group.RecordIndices.Num(), Handles);
+
+				for (int32 j = 0; j < Group.RecordIndices.Num(); ++j)
+				{
+					FCellEntityRecord& Record =
+						Records[Group.RecordIndices[j]];
+					const FMassEntityHandle Handle = Handles[j];
+
+					// Copy parsed fragment data onto the entity
+					FMassEntityView View(EM, Handle);
+					for (const FInstancedStruct& Frag : Record.Fragments)
+					{
+						const UScriptStruct* Type = Frag.GetScriptStruct();
+						FStructView Target =
+							View.GetFragmentDataStruct(Type);
+						if (Target.IsValid())
+						{
+							Type->CopyScriptStruct(
+								Target.GetMemory(), Frag.GetMemory());
+						}
+					}
+
+					// Set persistence tracking (StorageCell/CurrentCell
+					// are not UPROPERTY so they're not in saved data)
+					if (auto* PFrag = EM.GetFragmentDataPtr<
+							FArcMassPersistenceFragment>(Handle))
+					{
+						PFrag->PersistenceGuid = Record.Guid;
+						PFrag->StorageCell = Cell;
+						PFrag->CurrentCell = Cell;
+					}
+
+					Sub->ActiveEntities.Add(Record.Guid, Handle);
+					Sub->CellEntityMap.FindOrAdd(Cell).Add(Record.Guid);
+				}
+			} // Context released → observer notification
+		}
+	}
+}
 
 bool UArcMassEntityPersistenceSubsystem::ShouldCreateSubsystem(
 	UObject* Outer) const
@@ -28,6 +228,7 @@ void UArcMassEntityPersistenceSubsystem::Initialize(
 void UArcMassEntityPersistenceSubsystem::Deinitialize()
 {
 	SaveAndUnloadAll();
+	FlushBackend();
 	Super::Deinitialize();
 }
 
@@ -64,7 +265,7 @@ FString UArcMassEntityPersistenceSubsystem::MakeCellStorageKey(
 
 void UArcMassEntityPersistenceSubsystem::LoadCell(const FIntVector& Cell)
 {
-	if (LoadedCells.Contains(Cell))
+	if (LoadedCells.Contains(Cell) || PendingCellLoads.Contains(Cell))
 	{
 		return;
 	}
@@ -81,18 +282,65 @@ void UArcMassEntityPersistenceSubsystem::LoadCell(const FIntVector& Cell)
 		return;
 	}
 
-	TArray<uint8> Data;
-	if (Backend->LoadEntry(MakeCellStorageKey(Cell), Data))
+	PendingCellLoads.Add(Cell);
+
+	TFuture<FArcPersistenceLoadResult> Future = Backend->LoadEntry(MakeCellStorageKey(Cell));
+	TWeakObjectPtr<UArcMassEntityPersistenceSubsystem> WeakThis(this);
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask,
+		[WeakThis, Cell, Future = MoveTemp(Future)]() mutable
 	{
-		DeserializeAndSpawnCell(Cell, Data);
-	}
+		FArcPersistenceLoadResult LoadResult = Future.Get();
 
-	LoadedCells.Add(Cell);
+		// Deserialize on background thread — pure data parsing, no shared state
+		TArray<FCellEntityRecord> Records;
+		if (LoadResult.bSuccess)
+		{
+			Records = ParseCellBlob(LoadResult.Data);
+		}
 
-	UE_LOG(LogTemp, Log,
-		TEXT("ArcMassPersistence: Loaded cell [%d,%d] (%d entities)"),
-		Cell.X, Cell.Y,
-		CellEntityMap.Contains(Cell) ? CellEntityMap[Cell].Num() : 0);
+		// Hop to game thread only to dispatch a deferred command.
+		// Actual entity creation runs when the EntityManager flushes.
+		AsyncTask(ENamedThreads::GameThread,
+			[WeakThis, Cell, Records = MoveTemp(Records)]() mutable
+		{
+			UArcMassEntityPersistenceSubsystem* This = WeakThis.Get();
+			if (!This)
+			{
+				return;
+			}
+
+			This->PendingCellLoads.Remove(Cell);
+
+			// Cell was unloaded while we were loading — discard
+			if (This->LoadedCells.Contains(Cell))
+			{
+				return;
+			}
+
+			// Dispatch entity creation through Mass command buffer.
+			// SpawnParsedEntities runs during EM flush, not here.
+			TWeakObjectPtr<UArcMassEntityPersistenceSubsystem> WeakSub(This);
+			FMassEntityManager& EM = This->GetEntityManager();
+			EM.Defer().PushCommand<FMassDeferredCreateCommand>(
+				[WeakSub, Cell, Records = MoveTemp(Records)]
+				(FMassEntityManager&) mutable
+			{
+				UArcMassEntityPersistenceSubsystem* Sub = WeakSub.Get();
+				if (!Sub || Sub->LoadedCells.Contains(Cell))
+				{
+					return;
+				}
+
+				SpawnParsedEntities(Sub, Cell, Records);
+				Sub->LoadedCells.Add(Cell);
+
+				UE_LOG(LogTemp, Log,
+					TEXT("ArcMassPersistence: Loaded cell [%d,%d] (%d entities)"),
+					Cell.X, Cell.Y, Records.Num());
+			});
+		});
+	});
 }
 
 void UArcMassEntityPersistenceSubsystem::SaveCell(const FIntVector& Cell)
@@ -114,12 +362,19 @@ void UArcMassEntityPersistenceSubsystem::SaveCell(const FIntVector& Cell)
 		return;
 	}
 
+	// Serialize on game thread (needs entity access), I/O is fire-and-forget.
+	// Data is captured by value into the backend task queue, so entities
+	// can safely be destroyed after this call returns.
 	TArray<uint8> Data = SerializeCell(Cell);
-	Backend->SaveEntry(MakeCellStorageKey(Cell), Data);
+	Backend->SaveEntry(MakeCellStorageKey(Cell), MoveTemp(Data));
 }
 
 void UArcMassEntityPersistenceSubsystem::UnloadCell(const FIntVector& Cell)
 {
+	// Cancel pending async load if still in-flight — the game thread
+	// callback checks LoadedCells and will discard the result.
+	PendingCellLoads.Remove(Cell);
+
 	if (!LoadedCells.Contains(Cell))
 	{
 		return;
@@ -197,6 +452,27 @@ bool UArcMassEntityPersistenceSubsystem::IsCellLoaded(
 	return LoadedCells.Contains(Cell);
 }
 
+bool UArcMassEntityPersistenceSubsystem::IsCellLoadingOrLoaded(
+	const FIntVector& Cell) const
+{
+	return LoadedCells.Contains(Cell) || PendingCellLoads.Contains(Cell);
+}
+
+void UArcMassEntityPersistenceSubsystem::FlushBackend()
+{
+	const UGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
+	if (!GI)
+	{
+		return;
+	}
+	UArcPersistenceSubsystem* PersistSub = GI->GetSubsystem<UArcPersistenceSubsystem>();
+	IArcPersistenceBackend* Backend = PersistSub ? PersistSub->GetBackend() : nullptr;
+	if (Backend)
+	{
+		Backend->Flush();
+	}
+}
+
 // ── Source Management ────────────────────────────────────────────────────
 
 void UArcMassEntityPersistenceSubsystem::UpdateActiveCells(
@@ -224,10 +500,24 @@ void UArcMassEntityPersistenceSubsystem::UpdateActiveCells(
 	// Load new cells
 	for (const FIntVector& Cell : DesiredCells)
 	{
-		if (!LoadedCells.Contains(Cell))
+		if (!IsCellLoadingOrLoaded(Cell))
 		{
 			LoadCell(Cell);
 		}
+	}
+
+	// Cancel pending loads no longer needed
+	TArray<FIntVector> PendingToCancel;
+	for (const FIntVector& Cell : PendingCellLoads)
+	{
+		if (!DesiredCells.Contains(Cell))
+		{
+			PendingToCancel.Add(Cell);
+		}
+	}
+	for (const FIntVector& Cell : PendingToCancel)
+	{
+		PendingCellLoads.Remove(Cell);
 	}
 
 	// Unload cells no longer needed (save-before-unload enforced in UnloadCell)
@@ -257,6 +547,16 @@ void UArcMassEntityPersistenceSubsystem::OnEntityCellChanged(
 	}
 
 	CellEntityMap.FindOrAdd(NewCell).Add(Guid);
+}
+
+// ── Synchronous Load (for testing / editor use) ─────────────────────────
+
+void UArcMassEntityPersistenceSubsystem::LoadCellFromData(
+	const FIntVector& Cell, const TArray<uint8>& Data)
+{
+	TArray<FCellEntityRecord> Records = ParseCellBlob(Data);
+	SpawnParsedEntities(this, Cell, Records);
+	LoadedCells.Add(Cell);
 }
 
 // ── Internal: Serialization ──────────────────────────────────────────────
@@ -308,64 +608,3 @@ TArray<uint8> UArcMassEntityPersistenceSubsystem::SerializeCell(
 	return SaveAr.Finalize();
 }
 
-void UArcMassEntityPersistenceSubsystem::DeserializeAndSpawnCell(
-	const FIntVector& Cell, const TArray<uint8>& Data)
-{
-	FArcJsonLoadArchive LoadAr;
-	if (!LoadAr.InitializeFromData(Data))
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("ArcMassPersistence: Failed to parse cell [%d,%d] data"),
-			Cell.X, Cell.Y);
-		return;
-	}
-
-	int32 EntityCount = 0;
-	if (!LoadAr.BeginArray(FName("entities"), EntityCount))
-	{
-		return;
-	}
-
-	for (int32 i = 0; i < EntityCount; ++i)
-	{
-		if (!LoadAr.BeginArrayElement(i))
-		{
-			continue;
-		}
-
-		FGuid Guid;
-		if (!LoadAr.ReadProperty(FName("_guid"), Guid))
-		{
-			LoadAr.EndArrayElement();
-			continue;
-		}
-
-		// Skip if already active (migrated from another cell)
-		if (ActiveEntities.Contains(Guid))
-		{
-			LoadAr.EndArrayElement();
-			continue;
-		}
-
-		// TODO: Entity spawning from saved type
-		// Full implementation needs:
-		// 1. Read _meta.type -> find UMassEntityConfigAsset
-		// 2. Spawn entity from template
-		// 3. Apply fragment data via LoadEntityFragments
-		// 4. Set PersistenceGuid and StorageCell on fragment
-		//
-		// For now, the save path fully works. The load path structure
-		// is ready for when entity config registry is available.
-
-		FString EntityType;
-		if (LoadAr.BeginStruct(FName("_meta")))
-		{
-			LoadAr.ReadProperty(FName("type"), EntityType);
-			LoadAr.EndStruct();
-		}
-
-		LoadAr.EndArrayElement();
-	}
-
-	LoadAr.EndArray();
-}

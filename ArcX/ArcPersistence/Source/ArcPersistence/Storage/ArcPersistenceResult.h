@@ -22,22 +22,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Storage/ArcPersistenceResult.h"
 
-template<typename T> class TFuture;
-
-class ARCPERSISTENCE_API IArcPersistenceBackend
+struct FArcPersistenceResult
 {
-public:
-	virtual ~IArcPersistenceBackend() = default;
+	bool bSuccess = false;
+	FString Error;
 
-	virtual TFuture<FArcPersistenceResult> SaveEntry(const FString& Key, TArray<uint8> Data) = 0;
-	virtual TFuture<FArcPersistenceLoadResult> LoadEntry(const FString& Key) = 0;
-	virtual TFuture<FArcPersistenceResult> DeleteEntry(const FString& Key) = 0;
-	virtual TFuture<FArcPersistenceResult> EntryExists(const FString& Key) = 0;
-	virtual TFuture<FArcPersistenceListResult> ListEntries(const FString& KeyPrefix) = 0;
-	virtual TFuture<FArcPersistenceResult> SaveEntries(TArray<TPair<FString, TArray<uint8>>> Entries) = 0;
+	static FArcPersistenceResult Success() { return { true, {} }; }
+	static FArcPersistenceResult Failure(const FString& Msg) { return { false, Msg }; }
+};
 
-	virtual FName GetBackendName() const = 0;
-	virtual void Flush() = 0;
+struct FArcPersistenceLoadResult : FArcPersistenceResult
+{
+	TArray<uint8> Data;
+};
+
+struct FArcPersistenceListResult : FArcPersistenceResult
+{
+	TArray<FString> Keys;
 };

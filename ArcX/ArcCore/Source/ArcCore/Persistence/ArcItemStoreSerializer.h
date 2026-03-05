@@ -21,7 +21,7 @@ struct FArcItemSpec;
  */
 struct ARCCORE_API FArcItemStoreSerializer
 {
-	static constexpr uint32 Version = 1;
+	static constexpr uint32 Version = 2;
 
 	/** Serialize an array of item copy helpers into the archive. */
 	static void Save(const TArray<FArcItemCopyContainerHelper>& Source, FArcSaveArchive& Ar);
@@ -35,6 +35,9 @@ private:
 
 	static void SavePersistentInstances(const FArcItemSpec& Spec, FArcSaveArchive& Ar);
 	static void LoadPersistentInstances(FArcItemSpec& Spec, FArcLoadArchive& Ar);
+
+	static void SaveInstanceData(const FArcItemSpec& Spec, FArcSaveArchive& Ar);
+	static void LoadInstanceData(FArcItemSpec& Spec, FArcLoadArchive& Ar);
 
 	static void SaveAttachments(const TArray<FArcAttachedItemHelper>& Attachments, FArcSaveArchive& Ar);
 	static void LoadAttachments(TArray<FArcAttachedItemHelper>& OutAttachments, FArcLoadArchive& Ar);

@@ -49,7 +49,7 @@ public:
 		return E;
 	}
 
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (TitleProperty = "Effects"))
+	UPROPERTY(EditAnywhere, SaveGame, Category = "Data", meta = (TitleProperty = "Effects"))
 	TArray<TSubclassOf<UGameplayEffect>> Effects;
 
 	virtual void OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const override;

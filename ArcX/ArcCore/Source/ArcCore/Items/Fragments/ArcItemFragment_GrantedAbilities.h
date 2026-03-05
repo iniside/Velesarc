@@ -105,13 +105,13 @@ public:
 	 * which this ability end up.
 	 * If you want to add tag later change to false.
 	 */
-	UPROPERTY(EditDefaultsOnly, Category = "Data", Meta = (Categories = "InputTag"))
+	UPROPERTY(EditDefaultsOnly, SaveGame, Category = "Data", Meta = (Categories = "InputTag"))
 	bool bAddInputTag = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Data", Meta = (Categories = "InputTag"))
+	UPROPERTY(EditDefaultsOnly, SaveGame, Category = "Data", Meta = (Categories = "InputTag"))
 	FGameplayTag InputTag;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	UPROPERTY(EditDefaultsOnly, SaveGame, Category = "Data")
 	TSubclassOf<UGameplayAbility> GrantedAbility;
 };
 

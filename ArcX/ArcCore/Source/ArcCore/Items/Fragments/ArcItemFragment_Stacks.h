@@ -34,7 +34,7 @@ struct ARCCORE_API FArcItemInstance_Stacks : public FArcItemInstance_ItemData
 	friend struct FArcItemFragment_Stacks;
 	
 protected:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, SaveGame)
 	int32 Stacks = 1;
 
 public:
@@ -84,7 +84,7 @@ struct ARCCORE_API FArcItemFragment_Stacks : public FArcItemFragment_ItemInstanc
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, SaveGame)
 	int32 InitialStacks = 1;
 	
 public:

@@ -23,6 +23,7 @@
 
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Storage/ArcPersistenceBackend.h"
+#include "ArcPersistenceEvents.h"
 
 #include "ArcPersistenceSubsystem.generated.h"
 
@@ -45,6 +46,9 @@ public:
 
 	/** Get the active storage backend. May be null before Initialize. */
 	IArcPersistenceBackend* GetBackend() const { return Backend.Get(); }
+
+	FArcPersistenceEventDelegate OnPersistenceStarted;
+	FArcPersistenceEventDelegate OnPersistenceCompleted;
 
 private:
 	TUniquePtr<IArcPersistenceBackend> Backend;

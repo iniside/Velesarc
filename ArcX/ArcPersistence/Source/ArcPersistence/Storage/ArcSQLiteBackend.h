@@ -22,6 +22,7 @@
 #pragma once
 
 #include "Storage/ArcPersistenceBackend.h"
+#include "Storage/ArcPersistenceTaskQueue.h"
 #include "SQLiteDatabase.h"
 
 /**
@@ -33,6 +34,9 @@
  *   player_entries - player-scoped key/value pairs (key routed from "players/{id}/...")
  *
  * Data is stored as JSON TEXT. Keys are routed to tables via ParseKey().
+ *
+ * All public methods enqueue work onto a serial background task queue and return
+ * TFuture<> immediately. The actual SQL operations run on a background thread.
  */
 class ARCPERSISTENCE_API FArcSQLiteBackend : public IArcPersistenceBackend
 {
@@ -41,52 +45,45 @@ public:
 	virtual ~FArcSQLiteBackend() override;
 
 	// IArcPersistenceBackend
-	virtual bool SaveEntry(const FString& Key, const TArray<uint8>& Data) override;
-	virtual bool LoadEntry(const FString& Key, TArray<uint8>& OutData) override;
-	virtual bool DeleteEntry(const FString& Key) override;
-	virtual bool EntryExists(const FString& Key) override;
-	virtual TArray<FString> ListEntries(const FString& KeyPrefix) override;
-	virtual void BeginTransaction() override;
-	virtual void CommitTransaction() override;
-	virtual void RollbackTransaction() override;
+	virtual TFuture<FArcPersistenceResult> SaveEntry(const FString& Key, TArray<uint8> Data) override;
+	virtual TFuture<FArcPersistenceLoadResult> LoadEntry(const FString& Key) override;
+	virtual TFuture<FArcPersistenceResult> DeleteEntry(const FString& Key) override;
+	virtual TFuture<FArcPersistenceResult> EntryExists(const FString& Key) override;
+	virtual TFuture<FArcPersistenceListResult> ListEntries(const FString& KeyPrefix) override;
+	virtual TFuture<FArcPersistenceResult> SaveEntries(TArray<TPair<FString, TArray<uint8>>> Entries) override;
 	virtual FName GetBackendName() const override { return FName("SQLite"); }
+	virtual void Flush() override;
 
-	// Extended API (SQLite-specific)
-
-	/** Delete all entries for a world and its metadata row. */
-	bool DeleteWorld(const FString& WorldId);
-
-	/** Delete all entries for a player. */
-	bool DeletePlayer(const FString& PlayerId);
-
-	/** List all saved world IDs. */
-	TArray<FString> ListWorlds();
-
-	/** List all distinct player IDs. */
-	TArray<FString> ListPlayers();
+	// Extended API — also async
+	TFuture<FArcPersistenceResult> DeleteWorld(const FString& WorldId);
+	TFuture<FArcPersistenceResult> DeletePlayer(const FString& PlayerId);
+	TFuture<FArcPersistenceListResult> ListWorlds();
+	TFuture<FArcPersistenceListResult> ListPlayers();
 
 	/** Check if the database was opened successfully. */
 	bool IsValid() const;
 
 private:
 	FSQLiteDatabase Database;
-	bool bInTransaction = false;
+	FArcPersistenceTaskQueue TaskQueue;
 
 	// Cached prepared statements
-	FSQLitePreparedStatement StmtSaveWorldEntry;
-	FSQLitePreparedStatement StmtLoadWorldEntry;
-	FSQLitePreparedStatement StmtDeleteWorldEntry;
-	FSQLitePreparedStatement StmtExistsWorldEntry;
-	FSQLitePreparedStatement StmtListWorldEntries;
-
-	FSQLitePreparedStatement StmtSavePlayerEntry;
-	FSQLitePreparedStatement StmtLoadPlayerEntry;
-	FSQLitePreparedStatement StmtDeletePlayerEntry;
-	FSQLitePreparedStatement StmtExistsPlayerEntry;
-	FSQLitePreparedStatement StmtListPlayerEntries;
-
+	FSQLitePreparedStatement StmtSaveWorldEntry, StmtLoadWorldEntry, StmtDeleteWorldEntry, StmtExistsWorldEntry, StmtListWorldEntries;
+	FSQLitePreparedStatement StmtSavePlayerEntry, StmtLoadPlayerEntry, StmtDeletePlayerEntry, StmtExistsPlayerEntry, StmtListPlayerEntries;
 	FSQLitePreparedStatement StmtEnsureWorld;
 
 	bool CreateSchema();
 	bool PrepareStatements();
+
+	// Sync implementations (run on background thread via TaskQueue)
+	FArcPersistenceResult SaveEntrySync(const FString& Key, const TArray<uint8>& Data);
+	FArcPersistenceLoadResult LoadEntrySync(const FString& Key);
+	FArcPersistenceResult DeleteEntrySync(const FString& Key);
+	FArcPersistenceResult EntryExistsSync(const FString& Key);
+	FArcPersistenceListResult ListEntriesSync(const FString& KeyPrefix);
+	FArcPersistenceResult SaveEntriesSync(const TArray<TPair<FString, TArray<uint8>>>& Entries);
+	FArcPersistenceResult DeleteWorldSync(const FString& WorldId);
+	FArcPersistenceResult DeletePlayerSync(const FString& PlayerId);
+	FArcPersistenceListResult ListWorldsSync();
+	FArcPersistenceListResult ListPlayersSync();
 };
