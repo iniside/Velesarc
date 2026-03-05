@@ -1,7 +1,6 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSStep_Direction.h"
-#include "TargetQuery/ArcTQSLocationProvider.h"
 
 float FArcTQSStep_Direction::ExecuteStep(
 	const FArcTQSTargetItem& Item,
@@ -19,21 +18,7 @@ float FArcTQSStep_Direction::ExecuteStep(
 
 	// Resolve reference locations
 	TArray<FVector> RefLocations;
-	if (bUseLocationProvider)
-	{
-		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
-		{
-			Provider->GetLocations(Item, QueryContext, RefLocations);
-		}
-		else
-		{
-			RefLocations.Add(QueryContext.QuerierLocation);
-		}
-	}
-	else
-	{
-		RefLocations.Add(ReferenceLocation);
-	}
+	LocationConfig.ResolveLocations(Item, QueryContext, RefLocations);
 
 	// Score against all reference locations, pick the best (highest score)
 	float BestScore = 0.0f;

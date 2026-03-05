@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "TargetQuery/ArcTQSStep.h"
-#include "StructUtils/InstancedStruct.h"
+#include "TargetQuery/ArcTQSLocationProvider.h"
 #include "ArcTQSStep_Distance.generated.h"
 
 /**
@@ -28,17 +28,9 @@ struct ARCAI_API FArcTQSStep_Distance : public FArcTQSStep
 	UPROPERTY(EditAnywhere, Category = "Step", meta = (ClampMin = 1.0))
 	float MaxDistance = 5000.0f;
 
-	// If true, use LocationProvider to resolve reference location. If false, use ReferenceLocation directly.
+	/** Reference location configuration for distance measurement. */
 	UPROPERTY(EditAnywhere, Category = "Step")
-	bool bUseLocationProvider = true;
-
-	// Location provider for DataAsset definitions (can return multiple locations)
-	UPROPERTY(EditAnywhere, Category = "Step", meta = (BaseStruct = "/Script/ArcAI.ArcTQSLocationProvider", EditCondition = "bUseLocationProvider"))
-	FInstancedStruct LocationProvider;
-
-	// Direct reference location for State Tree property binding
-	UPROPERTY(EditAnywhere, Category = "Step", meta = (EditCondition = "!bUseLocationProvider"))
-	FVector ReferenceLocation = FVector::ZeroVector;
+	FArcTQSLocationConfig LocationConfig;
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
 };

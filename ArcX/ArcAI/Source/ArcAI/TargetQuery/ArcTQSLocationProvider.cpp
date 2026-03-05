@@ -47,3 +47,46 @@ FVector FArcTQSLocationProvider_ContextByIndex::GetLocation(
 
 	return QueryContext.QuerierLocation;
 }
+
+void FArcTQSLocationConfig::ResolveLocations(
+	const FArcTQSTargetItem& Item,
+	const FArcTQSQueryContext& QueryContext,
+	TArray<FVector>& OutLocations) const
+{
+	OutLocations.Reset();
+
+	if (bIncludeQuerierLocation)
+	{
+		OutLocations.Add(QueryContext.QuerierLocation);
+	}
+
+	switch (AdditionalSource)
+	{
+	case EArcTQSLocationSource::None:
+		break;
+
+	case EArcTQSLocationSource::ReferenceLocation:
+		OutLocations.Add(ReferenceLocation);
+		break;
+
+	case EArcTQSLocationSource::ContextLocations:
+		OutLocations.Append(QueryContext.ContextLocations);
+		break;
+
+	case EArcTQSLocationSource::CustomProvider:
+		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
+		{
+			// Use temp array because GetLocations() resets its output
+			TArray<FVector> ProviderLocations;
+			Provider->GetLocations(Item, QueryContext, ProviderLocations);
+			OutLocations.Append(ProviderLocations);
+		}
+		break;
+	}
+
+	// Absolute fallback: always have at least one location
+	if (OutLocations.IsEmpty())
+	{
+		OutLocations.Add(QueryContext.QuerierLocation);
+	}
+}

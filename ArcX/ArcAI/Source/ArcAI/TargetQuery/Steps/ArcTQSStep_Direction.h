@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "TargetQuery/ArcTQSStep.h"
-#include "StructUtils/InstancedStruct.h"
+#include "TargetQuery/ArcTQSLocationProvider.h"
 #include "ArcTQSStep_Direction.generated.h"
 
 /**
@@ -14,10 +14,9 @@
  * the direction from the querier to a reference location. Uses dot product
  * mapped from [-1, 1] to [0, 1].
  *
- * Reference location can come from:
- * - LocationProvider (instanced struct, for DataAsset definitions)
- * - ReferenceLocation (FVector, for State Tree inline definitions via property binding)
- * Set bUseLocationProvider to choose which source to use.
+ * Configure LocationConfig to set the reference location source.
+ * Note: bIncludeQuerierLocation is not useful here (querier-to-querier gives 0.5).
+ * Set AdditionalSource to ReferenceLocation or CustomProvider for meaningful results.
  */
 USTRUCT(DisplayName = "Direction Score")
 struct ARCAI_API FArcTQSStep_Direction : public FArcTQSStep
@@ -27,25 +26,13 @@ struct ARCAI_API FArcTQSStep_Direction : public FArcTQSStep
 	FArcTQSStep_Direction()
 	{
 		StepType = EArcTQSStepType::Score;
+		LocationConfig.bIncludeQuerierLocation = false;
+		LocationConfig.AdditionalSource = EArcTQSLocationSource::ReferenceLocation;
 	}
 
-	// If true, use LocationProvider to resolve reference. If false, use ReferenceLocation directly.
+	/** Reference location configuration for direction scoring. */
 	UPROPERTY(EditAnywhere, Category = "Step")
-	bool bUseLocationProvider = true;
-
-	/**
-	 * Location provider that resolves the reference point at runtime.
-	 * Used in DataAsset definitions where property binding is not available.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Step", meta = (BaseStruct = "/Script/ArcAI.ArcTQSLocationProvider", EditCondition = "bUseLocationProvider"))
-	FInstancedStruct LocationProvider;
-
-	/**
-	 * Direct reference location. Use property binding in State Tree to set this at runtime.
-	 * Only used when bUseLocationProvider is false.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Step", meta = (EditCondition = "!bUseLocationProvider"))
-	FVector ReferenceLocation = FVector::ZeroVector;
+	FArcTQSLocationConfig LocationConfig;
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
 };

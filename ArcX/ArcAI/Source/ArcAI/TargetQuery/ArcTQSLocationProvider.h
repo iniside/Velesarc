@@ -7,6 +7,59 @@
 #include "ArcTQSLocationProvider.generated.h"
 
 /**
+ * Determines where additional reference locations come from beyond the querier.
+ */
+UENUM(BlueprintType)
+enum class EArcTQSLocationSource : uint8
+{
+	/** No additional locations. Only querier location (if enabled). */
+	None,
+	/** Direct FVector — bindable from State Tree. */
+	ReferenceLocation,
+	/** All locations from QueryContext.ContextLocations. */
+	ContextLocations,
+	/** Custom FArcTQSLocationProvider via FInstancedStruct. */
+	CustomProvider
+};
+
+/**
+ * Shared configuration for resolving reference locations in spatial TQS steps.
+ *
+ * By default includes the querier's location. Additional locations can come from
+ * a direct FVector, context locations, or a custom provider.
+ * Steps call ResolveLocations() once and iterate the results.
+ */
+USTRUCT(BlueprintType)
+struct ARCAI_API FArcTQSLocationConfig
+{
+	GENERATED_BODY()
+
+	/** Include the querier's location in the resolved set. True by default. */
+	UPROPERTY(EditAnywhere, Category = "Location")
+	bool bIncludeQuerierLocation = true;
+
+	/** Source for additional reference locations beyond the querier. */
+	UPROPERTY(EditAnywhere, Category = "Location")
+	EArcTQSLocationSource AdditionalSource = EArcTQSLocationSource::None;
+
+	/** Direct reference location for State Tree property binding. */
+	UPROPERTY(EditAnywhere, Category = "Location", meta = (EditCondition = "AdditionalSource == EArcTQSLocationSource::ReferenceLocation", EditConditionHides))
+	FVector ReferenceLocation = FVector::ZeroVector;
+
+	/** Custom provider for dynamic location resolution. */
+	UPROPERTY(EditAnywhere, Category = "Location", meta = (BaseStruct = "/Script/ArcAI.ArcTQSLocationProvider", ExcludeBaseStruct, EditCondition = "AdditionalSource == EArcTQSLocationSource::CustomProvider", EditConditionHides))
+	FInstancedStruct LocationProvider;
+
+	/**
+	 * Resolve all reference locations for this configuration.
+	 */
+	void ResolveLocations(
+		const FArcTQSTargetItem& Item,
+		const FArcTQSQueryContext& QueryContext,
+		TArray<FVector>& OutLocations) const;
+};
+
+/**
  * Base struct that resolves reference locations from the query context at runtime.
  *
  * Used by scoring/filter steps that need a configurable reference point (e.g. direction tests).

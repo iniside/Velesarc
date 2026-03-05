@@ -1,7 +1,6 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSStep_Trace.h"
-#include "TargetQuery/ArcTQSLocationProvider.h"
 #include "Engine/World.h"
 
 float FArcTQSStep_Trace::ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const
@@ -14,23 +13,7 @@ float FArcTQSStep_Trace::ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQ
 
 	// Resolve trace origins
 	TArray<FVector> Origins;
-	if (bUseLocationProvider)
-	{
-		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
-		{
-			Provider->GetLocations(Item, QueryContext, Origins);
-		}
-		else
-		{
-			Origins.Add(QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
-				? QueryContext.ContextLocations[Item.ContextIndex]
-				: QueryContext.QuerierLocation);
-		}
-	}
-	else
-	{
-		Origins.Add(TraceOrigin);
-	}
+	LocationConfig.ResolveLocations(Item, QueryContext, Origins);
 
 	const FVector HeightOffsetVec(0.0f, 0.0f, TraceHeightOffset);
 	const FVector TraceEnd = Item.GetLocation(QueryContext.EntityManager) + HeightOffsetVec;

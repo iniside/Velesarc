@@ -1,7 +1,6 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSStep_PathLength.h"
-#include "TargetQuery/ArcTQSLocationProvider.h"
 #include "NavigationSystem.h"
 #include "NavigationData.h"
 
@@ -21,23 +20,7 @@ float FArcTQSStep_PathLength::ExecuteStep(const FArcTQSTargetItem& Item, const F
 
 	// Resolve start locations
 	TArray<FVector> StartLocations;
-	if (bUseLocationProvider)
-	{
-		if (const FArcTQSLocationProvider* Provider = LocationProvider.GetPtr<FArcTQSLocationProvider>())
-		{
-			Provider->GetLocations(Item, QueryContext, StartLocations);
-		}
-		else
-		{
-			StartLocations.Add(QueryContext.ContextLocations.IsValidIndex(Item.ContextIndex)
-				? QueryContext.ContextLocations[Item.ContextIndex]
-				: QueryContext.QuerierLocation);
-		}
-	}
-	else
-	{
-		StartLocations.Add(PathStart);
-	}
+	LocationConfig.ResolveLocations(Item, QueryContext, StartLocations);
 
 	const FVector EndLocation = Item.GetLocation(QueryContext.EntityManager);
 

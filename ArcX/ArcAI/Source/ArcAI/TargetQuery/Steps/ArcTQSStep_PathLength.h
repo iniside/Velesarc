@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "TargetQuery/ArcTQSStep.h"
-#include "StructUtils/InstancedStruct.h"
+#include "TargetQuery/ArcTQSLocationProvider.h"
 #include "ArcTQSStep_PathLength.generated.h"
 
 /**
@@ -27,17 +27,9 @@ struct ARCAI_API FArcTQSStep_PathLength : public FArcTQSStep
 	UPROPERTY(EditAnywhere, Category = "Step", meta = (ClampMin = 1.0))
 	float MaxPathLength = 10000.0f;
 
-	// If true, use LocationProvider to resolve path start. If false, use PathStart directly.
+	/** Path start location configuration. */
 	UPROPERTY(EditAnywhere, Category = "Step")
-	bool bUseLocationProvider = true;
-
-	// Location provider for DataAsset definitions
-	UPROPERTY(EditAnywhere, Category = "Step", meta = (BaseStruct = "/Script/ArcAI.ArcTQSLocationProvider", EditCondition = "bUseLocationProvider"))
-	FInstancedStruct LocationProvider;
-
-	// Direct path start for State Tree property binding
-	UPROPERTY(EditAnywhere, Category = "Step", meta = (EditCondition = "!bUseLocationProvider"))
-	FVector PathStart = FVector::ZeroVector;
+	FArcTQSLocationConfig LocationConfig;
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
 };
