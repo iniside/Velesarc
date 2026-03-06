@@ -1,0 +1,161 @@
+/**
+ * This file is part of Velesarc
+ * Copyright (C) 2025-2025 Lukasz Baran
+ *
+ * Licensed under the European Union Public License (EUPL), Version 1.2 or –
+ * as soon as they will be approved by the European Commission – later versions
+ * of the EUPL (the "License");
+ *
+ * You may not use this work except in compliance with the License.
+ * You may get a copy of the License at:
+ *
+ * https://eupl.eu/
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ */
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
+#include "GameplayAbilitySpec.h"
+#include "AbilitySystemComponent.h"
+#include "Types/TargetingSystemTypes.h"
+#include "ArcAbilityAction.generated.h"
+
+class UArcCoreGameplayAbility;
+class UArcTargetingObject;
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAbilityActionContext
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<UArcCoreGameplayAbility> Ability;
+
+	UPROPERTY()
+	FGameplayAbilitySpecHandle Handle;
+
+	UPROPERTY()
+	FGameplayAbilityActivationInfo ActivationInfo;
+
+	/** Optional, populated during targeting callbacks. */
+	UPROPERTY()
+	FGameplayAbilityTargetDataHandle TargetData;
+
+	/** Optional, populated during local target result. */
+	UPROPERTY()
+	TArray<FHitResult> HitResults;
+
+	/** The StateTree event tag. */
+	UPROPERTY()
+	FGameplayTag EventTag;
+
+	/** Raw pointer to non-UObject struct, not a UPROPERTY. */
+	const FGameplayAbilityActorInfo* ActorInfo = nullptr;
+
+	/** Optional. */
+	UPROPERTY()
+	FTargetingRequestHandle TargetingRequestHandle;
+};
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const {}
+
+	virtual ~FArcAbilityAction() = default;
+};
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAbilityActionList
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcCore.ArcAbilityAction", ExcludeBaseStruct))
+	TArray<FInstancedStruct> Actions;
+};
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAbilityEventActions
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, meta = (Categories = "Ability.Event"))
+	FGameplayTag EventTag;
+
+	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcCore.ArcAbilityAction", ExcludeBaseStruct))
+	TArray<FInstancedStruct> Actions;
+};
+
+// ---------------------------------------------------------------------------
+// Built-in action subtypes
+// ---------------------------------------------------------------------------
+
+USTRUCT(BlueprintType, meta = (DisplayName = "Apply Cooldown"))
+struct ARCCORE_API FArcAbilityAction_ApplyCooldown : public FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+};
+
+USTRUCT(BlueprintType, meta = (DisplayName = "Apply Cost"))
+struct ARCCORE_API FArcAbilityAction_ApplyCost : public FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+};
+
+USTRUCT(BlueprintType, meta = (DisplayName = "Execute Targeting"))
+struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	/** Optional override; if null the targeting object is read from the item fragment. */
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+};
+
+USTRUCT(BlueprintType, meta = (DisplayName = "Send Targeting Result"))
+struct ARCCORE_API FArcAbilityAction_SendTargetingResult : public FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+};
+
+USTRUCT(BlueprintType, meta = (DisplayName = "Apply Effects From Item"))
+struct ARCCORE_API FArcAbilityAction_ApplyEffectsFromItem : public FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	/** If empty, apply all effects from the item. */
+	UPROPERTY(EditAnywhere)
+	FGameplayTag EffectTag;
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+};
+
+USTRUCT(BlueprintType, meta = (DisplayName = "End Ability"))
+struct ARCCORE_API FArcAbilityAction_EndAbility : public FArcAbilityAction
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	bool bWasCancelled = false;
+
+	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+};

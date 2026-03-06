@@ -29,6 +29,8 @@
 #include "StructUtils/InstancedStruct.h"
 #include "Items/ArcItemScalableFloat.h"
 #include "Items/ArcItemId.h"
+#include "ArcAbilityAction.h"
+#include "Fragments/ArcItemFragment_AbilityActions.h"
 #include "ArcCoreGameplayAbility.generated.h"
 
 class UArcCoreAbilitySystemComponent;
@@ -228,6 +230,9 @@ class ARCCORE_API UArcCoreGameplayAbility : public UGameplayAbility
 {
 	GENERATED_BODY()
 
+	friend struct FArcAbilityAction_ApplyCost;
+	friend struct FArcAbilityAction_ApplyEffectsFromItem;
+
 protected:
 	/*
 	 * Should ability be activate on Trigger Event ?
@@ -299,6 +304,12 @@ protected:
 
 	/** @brief Item which is source of this ability. Ie item component or base item. */
 	mutable FArcItemData* SourceItemPtr = nullptr;
+
+	UPROPERTY(Transient)
+	TArray<FInstancedStruct> CachedLocalTargetActions;
+
+	UPROPERTY(Transient)
+	TArray<FInstancedStruct> CachedAbilityTargetActions;
 
 	virtual void K2_ExecuteGameplayCueWithParams(FGameplayTag GameplayCueTag
 												 , const FGameplayCueParameters& GameplayCueParameters) override;
@@ -586,6 +597,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")
 	void SendTargetingResult(const FGameplayAbilityTargetDataHandle& TargetData
 							 , UArcTargetingObject* InTrace);
+
+	void ExecuteActionList(const TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context);
 
 protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Arc Core")

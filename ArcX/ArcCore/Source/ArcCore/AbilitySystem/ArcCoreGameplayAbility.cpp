@@ -51,6 +51,7 @@
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Items/Fragments/ArcItemFragment_AbilityEffectsToApply.h"
+#include "Fragments/ArcItemFragment_AbilityActions.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
 #include "Pawn/ArcCorePawn.h"
 #include "Targeting/ArcTargetingObject.h"
@@ -281,6 +282,14 @@ void UArcCoreGameplayAbility::OnAddedToItemSlot(const FGameplayAbilityActorInfo*
 			SourceBlockedTags.AppendTags(AbilityTagsFragment->SourceBlockedTags);
 			TargetRequiredTags.AppendTags(AbilityTagsFragment->TargetRequiredTags);
 			TargetBlockedTags.AppendTags(AbilityTagsFragment->TargetBlockedTags);
+		}
+
+		// Cache action pipeline from item fragment
+		const FArcItemFragment_AbilityActions* ActionsFragment = ArcItemsHelper::FindFragment<FArcItemFragment_AbilityActions>(InItemData);
+		if (ActionsFragment)
+		{
+			CachedLocalTargetActions = ActionsFragment->OnLocalTargetResultActions;
+			CachedAbilityTargetActions = ActionsFragment->OnAbilityTargetResultActions;
 		}
 	}
 }
@@ -826,6 +835,19 @@ void UArcCoreGameplayAbility::NativeOnLocalTargetResult(FTargetingRequestHandle 
 		Hits.Add(MoveTemp(Result.HitResult));
 	}
 
+	// Execute cached action pipeline for local target result
+	if (CachedLocalTargetActions.Num() > 0)
+	{
+		FArcAbilityActionContext ActionContext;
+		ActionContext.Ability = this;
+		ActionContext.Handle = GetCurrentAbilitySpecHandle();
+		ActionContext.ActorInfo = GetCurrentActorInfo();
+		ActionContext.ActivationInfo = GetCurrentActivationInfo();
+		ActionContext.HitResults = Hits;
+		ActionContext.TargetingRequestHandle = TargetingRequestHandle;
+		ExecuteActionList(CachedLocalTargetActions, ActionContext);
+	}
+	
 	OnLocalTargetResult(Hits);
 }
 
@@ -844,6 +866,18 @@ void UArcCoreGameplayAbility::NativeOnAbilityTargetResult(const FGameplayAbility
 	{
 		OnAbilityTargetResult(AbilityTargetData
 			, EArcClientServer::Server);
+	}
+
+	// Execute cached action pipeline for ability target result
+	if (CachedAbilityTargetActions.Num() > 0)
+	{
+		FArcAbilityActionContext ActionContext;
+		ActionContext.Ability = this;
+		ActionContext.Handle = GetCurrentAbilitySpecHandle();
+		ActionContext.ActorInfo = GetCurrentActorInfo();
+		ActionContext.ActivationInfo = GetCurrentActivationInfo();
+		ActionContext.TargetData = AbilityTargetData;
+		ExecuteActionList(CachedAbilityTargetActions, ActionContext);
 	}
 }
 
@@ -1269,6 +1303,21 @@ bool UArcCoreGameplayAbility::GetSpawnedActor(const FArcAbilityActorHandle& OutA
 	
 	OutActor = nullptr;
 	return false;
+}
+
+void UArcCoreGameplayAbility::ExecuteActionList(const TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context)
+{
+	for (const FInstancedStruct& ActionStruct : Actions)
+	{
+		if (ActionStruct.IsValid())
+		{
+			const FArcAbilityAction* Action = ActionStruct.GetPtr<FArcAbilityAction>();
+			if (Action)
+			{
+				Action->Execute(Context);
+			}
+		}
+	}
 }
 
 UGameplayTask* UArcCoreGameplayAbility::GetTaskByName(FName TaskName) const
