@@ -137,201 +137,38 @@ void UArcCoreGameplayAbility::K2_ExecuteGameplayCueWithParams(FGameplayTag Gamep
 		, GameplayCueParameters);
 }
 
+static void AddTagContainerAsRegistryTag(FAssetRegistryTagsContext& Context, const TCHAR* Name, const FGameplayTagContainer& Tags)
+{
+	FString TagString;
+	int32 Num = Tags.Num();
+	int32 Idx = 0;
+	for (const FGameplayTag& Tag : Tags)
+	{
+		TagString += Tag.ToString();
+		if (++Idx < Num)
+		{
+			TagString += TEXT(",");
+		}
+	}
+	Context.AddTag(UObject::FAssetRegistryTag(Name, TagString, UObject::FAssetRegistryTag::TT_Hidden));
+}
+
 void UArcCoreGameplayAbility::GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
 {
 	Super::GetAssetRegistryTags(Context);
 
-	// AbilityTags
+	AddTagContainerAsRegistryTag(Context, TEXT("AbilityTags"), GetAssetTags());
+	AddTagContainerAsRegistryTag(Context, TEXT("CancelAbilitiesWithTag"), CancelAbilitiesWithTag);
+	AddTagContainerAsRegistryTag(Context, TEXT("BlockAbilitiesWithTag"), BlockAbilitiesWithTag);
+	AddTagContainerAsRegistryTag(Context, TEXT("ActivationOwnedTags"), ActivationOwnedTags);
+	AddTagContainerAsRegistryTag(Context, TEXT("ActivationRequiredTags"), ActivationRequiredTags);
+	AddTagContainerAsRegistryTag(Context, TEXT("ActivationBlockedTags"), ActivationBlockedTags);
+	AddTagContainerAsRegistryTag(Context, TEXT("SourceRequiredTags"), SourceRequiredTags);
+	AddTagContainerAsRegistryTag(Context, TEXT("SourceBlockedTags"), SourceBlockedTags);
+	AddTagContainerAsRegistryTag(Context, TEXT("TargetRequiredTags"), TargetRequiredTags);
+	AddTagContainerAsRegistryTag(Context, TEXT("TargetBlockedTags"), TargetBlockedTags);
 
-	{
-		FString Tags;
-		int32 Num = GetAssetTags().Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : GetAssetTags())
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("AbilityTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// CancelAbilitiesWithTag
-	{
-		FString Tags;
-		int32 Num = CancelAbilitiesWithTag.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : CancelAbilitiesWithTag)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("CancelAbilitiesWithTag")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// BlockAbilitiesWithTag
-	{
-		FString Tags;
-		int32 Num = BlockAbilitiesWithTag.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : BlockAbilitiesWithTag)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("BlockAbilitiesWithTag")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// ActivationOwnedTags
-	{
-		FString Tags;
-		int32 Num = ActivationOwnedTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : ActivationOwnedTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("ActivationOwnedTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// ActivationRequiredTags
-	{
-		FString Tags;
-		int32 Num = ActivationRequiredTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : ActivationRequiredTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("ActivationRequiredTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// ActivationBlockedTags
-	{
-		FString Tags;
-		int32 Num = ActivationBlockedTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : ActivationBlockedTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("ActivationBlockedTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// SourceRequiredTags
-	{
-		FString Tags;
-		int32 Num = SourceRequiredTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : SourceRequiredTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("SourceRequiredTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// SourceBlockedTags
-	{
-		FString Tags;
-		int32 Num = SourceBlockedTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : SourceBlockedTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("SourceBlockedTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// TargetRequiredTags
-	{
-		FString Tags;
-		int32 Num = TargetRequiredTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : TargetRequiredTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("TargetRequiredTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-
-	// TargetBlockedTags
-	{
-		FString Tags;
-		int32 Num = TargetBlockedTags.Num();
-		int32 Idx = 0;
-		for (const FGameplayTag& Tag : TargetBlockedTags)
-		{
-			Tags += Tag.ToString();
-			Idx++;
-			if (Num > Idx)
-			{
-				Tags += ",";
-			}
-		}
-		Context.AddTag(FAssetRegistryTag(TEXT("TargetBlockedTags")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
-	}
-	// AbilityTriggers
+	// AbilityTriggers — different source type (FAbilityTriggerData)
 	{
 		FString Tags;
 		int32 Num = AbilityTriggers.Num();
@@ -339,15 +176,12 @@ void UArcCoreGameplayAbility::GetAssetRegistryTags(FAssetRegistryTagsContext Con
 		for (const FAbilityTriggerData& T : AbilityTriggers)
 		{
 			Tags += T.TriggerTag.ToString();
-			Idx++;
-			if (Num > Idx)
+			if (++Idx < Num)
 			{
-				Tags += ",";
+				Tags += TEXT(",");
 			}
 		}
-		Context.AddTag(FAssetRegistryTag(TEXT("AbilityTriggers")
-			, Tags
-			, FAssetRegistryTag::TT_Hidden));
+		Context.AddTag(FAssetRegistryTag(TEXT("AbilityTriggers"), Tags, FAssetRegistryTag::TT_Hidden));
 	}
 }
 
@@ -364,7 +198,7 @@ void UArcCoreGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* Act
 			SourceItemsStore = IC;
 		}
 
-		UArcCoreAbilitySystemComponent* ArcASC = GetArcASC();
+		if (UArcCoreAbilitySystemComponent* ArcASC = GetArcASC())
 		{
 			FArcTargetRequestAbilityTargetData Del = FArcTargetRequestAbilityTargetData::CreateUObject(this
 					, &UArcCoreGameplayAbility::NativeOnAbilityTargetResult);
@@ -379,9 +213,9 @@ void UArcCoreGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* Act
 void UArcCoreGameplayAbility::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo
 											  , const FGameplayAbilitySpec& AbilitySpec)
 {
-	if (GetArcASC() != nullptr)
+	if (UArcCoreAbilitySystemComponent* ArcASC = GetArcASC())
 	{
-		GetArcASC()->UnregisterCustomTargetRequest(GetCurrentAbilitySpecHandle());
+		ArcASC->UnregisterCustomTargetRequest(GetCurrentAbilitySpecHandle());
 	}
 	
 	BP_OnRemoveAbility(AbilitySpec);
@@ -451,41 +285,16 @@ void UArcCoreGameplayAbility::OnAddedToItemSlot(const FGameplayAbilityActorInfo*
 	}
 }
 
-void UArcCoreGameplayAbility::PostNetInit()
-{
-	Super::PostNetInit();
-}
-
 void UArcCoreGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Handle
 										 , const FGameplayAbilityActorInfo* ActorInfo
 										 , const FGameplayAbilityActivationInfo ActivationInfo
 										 , bool bReplicateEndAbility
 										 , bool bWasCancelled)
 {
-	FString Role = "";
-	switch (ActorInfo->AbilitySystemComponent->GetOwnerRole())
-	{
-		case ROLE_None:
-			Role = "None";
-			break;
-		case ROLE_SimulatedProxy:
-			Role = "Simulated Proxy";
-			break;
-		case ROLE_AutonomousProxy:
-			Role = "Autonomous Proxy";
-			break;
-		case ROLE_Authority:
-			Role = "Authority";
-			break;
-		case ROLE_MAX:
-			Role = "MAX";
-			break;
-		default: ;
-	}
-	UE_LOG(LogTemp
-		, Log
+	UE_LOG(LogArcAbility
+		, Verbose
 		, TEXT("[%s] EndAbility [%s]")
-		, *Role
+		, *StaticEnum<ENetRole>()->GetValueAsString(ActorInfo->AbilitySystemComponent->GetOwnerRole())
 		, *GetName());
 
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get());
@@ -526,19 +335,22 @@ bool UArcCoreGameplayAbility::CheckCooldown(const FGameplayAbilitySpecHandle Han
 											, const FGameplayAbilityActorInfo* ActorInfo
 											, FGameplayTagContainer* OptionalRelevantTags) const
 {
+	// Super returns true when NOT on cooldown (i.e. can activate)
 	const FGameplayTagContainer* CooldownTags = GetCooldownTags();
-	bool bOnCooldown = Super::CheckCooldown(Handle
-		, ActorInfo
-		, OptionalRelevantTags);
-	if (bOnCooldown == false && CooldownTags != nullptr)
+	const bool bPassedBaseCooldown = Super::CheckCooldown(Handle, ActorInfo, OptionalRelevantTags);
+	if (!bPassedBaseCooldown && CooldownTags != nullptr)
 	{
 		return false;
 	}
 
+	// Also check custom timer-based cooldown
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(
 		ActorInfo->AbilitySystemComponent.Get());
-	bOnCooldown = ArcASC->IsAbilityOnCooldown(Handle);;
-	return !bOnCooldown;
+	if (!ArcASC)
+	{
+		return bPassedBaseCooldown;
+	}
+	return !ArcASC->IsAbilityOnCooldown(Handle);
 }
 
 void UArcCoreGameplayAbility::ApplyCooldown(const FGameplayAbilitySpecHandle Handle
@@ -557,6 +369,11 @@ void UArcCoreGameplayAbility::ApplyCooldown(const FGameplayAbilitySpecHandle Han
 
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(
 		ActorInfo->AbilitySystemComponent.Get());
+	if (!ArcASC)
+	{
+		return;
+	}
+
 	float CooldownValue = CooldownCalc->GetCooldown(Handle
 		, GetCurrentAbilitySpec()
 		, ActorInfo
@@ -572,17 +389,20 @@ void UArcCoreGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle H
 	, const FGameplayEventData* TriggerEventData)
 {
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(ActorInfo->AbilitySystemComponent);
+	if (ArcASC)
+	{
+		ArcASC->SetAbilityActivationStartTime(Handle, FPlatformTime::Seconds());
+	}
 
-	ArcASC->SetAbilityActivationStartTime(Handle, FPlatformTime::Seconds());
-	
 	Super::ActivateAbility(Handle
 		, ActorInfo
 		, ActivationInfo
 		, TriggerEventData);
 
-	
-
-	ArcASC->OnAbilityActivatedDynamic.Broadcast(Handle, this);
+	if (ArcASC)
+	{
+		ArcASC->OnAbilityActivatedDynamic.Broadcast(Handle, this);
+	}
 }
 
 bool UArcCoreGameplayAbility::CheckCost(const FGameplayAbilitySpecHandle Handle
@@ -642,15 +462,10 @@ FGameplayEffectContextHandle UArcCoreGameplayAbility::MakeEffectContext(const FG
 	FGameplayEffectContextHandle ContextHandle = Super::MakeEffectContext(Handle, ActorInfo);
 	if (SourceItemsStore)
 	{
-		// it shouldn't actually fail..
 		FArcGameplayEffectContext* Context = static_cast<FArcGameplayEffectContext*>(ContextHandle.Get());
 		Context->AddSourceObject(SourceItemsStore);
-
 		Context->SetSourceItemHandle(GetSourceItemHandle());
-
-		return ContextHandle;
 	}
-	
 	return ContextHandle;
 }
 
@@ -695,18 +510,12 @@ UArcHeroComponentBase* UArcCoreGameplayAbility::GetHeroComponentFromActorInfo() 
 
 UArcCoreAbilitySystemComponent* UArcCoreGameplayAbility::GetArcASC() const
 {
-	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
-
-	return ArcASC;
+	return Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
 }
 
 FActiveGameplayEffectHandle UArcCoreGameplayAbility::GetGrantedEffectHandle()
 {
-	UAbilitySystemComponent* const AbilitySystemComponent = GetAbilitySystemComponentFromActorInfo_Ensured();
-	FActiveGameplayEffectHandle ActiveHandle = AbilitySystemComponent->FindActiveGameplayEffectHandle(
-		GetCurrentAbilitySpecHandle());
-
-	return ActiveHandle;
+	return GetAbilitySystemComponentFromActorInfo_Ensured()->FindActiveGameplayEffectHandle(GetCurrentAbilitySpecHandle());
 }
 
 FGameplayAbilitySpecHandle UArcCoreGameplayAbility::GetSpecHandle() const
@@ -717,6 +526,10 @@ FGameplayAbilitySpecHandle UArcCoreGameplayAbility::GetSpecHandle() const
 float UArcCoreGameplayAbility::GetItemStat(FGameplayAttribute Attribute) const
 {
 	const FArcItemInstance_ItemStats* ItemStats = ArcItemsHelper::FindInstance<FArcItemInstance_ItemStats>(GetSourceItemEntryPtr());
+	if (!ItemStats)
+	{
+		return 0.0f;
+	}
 	return ItemStats->GetStatValue(Attribute);
 }
 
@@ -727,6 +540,10 @@ FArcItemId UArcCoreGameplayAbility::GetSourceItemHandle() const
 
 bool UArcCoreGameplayAbility::BP_GetSourceItem(FArcItemDataHandle& OutItem)
 {
+	if (!SourceItemsStore)
+	{
+		return false;
+	}
 	OutItem = SourceItemsStore->GetWeakItemPtr(SourceItemId);
 	return OutItem.IsValid();
 }
@@ -761,6 +578,23 @@ const FArcItemData* UArcCoreGameplayAbility::GetOwnerItemEntryPtr() const
 	return ItemPtr;
 }
 
+static bool FindItemFragmentImpl(UArcCoreGameplayAbility* Ability, UScriptStruct* InFragmentType, void* OutItemDataPtr, FStructProperty* OutItemProp)
+{
+	FArcItemData* ItemData = Ability->GetSourceItemEntryPtr();
+	if (!ItemData)
+	{
+		return false;
+	}
+
+	const uint8* Fragment = ArcItemsHelper::FindFragment(ItemData, InFragmentType);
+	if (OutItemProp && OutItemProp->Struct && Fragment && OutItemProp->Struct == InFragmentType)
+	{
+		OutItemProp->Struct->CopyScriptStruct(OutItemDataPtr, Fragment);
+		return true;
+	}
+	return false;
+}
+
 DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindItemFragment)
 {
 	P_GET_OBJECT(UScriptStruct, InFragmentType);
@@ -770,27 +604,13 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindItemFragment)
 
 	void* OutItemDataPtr = Stack.MostRecentPropertyAddress;
 	FStructProperty* OutItemProp = CastField<FStructProperty>(Stack.MostRecentProperty);
-	
-	P_FINISH;
-	bool bSuccess = false;
 
-	FArcItemData* ItemData = P_THIS->GetSourceItemEntryPtr();
-	if (ItemData)
-	{
-		P_NATIVE_BEGIN;
-		const uint8* Fragment = ArcItemsHelper::FindFragment(ItemData, InFragmentType);
-		//ItemData->FindFragment(InFragmentType);
-		UScriptStruct* OutputStruct = OutItemProp->Struct;
-		// Make sure the type we are trying to get through the blueprint node matches the
-		// type of the message payload received.
-		if ((OutItemProp != nullptr) && (OutItemProp->Struct != nullptr) && (Fragment != nullptr) && (
-				OutItemProp->Struct == InFragmentType))
-		{
-			OutItemProp->Struct->CopyScriptStruct(OutItemDataPtr, Fragment);
-			bSuccess = true;
-		}
-		P_NATIVE_END;
-	}
+	P_FINISH;
+
+	bool bSuccess = false;
+	P_NATIVE_BEGIN;
+	bSuccess = FindItemFragmentImpl(P_THIS, InFragmentType, OutItemDataPtr, OutItemProp);
+	P_NATIVE_END;
 	*(bool*)RESULT_PARAM = bSuccess;
 }
 
@@ -803,37 +623,26 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindItemFragmentPure)
 
 	void* OutItemDataPtr = Stack.MostRecentPropertyAddress;
 	FStructProperty* OutItemProp = CastField<FStructProperty>(Stack.MostRecentProperty);
-	
-	P_FINISH;
-	bool bSuccess = false;
 
-	FArcItemData* ItemData = P_THIS->GetSourceItemEntryPtr();
-	if (ItemData)
-	{
-		P_NATIVE_BEGIN;
-		const uint8* Fragment = ArcItemsHelper::FindFragment(ItemData, InFragmentType);
-		//ItemData->FindFragment(InFragmentType);
-		UScriptStruct* OutputStruct = OutItemProp->Struct;
-		// Make sure the type we are trying to get through the blueprint node matches the
-		// type of the message payload received.
-		if ((OutItemProp != nullptr) && (OutItemProp->Struct != nullptr) && (Fragment != nullptr) && (
-				OutItemProp->Struct == InFragmentType))
-		{
-			OutItemProp->Struct->CopyScriptStruct(OutItemDataPtr, Fragment);
-			bSuccess = true;
-		}
-		P_NATIVE_END;
-	}
+	P_FINISH;
+
+	bool bSuccess = false;
+	P_NATIVE_BEGIN;
+	bSuccess = FindItemFragmentImpl(P_THIS, InFragmentType, OutItemDataPtr, OutItemProp);
+	P_NATIVE_END;
 	*(bool*)RESULT_PARAM = bSuccess;
 }
 
 float UArcCoreGameplayAbility::FindItemScalableValue(UScriptStruct* InFragmentType
 	, FName PropName) const
 {
+	const FArcItemData* Item = GetOwnerItemEntryPtr();
+	if (!Item) { return 0.0f; }
+
 	FStructProperty* Prop = FindFProperty<FStructProperty>(InFragmentType, PropName);
 	FArcScalableCurveFloat Data(Prop, InFragmentType);
-	
-	return GetOwnerItemEntryPtr()->GetValue(Data);
+
+	return Item->GetValue(Data);
 }
 
 DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindScalableItemFragment)
@@ -845,7 +654,7 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindScalableItemFragment)
 
 	void* OutItemDataPtr = Stack.MostRecentPropertyAddress;
 	FStructProperty* OutItemProp = CastField<FStructProperty>(Stack.MostRecentProperty);
-	
+
 	P_FINISH;
 	bool bSuccess = false;
 
@@ -854,12 +663,7 @@ DEFINE_FUNCTION(UArcCoreGameplayAbility::execFindScalableItemFragment)
 	{
 		P_NATIVE_BEGIN;
 		const uint8* Fragment = (uint8*)ArcItemsHelper::FindScalableItemFragment<FArcScalableFloatItemFragment>(ItemData);
-		//ItemData->FindFragment(InFragmentType);
-		UScriptStruct* OutputStruct = OutItemProp->Struct;
-		// Make sure the type we are trying to get through the blueprint node matches the
-		// type of the message payload received.
-		if ((OutItemProp != nullptr) && (OutItemProp->Struct != nullptr) && (Fragment != nullptr) && (
-				OutItemProp->Struct == InFragmentType))
+		if (OutItemProp && OutItemProp->Struct && Fragment && OutItemProp->Struct == InFragmentType)
 		{
 			OutItemProp->Struct->CopyScriptStruct(OutItemDataPtr, Fragment);
 			bSuccess = true;
@@ -880,47 +684,38 @@ FArcItemDataHandle UArcCoreGameplayAbility::GetItemDataHandle() const
 	{
 		return FArcItemDataHandle();
 	}
-	
-	TWeakPtr<FArcItemData> WeakItemPtr = SourceItemsStore->GetWeakItemPtr(SourceItemId);
-	FArcItemDataHandle ItemDataHandle(WeakItemPtr);
-	
-	return ItemDataHandle;
+	return FArcItemDataHandle(SourceItemsStore->GetWeakItemPtr(SourceItemId));
 }
 
 const UArcItemDefinition* UArcCoreGameplayAbility::GetSourceItemData() const
 {
-	if (bRequiresItem)
-	{
-		return GetSourceItemEntryPtr()->GetItemDefinition();	
-	}
-	
-	return nullptr;
+	return NativeGetSourceItemData();
 }
 
 const UArcItemDefinition* UArcCoreGameplayAbility::NativeGetSourceItemData() const
 {
 	if (bRequiresItem)
 	{
-		return GetSourceItemEntryPtr()->GetItemDefinition();
+		const FArcItemData* Item = GetSourceItemEntryPtr();
+		return Item ? Item->GetItemDefinition() : nullptr;
 	}
 	return nullptr;
 }
 
 const UArcItemDefinition* UArcCoreGameplayAbility::NativeGetOwnerItemData() const
 {
-	return GetOwnerItemEntryPtr()->GetItemDefinition();
+	const FArcItemData* Item = GetOwnerItemEntryPtr();
+	return Item ? Item->GetItemDefinition() : nullptr;
 }
 
 const UArcItemDefinition* UArcCoreGameplayAbility::GetOwnerItemData() const
 {
-	return GetOwnerItemEntryPtr()->GetItemDefinition();
+	return NativeGetOwnerItemData();
 }
 
 const FArcGameplayAbilityActorInfo& UArcCoreGameplayAbility::GetArcActorInfo()
 {
-	const FArcGameplayAbilityActorInfo* NxActorInfo = static_cast<const FArcGameplayAbilityActorInfo*>(
-		GetCurrentActorInfo());
-	return *NxActorInfo;
+	return *static_cast<const FArcGameplayAbilityActorInfo*>(GetCurrentActorInfo());
 }
 
 AArcCoreCharacter* UArcCoreGameplayAbility::GetArcCharacterFromActorInfo() const
@@ -955,32 +750,21 @@ void UArcCoreGameplayAbility::SetEffectMagnitude(const FGameplayTag& DataTag
 		, this
 		, GetCurrentActorInfo());
 
-	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
-	
-	for (const FArcEffectSpecItem* E : Effects)
+	ForEachEffectSpec(EffectTag, [&](FGameplayEffectSpec& Spec)
 	{
-		for (const FGameplayEffectSpecHandle& SpecHandle : E->Specs)
-		{
-			FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
-
-			checkf(Spec != nullptr, TEXT("Invalid GameplayEffectSpec"));
-			
-			Spec->SetSetByCallerMagnitude(DataTag
-				, Value);
-		}
-	}
+		Spec.SetSetByCallerMagnitude(DataTag, Value);
+	});
 }
 
 
 void UArcCoreGameplayAbility::ExecuteLocalTargeting(UArcTargetingObject* InTrace)
 {
-	ENetMode NM = GetArcASC()->GetOwner()->GetNetMode();
+	UArcCoreAbilitySystemComponent* ArcASC = GetArcASC();
+	if (!ArcASC || !ArcASC->GetOwner()) { return; }
+
+	ENetMode NM = ArcASC->GetOwner()->GetNetMode();
 	EGameplayAbilityNetExecutionPolicy::Type ExecPolicy = GetNetExecutionPolicy();
 
-	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(
-		GetAbilitySystemComponentFromActorInfo());
-	
 	bool bExecuteTrace = (NM == ENetMode::NM_DedicatedServer && ExecPolicy ==
 							   EGameplayAbilityNetExecutionPolicy::Type::ServerOnly)
 								|| (NM == NM_Standalone) || (NM == NM_Client);
@@ -994,14 +778,16 @@ void UArcCoreGameplayAbility::ExecuteLocalTargeting(UArcTargetingObject* InTrace
 void UArcCoreGameplayAbility::SendTargetingResult(const FGameplayAbilityTargetDataHandle& TargetData
 												  , UArcTargetingObject* InTrace)
 {
-	ENetMode NM = GetArcASC()->GetOwner()->GetNetMode();
+	UArcCoreAbilitySystemComponent* ArcASC = GetArcASC();
+	if (!ArcASC || !ArcASC->GetOwner()) { return; }
+
+	ENetMode NM = ArcASC->GetOwner()->GetNetMode();
 	EGameplayAbilityNetExecutionPolicy::Type ExecPolicy = GetNetExecutionPolicy();
-	
+
 	bool bServerExecuteTrace = (NM == ENetMode::NM_DedicatedServer && ExecPolicy ==
 							   EGameplayAbilityNetExecutionPolicy::Type::ServerOnly)
 								|| NM == NM_Standalone;
-	
-	FGameplayAbilitySpecHandle AbilityHandle = GetCurrentAbilitySpecHandle();
+
 	if (NM == ENetMode::NM_Client || bServerExecuteTrace)
 	{
 		NativeOnAbilityTargetResult(TargetData);
@@ -1009,17 +795,14 @@ void UArcCoreGameplayAbility::SendTargetingResult(const FGameplayAbilityTargetDa
 
 	if (NM == ENetMode::NM_Client)
 	{
-		GetArcASC()->SendRequestCustomTargets(TargetData
+		ArcASC->SendRequestCustomTargets(TargetData
 		, InTrace
-		, GetCurrentAbilitySpecHandle());	
+		, GetCurrentAbilitySpecHandle());
 	}
 }
 
 void UArcCoreGameplayAbility::NativeExecuteLocalTargeting(UArcTargetingObject* InTrace)
 {
-	ENetMode NM = GetArcASC()->GetOwner()->GetNetMode();
-	EGameplayAbilityNetExecutionPolicy::Type ExecPolicy = GetNetExecutionPolicy();
-
 	UTargetingSubsystem* TargetingSystem = UTargetingSubsystem::Get(GetWorld());
 	FArcTargetingSourceContext Context;
 	Context.SourceActor = GetAvatarActorFromActorInfo();
@@ -1038,7 +821,7 @@ void UArcCoreGameplayAbility::NativeOnLocalTargetResult(FTargetingRequestHandle 
 	TArray<FHitResult> Hits;
 	Hits.Reserve(TargetingResults.TargetResults.Num());
 	
-	for (auto Result : TargetingResults.TargetResults)
+	for (auto& Result : TargetingResults.TargetResults)
 	{
 		Hits.Add(MoveTemp(Result.HitResult));
 	}
@@ -1048,7 +831,10 @@ void UArcCoreGameplayAbility::NativeOnLocalTargetResult(FTargetingRequestHandle 
 
 void UArcCoreGameplayAbility::NativeOnAbilityTargetResult(const FGameplayAbilityTargetDataHandle& AbilityTargetData)
 {
-	ENetMode NM = GetArcASC()->GetOwner()->GetNetMode();
+	UArcCoreAbilitySystemComponent* ArcASC = GetArcASC();
+	if (!ArcASC || !ArcASC->GetOwner()) { return; }
+
+	ENetMode NM = ArcASC->GetOwner()->GetNetMode();
 	if (NM == NM_Client)
 	{
 		OnAbilityTargetResult(AbilityTargetData
@@ -1081,16 +867,15 @@ TArray<FActiveGameplayEffectHandle> UArcCoreGameplayAbility::ApplyEffectsFromIte
 	TArray<FActiveGameplayEffectHandle> ReturnHandles;
 
 	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-	
+	if (!Instance) { return ReturnHandles; }
+
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 
-	FGameplayAbilitySpecHandle AbilitySpecHandle = GetCurrentAbilitySpecHandle();
 	FGameplayAbilityActivationInfo ActivInfo = GetCurrentActivationInfo();
 
 	FGameplayAbilityTargetDataHandle TargetHandle = InHitResults;
 
-	static FGameplayTagContainer AbilitySystemComponentTags;
-	AbilitySystemComponentTags.Reset();
+	FGameplayTagContainer AbilitySystemComponentTags;
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo_Ensured();
 	ASC->GetOwnedGameplayTags(AbilitySystemComponentTags);
 
@@ -1108,31 +893,22 @@ TArray<FActiveGameplayEffectHandle> UArcCoreGameplayAbility::ApplyEffectsFromIte
 
 		for (const FGameplayEffectSpecHandle& Effect : E->Specs)
 		{
-			TArray<FActiveGameplayEffectHandle> EffectHandles;
 			FPredictionKey PredKey = ActivInfo.GetActivationPredictionKey();
 			bool IsValid = PredKey.IsValidForMorePrediction();
 
 			if (!IsValid && UAbilitySystemGlobals::Get().ShouldPredictTargetGameplayEffects() == false)
 			{
-				// Early out to avoid making effect specs that we can't apply
-				return ReturnHandles; // EffectHandles;
+				return ReturnHandles;
 			}
 
-			if (Effect == nullptr)
-			{
-				// ABILITY_LOG(Error, TEXT("ApplyGameplayEffectToTarget called on ability
-				// %s with no GameplayEffect."), *GetName());
-			}
-			else if (HasAuthorityOrPredictionKey(GetCurrentActorInfo()
-						 , &ActivInfo) || IsValid)
+			if (Effect != nullptr
+				&& (HasAuthorityOrPredictionKey(GetCurrentActorInfo(), &ActivInfo) || IsValid))
 			{
 				Effect.Data->CapturedSourceTags.GetSpecTags().AppendTags(GetAssetTags());
 				Effect.Data->GetContext().Get()->SetAbility(this);
-				// ArcAbility::SetTargetDataHandle(Effect.Data->GetContext().Get(),
-				// InHitResults);
-				ReturnHandles = ArcAbility::ApplyEffectSpecTargetHandle(TargetHandle
+				ReturnHandles.Append(ArcAbility::ApplyEffectSpecTargetHandle(TargetHandle
 					, *Effect.Data.Get()
-					, ASC->GetPredictionKeyForNewAction());
+					, ASC->GetPredictionKeyForNewAction()));
 			}
 		}
 	}
@@ -1149,16 +925,15 @@ TArray<FActiveGameplayEffectHandle> UArcCoreGameplayAbility::ApplyAllEffectsFrom
 	}
 
 	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-	
+	if (!Instance) { return ReturnHandles; }
+
 	const TArray<FArcEffectSpecItem>& Effects = Instance->GetAllEffectSpecHandles();
 
-	FGameplayAbilitySpecHandle AbilitySpecHandle = GetCurrentAbilitySpecHandle();
 	FGameplayAbilityActivationInfo ActivInfo = GetCurrentActivationInfo();
 
 	FGameplayAbilityTargetDataHandle TargetHandle = InHitResults;
 
-	static FGameplayTagContainer AbilitySystemComponentTags;
-	AbilitySystemComponentTags.Reset();
+	FGameplayTagContainer AbilitySystemComponentTags;
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo_Ensured();
 	ASC->GetOwnedGameplayTags(AbilitySystemComponentTags);
 
@@ -1175,31 +950,22 @@ TArray<FActiveGameplayEffectHandle> UArcCoreGameplayAbility::ApplyAllEffectsFrom
 		}
 		for (const FGameplayEffectSpecHandle& Effect : SpecItem.Specs)
 		{
-			TArray<FActiveGameplayEffectHandle> EffectHandles;
 			FPredictionKey PredKey = ActivInfo.GetActivationPredictionKey();
 			bool IsValid = PredKey.IsValidForMorePrediction();
 
 			if (!IsValid && UAbilitySystemGlobals::Get().ShouldPredictTargetGameplayEffects() == false)
 			{
-				// Early out to avoid making effect specs that we can't apply
-				return ReturnHandles; // EffectHandles;
+				return ReturnHandles;
 			}
 
-			if (Effect == nullptr)
-			{
-				// ABILITY_LOG(Error, TEXT("ApplyGameplayEffectToTarget called on ability
-				// %s with no GameplayEffect."), *GetName());
-			}
-			else if (HasAuthorityOrPredictionKey(GetCurrentActorInfo()
-						 , &ActivInfo) || IsValid)
+			if (Effect != nullptr
+				&& (HasAuthorityOrPredictionKey(GetCurrentActorInfo(), &ActivInfo) || IsValid))
 			{
 				Effect.Data->CapturedSourceTags.GetSpecTags().AppendTags(GetAssetTags());
 				Effect.Data->GetContext().Get()->SetAbility(this);
-				// ArcAbility::SetTargetDataHandle(Effect.Data->GetContext().Get(),
-				// InHitResults);
-				ReturnHandles = ArcAbility::ApplyEffectSpecTargetHandle(TargetHandle
+				ReturnHandles.Append(ArcAbility::ApplyEffectSpecTargetHandle(TargetHandle
 					, *Effect.Data.Get()
-					, ASC->GetPredictionKeyForNewAction());
+					, ASC->GetPredictionKeyForNewAction()));
 			}
 		}
 	}
@@ -1211,7 +977,8 @@ TArray<FGameplayEffectSpecHandle> UArcCoreGameplayAbility::GetEffectSpecFromItem
 	TArray<FGameplayEffectSpecHandle> Specs;
 
 	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-	
+	if (!Instance) { return Specs; }
+
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
 	for (const FArcEffectSpecItem* E : Effects)
 	{
@@ -1234,7 +1001,7 @@ bool UArcCoreGameplayAbility::RemoveGameplayEffectFromTarget(FGameplayAbilityTar
 		{
 			if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(A.Get()))
 			{
-				bAllSuccessfull = ASC->RemoveActiveGameplayEffect(Handle, Stacks);
+				bAllSuccessfull &= ASC->RemoveActiveGameplayEffect(Handle, Stacks);
 			}
 		}
 	}
@@ -1242,58 +1009,48 @@ bool UArcCoreGameplayAbility::RemoveGameplayEffectFromTarget(FGameplayAbilityTar
 	return bAllSuccessfull;
 }
 
-void UArcCoreGameplayAbility::SetByCallerMagnitude(const FGameplayTag& SetByCallerTag
-												   , float Magnitude
-												   , const FGameplayTag& EffectTag)
+void UArcCoreGameplayAbility::ForEachEffectSpec(const FGameplayTag& EffectTag, TFunctionRef<void(FGameplayEffectSpec&)> Func) const
 {
 	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-
+	if (!Instance) { return; }
 	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
-	
 	for (const FArcEffectSpecItem* E : Effects)
 	{
 		for (const FGameplayEffectSpecHandle& SpecHandle : E->Specs)
 		{
 			FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
 			checkf(Spec != nullptr, TEXT("Invalid GameplayEffectSpec"));
-			Spec->SetSetByCallerMagnitude(SetByCallerTag, Magnitude);
+			Func(*Spec);
 		}
 	}
+}
+
+void UArcCoreGameplayAbility::SetByCallerMagnitude(const FGameplayTag& SetByCallerTag
+												   , float Magnitude
+												   , const FGameplayTag& EffectTag)
+{
+	ForEachEffectSpec(EffectTag, [&](FGameplayEffectSpec& Spec)
+	{
+		Spec.SetSetByCallerMagnitude(SetByCallerTag, Magnitude);
+	});
 }
 
 void UArcCoreGameplayAbility::SetEffectDuration(float Duration
 												, const FGameplayTag& EffectTag)
 {
-	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
-	for (const FArcEffectSpecItem* E : Effects)
+	ForEachEffectSpec(EffectTag, [&](FGameplayEffectSpec& Spec)
 	{
-		for (const FGameplayEffectSpecHandle& SpecHandle : E->Specs)
-		{
-			FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
-			checkf(Spec != nullptr
-				, TEXT("Invalid GameplayEffectSpec"));
-			Spec->SetDuration(Duration
-				, false);
-		}
-	}
+		Spec.SetDuration(Duration, false);
+	});
 }
 
 void UArcCoreGameplayAbility::SetEffectPeriod(float Period
 											  , const FGameplayTag& EffectTag)
 {
-	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(GetSourceItemEntryPtr());
-	TArray<const FArcEffectSpecItem*> Effects = Instance->GetEffectSpecHandles(EffectTag);
-	for (const FArcEffectSpecItem* E : Effects)
+	ForEachEffectSpec(EffectTag, [&](FGameplayEffectSpec& Spec)
 	{
-		for (const FGameplayEffectSpecHandle& SpecHandle : E->Specs)
-		{
-			FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
-			checkf(Spec != nullptr
-				, TEXT("Invalid GameplayEffectSpec"));
-			Spec->Period = Period;
-		}
-	}
+		Spec.Period = Period;
+	});
 }
 
 float UArcCoreGameplayAbility::GetAnimationPlayRate() const

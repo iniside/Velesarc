@@ -23,7 +23,7 @@
 
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
-#include "Engine/UserDefinedStruct.h"
+#include "StructUtils/UserDefinedStruct.h"
 #include "IDetailChildrenBuilder.h"
 #include "IDetailGroup.h"
 #include "IDetailPropertyRow.h"

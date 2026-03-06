@@ -111,9 +111,7 @@ public:
 			, ActorInfo);
 	}
 
-	virtual ~FArcGetItemValue()
-	{
-	}
+	virtual ~FArcGetItemValue() = default;
 };
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FArcAbilityActivationTimeDelegate
@@ -199,9 +197,7 @@ public:
 		return Cooldown.GetValueAtLevel(InAbilitySpec->Level);
 	}
 
-	virtual ~FArcAbilityCooldown_ScalableFloat() override
-	{
-	}
+	virtual ~FArcAbilityCooldown_ScalableFloat() override = default;
 };
 
 class UArcItemsStoreComponent;
@@ -363,8 +359,6 @@ public:
 								  , const FGameplayTag& InItemSlot
 								  , const FArcItemData* InItemData);
 	
-	virtual void PostNetInit() override;
-
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle
 							, const FGameplayAbilityActorInfo* ActorInfo
 							, const FGameplayAbilityActivationInfo ActivationInfo
@@ -632,6 +626,8 @@ public:
 	bool RemoveGameplayEffectFromTarget(FGameplayAbilityTargetDataHandle TargetData, FActiveGameplayEffectHandle Handle, int32 Stacks = -1);
 	
 protected:
+	void ForEachEffectSpec(const FGameplayTag& EffectTag, TFunctionRef<void(FGameplayEffectSpec&)> Func) const;
+
 	/**
 	 * Get Effect with given tag from Item with which this ability is associated, and sets SetByCallerMagnitde
 	 */

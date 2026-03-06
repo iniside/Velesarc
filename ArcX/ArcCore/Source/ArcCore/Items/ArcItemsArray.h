@@ -31,7 +31,7 @@
 #include "Iris/ReplicationState/Private/IrisFastArraySerializerInternal.h"
 #include "Serialization/JsonSerializerMacros.h"
 #include "Net/Core/NetBitArray.h"
-#include "PropertyBag.h"
+#include "StructUtils/PropertyBag.h"
 
 #if UE_WITH_IRIS
 #include "Iris/Serialization/NetSerializer.h"

@@ -28,7 +28,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "KismetCompiler.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
-#include "Interaction/ArcCoreInteractionSourceComponent.h"
+#include "Interaction/ArcInteractableInterfaceLibrary.h"
 #include "Items/ArcItemDefinition.h"
 
 UArcK2Node_GetItemFragmentFromItemDefinition::UArcK2Node_GetItemFragmentFromItemDefinition()

@@ -31,7 +31,6 @@
 
 
 class UArcItemDefinition;
-struct FAssetRegistryTag;
 
 USTRUCT(meta = (Hidden, LoadBehavior = "LazyOnDemand"))
 struct ARCCORE_API FArcItemFragment
