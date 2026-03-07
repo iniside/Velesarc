@@ -222,12 +222,27 @@ bool UArcMassEntityPersistenceSubsystem::ShouldCreateSubsystem(
 void UArcMassEntityPersistenceSubsystem::Initialize(
 	FSubsystemCollectionBase& Collection)
 {
+	Collection.InitializeDependency<UMassEntitySubsystem>();
 	Super::Initialize(Collection);
 }
 
 void UArcMassEntityPersistenceSubsystem::Deinitialize()
 {
-	SaveAndUnloadAll();
+	// Save all loaded cells while the EntityManager is still alive.
+	// Skip entity destruction — the world teardown handles that.
+	if (CachedEntityManager)
+	{
+		for (const FIntVector& Cell : LoadedCells)
+		{
+			SaveCell(Cell);
+		}
+	}
+
+	ActiveEntities.Empty();
+	CellEntityMap.Empty();
+	LoadedCells.Empty();
+	PendingCellLoads.Empty();
+	CachedEntityManager = nullptr;
 	FlushBackend();
 	Super::Deinitialize();
 }
@@ -345,7 +360,7 @@ void UArcMassEntityPersistenceSubsystem::LoadCell(const FIntVector& Cell)
 
 void UArcMassEntityPersistenceSubsystem::SaveCell(const FIntVector& Cell)
 {
-	if (!LoadedCells.Contains(Cell))
+	if (!LoadedCells.Contains(Cell) || !CachedEntityManager)
 	{
 		return;
 	}
@@ -380,53 +395,62 @@ void UArcMassEntityPersistenceSubsystem::UnloadCell(const FIntVector& Cell)
 		return;
 	}
 
-	// Step 1: Save the cell
+	// Step 1: Save the cell (SaveCell guards EntityManager internally)
 	SaveCell(Cell);
 
-	FMassEntityManager& EM = GetEntityManager();
+	int32 DestroyedCount = 0;
 
-	// Step 2: Handle entities loaded from this cell but now in other cells
-	// — update their StorageCell so they save with their new cell
-	for (auto& Pair : ActiveEntities)
+	// Steps 2-3 require a live EntityManager. During world teardown
+	// UMassEntitySubsystem may already be gone — skip entity ops.
+	if (CachedEntityManager)
 	{
-		if (!EM.IsEntityValid(Pair.Value))
-		{
-			continue;
-		}
+		FMassEntityManager& EM = *CachedEntityManager;
 
-		FArcMassPersistenceFragment* PFrag =
-			EM.GetFragmentDataPtr<FArcMassPersistenceFragment>(Pair.Value);
-		if (!PFrag)
+		// Step 2: Handle entities loaded from this cell but now in other cells
+		// — update their StorageCell so they save with their new cell
+		for (auto& Pair : ActiveEntities)
 		{
-			continue;
-		}
-
-		if (PFrag->StorageCell == Cell && PFrag->CurrentCell != Cell)
-		{
-			PFrag->StorageCell = PFrag->CurrentCell;
-		}
-	}
-
-	// Step 3: Destroy entities currently in this cell
-	TArray<FGuid> ToDestroy;
-	if (const TSet<FGuid>* CellGuids = CellEntityMap.Find(Cell))
-	{
-		for (const FGuid& Guid : *CellGuids)
-		{
-			ToDestroy.Add(Guid);
-		}
-	}
-
-	for (const FGuid& Guid : ToDestroy)
-	{
-		if (FMassEntityHandle* Handle = ActiveEntities.Find(Guid))
-		{
-			if (EM.IsEntityValid(*Handle))
+			if (!EM.IsEntityValid(Pair.Value))
 			{
-				EM.DestroyEntity(*Handle);
+				continue;
 			}
-			ActiveEntities.Remove(Guid);
+
+			FArcMassPersistenceFragment* PFrag =
+				EM.GetFragmentDataPtr<FArcMassPersistenceFragment>(Pair.Value);
+			if (!PFrag)
+			{
+				continue;
+			}
+
+			if (PFrag->StorageCell == Cell && PFrag->CurrentCell != Cell)
+			{
+				PFrag->StorageCell = PFrag->CurrentCell;
+			}
 		}
+
+		// Step 3: Destroy entities currently in this cell
+		TArray<FGuid> ToDestroy;
+		if (const TSet<FGuid>* CellGuids = CellEntityMap.Find(Cell))
+		{
+			for (const FGuid& Guid : *CellGuids)
+			{
+				ToDestroy.Add(Guid);
+			}
+		}
+
+		for (const FGuid& Guid : ToDestroy)
+		{
+			if (FMassEntityHandle* Handle = ActiveEntities.Find(Guid))
+			{
+				if (EM.IsEntityValid(*Handle))
+				{
+					EM.DestroyEntity(*Handle);
+				}
+				ActiveEntities.Remove(Guid);
+			}
+		}
+
+		DestroyedCount = ToDestroy.Num();
 	}
 
 	CellEntityMap.Remove(Cell);
@@ -434,7 +458,7 @@ void UArcMassEntityPersistenceSubsystem::UnloadCell(const FIntVector& Cell)
 
 	UE_LOG(LogTemp, Log,
 		TEXT("ArcMassPersistence: Unloaded cell [%d,%d] (%d entities destroyed)"),
-		Cell.X, Cell.Y, ToDestroy.Num());
+		Cell.X, Cell.Y, DestroyedCount);
 }
 
 void UArcMassEntityPersistenceSubsystem::SaveAndUnloadAll()

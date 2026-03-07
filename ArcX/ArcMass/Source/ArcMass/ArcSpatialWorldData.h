@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "InstancedStruct.h"
 #include "Engine/DeveloperSettings.h"
 #include "StructUtils/InstancedStruct.h"
 #include "Subsystems/WorldSubsystem.h"
