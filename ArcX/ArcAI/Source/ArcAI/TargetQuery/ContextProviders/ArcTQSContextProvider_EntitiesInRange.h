@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 #include "ArcMass/ArcMassSpatialHashSubsystem.h"
 #include "TargetQuery/ArcTQSContextProvider.h"
 #include "ArcTQSContextProvider_EntitiesInRange.generated.h"
