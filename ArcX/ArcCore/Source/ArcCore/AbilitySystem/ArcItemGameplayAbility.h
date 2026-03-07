@@ -133,6 +133,12 @@ protected:
 	UPROPERTY(Transient)
 	TArray<FInstancedStruct> CachedAbilityTargetActions;
 
+	UPROPERTY(Transient)
+	TArray<FInstancedStruct> CachedActivateActions;
+
+	UPROPERTY(Transient)
+	TArray<FInstancedStruct> CachedEndActions;
+
 	FGameplayTag CurrentItemSlot;
 
 	bool bBPOnAvatarSetCalled = false;
@@ -175,6 +181,8 @@ protected:
 
 	virtual void ProcessLocalTargetActions(const TArray<FHitResult>& Hits, FTargetingRequestHandle TargetingRequestHandle) override;
 	virtual void ProcessAbilityTargetActions(const FGameplayAbilityTargetDataHandle& AbilityTargetData) override;
+	virtual void ProcessActivateActions() override;
+	virtual void ProcessEndActions(bool bWasCancelled) override;
 
 public:
 	const FGameplayTag& GetCurrentItemSlot() const

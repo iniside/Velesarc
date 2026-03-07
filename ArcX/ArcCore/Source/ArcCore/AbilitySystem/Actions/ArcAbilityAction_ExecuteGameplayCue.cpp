@@ -28,7 +28,7 @@
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemsHelpers.h"
 
-void FArcAbilityAction_ExecuteGameplayCue::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ExecuteGameplayCue::Execute(FArcAbilityActionContext& Context)
 {
 	FGameplayTag CueTag = CueTagOverride;
 	UArcItemGameplayAbility* ItemAbility = Cast<UArcItemGameplayAbility>(Context.Ability);
@@ -56,9 +56,15 @@ void FArcAbilityAction_ExecuteGameplayCue::Execute(const FArcAbilityActionContex
 
 	
 	FGameplayCueParameters Params;
-	if (Context.HitResults.Num() > 0)
+	if (Context.TargetData.Num() > 0)
 	{
-		Params = UArcAbilitiesBPF::ArcMakeGameplayCueParametersFromHitResult(Context.HitResults[0]);
+		const FGameplayAbilityTargetData* TargetData = Context.TargetData.Get(0);
+		const FHitResult* HitResult = TargetData->GetHitResult();
+		if (HitResult)
+		{
+			Params = UArcAbilitiesBPF::ArcMakeGameplayCueParametersFromHitResult(*HitResult);	
+		}
+		
 	}
 	
 	Params.SourceObject = ItemAbility->GetOwnerItemData();
@@ -66,5 +72,5 @@ void FArcAbilityAction_ExecuteGameplayCue::Execute(const FArcAbilityActionContex
 	Params.Instigator = Context.Ability->GetCurrentActorInfo()->OwnerActor.Get();
 	Params.EffectCauser = Context.Ability->GetCurrentActorInfo()->AvatarActor.Get();
 	
-	ASC->ExecuteGameplayCue(CueTag);
+	ASC->ExecuteGameplayCue(CueTag, Params);
 }

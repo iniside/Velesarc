@@ -35,5 +35,5 @@ struct ARCCORE_API FArcAbilityAction_SendGameplayEvent : public FArcAbilityActio
 	UPROPERTY(EditAnywhere, meta = (Categories = "Ability.Event"))
 	FGameplayTag EventTag;
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

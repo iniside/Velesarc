@@ -27,6 +27,7 @@
 
 #include "Types/TargetingSystemTypes.h"
 #include "StructUtils/InstancedStruct.h"
+#include "StructUtils/StructView.h"
 #include "ArcAbilityAction.h"
 #include "ArcCoreGameplayAbility.generated.h"
 
@@ -350,7 +351,11 @@ public:
 	void SendTargetingResult(const FGameplayAbilityTargetDataHandle& TargetData
 							 , UArcTargetingObject* InTrace);
 
-	void ExecuteActionList(const TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context);
+	TMap<FGameplayTag, FStructView> LatentActions;
+
+	void CancelLatentAction(FGameplayTag Tag, FArcAbilityActionContext& Context);
+
+	void ExecuteActionList(TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context);
 
 protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Arc Core")
@@ -363,6 +368,12 @@ protected:
 	virtual void NativeOnLocalTargetResult(FTargetingRequestHandle TargetingRequestHandle);
 
 	virtual void NativeOnAbilityTargetResult(const FGameplayAbilityTargetDataHandle& AbilityTargetData);
+
+	/** Virtual hook for subclasses to execute actions when ability activates. Called after Super::ActivateAbility. */
+	virtual void ProcessActivateActions() {}
+
+	/** Virtual hook for subclasses to execute actions when ability ends. Called before Super::EndAbility. */
+	virtual void ProcessEndActions(bool bWasCancelled) {}
 
 	/** Virtual hook for subclasses to execute actions during local target result. Called before OnLocalTargetResult. */
 	virtual void ProcessLocalTargetActions(const TArray<FHitResult>& Hits, FTargetingRequestHandle TargetingRequestHandle) {}

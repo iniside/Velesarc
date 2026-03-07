@@ -23,7 +23,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-void FArcAbilityAction_SendGameplayEvent::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_SendGameplayEvent::Execute(FArcAbilityActionContext& Context)
 {
 	if (!EventTag.IsValid()) { return; }
 

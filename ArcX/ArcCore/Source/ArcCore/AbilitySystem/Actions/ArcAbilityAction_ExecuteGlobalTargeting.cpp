@@ -27,7 +27,7 @@
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemsHelpers.h"
 
-void FArcAbilityAction_ExecuteGlobalTargeting::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ExecuteGlobalTargeting::Execute(FArcAbilityActionContext& Context)
 {
 	UArcItemGameplayAbility* ItemAbility = Cast<UArcItemGameplayAbility>(Context.Ability);
 	if (!ItemAbility) { return; }

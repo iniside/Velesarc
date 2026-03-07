@@ -33,5 +33,5 @@ struct ARCCORE_API FArcAbilityAction_ApplyEffectsFromItem : public FArcAbilityAc
 	UPROPERTY(EditAnywhere)
 	FGameplayTag EffectTag;
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

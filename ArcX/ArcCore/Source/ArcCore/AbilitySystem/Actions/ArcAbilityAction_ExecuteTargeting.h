@@ -35,5 +35,5 @@ struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

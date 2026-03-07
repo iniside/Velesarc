@@ -22,7 +22,7 @@
 #include "ArcAbilityAction_ApplyCost.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-void FArcAbilityAction_ApplyCost::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ApplyCost::Execute(FArcAbilityActionContext& Context)
 {
 	Context.Ability->ApplyCost(Context.Handle, Context.ActorInfo, Context.ActivationInfo);
 }

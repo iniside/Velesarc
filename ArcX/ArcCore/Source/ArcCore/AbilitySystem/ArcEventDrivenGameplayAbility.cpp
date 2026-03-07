@@ -40,7 +40,7 @@ void UArcEventDrivenGameplayAbility::OnAvatarSetSafe(const FGameplayAbilityActor
 		const FArcItemFragment_AbilityActions* ActionsFragment = ArcItemsHelper::FindFragment<FArcItemFragment_AbilityActions>(ItemData);
 		if (ActionsFragment)
 		{
-			CachedEventActions = ActionsFragment->EventActions;
+			CachedEventActions = ActionsFragment->GetEventActions();
 		}
 	}
 }
@@ -93,7 +93,7 @@ void UArcEventDrivenGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle
 void UArcEventDrivenGameplayAbility::HandleStateTreeEvent(const FGameplayEventData& Payload, FGameplayTag EventTag)
 {
 	// Look up matching event actions
-	for (const FArcAbilityEventActions& EA : CachedEventActions)
+	for (FArcAbilityEventActions& EA : CachedEventActions)
 	{
 		if (EA.EventTag == EventTag)
 		{

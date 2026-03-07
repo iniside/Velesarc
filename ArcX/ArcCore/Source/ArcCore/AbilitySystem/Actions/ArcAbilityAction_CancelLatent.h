@@ -22,15 +22,15 @@
 #pragma once
 
 #include "AbilitySystem/ArcAbilityAction.h"
-#include "ArcAbilityAction_EndAbility.generated.h"
+#include "ArcAbilityAction_CancelLatent.generated.h"
 
-USTRUCT(BlueprintType, meta = (DisplayName = "End Ability"))
-struct ARCCORE_API FArcAbilityAction_EndAbility : public FArcAbilityAction
+USTRUCT(BlueprintType, meta = (DisplayName = "Cancel Latent Action"))
+struct ARCCORE_API FArcAbilityAction_CancelLatent : public FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere)
-	bool bWasCancelled = false;
+	UPROPERTY(EditAnywhere, meta = (Categories = "Ability.Latent"))
+	FGameplayTag TargetLatentTag;
 
 	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

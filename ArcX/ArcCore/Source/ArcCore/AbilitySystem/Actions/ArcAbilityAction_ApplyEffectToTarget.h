@@ -40,5 +40,5 @@ struct ARCCORE_API FArcAbilityAction_ApplyEffectToTarget : public FArcAbilityAct
 	UPROPERTY(EditAnywhere)
 	float Level = 1.f;
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

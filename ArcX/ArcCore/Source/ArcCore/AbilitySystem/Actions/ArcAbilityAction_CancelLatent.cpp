@@ -19,18 +19,10 @@
  * and limitations under the License.
  */
 
-#pragma once
+#include "ArcAbilityAction_CancelLatent.h"
+#include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-#include "AbilitySystem/ArcAbilityAction.h"
-#include "ArcAbilityAction_EndAbility.generated.h"
-
-USTRUCT(BlueprintType, meta = (DisplayName = "End Ability"))
-struct ARCCORE_API FArcAbilityAction_EndAbility : public FArcAbilityAction
+void FArcAbilityAction_CancelLatent::Execute(FArcAbilityActionContext& Context)
 {
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere)
-	bool bWasCancelled = false;
-
-	virtual void Execute(FArcAbilityActionContext& Context) override;
-};
+	Context.Ability->CancelLatentAction(TargetLatentTag, Context);
+}

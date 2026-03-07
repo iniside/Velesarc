@@ -29,5 +29,5 @@ struct ARCCORE_API FArcAbilityAction_ApplyCooldown : public FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

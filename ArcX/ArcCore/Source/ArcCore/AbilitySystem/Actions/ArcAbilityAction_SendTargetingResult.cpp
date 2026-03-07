@@ -26,7 +26,7 @@
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemsHelpers.h"
 
-void FArcAbilityAction_SendTargetingResult::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_SendTargetingResult::Execute(FArcAbilityActionContext& Context)
 {
 	UArcTargetingObject* TargetingObj = nullptr;
 

@@ -382,6 +382,10 @@ void UArcAT_WaitAbilityStateTree::Activate()
 
 void UArcAT_WaitAbilityStateTree::HandleOnInputPressed(FGameplayAbilitySpec& InSpec)
 {
+	FGameplayEventData TempData = {};
+	TempData.EventTag = InputEventTag;
+	OnGameplayEvent.Broadcast(TempData, InputEventTag);
+	
 	FArcGameplayAbilityInputEvent Event;
 	Event.InputTag = InputEventTag;
 	Context.SendEvent(InputEventTag, FConstStructView::Make(Event));
@@ -389,6 +393,10 @@ void UArcAT_WaitAbilityStateTree::HandleOnInputPressed(FGameplayAbilitySpec& InS
 
 void UArcAT_WaitAbilityStateTree::HandleOnInputReleased(FGameplayAbilitySpec& InSpec)
 {
+	FGameplayEventData TempData = {};
+	TempData.EventTag = InputReleasedEventTag;
+	OnGameplayEvent.Broadcast(TempData, InputReleasedEventTag);
+	
 	FArcGameplayAbilityInputEvent Event;
 	Event.InputTag = InputReleasedEventTag;
 	Context.SendEvent(InputReleasedEventTag, FConstStructView::Make(Event));

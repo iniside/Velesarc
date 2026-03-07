@@ -22,7 +22,7 @@
 #include "ArcAbilityAction_ApplyEffectsFromItem.h"
 #include "AbilitySystem/ArcItemGameplayAbility.h"
 
-void FArcAbilityAction_ApplyEffectsFromItem::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ApplyEffectsFromItem::Execute(FArcAbilityActionContext& Context)
 {
 	UArcItemGameplayAbility* ItemAbility = Cast<UArcItemGameplayAbility>(Context.Ability);
 	if (!ItemAbility) { return; }

@@ -223,6 +223,28 @@ void UArcCoreGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Handle
 		, *StaticEnum<ENetRole>()->GetValueAsString(ActorInfo->AbilitySystemComponent->GetOwnerRole())
 		, *GetName());
 
+	// Cancel all latent actions before processing end actions
+	if (LatentActions.Num() > 0)
+	{
+		FArcAbilityActionContext CancelContext;
+		CancelContext.Ability = this;
+		CancelContext.Handle = Handle;
+		CancelContext.ActorInfo = ActorInfo;
+		CancelContext.ActivationInfo = ActivationInfo;
+		CancelContext.bWasCancelled = bWasCancelled;
+
+		for (auto& [Tag, ActionView] : LatentActions)
+		{
+			if (FArcAbilityAction* Action = const_cast<FArcAbilityAction*>(ActionView.GetPtr<FArcAbilityAction>()))
+			{
+				Action->CancelLatent(CancelContext);
+			}
+		}
+		LatentActions.Empty();
+	}
+
+	ProcessEndActions(bWasCancelled);
+
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get());
 	if (ArcASC)
 	{
@@ -321,6 +343,8 @@ void UArcCoreGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle H
 	{
 		ArcASC->OnAbilityActivatedDynamic.Broadcast(Handle, this);
 	}
+
+	ProcessActivateActions();
 }
 
 bool UArcCoreGameplayAbility::CheckCost(const FGameplayAbilitySpecHandle Handle
@@ -773,18 +797,46 @@ bool UArcCoreGameplayAbility::GetSpawnedActor(const FArcAbilityActorHandle& OutA
 	return false;
 }
 
-void UArcCoreGameplayAbility::ExecuteActionList(const TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context)
+void UArcCoreGameplayAbility::ExecuteActionList(TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context)
 {
-	for (const FInstancedStruct& ActionStruct : Actions)
+	for (FInstancedStruct& ActionStruct : Actions)
 	{
-		if (ActionStruct.IsValid())
+		if (!ActionStruct.IsValid())
 		{
-			const FArcAbilityAction* Action = ActionStruct.GetPtr<FArcAbilityAction>();
-			if (Action)
-			{
-				Action->Execute(Context);
-			}
+			continue;
 		}
+
+		FArcAbilityAction* Action = ActionStruct.GetMutablePtr<FArcAbilityAction>();
+		if (!Action)
+		{
+			continue;
+		}
+
+		if (Action->IsLatent())
+		{
+			if (LatentActions.Contains(Action->LatentTag))
+			{
+				continue;
+			}
+			Action->Execute(Context);
+			LatentActions.Add(Action->LatentTag, FStructView(ActionStruct));
+		}
+		else
+		{
+			Action->Execute(Context);
+		}
+	}
+}
+
+void UArcCoreGameplayAbility::CancelLatentAction(FGameplayTag Tag, FArcAbilityActionContext& Context)
+{
+	if (FStructView* Found = LatentActions.Find(Tag))
+	{
+		if (FArcAbilityAction* Action = const_cast<FArcAbilityAction*>(Found->GetPtr<FArcAbilityAction>()))
+		{
+			Action->CancelLatent(Context);
+		}
+		LatentActions.Remove(Tag);
 	}
 }
 

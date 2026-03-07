@@ -63,6 +63,9 @@ struct ARCCORE_API FArcAbilityActionContext
 	/** Optional. */
 	UPROPERTY()
 	FTargetingRequestHandle TargetingRequestHandle;
+
+	/** True when ability is ending due to cancellation. */
+	bool bWasCancelled = false;
 };
 
 USTRUCT(BlueprintType)
@@ -70,9 +73,22 @@ struct ARCCORE_API FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const {}
-
 	virtual ~FArcAbilityAction() = default;
+
+	// Execute the action. For latent actions (LatentTag is valid), this is also
+	// the activation — set up runtime state (spawn actors, start targeting, etc.)
+	// that CancelLatent() will tear down. The action is registered in the ability's
+	// latent registry after Execute() returns.
+	virtual void Execute(FArcAbilityActionContext& Context) {}
+
+	// Called on the cached copy when cancelled by CancelLatent action or ability end.
+	virtual void CancelLatent(FArcAbilityActionContext& Context) {}
+
+	// If valid, this action is registered as latent under this tag after Execute().
+	UPROPERTY(EditAnywhere, Category = "Latent", meta = (Categories = "Ability.Latent"))
+	FGameplayTag LatentTag;
+
+	bool IsLatent() const { return LatentTag.IsValid(); }
 };
 
 USTRUCT(BlueprintType)

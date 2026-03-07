@@ -40,5 +40,5 @@ struct ARCCORE_API FArcAbilityAction_ExecuteGlobalTargeting : public FArcAbility
 	UPROPERTY(EditAnywhere, meta = (Categories = "GlobalTargeting"))
 	FGameplayTag TargetingTagOverride;
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

@@ -22,7 +22,7 @@
 #include "ArcAbilityAction_CommitAbility.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-void FArcAbilityAction_CommitAbility::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_CommitAbility::Execute(FArcAbilityActionContext& Context)
 {
 	Context.Ability->CommitAbility(Context.Handle, Context.ActorInfo, Context.ActivationInfo);
 }

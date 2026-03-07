@@ -37,5 +37,5 @@ struct ARCCORE_API FArcAbilityAction_ExecuteGameplayCue : public FArcAbilityActi
 	UPROPERTY(EditAnywhere, meta = (Categories = "GameplayCue"))
 	FGameplayTag CueTagOverride;
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

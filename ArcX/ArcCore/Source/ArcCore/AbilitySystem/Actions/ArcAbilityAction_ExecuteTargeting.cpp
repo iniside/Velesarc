@@ -26,7 +26,7 @@
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemsHelpers.h"
 
-void FArcAbilityAction_ExecuteTargeting::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ExecuteTargeting::Execute(FArcAbilityActionContext& Context)
 {
 	UArcTargetingObject* TargetingObj = TargetingObjectOverride;
 

@@ -121,8 +121,10 @@ void UArcItemGameplayAbility::OnAddedToItemSlot(const FGameplayAbilityActorInfo*
 		const FArcItemFragment_AbilityActions* ActionsFragment = ArcItemsHelper::FindFragment<FArcItemFragment_AbilityActions>(InItemData);
 		if (ActionsFragment)
 		{
-			CachedLocalTargetActions = ActionsFragment->OnLocalTargetResultActions;
-			CachedAbilityTargetActions = ActionsFragment->OnAbilityTargetResultActions;
+			CachedLocalTargetActions = ActionsFragment->GetLocalTargetResultActions();
+			CachedAbilityTargetActions = ActionsFragment->GetAbilityTargetResultActions();
+			CachedActivateActions = ActionsFragment->GetActivateActions();
+			CachedEndActions = ActionsFragment->GetEndActions();
 		}
 	}
 }
@@ -154,6 +156,7 @@ FGameplayEffectContextHandle UArcItemGameplayAbility::MakeEffectContext(const FG
 		FArcGameplayEffectContext* Context = static_cast<FArcGameplayEffectContext*>(ContextHandle.Get());
 		Context->AddSourceObject(SourceItemsStore);
 		Context->SetSourceItemHandle(GetSourceItemHandle());
+		Context->SetSourceItemPtr(GetSourceItemEntryPtr());
 	}
 	return ContextHandle;
 }
@@ -203,6 +206,33 @@ void UArcItemGameplayAbility::ProcessAbilityTargetActions(const FGameplayAbility
 		ActionContext.ActivationInfo = GetCurrentActivationInfo();
 		ActionContext.TargetData = AbilityTargetData;
 		ExecuteActionList(CachedAbilityTargetActions, ActionContext);
+	}
+}
+
+void UArcItemGameplayAbility::ProcessActivateActions()
+{
+	if (CachedActivateActions.Num() > 0)
+	{
+		FArcAbilityActionContext ActionContext;
+		ActionContext.Ability = this;
+		ActionContext.Handle = GetCurrentAbilitySpecHandle();
+		ActionContext.ActorInfo = GetCurrentActorInfo();
+		ActionContext.ActivationInfo = GetCurrentActivationInfo();
+		ExecuteActionList(CachedActivateActions, ActionContext);
+	}
+}
+
+void UArcItemGameplayAbility::ProcessEndActions(bool bWasCancelled)
+{
+	if (CachedEndActions.Num() > 0)
+	{
+		FArcAbilityActionContext ActionContext;
+		ActionContext.Ability = this;
+		ActionContext.Handle = GetCurrentAbilitySpecHandle();
+		ActionContext.ActorInfo = GetCurrentActorInfo();
+		ActionContext.ActivationInfo = GetCurrentActivationInfo();
+		ActionContext.bWasCancelled = bWasCancelled;
+		ExecuteActionList(CachedEndActions, ActionContext);
 	}
 }
 

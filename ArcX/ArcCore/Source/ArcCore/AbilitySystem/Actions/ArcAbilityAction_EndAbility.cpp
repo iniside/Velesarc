@@ -22,7 +22,7 @@
 #include "ArcAbilityAction_EndAbility.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-void FArcAbilityAction_EndAbility::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_EndAbility::Execute(FArcAbilityActionContext& Context)
 {
 	Context.Ability->EndAbility(Context.Handle, Context.ActorInfo, Context.Ability->GetCurrentActivationInfo(), true, false);
 }

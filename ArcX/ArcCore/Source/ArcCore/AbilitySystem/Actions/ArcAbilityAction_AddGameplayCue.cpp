@@ -27,7 +27,7 @@
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemsHelpers.h"
 
-void FArcAbilityAction_AddGameplayCue::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_AddGameplayCue::Execute(FArcAbilityActionContext& Context)
 {
 	FGameplayTag CueTag = CueTagOverride;
 

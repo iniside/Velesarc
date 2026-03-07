@@ -24,7 +24,7 @@
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 #include "GameplayEffect.h"
 
-void FArcAbilityAction_ApplyEffectToSelf::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ApplyEffectToSelf::Execute(FArcAbilityActionContext& Context)
 {
 	if (!GameplayEffectClass) { return; }
 

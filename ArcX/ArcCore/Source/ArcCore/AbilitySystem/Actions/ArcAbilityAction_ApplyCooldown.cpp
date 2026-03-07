@@ -22,7 +22,7 @@
 #include "ArcAbilityAction_ApplyCooldown.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-void FArcAbilityAction_ApplyCooldown::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ApplyCooldown::Execute(FArcAbilityActionContext& Context)
 {
 	Context.Ability->ApplyCooldown(Context.Handle, Context.ActorInfo, Context.ActivationInfo);
 }

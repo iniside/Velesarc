@@ -25,7 +25,7 @@
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 
-void FArcAbilityAction_ApplyEffectToTarget::Execute(const FArcAbilityActionContext& Context) const
+void FArcAbilityAction_ApplyEffectToTarget::Execute(FArcAbilityActionContext& Context)
 {
 	if (!GameplayEffectClass) { return; }
 

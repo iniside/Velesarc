@@ -32,5 +32,5 @@ struct ARCCORE_API FArcAbilityAction_CommitAbility : public FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
+	virtual void Execute(FArcAbilityActionContext& Context) override;
 };
