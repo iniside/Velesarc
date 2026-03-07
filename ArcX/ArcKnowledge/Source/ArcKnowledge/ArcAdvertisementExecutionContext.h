@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassEntityHandle.h"
 #include "ArcKnowledgeTypes.h"
-#include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 #include "StateTreeInstanceData.h"
 #include "StateTreeReference.h"
 #include "StateTreeExecutionTypes.h"

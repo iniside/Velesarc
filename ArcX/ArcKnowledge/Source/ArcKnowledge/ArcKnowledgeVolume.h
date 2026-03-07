@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagContainer.h"
-#include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcKnowledgeEntry.h"
 #include "ArcKnowledgeVolume.generated.h"

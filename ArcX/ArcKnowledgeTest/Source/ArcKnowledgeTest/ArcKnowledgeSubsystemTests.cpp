@@ -4,7 +4,7 @@
 #include "Components/ActorTestSpawner.h"
 
 #include "NativeGameplayTags.h"
-#include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeEntry.h"

@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "InstancedStruct.h"
+#include "StructUtils/InstancedStruct.h"
 #include "MassEntityTypes.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcKnowledgeEntry.h"
