@@ -8,6 +8,7 @@
 #include "AbilitySystemInterface.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 #include "Engine/AssetManager.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -333,9 +334,9 @@ void FArcGameplayAbilitiesDebugger::DrawAbilitySystemDetails(UAbilitySystemCompo
 			UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Ability);
 
 			FString AbilityName = GetNameSafe(DisplayAbility);
-			if (ArcAbility)
+			if (UArcItemGameplayAbility* ArcItemAbility = Cast<UArcItemGameplayAbility>(Ability))
 			{
-				const UArcItemDefinition* SourceItem = ArcAbility->GetSourceItemData();
+				const UArcItemDefinition* SourceItem = ArcItemAbility->GetSourceItemData();
 				if (SourceItem)
 				{
 					AbilityName += FString::Printf(TEXT(" [%s]"), *GetNameSafe(SourceItem));
@@ -513,19 +514,22 @@ void FArcGameplayAbilitiesDebugger::DrawAbilitySystemDetails(UAbilitySystemCompo
 							ImGui::TableSetColumnIndex(0);
 							ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Item Info");
 
-							const UArcItemDefinition* SourceItemDef = ArcAbility->GetSourceItemData();
-							TableRow("Source Item Def", GetNameSafe(SourceItemDef));
+							if (UArcItemGameplayAbility* ArcItemAbility = Cast<UArcItemGameplayAbility>(ArcAbility))
+							{
+								const UArcItemDefinition* SourceItemDef = ArcItemAbility->GetSourceItemData();
+								TableRow("Source Item Def", GetNameSafe(SourceItemDef));
 
-							UArcItemsStoreComponent* SourceItemsStore = ArcAbility->GetItemsStoreComponent(nullptr);
-							TableRow("Items Store", GetNameSafe(SourceItemsStore));
+								UArcItemsStoreComponent* SourceItemsStore = ArcItemAbility->GetItemsStoreComponent(nullptr);
+								TableRow("Items Store", GetNameSafe(SourceItemsStore));
 
-							const FArcItemData* ItemData = ArcAbility->GetSourceItemEntryPtr();
-							TableRowBool("Has Valid Item Data", ItemData != nullptr);
+								const FArcItemData* ItemData = ArcItemAbility->GetSourceItemEntryPtr();
+								TableRowBool("Has Valid Item Data", ItemData != nullptr);
 
-							const FArcItemId ItemId = ArcAbility->GetSourceItemHandle();
-							TableRow("Source Item Id", ItemId.ToString());
+								const FArcItemId ItemId = ArcItemAbility->GetSourceItemHandle();
+								TableRow("Source Item Id", ItemId.ToString());
 
-							TableRow("Current Item Slot", ArcAbility->GetCurrentItemSlot().ToString());
+								TableRow("Current Item Slot", ArcItemAbility->GetCurrentItemSlot().ToString());
+							}
 						}
 					}
 					else

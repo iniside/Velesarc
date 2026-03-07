@@ -417,6 +417,13 @@ void FArcCharacterPersistenceDebugger::DrawAttributesTab()
 			ImGui::Text("%s", TCHAR_TO_ANSI(*SetClassName));
 			ImGui::Separator();
 
+			ImGui::TextDisabled("Attribute");
+			ImGui::SameLine(200.0f);
+			ImGui::TextDisabled("Current");
+			ImGui::SameLine(280.0f);
+			ImGui::TextDisabled("Base (edit)");
+			ImGui::Separator();
+
 			for (TFieldIterator<FStructProperty> It(Set->GetClass()); It; ++It)
 			{
 				FStructProperty* StructProp = *It;
@@ -449,19 +456,16 @@ void FArcCharacterPersistenceDebugger::DrawAttributesTab()
 					? FString::Printf(TEXT("[S] %s"), *AttrName)
 					: AttrName;
 
+				ImGui::Text("%s", TCHAR_TO_ANSI(*Label));
+
+				ImGui::SameLine(200.0f);
+				ImGui::TextDisabled("%.2f", CurrentValue);
+
+				ImGui::SameLine(280.0f);
 				ImGui::PushItemWidth(100.0f);
 				FString InputLabel = FString::Printf(TEXT("##%s"), *EditKey);
 				ImGui::InputFloat(TCHAR_TO_ANSI(*InputLabel), &EditValue, 0.0f, 0.0f, "%.2f");
 				ImGui::PopItemWidth();
-
-				ImGui::SameLine();
-				ImGui::Text("%s", TCHAR_TO_ANSI(*Label));
-
-				if (!FMath::IsNearlyEqual(CurrentValue, BaseValue))
-				{
-					ImGui::SameLine();
-					ImGui::TextDisabled("(cur: %.1f)", CurrentValue);
-				}
 			}
 
 			ImGui::Separator();
