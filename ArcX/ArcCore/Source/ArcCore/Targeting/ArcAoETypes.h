@@ -41,6 +41,8 @@ enum class EArcAoEBoxAlignment : uint8
 	ShortEdgeFacingSource
 };
 
+struct FArcItemData;
+
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcAoEShapeData
 {
@@ -57,4 +59,16 @@ struct ARCCORE_API FArcAoEShapeData
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "Shape == EArcAoEShape::Box", EditConditionHides))
 	EArcAoEBoxAlignment BoxAlignment = EArcAoEBoxAlignment::LongEdgeFacingSource;
+
+	static FArcAoEShapeData FromItemData(const FArcItemData* ItemData);
+
+	/**
+	 * Compute box center and rotation from a direction vector (pitch zeroed).
+	 * BoxExtent axes are already alignment-swapped by FromItemData, so no extra rotation is applied.
+	 * @param SourceLocation  Origin point (e.g. hit location from line trace)
+	 * @param Direction       Flat forward direction (typically source→target or eye yaw)
+	 * @param OutCenter       Resulting box center (offset forward by BoxExtent.X)
+	 * @param OutRotation     Yaw-only rotation matching the direction
+	 */
+	void ComputeBoxTransform(const FVector& SourceLocation, const FVector& Direction, FVector& OutCenter, FQuat& OutRotation) const;
 };

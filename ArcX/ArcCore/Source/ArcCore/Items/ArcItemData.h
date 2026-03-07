@@ -27,7 +27,7 @@
 
 #include "Items/ArcItemTypes.h"
 #include "Items/ArcItemSpec.h"
-
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Iris/ReplicationState/Private/IrisFastArraySerializerInternal.h"
 #include "Iris/Serialization/NetSerializer.h"
 
@@ -327,7 +327,7 @@ public:
 	{
 		if (ScalableFloatFragments.Contains(T::StaticStruct()))
 		{
-			return ScalableFloatFragments[T::StaticStruct()];
+			return static_cast<const T*>(ScalableFloatFragments[T::StaticStruct()]);
 		}
 
 		return nullptr;

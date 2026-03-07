@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "ArcCoreGameplayAbility.h"
+#include "ArcItemGameplayAbility.h"
 #include "ArcAbilityAction.h"
 #include "ArcEventDrivenGameplayAbility.generated.h"
 
@@ -30,7 +30,7 @@ struct FArcItemFragment_StateTree;
 struct FGameplayEventData;
 
 UCLASS()
-class ARCCORE_API UArcEventDrivenGameplayAbility : public UArcCoreGameplayAbility
+class ARCCORE_API UArcEventDrivenGameplayAbility : public UArcItemGameplayAbility
 {
 	GENERATED_BODY()
 

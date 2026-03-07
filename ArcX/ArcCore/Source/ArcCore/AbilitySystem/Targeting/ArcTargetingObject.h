@@ -45,9 +45,6 @@ public:
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<UTargetingPreset> TargetingVerification;
 
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
-	TSoftClassPtr<AArcTargetingVisualizationActor> VisualizationActor;
-	
 };
 
 USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
@@ -58,6 +55,9 @@ struct ARCCORE_API FArcItemFragment_TargetingObjectPreset : public FArcItemFragm
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game", DisplayThumbnail = "false"))
 	TObjectPtr<UArcTargetingObject> TargetingObject;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game", MustImplement = "/Script/ArcCore.ArcAoEVisualizationInterface"))
+	TSoftClassPtr<AActor> VisualizationActor;
 };
 
 USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
@@ -68,6 +68,9 @@ struct ARCCORE_API FArcItemFragment_TargetingPreset : public FArcItemFragment
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game", DisplayThumbnail = "false"))
 	TObjectPtr<UTargetingPreset> TargetingPreset;
+	
+	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game", MustImplement = "/Script/ArcCore.ArcAoEVisualizationInterface"))
+	TSoftClassPtr<AActor> VisualizationActor;
 };
 
 USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))

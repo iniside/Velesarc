@@ -1612,6 +1612,7 @@ void UArcAbilityActorComponent::GetLifetimeReplicatedProps(TArray<class FLifetim
 }
 
 #include "ArcCore/AbilitySystem/ArcCoreGameplayAbility.h"
+#include "ArcCore/AbilitySystem/ArcItemGameplayAbility.h"
 
 void UArcAbilityActorComponent::BeginPlay()
 {
@@ -1727,7 +1728,7 @@ void UArcAbilityActorComponent::Initialize(UArcCoreAbilitySystemComponent* Ownin
 		FGameplayAbilitySpec* AbilitySpec = ASC->FindAbilitySpecFromHandle(GrantedAbility);
 		if (InstigatorAbility != nullptr)
 		{
-			Cast<UArcCoreGameplayAbility>(AbilitySpec->GetPrimaryInstance())->AssingItemFromAbility(InstigatorAbility);
+			Cast<UArcItemGameplayAbility>(AbilitySpec->GetPrimaryInstance())->AssingItemFromAbility(Cast<UArcItemGameplayAbility>(InstigatorAbility));
 
 			if (AbilitySpec->GetPrimaryInstance()->IsInstantiated())
 			{
@@ -1804,7 +1805,13 @@ void UArcAbilityActorComponent::DestroyActor(bool bReplicate)
 
 const UArcItemDefinition* UArcAbilityActorComponent::GetSourceItemData() const
 {
-	return InstigatorAbility->GetSourceItemData();
+	UArcItemGameplayAbility* Ability = Cast<UArcItemGameplayAbility>(InstigatorAbility);
+	if (!Ability)
+	{
+		return nullptr;
+	}
+	
+	return Ability->GetSourceItemData();
 }
 
 DEFINE_FUNCTION(UArcAbilityActorComponent::execFindItemFragment)
@@ -1825,8 +1832,14 @@ DEFINE_FUNCTION(UArcAbilityActorComponent::execFindItemFragment)
 		*(bool*)RESULT_PARAM = false;
 		return;
 	}
+	UArcItemGameplayAbility* Ability = Cast<UArcItemGameplayAbility>(P_THIS->InstigatorAbility);
+	if (!Ability)
+	{
+		*(bool*)RESULT_PARAM = false;
+		return;
+	}
 	
-	FArcItemData* ItemData = P_THIS->InstigatorAbility->GetSourceItemEntryPtr();
+	FArcItemData* ItemData = Ability->GetSourceItemEntryPtr();
 	if (ItemData)
 	{
 		P_NATIVE_BEGIN;

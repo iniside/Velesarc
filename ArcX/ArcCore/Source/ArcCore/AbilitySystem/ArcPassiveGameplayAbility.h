@@ -21,14 +21,14 @@
 
 #pragma once
 
-#include "ArcCore/AbilitySystem/ArcCoreGameplayAbility.h"
+#include "ArcCore/AbilitySystem/ArcItemGameplayAbility.h"
 #include "ArcPassiveGameplayAbility.generated.h"
 
 /**
  * This gameplay ability will be used as base class for abilities applied by effects.
  */
 UCLASS()
-class ARCCORE_API UArcPassiveGameplayAbility : public UArcCoreGameplayAbility
+class ARCCORE_API UArcPassiveGameplayAbility : public UArcItemGameplayAbility
 {
 	GENERATED_BODY()
 

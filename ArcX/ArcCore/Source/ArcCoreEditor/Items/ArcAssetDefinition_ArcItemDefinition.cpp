@@ -33,12 +33,14 @@
 #include "Kismet2/SClassPickerDialog.h"
 #include "ObjectTools.h"
 #include "SDetailsDiff.h"
+#include "SourceControlOperations.h"
 #include "ToolMenus.h"
 #include "ToolMenuSection.h"
 #include "Core/ArcCoreAssetManager.h"
 #include "HAL/PlatformFileManager.h"
 #include "Serialization/ObjectReader.h"
 #include "Serialization/ObjectWriter.h"
+#include "UObject/Linker.h"
 
 #define LOCTEXT_NAMESPACE "UArcAssetDefinition_ArcItemDefinition"
 namespace Arcx::Editor
@@ -276,7 +278,17 @@ FText UArcAssetDefinition_ArcItemDefinition::GetAssetDisplayName(const FAssetDat
 
 EAssetCommandResult UArcAssetDefinition_ArcItemDefinition::OpenAssets(const FAssetOpenArgs& OpenArgs) const
 {
-	return Super::OpenAssets(OpenArgs);
+	for (const FAssetData& AssetData : OpenArgs.Assets)
+	{
+		if (UObject* Object = AssetData.GetAsset())
+		{
+			FArcAssetEditor_ItemDefinition::CreateItemEditor(
+				OpenArgs.GetToolkitMode(),
+				OpenArgs.ToolkitHost,
+				Object);
+		}
+	}
+	return EAssetCommandResult::Handled;
 }
 
 EAssetCommandResult UArcAssetDefinition_ArcItemDefinition::PerformAssetDiff(const FAssetDiffArgs& DiffArgs) const

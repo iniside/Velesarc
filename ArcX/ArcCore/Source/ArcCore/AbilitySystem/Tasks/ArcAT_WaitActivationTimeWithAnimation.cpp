@@ -27,7 +27,7 @@
 #include "ArcLogs.h"
 #include "EnhancedInputSubsystems.h"
 #include "TimerManager.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Engine/LocalPlayer.h"
@@ -63,7 +63,7 @@ UArcAT_WaitActivationTimeWithAnimation* UArcAT_WaitActivationTimeWithAnimation::
 
 void UArcAT_WaitActivationTimeWithAnimation::Activate()
 {
-	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+	UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
 		
 	if (!MontagesFragment)
@@ -213,7 +213,7 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleOnStartMontageEnded(UAnimMont
 	
 	const FGameplayAbilityActorInfo* ActorInfo = Ability->GetCurrentActorInfo();
 	UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
-	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+	UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent);
 
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
@@ -311,7 +311,7 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleOnEndMontageEnded(UAnimMontag
 	UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
 	EndMontageEndedDelegate.Unbind();
 
-	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+	UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent);
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
 	const UArcItemDefinition* ItemDef = ArcCoreAbility->NativeGetOwnerItemData();
@@ -334,7 +334,7 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleOnPostEndMontageEnded(UAnimMo
 
 void UArcAT_WaitActivationTimeWithAnimation::OnDestroy(bool bInOwnerFinished)
 {
-	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+	UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 	if (!ArcCoreAbility)
 	{
 		Super::OnDestroy(bInOwnerFinished);
@@ -449,7 +449,7 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleOnActivationFinished()
 {
 	if (UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent))
 	{
-		if (UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability))
+		if (UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability))
 		{
 			ArcCoreAbility->CallOnActionTimeFinished();
 		}
@@ -466,7 +466,7 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleOnActivationFinished()
 
 void UArcAT_WaitActivationTimeWithAnimation::HandleFinished()
 {
-	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+	UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent);
 
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
@@ -568,7 +568,7 @@ void UArcAT_WaitActivationTimeWithAnimation::HandleActivationTimeChanged(UArcCor
 		return;
 	}
 
-	UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+	UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 
 	const FArcItemFragment_ActivationTimeMontages* MontagesFragment = ArcCoreAbility->NativeGetSourceItemData()->FindFragment<FArcItemFragment_ActivationTimeMontages>();
 	const float MontageLenght = MontagesFragment->StartMontage.Get()->GetSectionLength(0);

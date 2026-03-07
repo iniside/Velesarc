@@ -24,6 +24,7 @@
 #include "ArcCoreUtils.h"
 #include "Editor.h"
 #include "IContentBrowserSingleton.h"
+#include "IDetailCustomization.h"
 #include "IDetailPropertyExtensionHandler.h"
 #include "IDetailsViewPrivate.h"
 #include "IPropertyTable.h"
@@ -31,6 +32,7 @@
 #include "IStructureDetailsView.h"
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemDefinition.h"
+#include "Widgets/Input/SComboBox.h"
 
 bool FArcStaticItemHelpers::PickItemSourceTemplate(UArcItemDefinitionTemplate*& OutChosenClass)
 {
@@ -137,19 +139,6 @@ bool FArcStaticItemHelpers::PickItemSourceTemplate(UArcItemDefinitionTemplate*& 
 	}	
 
 	return bPressedOk;
-}
-
-class SArcFragmentMergeRow : public SCompoundWidget
-{
-	SLATE_BEGIN_ARGS( SArcFragmentMergeRow ){}
-	SLATE_END_ARGS()
-
-	void Construct( const FArguments& InArgs);
-	
-};
-
-void SArcFragmentMergeRow::Construct(const FArguments& InArgs)
-{
 }
 
 struct FArcItemDefinitionEntry
@@ -430,6 +419,28 @@ namespace Arcx::Private
 
 		return OutNodes;
 	}
+
+	// No-op detail customization for merge preview — shows all properties
+	// (overrides the editor's customization that hides fragment sets)
+	class FMergePreviewDetailCustomization : public IDetailCustomization
+	{
+	public:
+		virtual void CustomizeDetails(IDetailLayoutBuilder&) override {}
+	};
+
+	TSharedRef<IDetailsView> CreateMergePreviewDetailsView(FPropertyEditorModule& PropModule, const FDetailsViewArgs& Args)
+	{
+		TSharedRef<IDetailsView> View = PropModule.CreateDetailView(Args);
+		// Override the global customization that hides fragment sets
+		View->RegisterInstancedCustomPropertyLayout(
+			UArcItemDefinition::StaticClass(),
+			FOnGetDetailCustomizationInstance::CreateLambda([]() -> TSharedRef<IDetailCustomization>
+			{
+				return MakeShared<FMergePreviewDetailCustomization>();
+			})
+		);
+		return View;
+	}
 }
 
 int32 SArcFragmentMergePreview::OnPaint(const FPaintArgs& Args
@@ -551,7 +562,7 @@ void SArcFragmentMergePreview::HandleOnItemDefSelected(TSharedPtr<FArcItemDefini
 	}
 	
 			
-	TSharedRef<class IDetailsView> TemplateDetailsView =  PropertyEditor.CreateDetailView(DetailsViewArgs);
+	TSharedRef<class IDetailsView> TemplateDetailsView = Arcx::Private::CreateMergePreviewDetailsView(PropertyEditor, DetailsViewArgs);
 	TemplateDetailsView->SetObject(LocalTemplate);
 	
 	TemplateFragmentList->AddSlot()
@@ -570,7 +581,7 @@ void SArcFragmentMergePreview::HandleOnItemDefSelected(TSharedPtr<FArcItemDefini
 			
 	
 	
-	TSharedRef<class IDetailsView> MergedDetailsView =  PropertyEditor.CreateDetailView(DetailsViewArgs);
+	TSharedRef<class IDetailsView> MergedDetailsView = Arcx::Private::CreateMergePreviewDetailsView(PropertyEditor, DetailsViewArgs);
 	MergedDetailsView->SetObject(DuplicatePreview, true);
 
 	MergedFragmentList->AddSlot()
@@ -587,7 +598,7 @@ void SArcFragmentMergePreview::HandleOnItemDefSelected(TSharedPtr<FArcItemDefini
 		]
 	];
 
-	TSharedRef<class IDetailsView> SelectedItemDetailsView =  PropertyEditor.CreateDetailView(DetailsViewArgs);
+	TSharedRef<class IDetailsView> SelectedItemDetailsView = Arcx::Private::CreateMergePreviewDetailsView(PropertyEditor, DetailsViewArgs);
 	SelectedItemDetailsView->SetObject(SelectedObject);
 	OldItemFragmentsView->AddSlot()
 		[
@@ -718,12 +729,12 @@ bool FArcStaticItemHelpers::PickItemSourceTemplateWithPreview(UArcItemDefinition
 	TSharedRef<SWindow> PickerWindow = SNew(SWindow)
 			.Title(FText::FromString("Pick Item Definition Template"))
 			.SizingRule(ESizingRule::UserSized)
-			.ClientSize(FVector2D(400.f, 500.f))
-			.MinHeight(400.f)
-			.MinWidth(500)
-			.SupportsMaximize(false)
+			.ClientSize(FVector2D(1400.f, 800.f))
+			.MinHeight(600.f)
+			.MinWidth(900)
+			.SupportsMaximize(true)
 			.SupportsMinimize(false);
-	
+
 	auto OnClickedOk = [&bPressedOk, PickerWindow]()-> FReply
 	{
 		bPressedOk = true;
@@ -738,7 +749,7 @@ bool FArcStaticItemHelpers::PickItemSourceTemplateWithPreview(UArcItemDefinition
 
 		return FReply::Handled();
 	};
-	
+
 	TSharedPtr<SWidget> AssetPicker = CBS.CreateAssetPicker(Config);
 	TSharedPtr<SWidget> AssetPickerContainer =
 		SNew(SSplitter)
@@ -812,16 +823,16 @@ bool FArcStaticItemHelpers::PreviewUpdate(UArcItemDefinitionTemplate* InUpdateTe
 {
 	TSharedPtr<SArcFragmentMergePreview> MergePreview = SNew(SArcFragmentMergePreview).MergeMode(EArcMergeMode::Update);
 	MergePreview->SetObjects(InSelectedItemDefinition, InUpdateTemplate);
-	
+
 	bool bPressedOk = false;
-	
+
 	TSharedRef<SWindow> PickerWindow = SNew(SWindow)
-			.Title(FText::FromString("Pick Item Definition Template"))
+			.Title(FText::FromString("Preview Template Update"))
 			.SizingRule(ESizingRule::UserSized)
-			.ClientSize(FVector2D(400.f, 500.f))
-			.MinHeight(400.f)
-			.MinWidth(500)
-			.SupportsMaximize(false)
+			.ClientSize(FVector2D(1400.f, 800.f))
+			.MinHeight(600.f)
+			.MinWidth(900)
+			.SupportsMaximize(true)
 			.SupportsMinimize(false);
 	
 	auto OnClickedOk = [&bPressedOk, PickerWindow]()-> FReply

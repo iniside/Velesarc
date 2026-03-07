@@ -21,7 +21,7 @@
 
 #include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 #include "Items/ArcItemsHelpers.h"
 
 void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* InItem
@@ -82,7 +82,7 @@ void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* In
 			continue;
 		}
 		
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+		UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 
 		if (ArcAbility == nullptr)
 		{
@@ -137,7 +137,7 @@ void FArcItemFragment_GrantedAbilities::UpdatePendingAbility(const FArcItemData*
 			continue;
 		}
 			
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+		UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 
 		if (ArcAbility == nullptr)
 		{

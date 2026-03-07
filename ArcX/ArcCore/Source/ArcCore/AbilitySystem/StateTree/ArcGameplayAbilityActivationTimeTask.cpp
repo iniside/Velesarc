@@ -4,6 +4,7 @@
 
 #include "StateTreeExecutionContext.h"
 #include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 
 FArcGameplayAbilityActivationTimeTask::FArcGameplayAbilityActivationTimeTask()
 {
@@ -58,7 +59,7 @@ void FArcGameplayAbilityGetActivationTimePropertyFunction::Execute(FStateTreeExe
 void FArcGameplayAbilityGetItemScalableFloatPropertyFunction::Execute(FStateTreeExecutionContext& Context) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	if (UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(InstanceData.Ability))
+	if (UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(InstanceData.Ability))
 	{
 		InstanceData.Value = ArcAbility->FindItemScalableValue(InstanceData.ScalableFloatStruct, InstanceData.ScalableFloatName);
 		return;

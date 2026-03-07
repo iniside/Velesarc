@@ -68,8 +68,8 @@ void UArcEventDrivenGameplayAbility::ActivateAbility(const FGameplayAbilitySpecH
 			StateTreeTask = UArcAT_WaitAbilityStateTree::WaitAbilityStateTree(
 				this,
 				STFragment->StateTreeRef,
-				FGameplayTag(),    // InputEventTag — none by default
-				FGameplayTag(),    // InputReleasedEventTag — none by default
+				STFragment->InputPressedTag,    // InputEventTag — none by default
+				STFragment->InputReleasedTag,    // InputReleasedEventTag — none by default
 				EventTags);
 
 			if (StateTreeTask)

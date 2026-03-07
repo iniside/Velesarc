@@ -26,6 +26,23 @@
 #include "ArcAoETypes.h"
 #include "ArcAoEVisualizationInterface.generated.h"
 
+class UGameplayAbility;
+
+USTRUCT(BlueprintType)
+struct ARCCORE_API FArcAoEVisualizationContext
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "AoE")
+	FArcAoEShapeData ShapeData;
+
+	UPROPERTY(BlueprintReadOnly, Category = "AoE")
+	TObjectPtr<AActor> AvatarActor = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "AoE")
+	TObjectPtr<UGameplayAbility> SourceAbility = nullptr;
+};
+
 UINTERFACE(MinimalAPI, BlueprintType)
 class UArcAoEVisualizationInterface : public UInterface
 {
@@ -37,9 +54,9 @@ class ARCCORE_API IArcAoEVisualizationInterface
 	GENERATED_BODY()
 
 public:
-	/** Called once on spawn to initialize the AoE shape visualization. */
+	/** Called once on spawn to initialize the AoE visualization with shape, avatar, and ability context. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Arc Core|AoE")
-	void InitializeAoEShape(const FArcAoEShapeData& ShapeData);
+	void InitializeAoEShape(const FArcAoEVisualizationContext& Context);
 
 	/** Called on targeting updates to update the visualization location and rotation. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Arc Core|AoE")

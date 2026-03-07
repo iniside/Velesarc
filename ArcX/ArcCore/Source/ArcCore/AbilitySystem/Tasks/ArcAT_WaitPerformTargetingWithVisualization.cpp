@@ -33,11 +33,13 @@
 UArcAT_WaitPerformTargetingWithVisualization* UArcAT_WaitPerformTargetingWithVisualization::WaitPerformTargetingWithVisualization(
 	UGameplayAbility* OwningAbility
 	, UArcTargetingObject* InTargetingObject
+	, TSoftClassPtr<AActor> InVisualizationActorClass
 	, FGameplayTag InGlobalTargetingTag
 	, bool bInUseResultFromGlobalTargeting)
 {
 	UArcAT_WaitPerformTargetingWithVisualization* Task = NewAbilityTask<UArcAT_WaitPerformTargetingWithVisualization>(OwningAbility);
 	Task->TargetingObject = InTargetingObject;
+	Task->VisualizationActorClass = InVisualizationActorClass;
 	Task->GlobalTargetingTag = InGlobalTargetingTag;
 	Task->bUseResultFromGlobalTargeting = bInUseResultFromGlobalTargeting;
 	
@@ -54,7 +56,7 @@ void UArcAT_WaitPerformTargetingWithVisualization::Activate()
 	{
 		if (UTargetingSubsystem* TargetingSubsystem = UTargetingSubsystem::Get(SourceActor->GetWorld()))
 		{
-			if (!TargetingObject->VisualizationActor.IsNull())
+			if (!VisualizationActorClass.IsNull())
 			{
 				if (GlobalTargetingTag.IsValid())
 				{
@@ -63,13 +65,13 @@ void UArcAT_WaitPerformTargetingWithVisualization::Activate()
 				}
 				else
 				{
-					UClass* VisualizationActorClass = TargetingObject->VisualizationActor.LoadSynchronous();
-					if (VisualizationActorClass)
+					UClass* VisualizationActorClassLoaded = VisualizationActorClass.LoadSynchronous();
+					if (VisualizationActorClassLoaded)
 					{
 						FActorSpawnParameters SpawnParameters;
 						SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 					
-						VisualizationActor = SourceActor->GetWorld()->SpawnActor<AArcTargetingVisualizationActor>(VisualizationActorClass, FTransform::Identity, SpawnParameters);
+						VisualizationActor = SourceActor->GetWorld()->SpawnActor<AActor>(VisualizationActorClassLoaded, FTransform::Identity, SpawnParameters);
 					}
 				
 					FArcTargetingSourceContext Context;

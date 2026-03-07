@@ -27,6 +27,7 @@
 #include "Targeting/ArcTargetDataId.h"
 #include "Templates/SubclassOf.h"
 
+#include "GameplayEffectExtension.h"
 #include "GameplayEffectExecutionCalculation.h"
 
 class UArcItemsStoreComponent;

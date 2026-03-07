@@ -20,7 +20,7 @@
  */
 
 #include "ArcCore/AbilitySystem/GameplayCues/ArcGameplayCueTranslator.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 #include "AbilitySystem/ArcGameplayCueManager.h"
 #include "ArcCore/AbilitySystem/GameplayCues/ArcCueTranslatorSettings.h"
 #include "ArcCueTranslatorTypes.h"
@@ -173,7 +173,7 @@ int32 UArcGameplayCueTranslator_WeaponSurface::GameplayCueToTranslationIndex(con
 			, TEXT("."));
 
 		FString Combo = Parsed.Last();
-		const UArcCoreGameplayAbility* ArcGA = Cast<UArcCoreGameplayAbility>(
+		const UArcItemGameplayAbility* ArcGA = Cast<UArcItemGameplayAbility>(
 			Parameters.EffectContext.GetAbilityInstance_NotReplicated());
 
 		const UArcItemDefinition* ID = ArcGA->GetSourceItemData();

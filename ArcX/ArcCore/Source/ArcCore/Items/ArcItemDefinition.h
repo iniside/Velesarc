@@ -348,5 +348,12 @@ public:
 	 * @param TargetItemDefinition Item definition in which we will update fragments/properties. 
 	 */
 	void UpdateFromTemplate(UArcItemDefinition* TargetItemDefinition);
+
+	/**
+	 * @brief Overwrites this template's fragments with the fragments from a source item definition.
+	 * Copies all three fragment sets and ItemType. All fragments are marked as non-template on the template side.
+	 * @param SourceItem Item definition from which fragments will be copied to this template.
+	 */
+	void PushFromItem(UArcItemDefinition* SourceItem);
 #endif
 };

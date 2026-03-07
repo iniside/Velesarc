@@ -22,8 +22,25 @@
 
 
 #include "ArcAssetDefinition_ArcItemDefinitionTemplate.h"
+#include "ArcAssetEditor_ItemDefinition.h"
 
 #define LOCTEXT_NAMESPACE "UArcAssetDefinition_ArcItemDefinitionTemplate"
+
+EAssetCommandResult UArcAssetDefinition_ArcItemDefinitionTemplate::OpenAssets(const FAssetOpenArgs& OpenArgs) const
+{
+	for (const FAssetData& AssetData : OpenArgs.Assets)
+	{
+		if (UObject* Object = AssetData.GetAsset())
+		{
+			FArcAssetEditor_ItemDefinition::CreateItemEditor(
+				OpenArgs.GetToolkitMode(),
+				OpenArgs.ToolkitHost,
+				Object);
+		}
+	}
+	return EAssetCommandResult::Handled;
+}
+
 FText UArcAssetDefinition_ArcItemDefinitionTemplate::GetAssetDisplayName(const FAssetData& AssetData) const
 {
 	if (AssetData.IsValid())

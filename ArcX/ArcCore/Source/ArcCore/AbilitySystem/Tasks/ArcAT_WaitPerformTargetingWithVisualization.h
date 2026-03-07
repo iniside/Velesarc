@@ -31,7 +31,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FArcWaitPerformTargetingResult, const TArray<FHitResult>&, HitResults, FTargetingRequestHandle, TargetingRequestHandle);
 
 class UArcTargetingObject;
-class AArcTargetingVisualizationActor;
+class AActor;
 
 /**
  * 
@@ -44,6 +44,7 @@ class ARCCORE_API UArcAT_WaitPerformTargetingWithVisualization : public UAbility
 public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability|Tasks", meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "TRUE"))
 	static UArcAT_WaitPerformTargetingWithVisualization* WaitPerformTargetingWithVisualization(UGameplayAbility* OwningAbility, UArcTargetingObject* InTargetingObject
+		, TSoftClassPtr<AActor> InVisualizationActorClass
 		, FGameplayTag InGlobalTargetingTag
 		, bool bInUseResultFromGlobalTargeting);
 
@@ -60,8 +61,9 @@ public:
 	TObjectPtr<UArcTargetingObject> TargetingObject;
 
 	UPROPERTY()
-	TObjectPtr<AArcTargetingVisualizationActor> VisualizationActor;
+	TObjectPtr<AActor> VisualizationActor;
 	
+	TSoftClassPtr<AActor> VisualizationActorClass;
 	FGameplayTag GlobalTargetingTag;
 	bool bUseResultFromGlobalTargeting;
 	

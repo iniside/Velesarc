@@ -23,7 +23,7 @@
 
 
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 #include "Items/ArcItemsHelpers.h"
 #if 0
 void FArcItemInstance_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemData* InItem
@@ -68,7 +68,7 @@ void FArcItemInstance_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemD
 				continue;
 			}
 		
-			UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+			UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 
 			ArcAbility->OnAddedToItemSlot(ArcASC->AbilityActorInfo.Get(), Spec, InSlotId, InItem);
 
@@ -95,7 +95,7 @@ void FArcItemInstance_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemD
 			continue;
 		}
 			
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+		UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 
 		if (ArcAbility == nullptr)
 		{
@@ -144,7 +144,7 @@ void FArcItemInstance_GrantedPassiveAbilities::UpdatePendingAbility()
 			continue;
 		}
 			
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+		UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 
 		if (ArcAbility == nullptr)
 		{
@@ -205,7 +205,7 @@ void FArcItemFragment_GrantedPassiveAbilities::OnItemAddedToSlot(const FArcItemD
 				continue;
 			}
 		
-			UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+			UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 			if (ArcAbility == nullptr)
 			{
 				PassiveAbilities->PendingAbilities.AddUnique(AbilityHandle);
@@ -264,7 +264,7 @@ void FArcItemFragment_GrantedPassiveAbilities::UpdatePendingAbility(const FArcIt
 			continue;
 		}
 			
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Spec->GetPrimaryInstance());
+		UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Spec->GetPrimaryInstance());
 
 		if (ArcAbility == nullptr)
 		{

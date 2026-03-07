@@ -93,6 +93,20 @@ EDataValidationResult UArcItemDefinition::IsDataValid(FDataValidationContext& Co
 		}
 	}
 
+	for (const FArcInstancedStruct& IS : ScalableFloatFragmentSet)
+	{
+		if (IS.IsValid())
+		{
+			EDataValidationResult NewResult = IS.GetPtr<FArcScalableFloatItemFragment>()->IsDataValid(this, Context);
+
+			// Only change result if it is invalid. We will change to Valid at the end of this function.
+			if (Result != EDataValidationResult::Invalid)
+			{
+				Result = NewResult;
+			}
+		}
+	}
+	
 	for (const FArcInstancedStruct& IS : EditorFragmentSet)
 	{
 		if (IS.IsValid())
@@ -442,8 +456,8 @@ void UArcItemDefinitionTemplate::SetNewOrReplaceItemTemplate(UArcItemDefinition*
 	}
 	{
 		TSet<FArcInstancedStruct> ExistingFragments;
-		ExistingFragments.Reserve(TargetItemDefinition->FragmentSet.Num());
-	
+		ExistingFragments.Reserve(TargetItemDefinition->ScalableFloatFragmentSet.Num());
+
 		// Add all non template ones, so we can preserve their properties.
 		for (const FArcInstancedStruct& ItemFragment : TargetItemDefinition->ScalableFloatFragmentSet)
 		{
@@ -452,7 +466,10 @@ void UArcItemDefinitionTemplate::SetNewOrReplaceItemTemplate(UArcItemDefinition*
 				ExistingFragments.Add(ItemFragment);
 			}
 		}
-		
+
+		TargetItemDefinition->ScalableFloatFragmentSet.Empty();
+		TargetItemDefinition->ScalableFloatFragmentSet.Reserve(ScalableFloatFragmentSet.Num());
+
 		for (const FArcInstancedStruct& ItemFragment : ScalableFloatFragmentSet)
 		{
 			// We try to preserve properties if the fragment types match.
@@ -471,6 +488,40 @@ void UArcItemDefinitionTemplate::SetNewOrReplaceItemTemplate(UArcItemDefinition*
 			NewInstance.bFromTemplate = true;
 		
 			TargetItemDefinition->ScalableFloatFragmentSet.Add(NewInstance);
+		}
+	}
+	{
+		TSet<FArcInstancedStruct> ExistingFragments;
+		ExistingFragments.Reserve(TargetItemDefinition->EditorFragmentSet.Num());
+
+		for (const FArcInstancedStruct& ItemFragment : TargetItemDefinition->EditorFragmentSet)
+		{
+			if (ItemFragment.bFromTemplate == false)
+			{
+				ExistingFragments.Add(ItemFragment);
+			}
+		}
+
+		TargetItemDefinition->EditorFragmentSet.Empty();
+		TargetItemDefinition->EditorFragmentSet.Reserve(EditorFragmentSet.Num());
+
+		for (const FArcInstancedStruct& ItemFragment : EditorFragmentSet)
+		{
+			FArcInstancedStruct NewInstance;
+			if (const FArcInstancedStruct* Found = ExistingFragments.Find(ItemFragment))
+			{
+				NewInstance.InstancedStruct = Found->InstancedStruct;
+				NewInstance.StructName = Found->InstancedStruct.GetScriptStruct()->GetFName();
+			}
+			else
+			{
+				NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+				NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+			}
+
+			NewInstance.bFromTemplate = true;
+
+			TargetItemDefinition->EditorFragmentSet.Add(NewInstance);
 		}
 	}
 	TargetItemDefinition->SourceTemplate = this;
@@ -574,7 +625,47 @@ void UArcItemDefinitionTemplate::SetItemTemplate(UArcItemDefinition* TargetItemD
 			TargetItemDefinition->ScalableFloatFragmentSet.Add(NewInstance);
 		}
 	}
-	
+	{
+		TSet<FArcInstancedStruct> ExistingFragments;
+		ExistingFragments.Reserve(TargetItemDefinition->EditorFragmentSet.Num());
+
+		for (const FArcInstancedStruct& ItemFragment : TargetItemDefinition->EditorFragmentSet)
+		{
+			if (ItemFragment.bFromTemplate == false)
+			{
+				ExistingFragments.Add(ItemFragment);
+			}
+		}
+
+		TargetItemDefinition->EditorFragmentSet.Empty();
+		TargetItemDefinition->EditorFragmentSet.Reserve(EditorFragmentSet.Num());
+
+		for (const FArcInstancedStruct& ItemFragment : EditorFragmentSet)
+		{
+			if (ExistingFragments.Contains(ItemFragment))
+			{
+				continue;
+			}
+
+			FArcInstancedStruct NewInstance;
+			NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+			NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+			NewInstance.bFromTemplate = true;
+
+			TargetItemDefinition->EditorFragmentSet.Add(NewInstance);
+		}
+
+		for (const FArcInstancedStruct& ItemFragment : ExistingFragments)
+		{
+			FArcInstancedStruct NewInstance;
+			NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+			NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+			NewInstance.bFromTemplate = false;
+
+			TargetItemDefinition->EditorFragmentSet.Add(NewInstance);
+		}
+	}
+
 	TargetItemDefinition->SourceTemplate = this;
 	TargetItemDefinition->ItemType = ItemType;
 }
@@ -660,6 +751,7 @@ void UArcItemDefinitionTemplate::UpdateFromTemplate(UArcItemDefinition* TargetIt
 			// It should call InitializeAs, making new instance in memory.
 			NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
 			NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+			NewInstance.bFromTemplate = ItemFragment.bFromTemplate;
 			TargetItemDefinition->FragmentSet.Add(NewInstance);
 		}
 	}
@@ -747,8 +839,136 @@ void UArcItemDefinitionTemplate::UpdateFromTemplate(UArcItemDefinition* TargetIt
 			// It should call InitializeAs, making new instance in memory.
 			NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
 			NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+			NewInstance.bFromTemplate = ItemFragment.bFromTemplate;
 			TargetItemDefinition->ScalableFloatFragmentSet.Add(NewInstance);
 		}
 	}
+	{
+		TSet<FArcInstancedStruct> ExistingFragments;
+
+		int32 ElementsNum = FMath::Max(TargetItemDefinition->EditorFragmentSet.Num(), EditorFragmentSet.Num());
+		ExistingFragments.Reserve(ElementsNum);
+
+		for (const FArcInstancedStruct& ItemFragment : TargetItemDefinition->EditorFragmentSet)
+		{
+			if (ItemFragment.IsValid() == false)
+			{
+				continue;
+			}
+			if (ItemFragment.bFromTemplate == false)
+			{
+				ExistingFragments.Add(ItemFragment);
+			}
+		}
+
+		for (const FArcInstancedStruct& ItemFragment : EditorFragmentSet)
+		{
+			if (ItemFragment.IsValid() == false)
+			{
+				continue;
+			}
+
+			if (ExistingFragments.Contains(ItemFragment))
+			{
+				continue;
+			}
+
+			if (const FArcInstancedStruct* Found = TargetItemDefinition->EditorFragmentSet.Find(ItemFragment))
+			{
+				ExistingFragments.Add(*Found);
+			}
+		}
+
+		for (const FArcInstancedStruct& ItemFragment : EditorFragmentSet)
+		{
+			if (ItemFragment.IsValid() == false)
+			{
+				continue;
+			}
+
+			if (TargetItemDefinition->EditorFragmentSet.Contains(ItemFragment) == false)
+			{
+				FArcInstancedStruct NewInstance;
+				NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+				NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+				NewInstance.bFromTemplate = true;
+
+				ExistingFragments.Add(NewInstance);
+			}
+		}
+
+		TargetItemDefinition->EditorFragmentSet.Empty();
+		TargetItemDefinition->EditorFragmentSet.Reserve(ExistingFragments.Num());
+
+		for (const FArcInstancedStruct& ItemFragment : ExistingFragments)
+		{
+			if (ItemFragment.IsValid() == false)
+			{
+				continue;
+			}
+
+			FArcInstancedStruct NewInstance;
+			NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+			NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+			NewInstance.bFromTemplate = ItemFragment.bFromTemplate;
+			TargetItemDefinition->EditorFragmentSet.Add(NewInstance);
+		}
+	}
+}
+
+void UArcItemDefinitionTemplate::PushFromItem(UArcItemDefinition* SourceItem)
+{
+	// Copy FragmentSet
+	FragmentSet.Empty();
+	FragmentSet.Reserve(SourceItem->FragmentSet.Num());
+	for (const FArcInstancedStruct& ItemFragment : SourceItem->FragmentSet)
+	{
+		if (ItemFragment.IsValid() == false)
+		{
+			continue;
+		}
+
+		FArcInstancedStruct NewInstance;
+		NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+		NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+		NewInstance.bFromTemplate = false;
+		FragmentSet.Add(NewInstance);
+	}
+
+	// Copy ScalableFloatFragmentSet
+	ScalableFloatFragmentSet.Empty();
+	ScalableFloatFragmentSet.Reserve(SourceItem->ScalableFloatFragmentSet.Num());
+	for (const FArcInstancedStruct& ItemFragment : SourceItem->ScalableFloatFragmentSet)
+	{
+		if (ItemFragment.IsValid() == false)
+		{
+			continue;
+		}
+
+		FArcInstancedStruct NewInstance;
+		NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+		NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+		NewInstance.bFromTemplate = false;
+		ScalableFloatFragmentSet.Add(NewInstance);
+	}
+
+	// Copy EditorFragmentSet
+	EditorFragmentSet.Empty();
+	EditorFragmentSet.Reserve(SourceItem->EditorFragmentSet.Num());
+	for (const FArcInstancedStruct& ItemFragment : SourceItem->EditorFragmentSet)
+	{
+		if (ItemFragment.IsValid() == false)
+		{
+			continue;
+		}
+
+		FArcInstancedStruct NewInstance;
+		NewInstance.InstancedStruct = ItemFragment.InstancedStruct;
+		NewInstance.StructName = ItemFragment.InstancedStruct.GetScriptStruct()->GetFName();
+		NewInstance.bFromTemplate = false;
+		EditorFragmentSet.Add(NewInstance);
+	}
+
+	ItemType = SourceItem->ItemType;
 }
 #endif

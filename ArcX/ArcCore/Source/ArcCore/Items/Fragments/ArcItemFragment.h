@@ -38,6 +38,7 @@ struct ARCCORE_API FArcItemFragment
 	GENERATED_BODY()
 
 public:
+#if WITH_EDITOR
 	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
 	{
 	};
@@ -46,7 +47,7 @@ public:
 	{
 		return EDataValidationResult::NotValidated;
 	}
-	
+#endif
 	virtual ~FArcItemFragment()
 	{
 	}
@@ -259,7 +260,19 @@ public:
 		: RegistryType()
 		, DataName()
 	{
+	}
+	virtual ~FArcScalableFloatItemFragment()
+	{
+	}
+#if WITH_EDITOR
+	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const
+	{
 	};
 
+	virtual EDataValidationResult IsDataValid(const UArcItemDefinition* ItemDefinition, class FDataValidationContext& Context) const
+	{
+		return EDataValidationResult::NotValidated;
+	}
+#endif
 	void Initialize(const UScriptStruct* InStruct);
 };

@@ -25,7 +25,7 @@
 #include "AbilitySystemInterface.h"
 
 #include "ArcCore/AbilitySystem/ArcCoreAbilitySystemComponent.h"
-#include "ArcCore/AbilitySystem/ArcCoreGameplayAbility.h"
+#include "ArcCore/AbilitySystem/ArcItemGameplayAbility.h"
 #include "GameplayEffect.h"
 #include "GameplayEffectExtension.h"
 #include "GameplayEffectTypes.h"
@@ -53,7 +53,7 @@ float UArcAbilitiesBPF::GetScalableFloatValue(const FArcScalableFloat& Value)
 
 FArcItemId UArcAbilitiesBPF::GetSourceItem(const FGameplayEffectSpec& Spec)
 {
-	const UArcCoreGameplayAbility* Ability = Cast<UArcCoreGameplayAbility>(
+	const UArcItemGameplayAbility* Ability = Cast<UArcItemGameplayAbility>(
 		Spec.GetContext().GetAbilityInstance_NotReplicated());
 
 	return Ability->GetSourceItemHandle();

@@ -30,7 +30,6 @@
 #include "ArcAbilityAction.generated.h"
 
 class UArcCoreGameplayAbility;
-class UArcTargetingObject;
 
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcAbilityActionContext
@@ -97,65 +96,3 @@ struct ARCCORE_API FArcAbilityEventActions
 	TArray<FInstancedStruct> Actions;
 };
 
-// ---------------------------------------------------------------------------
-// Built-in action subtypes
-// ---------------------------------------------------------------------------
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Apply Cooldown"))
-struct ARCCORE_API FArcAbilityAction_ApplyCooldown : public FArcAbilityAction
-{
-	GENERATED_BODY()
-
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
-};
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Apply Cost"))
-struct ARCCORE_API FArcAbilityAction_ApplyCost : public FArcAbilityAction
-{
-	GENERATED_BODY()
-
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
-};
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Execute Targeting"))
-struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
-{
-	GENERATED_BODY()
-
-	/** Optional override; if null the targeting object is read from the item fragment. */
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
-
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
-};
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Send Targeting Result"))
-struct ARCCORE_API FArcAbilityAction_SendTargetingResult : public FArcAbilityAction
-{
-	GENERATED_BODY()
-
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
-};
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Apply Effects From Item"))
-struct ARCCORE_API FArcAbilityAction_ApplyEffectsFromItem : public FArcAbilityAction
-{
-	GENERATED_BODY()
-
-	/** If empty, apply all effects from the item. */
-	UPROPERTY(EditAnywhere)
-	FGameplayTag EffectTag;
-
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
-};
-
-USTRUCT(BlueprintType, meta = (DisplayName = "End Ability"))
-struct ARCCORE_API FArcAbilityAction_EndAbility : public FArcAbilityAction
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere)
-	bool bWasCancelled = false;
-
-	virtual void Execute(const FArcAbilityActionContext& Context) const override;
-};

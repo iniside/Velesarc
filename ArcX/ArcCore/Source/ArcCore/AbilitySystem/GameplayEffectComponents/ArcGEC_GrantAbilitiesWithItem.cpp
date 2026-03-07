@@ -25,7 +25,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 
 #define LOCTEXT_NAMESPACE "AbilitiesGameplayEffectComponent"
 
@@ -116,8 +116,8 @@ void UArcGEC_GrantAbilitiesWithItem::GrantAbilities(FActiveGameplayEffectHandle 
 		FGameplayAbilitySpec* FoundSpec = ASC->FindAbilitySpecFromHandle(Handle);
 		if (FoundSpec)
 		{
-			const UArcCoreGameplayAbility* SourceAbility = Cast<UArcCoreGameplayAbility>(ActiveGESpec.GetContext().GetAbilityInstance_NotReplicated());
-			UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(FoundSpec->GetPrimaryInstance());
+			const UArcItemGameplayAbility* SourceAbility = Cast<UArcItemGameplayAbility>(ActiveGESpec.GetContext().GetAbilityInstance_NotReplicated());
+			UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(FoundSpec->GetPrimaryInstance());
 			if (ArcAbility)
 			{
 				ArcAbility->AssingItemFromAbility(SourceAbility);
@@ -141,8 +141,8 @@ void UArcGEC_GrantAbilitiesWithItem::GrantAbilities(FActiveGameplayEffectHandle 
 				FGameplayAbilitySpec* FoundSpec = ASC->FindAbilitySpecFromHandle(Handle);
 				if (FoundSpec)
 				{
-					const UArcCoreGameplayAbility* SourceAbility = Cast<UArcCoreGameplayAbility>(ActiveGESpec.GetContext().GetAbilityInstance_NotReplicated());
-					UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(FoundSpec->GetPrimaryInstance());
+					const UArcItemGameplayAbility* SourceAbility = Cast<UArcItemGameplayAbility>(ActiveGESpec.GetContext().GetAbilityInstance_NotReplicated());
+					UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(FoundSpec->GetPrimaryInstance());
 					if (ArcAbility)
 					{
 						ArcAbility->AssingItemFromAbility(SourceAbility);

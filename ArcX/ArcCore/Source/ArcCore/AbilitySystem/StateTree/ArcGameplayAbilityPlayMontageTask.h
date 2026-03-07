@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "StateTreeDelegate.h"
 #include "AbilitySystem/ArcAbilityStateTreeTypes.h"
+#include "Animation/AnimMontage.h"
 #include "UObject/Object.h"
 #include "ArcGameplayAbilityPlayMontageTask.generated.h"
 

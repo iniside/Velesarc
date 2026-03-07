@@ -30,7 +30,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
-#include "ArcCore/AbilitySystem/ArcCoreGameplayAbility.h"
+#include "ArcCore/AbilitySystem/ArcItemGameplayAbility.h"
 
 UArcAT_PlayMontageAndWaitForEvent::UArcAT_PlayMontageAndWaitForEvent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -381,7 +381,7 @@ bool UArcAT_PlayMontageAndWaitForEvent::PlayMontage()
 	UAnimInstance* AnimInstance = ActorInfo->GetAnimInstance();
 	if (AnimInstance != nullptr)
 	{
-		UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(Ability);
+		UArcItemGameplayAbility* ArcAbility = Cast<UArcItemGameplayAbility>(Ability);
 		UArcCoreAbilitySystemComponent* ArcASC = GetTargetASC();
 		ENetMode NM = ArcASC->GetNetMode();
 		if (bClientOnlyMontage == true && NM == ENetMode::NM_DedicatedServer)
@@ -442,7 +442,7 @@ bool UArcAT_PlayMontageAndWaitForEvent::PlayMontage()
 
 			if (bPlayed)
 			{
-				UArcCoreGameplayAbility* ArcCoreAbility = Cast<UArcCoreGameplayAbility>(Ability);
+				UArcItemGameplayAbility* ArcCoreAbility = Cast<UArcItemGameplayAbility>(Ability);
 				const FArcItemData* ItemData = ArcCoreAbility->GetOwnerItemEntryPtr();
 				if (ItemData)
 				{

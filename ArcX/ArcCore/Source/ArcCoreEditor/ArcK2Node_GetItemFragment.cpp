@@ -27,7 +27,7 @@
 #include "BlueprintNodeSpawner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "KismetCompiler.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystem/ArcItemGameplayAbility.h"
 #include "Interaction/ArcInteractableInterfaceLibrary.h"
 #include "Items/ArcItemDefinition.h"
 
@@ -180,9 +180,9 @@ void UArcK2Node_GetItemFragment::GetMenuActions(FBlueprintActionDatabaseRegistra
 
 UArcK2Node_FindItemFragment::UArcK2Node_FindItemFragment()
 {
-	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcCoreGameplayAbility
+	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcItemGameplayAbility
 			, FindItemFragment)
-		, UArcCoreGameplayAbility::StaticClass());
+		, UArcItemGameplayAbility::StaticClass());
 }
 
 void UArcK2Node_FindItemFragment::PostReconstructNode()
@@ -329,9 +329,9 @@ void UArcK2Node_FindItemFragmentAbilityActor::GetMenuActions(FBlueprintActionDat
 
 UArcK2Node_FindItemFragmentPure::UArcK2Node_FindItemFragmentPure()
 {
-	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcCoreGameplayAbility
+	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcItemGameplayAbility
 		, FindItemFragmentPure)
-	, UArcCoreGameplayAbility::StaticClass());
+	, UArcItemGameplayAbility::StaticClass());
 }
 
 void UArcK2Node_FindItemFragmentPure::PostReconstructNode()
@@ -403,9 +403,9 @@ void UArcK2Node_FindItemFragmentPure::GetMenuActions(FBlueprintActionDatabaseReg
 
 UArcK2Node_FindScalableItemFragment::UArcK2Node_FindScalableItemFragment()
 {
-	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcCoreGameplayAbility
+	FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UArcItemGameplayAbility
 		, FindScalableItemFragment)
-	, UArcCoreGameplayAbility::StaticClass());
+	, UArcItemGameplayAbility::StaticClass());
 }
 
 void UArcK2Node_FindScalableItemFragment::PostReconstructNode()

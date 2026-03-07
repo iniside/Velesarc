@@ -2,8 +2,8 @@
  * This file is part of Velesarc
  * Copyright (C) 2025-2025 Lukasz Baran
  *
- * Licensed under the European Union Public License (EUPL), Version 1.2 or –
- * as soon as they will be approved by the European Commission – later versions
+ * Licensed under the European Union Public License (EUPL), Version 1.2 or -
+ * as soon as they will be approved by the European Commission - later versions
  * of the EUPL (the "License");
  *
  * You may not use this work except in compliance with the License.
@@ -21,36 +21,72 @@
 
 #pragma once
 
-
-#include "Editor/Kismet/Public/BlueprintEditor.h"
-#include "Editor/PropertyEditor/Public/PropertyEditorDelegates.h"
 #include "Toolkits/IToolkitHost.h"
 #include "Toolkits/SimpleAssetEditor.h"
+#include "SArcItemFragmentList.h"
 
 class IDetailsView;
-class SDockableTab;
+class IStructureDetailsView;
+class SDockTab;
+class SWidgetSwitcher;
+class UArcItemDefinition;
 
 class ARCCOREEDITOR_API FArcAssetEditor_ItemDefinition : public FSimpleAssetEditor
 {
 public:
-	/** Delegate that, given an array of assets, returns an array of objects to use in the
-	 * details view of an FSimpleAssetEditor */
-	DECLARE_DELEGATE_RetVal_OneParam(TArray<UObject*>
-		, FGetDetailsViewObjects
-		, const TArray<UObject*>&);
-
-	/** The name given to all instances of this type of editor */
+	static const FName FragmentListTabId;
+	static const FName DetailsTabId;
 	static const FName ToolkitFName;
+	static const FName AppIdentifier;
 
-	static TSharedRef<FArcAssetEditor_ItemDefinition> CreateItemEditor(const EToolkitMode::Type Mode
-																 , const TSharedPtr<IToolkitHost>& InitToolkitHost
-																 , UObject* ObjectToEdit
-																 , FGetDetailsViewObjects GetDetailsViewObjects =
-																		 FGetDetailsViewObjects());
+	static TSharedRef<FArcAssetEditor_ItemDefinition> CreateItemEditor(
+		const EToolkitMode::Type Mode,
+		const TSharedPtr<IToolkitHost>& InitToolkitHost,
+		UObject* ObjectToEdit);
 
-	static TSharedRef<FArcAssetEditor_ItemDefinition> CreateItemEditor(const EToolkitMode::Type Mode
-																 , const TSharedPtr<IToolkitHost>& InitToolkitHost
-																 , const TArray<UObject*>& ObjectsToEdit
-																 , FGetDetailsViewObjects GetDetailsViewObjects =
-																		 FGetDetailsViewObjects());
+	static TSharedRef<FArcAssetEditor_ItemDefinition> CreateItemEditor(
+		const EToolkitMode::Type Mode,
+		const TSharedPtr<IToolkitHost>& InitToolkitHost,
+		const TArray<UObject*>& ObjectsToEdit);
+
+	// FAssetEditorToolkit overrides
+	virtual void RegisterTabSpawners(const TSharedRef<class FTabManager>& InTabManager) override;
+	virtual void UnregisterTabSpawners(const TSharedRef<class FTabManager>& InTabManager) override;
+	virtual FName GetToolkitFName() const override { return ToolkitFName; }
+	virtual FText GetBaseToolkitName() const override;
+	virtual FText GetToolkitName() const override;
+	virtual FLinearColor GetWorldCentricTabColorScale() const override;
+	virtual FString GetWorldCentricTabPrefix() const override;
+	virtual void PostRegenerateMenusAndToolbars() override;
+
+private:
+	void InitItemEditor(
+		const EToolkitMode::Type Mode,
+		const TSharedPtr<IToolkitHost>& InitToolkitHost,
+		UArcItemDefinition* ObjectToEdit);
+
+	// Tab spawners
+	TSharedRef<SDockTab> SpawnTab_FragmentList(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnTab_Details(const FSpawnTabArgs& Args);
+
+	// Fragment selection from the left panel
+	void OnFragmentSelected(const UScriptStruct* SelectedStruct, EArcFragmentSetType SetType);
+	void OnFragmentPropertyChanged(const FPropertyChangedEvent& Event);
+
+	// Template operations (toolbar)
+	void ExtendToolbar();
+	void OnChangeTemplateClicked();
+	void OnUpdateFromTemplateClicked();
+	void OnPushToTemplateClicked();
+	void RefreshAfterTemplateChange();
+	FText GetTemplateNameText() const;
+	bool HasSourceTemplate() const;
+
+	UArcItemDefinition* GetEditingItemDefinition() const;
+
+	// Widgets
+	TSharedPtr<SArcItemFragmentList> FragmentListWidget;
+	TSharedPtr<IDetailsView> GeneralDetailsView;
+	TSharedPtr<IStructureDetailsView> FragmentDetailsView;
+	TSharedPtr<SWidgetSwitcher> DetailsSwitcher;
 };

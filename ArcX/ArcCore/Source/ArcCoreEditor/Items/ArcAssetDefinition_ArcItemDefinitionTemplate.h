@@ -66,6 +66,8 @@ public:
 		return AssetPaths;
 	}
 
+	virtual EAssetCommandResult OpenAssets(const FAssetOpenArgs& OpenArgs) const override;
+
 	//virtual EAssetCommandResult PerformAssetDiff(const FAssetDiffArgs& DiffArgs) const override;
 	//
 	//virtual bool CanMerge() const override;

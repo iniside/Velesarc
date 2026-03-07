@@ -99,6 +99,7 @@ public class ArcCoreEditor : ModuleRules
 				, "ApplicationCore"
 				, "KismetCompiler"
 				, "StructUtilsEditor"
+				, "StructViewer"
 				, "AssetDefinition"
 				, "EngineAssetDefinitions"
 				, "ContentBrowser"
