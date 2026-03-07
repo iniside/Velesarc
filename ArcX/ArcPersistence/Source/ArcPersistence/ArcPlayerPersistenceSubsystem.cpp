@@ -720,38 +720,167 @@ TFuture<void> UArcPlayerPersistenceSubsystem::LoadObjectAsync(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Descriptor-Based API (sync wrappers)
+// Descriptor-Based API (sync — direct backend calls, no game-thread hop)
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTE: The async versions use .Then() → AsyncTask(GameThread) to set their
+// promise.  Calling .Get() on those from the game thread deadlocks because
+// the game thread is blocked and can never dispatch the AsyncTask.
+// These sync implementations call Backend directly and wait only on the
+// background task queue, avoiding the self-deadlock.
 // ─────────────────────────────────────────────────────────────────────────────
 
 void UArcPlayerPersistenceSubsystem::SavePlayerData(const FGuid& PlayerId)
 {
-	SavePlayerDataAsync(PlayerId).Get();
+	IArcPersistenceBackend* Backend = GetBackend();
+	if (!Backend)
+	{
+		return;
+	}
+
+	TArray<FResolvedProvider> Providers = ResolveAllProviders(PlayerId);
+	for (const FResolvedProvider& Resolved : Providers)
+	{
+		if (Resolved.Object)
+		{
+			SaveObjectInternal(PlayerId, Resolved.DomainPath, Resolved.Object);
+		}
+	}
+
+	if (TMap<FString, FPlayerDataProvider>* LegacyProviders = PlayerProviders.Find(PlayerId))
+	{
+		for (const auto& ProviderPair : *LegacyProviders)
+		{
+			if (ProviderPair.Value.Source.IsValid())
+			{
+				SaveObjectInternal(PlayerId, ProviderPair.Value.Domain,
+					ProviderPair.Value.Source.Get());
+			}
+		}
+	}
 }
 
 void UArcPlayerPersistenceSubsystem::LoadPlayerData(const FGuid& PlayerId)
 {
-	LoadPlayerDataAsync(PlayerId).Get();
+	IArcPersistenceBackend* Backend = GetBackend();
+	if (!Backend)
+	{
+		return;
+	}
+
+	const FString PlayerPrefix =
+		FString::Printf(TEXT("players/%s/"), *PlayerId.ToString());
+	FArcPersistenceListResult ListResult = Backend->ListEntries(PlayerPrefix).Get();
+	if (!ListResult.bSuccess)
+	{
+		return;
+	}
+
+	TMap<FString, TArray<uint8>>& PlayerCache =
+		CachedPlayerData.FindOrAdd(PlayerId);
+	PlayerCache.Empty();
+
+	for (const FString& Key : ListResult.Keys)
+	{
+		FString Domain = ExtractDomain(Key, PlayerPrefix);
+		if (Domain.IsEmpty())
+		{
+			continue;
+		}
+
+		FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+		if (LoadResult.bSuccess)
+		{
+			PlayerCache.Add(Domain, MoveTemp(LoadResult.Data));
+		}
+	}
+
+	// Apply to descriptor-based providers
+	TArray<FResolvedProvider> Providers = ResolveAllProviders(PlayerId);
+	for (const FResolvedProvider& Resolved : Providers)
+	{
+		if (const TArray<uint8>* Data = PlayerCache.Find(Resolved.DomainPath))
+		{
+			ApplyDataToObject(Resolved.Object, *Data, Resolved.DomainPath);
+		}
+	}
+
+	// Apply to legacy instance-bound providers
+	if (TMap<FString, FPlayerDataProvider>* LegacyProviders = PlayerProviders.Find(PlayerId))
+	{
+		for (auto& ProviderPair : *LegacyProviders)
+		{
+			if (const TArray<uint8>* Data = PlayerCache.Find(ProviderPair.Key))
+			{
+				if (ProviderPair.Value.Source.IsValid())
+				{
+					ApplyDataToProvider(ProviderPair.Value, *Data);
+				}
+			}
+		}
+	}
 }
 
 void UArcPlayerPersistenceSubsystem::SaveAllPlayerData()
 {
-	SaveAllPlayerDataAsync().Get();
+	TSet<FGuid> AllPlayerIds;
+	for (const auto& Pair : TrackedPlayers)
+	{
+		AllPlayerIds.Add(Pair.Key);
+	}
+	for (const auto& Pair : PlayerProviders)
+	{
+		AllPlayerIds.Add(Pair.Key);
+	}
+
+	for (const FGuid& PId : AllPlayerIds)
+	{
+		SavePlayerData(PId);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Direct API (sync wrappers)
+// Direct API (sync — direct backend calls, no game-thread hop)
 // ─────────────────────────────────────────────────────────────────────────────
 
 void UArcPlayerPersistenceSubsystem::SaveObject(
 	const FGuid& PlayerId, const FString& Domain, UObject* Source)
 {
-	SaveObjectAsync(PlayerId, Domain, Source).Get();
+	SaveObjectInternal(PlayerId, Domain, Source);
 }
 
 void UArcPlayerPersistenceSubsystem::LoadObject(
 	const FGuid& PlayerId, const FString& Domain, UObject* Target)
 {
-	LoadObjectAsync(PlayerId, Domain, Target).Get();
+	if (!Target)
+	{
+		return;
+	}
+
+	// Check cache first
+	if (const TMap<FString, TArray<uint8>>* PlayerCache = CachedPlayerData.Find(PlayerId))
+	{
+		if (const TArray<uint8>* CachedBytes = PlayerCache->Find(Domain))
+		{
+			ApplyDataToObject(Target, *CachedBytes, Domain);
+			return;
+		}
+	}
+
+	// Cache miss — load from backend (blocking on background thread, not game thread)
+	IArcPersistenceBackend* Backend = GetBackend();
+	if (!Backend)
+	{
+		return;
+	}
+
+	const FString Key = UE::ArcPersistence::MakePlayerKey(PlayerId.ToString(), Domain);
+	FArcPersistenceLoadResult LoadResult = Backend->LoadEntry(Key).Get();
+	if (LoadResult.bSuccess)
+	{
+		CachedPlayerData.FindOrAdd(PlayerId).Add(Domain, MoveTemp(LoadResult.Data));
+		ApplyDataToObject(Target,
+			CachedPlayerData[PlayerId][Domain], Domain);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

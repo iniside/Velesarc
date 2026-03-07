@@ -30,9 +30,13 @@
 #include "Storage/ArcPersistenceBackend.h"
 
 #include "ArcPersistenceClassRegistry.h"
+#include "ArcPersistentIdComponent.h"
 #include "Async/Async.h"
+#include "Engine/Level.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
+#include "Streaming/LevelStreamingDelegates.h"
 #include "Storage/ArcPersistenceKeyConvention.h"
 
 void UArcWorldPersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -41,16 +45,17 @@ void UArcWorldPersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 	Collection.InitializeDependency<UArcPersistenceSubsystem>();
 
-	WorldInitHandle = FWorldDelegates::OnPreWorldInitialization.AddUObject(
-		this, &UArcWorldPersistenceSubsystem::HandleWorldInit);
-	WorldCleanupHandle = FWorldDelegates::OnWorldCleanup.AddUObject(
-		this, &UArcWorldPersistenceSubsystem::HandleWorldCleanup);
+	// World Partition streaming support (like engine's LevelStreamingPersistenceManager)
+	FLevelStreamingDelegates::OnLevelBeginMakingInvisible.AddUObject(
+		this, &UArcWorldPersistenceSubsystem::HandleLevelBeginMakingInvisible);
+	FLevelStreamingDelegates::OnLevelBeginMakingVisible.AddUObject(
+		this, &UArcWorldPersistenceSubsystem::HandleLevelBeginMakingVisible);
 }
 
 void UArcWorldPersistenceSubsystem::Deinitialize()
 {
-	FWorldDelegates::OnPreWorldInitialization.Remove(WorldInitHandle);
-	FWorldDelegates::OnWorldCleanup.Remove(WorldCleanupHandle);
+	FLevelStreamingDelegates::OnLevelBeginMakingInvisible.RemoveAll(this);
+	FLevelStreamingDelegates::OnLevelBeginMakingVisible.RemoveAll(this);
 
 	Super::Deinitialize();
 }
@@ -216,14 +221,29 @@ TFuture<void> UArcWorldPersistenceSubsystem::SaveWorldDataAsync(const FGuid& Wor
 		PersistenceSub->OnPersistenceStarted.Broadcast(Event);
 	}
 
-	// Game thread: serialize all registered objects into key-data pairs
+	// Game thread: discover all persistent actors in the world and serialize.
 	TArray<TPair<FString, TArray<uint8>>> Entries;
-	for (auto& Pair : RegisteredObjects)
+
+	UGameInstance* GI = GetGameInstance();
+	UWorld* World = GI ? GI->GetWorld() : nullptr;
+	if (World)
 	{
-		if (Pair.Value.IsValid())
+		for (TActorIterator<AActor> It(World); It; ++It)
 		{
-			TArray<uint8> Data = SerializeObject(Pair.Value.Get());
-			Entries.Emplace(MakeStorageKey(Pair.Key), MoveTemp(Data));
+			UArcPersistentIdComponent* IdComp = (*It)->FindComponentByClass<UArcPersistentIdComponent>();
+			if (!IdComp || !IdComp->PersistenceId.IsValid())
+			{
+				continue;
+			}
+
+			if (!ArcPersistence::IsClassPersistent((*It)->GetClass()))
+			{
+				continue;
+			}
+
+			const FString Key = IdComp->PersistenceId.ToString();
+			TArray<uint8> Data = SerializeObject(*It);
+			Entries.Emplace(MakeStorageKey(Key), MoveTemp(Data));
 		}
 	}
 
@@ -280,8 +300,7 @@ void UArcWorldPersistenceSubsystem::RegisterActor(AActor* Actor, const FString& 
 		return;
 	}
 
-	RegisteredObjects.Add(Key, Actor);
-
+	// Apply cached data immediately if available
 	if (const TArray<uint8>* Data = CachedData.Find(Key))
 	{
 		if (!TombstonedKeys.Contains(Key))
@@ -289,11 +308,6 @@ void UArcWorldPersistenceSubsystem::RegisterActor(AActor* Actor, const FString& 
 			ApplyDataToObject(*Data, Actor);
 		}
 	}
-}
-
-void UArcWorldPersistenceSubsystem::UnregisterActor(const FString& Key)
-{
-	RegisteredObjects.Remove(Key);
 }
 
 // -----------------------------------------------------------------------------
@@ -324,7 +338,9 @@ void UArcWorldPersistenceSubsystem::OnActorDestroyed(AActor* Actor, const FStrin
 
 		TArray<uint8> Data = SaveAr.Finalize();
 
-		IArcPersistenceBackend* Backend = GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>()->GetBackend();
+		UArcPersistenceSubsystem* PersistenceSub = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<UArcPersistenceSubsystem>() : nullptr;
+		IArcPersistenceBackend* Backend = PersistenceSub ? PersistenceSub->GetBackend() : nullptr;
 		if (Backend)
 		{
 			Backend->SaveEntry(MakeStorageKey(Key), MoveTemp(Data));
@@ -332,8 +348,214 @@ void UArcWorldPersistenceSubsystem::OnActorDestroyed(AActor* Actor, const FStrin
 
 		TombstonedKeys.Add(Key);
 	}
+}
 
-	RegisteredObjects.Remove(Key);
+// -----------------------------------------------------------------------------
+// Level Streaming Handlers (World Partition)
+// -----------------------------------------------------------------------------
+
+void UArcWorldPersistenceSubsystem::HandleLevelBeginMakingInvisible(
+	UWorld* World, const ULevelStreaming* StreamingLevel, ULevel* LoadedLevel)
+{
+	if (!IsValid(LoadedLevel) || !CurrentWorldId.IsValid())
+	{
+		return;
+	}
+
+	UGameInstance* GI = GetGameInstance();
+	if (!GI || World != GI->GetWorld())
+	{
+		return;
+	}
+
+	// Discover persistent actors in the unloading level, serialize and cache.
+	TArray<TPair<FString, TArray<uint8>>> Entries;
+
+	ForEachObjectWithOuter(LoadedLevel, [this, &Entries](UObject* Object)
+	{
+		AActor* Actor = Cast<AActor>(Object);
+		if (!Actor)
+		{
+			return;
+		}
+
+		UArcPersistentIdComponent* IdComp = Actor->FindComponentByClass<UArcPersistentIdComponent>();
+		if (!IdComp || !IdComp->PersistenceId.IsValid())
+		{
+			return;
+		}
+
+		if (!ArcPersistence::IsClassPersistent(Actor->GetClass()))
+		{
+			return;
+		}
+
+		const FString Key = IdComp->PersistenceId.ToString();
+		TArray<uint8> Data = SerializeObject(Actor);
+		CachedData.Add(Key, Data);
+		Entries.Emplace(MakeStorageKey(Key), MoveTemp(Data));
+	}, /* bIncludeNestedObjects */ false, RF_NoFlags, EInternalObjectFlags::Garbage);
+
+	// Batch-save to backend asynchronously
+	if (!Entries.IsEmpty())
+	{
+		UArcPersistenceSubsystem* PersistenceSub = GI->GetSubsystem<UArcPersistenceSubsystem>();
+		IArcPersistenceBackend* Backend = PersistenceSub ? PersistenceSub->GetBackend() : nullptr;
+		if (Backend)
+		{
+			Backend->SaveEntries(MoveTemp(Entries));
+		}
+	}
+}
+
+void UArcWorldPersistenceSubsystem::HandleLevelBeginMakingVisible(
+	UWorld* World, const ULevelStreaming* StreamingLevel, ULevel* LoadedLevel)
+{
+	if (!IsValid(LoadedLevel) || !CurrentWorldId.IsValid())
+	{
+		return;
+	}
+
+	UGameInstance* GI = GetGameInstance();
+	if (!GI || World != GI->GetWorld())
+	{
+		return;
+	}
+
+	// Collect persistent actors in this level — split into cached (apply now)
+	// and cache-miss (batch-load from backend, then apply).
+	TArray<TPair<FString, TWeakObjectPtr<AActor>>> KeysToLoad;
+
+	ForEachObjectWithOuter(LoadedLevel, [this, &KeysToLoad](UObject* Object)
+	{
+		AActor* Actor = Cast<AActor>(Object);
+		if (!Actor)
+		{
+			return;
+		}
+
+		UArcPersistentIdComponent* IdComp = Actor->FindComponentByClass<UArcPersistentIdComponent>();
+		if (!IdComp || !IdComp->PersistenceId.IsValid())
+		{
+			return;
+		}
+
+		const FString Key = IdComp->PersistenceId.ToString();
+
+		if (!ArcPersistence::IsClassPersistent(Actor->GetClass()))
+		{
+			return;
+		}
+
+		if (const TArray<uint8>* Data = CachedData.Find(Key))
+		{
+			// Cache hit — apply immediately
+			if (!TombstonedKeys.Contains(Key))
+			{
+				ApplyDataToObject(*Data, Actor);
+			}
+		}
+		else if (!PendingLoadKeys.Contains(Key))
+		{
+			// Cache miss — queue for batch load
+			KeysToLoad.Emplace(Key, Actor);
+		}
+	}, /* bIncludeNestedObjects */ false, RF_NoFlags, EInternalObjectFlags::Garbage);
+
+	if (KeysToLoad.IsEmpty())
+	{
+		return;
+	}
+
+	// Batch-load all cache-miss keys from backend in one background task
+	UArcPersistenceSubsystem* PersistenceSub = GI->GetSubsystem<UArcPersistenceSubsystem>();
+	IArcPersistenceBackend* Backend = PersistenceSub ? PersistenceSub->GetBackend() : nullptr;
+	if (!Backend)
+	{
+		return;
+	}
+
+	// Launch all backend loads, collect futures
+	TArray<TPair<FString, TFuture<FArcPersistenceLoadResult>>> LoadFutures;
+	LoadFutures.Reserve(KeysToLoad.Num());
+
+	for (auto& Pair : KeysToLoad)
+	{
+		PendingLoadKeys.Add(Pair.Key);
+		LoadFutures.Emplace(Pair.Key, Backend->LoadEntry(MakeStorageKey(Pair.Key)));
+	}
+
+	TWeakObjectPtr<UArcWorldPersistenceSubsystem> WeakThis = this;
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask,
+		[WeakThis, KeysToLoad = MoveTemp(KeysToLoad), LoadFutures = MoveTemp(LoadFutures)]() mutable
+	{
+		// Wait for all loads in background
+		TArray<TPair<FString, FArcPersistenceLoadResult>> Results;
+		Results.Reserve(LoadFutures.Num());
+
+		for (auto& Pair : LoadFutures)
+		{
+			Results.Emplace(Pair.Key, Pair.Value.Get());
+		}
+
+		// Apply all results on game thread
+		AsyncTask(ENamedThreads::GameThread,
+			[WeakThis, KeysToLoad = MoveTemp(KeysToLoad), Results = MoveTemp(Results)]() mutable
+		{
+			UArcWorldPersistenceSubsystem* Self = WeakThis.Get();
+			if (!Self)
+			{
+				return;
+			}
+
+			for (int32 i = 0; i < Results.Num(); ++i)
+			{
+				const FString& Key = Results[i].Key;
+				FArcPersistenceLoadResult& LoadResult = Results[i].Value;
+
+				Self->PendingLoadKeys.Remove(Key);
+
+				if (!LoadResult.bSuccess || LoadResult.Data.IsEmpty())
+				{
+					continue;
+				}
+
+				// Parse metadata
+				FArcJsonLoadArchive TempAr;
+				if (TempAr.InitializeFromData(LoadResult.Data))
+				{
+					if (TempAr.BeginStruct(FName("_meta")))
+					{
+						FString TypeNameStr;
+						if (TempAr.ReadProperty(FName("type"), TypeNameStr))
+						{
+							Self->CachedTypeNames.Add(Key, FName(*TypeNameStr));
+						}
+
+						bool bTombstoned = false;
+						if (TempAr.ReadProperty(FName("tombstoned"), bTombstoned) && bTombstoned)
+						{
+							Self->TombstonedKeys.Add(Key);
+						}
+						TempAr.EndStruct();
+					}
+				}
+
+				Self->CachedData.Add(Key, MoveTemp(LoadResult.Data));
+
+				// Apply to actor if still alive and not tombstoned
+				TWeakObjectPtr<AActor> WeakActor = KeysToLoad[i].Value;
+				if (WeakActor.IsValid() && !Self->TombstonedKeys.Contains(Key))
+				{
+					if (const TArray<uint8>* CachedPtr = Self->CachedData.Find(Key))
+					{
+						Self->ApplyDataToObject(*CachedPtr, WeakActor.Get());
+					}
+				}
+			}
+		});
+	});
 }
 
 // -----------------------------------------------------------------------------
@@ -342,6 +564,22 @@ void UArcWorldPersistenceSubsystem::OnActorDestroyed(AActor* Actor, const FStrin
 
 TArray<FArcPendingSpawn> UArcWorldPersistenceSubsystem::GetPendingSpawns() const
 {
+	// Build a set of persistence keys that already have live actors.
+	TSet<FString> LiveKeys;
+
+	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	if (World)
+	{
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			UArcPersistentIdComponent* IdComp = (*It)->FindComponentByClass<UArcPersistentIdComponent>();
+			if (IdComp && IdComp->PersistenceId.IsValid())
+			{
+				LiveKeys.Add(IdComp->PersistenceId.ToString());
+			}
+		}
+	}
+
 	TArray<FArcPendingSpawn> Result;
 
 	for (const auto& Pair : CachedData)
@@ -353,7 +591,7 @@ TArray<FArcPendingSpawn> UArcWorldPersistenceSubsystem::GetPendingSpawns() const
 			continue;
 		}
 
-		if (RegisteredObjects.Contains(Key))
+		if (LiveKeys.Contains(Key))
 		{
 			continue;
 		}
@@ -447,36 +685,9 @@ void UArcWorldPersistenceSubsystem::ApplyDataToObject(const TArray<uint8>& Data,
 
 void UArcWorldPersistenceSubsystem::ClearAll()
 {
-	RegisteredObjects.Empty();
 	CachedData.Empty();
 	CachedTypeNames.Empty();
 	TombstonedKeys.Empty();
+	PendingLoadKeys.Empty();
 	CurrentWorldId.Invalidate();
-}
-
-// -----------------------------------------------------------------------------
-// Lifecycle hooks
-// -----------------------------------------------------------------------------
-
-void UArcWorldPersistenceSubsystem::HandleWorldInit(UWorld* World, const UWorld::InitializationValues IVS)
-{
-	if (!World || World->WorldType != EWorldType::Game)
-	{
-		return;
-	}
-}
-
-void UArcWorldPersistenceSubsystem::HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources)
-{
-	if (!World || World->WorldType != EWorldType::Game)
-	{
-		return;
-	}
-
-	if (CurrentWorldId.IsValid())
-	{
-		SaveWorldData(CurrentWorldId);
-	}
-
-	ClearAll();
 }

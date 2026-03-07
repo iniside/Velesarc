@@ -40,16 +40,24 @@ struct FArcPendingSpawn
 	FName TypeName;
 };
 
+class ULevelStreaming;
+
 /**
  * Manages persistence of world actors (level-placed and runtime-spawned).
  *
- * All registrations use string keys. For GUID-identified actors, the caller
- * converts the GUID to a string. For level-placed actors, the caller uses
- * whatever convention makes sense (actor path, etc.).
+ * Actors are identified by the PersistenceId on their UArcPersistentIdComponent.
+ * No explicit registration map is maintained — streaming handlers discover
+ * actors in a level via ForEachObjectWithOuter, and full-world operations
+ * iterate all actors with the component.
  *
  * Data is loaded into an in-memory cache before/during world load.
- * Actors register by key and receive cached data automatically.
  * Supports tombstone tracking via specialized serializers.
+ *
+ * World Partition streaming is handled via FLevelStreamingDelegates:
+ * - OnLevelBeginMakingInvisible: discovers + serializes + caches + async-writes
+ *   all persistent actors in the unloading cell.
+ * - OnLevelBeginMakingVisible: discovers persistent actors in the loading cell,
+ *   applies cached data or batch-loads from backend.
  *
  * GameInstanceSubsystem so data can be loaded before world finishes loading.
  */
@@ -68,7 +76,7 @@ public:
 	/** Load all world data into memory cache. Call before/during world load. */
 	void LoadWorldData(const FGuid& WorldId);
 
-	/** Save all registered objects. Call on world cleanup or manual checkpoint. */
+	/** Save all persistent actors in the world. Call on world cleanup or manual checkpoint. */
 	void SaveWorldData(const FGuid& WorldId);
 
 	/** Async variant of LoadWorldData. Returns a future that completes when done. */
@@ -79,14 +87,11 @@ public:
 
 	// ── Actor Registration ──────────────────────────────────────────────
 
-	/** Register an actor by key. If cached data exists, applies immediately. */
+	/** Apply cached data to an actor by key. Called from UArcPersistentIdComponent::BeginPlay. */
 	void RegisterActor(AActor* Actor, const FString& Key);
 
 	/** Convenience: register by GUID (converted to string). */
 	void RegisterActor(AActor* Actor, const FGuid& Id);
-
-	/** Remove a registered actor. */
-	void UnregisterActor(const FString& Key);
 
 	// ── Destruction Tracking ────────────────────────────────────────────
 
@@ -95,7 +100,7 @@ public:
 
 	// ── Spawn Support ───────────────────────────────────────────────────
 
-	/** Keys in save data with no registered live object — game decides what to spawn. */
+	/** Keys in save data with no live actor in the world — game decides what to spawn. */
 	TArray<FArcPendingSpawn> GetPendingSpawns() const;
 
 	/** Check if a key has been tombstoned. */
@@ -107,9 +112,6 @@ public:
 private:
 	FGuid CurrentWorldId;
 
-	/** Live objects keyed by their persistence key. */
-	TMap<FString, TWeakObjectPtr<UObject>> RegisteredObjects;
-
 	/** Cached save data loaded from backend, keyed by persistence key. */
 	TMap<FString, TArray<uint8>> CachedData;
 
@@ -119,17 +121,20 @@ private:
 	/** Keys that are tombstoned. */
 	TSet<FString> TombstonedKeys;
 
+	/** Keys with in-flight async loads — prevents duplicate backend requests. */
+	TSet<FString> PendingLoadKeys;
+
 	TArray<uint8> SerializeObject(UObject* Object);
 	void ApplyDataToObject(const TArray<uint8>& Data, UObject* Object);
 	FString MakeStorageKey(const FString& Key) const;
 
 	void ClearAll();
 
-	// ── Lifecycle hooks ─────────────────────────────────────────────────
+	// ── Level streaming hooks (World Partition) ─────────────────────────
 
-	void HandleWorldInit(UWorld* World, const UWorld::InitializationValues IVS);
-	void HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
+	/** Discover + serialize + cache + async-save all persistent actors in the unloading cell. */
+	void HandleLevelBeginMakingInvisible(UWorld* World, const ULevelStreaming* StreamingLevel, ULevel* LoadedLevel);
 
-	FDelegateHandle WorldInitHandle;
-	FDelegateHandle WorldCleanupHandle;
+	/** Discover persistent actors in the loading cell, apply cached data or batch-load from backend. */
+	void HandleLevelBeginMakingVisible(UWorld* World, const ULevelStreaming* StreamingLevel, ULevel* LoadedLevel);
 };
