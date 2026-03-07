@@ -2,6 +2,8 @@
 
 #include "EnhancedInputComponent.h"
 #include "StateTreeExecutionContext.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 
 EStateTreeRunStatus FArcGI_EnhancedInputEventTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {

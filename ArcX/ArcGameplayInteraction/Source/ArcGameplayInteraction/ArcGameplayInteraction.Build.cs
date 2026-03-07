@@ -76,6 +76,8 @@ public class ArcGameplayInteraction : ModuleRules
 				, "GameplayBehaviorsModule"
 				, "GameplayInteractionsModule"
 				, "EnhancedInput"
+				, "InstancedActors"
+				, "InteractableInterface"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
