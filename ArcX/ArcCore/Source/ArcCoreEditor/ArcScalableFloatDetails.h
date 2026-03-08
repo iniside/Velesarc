@@ -97,6 +97,8 @@ protected:
 	TSharedPtr<IPropertyHandle> CurveTableProperty;
 	TSharedPtr<IPropertyHandle> RowNameProperty;
 	TSharedPtr<IPropertyHandle> RegistryTypeProperty;
+	TSharedPtr<IPropertyHandle> CustomScalingProperty;
+	TSharedPtr<IPropertyTypeCustomization> InstancedStructCustomization;
 
 	TWeakPtr<IPropertyUtilities> PropertyUtilities;
 

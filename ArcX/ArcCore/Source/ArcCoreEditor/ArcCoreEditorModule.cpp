@@ -50,6 +50,8 @@
 #include "ArcInstancedStructPin.h"
 #include "ArcNamedPrimaryAssetIdCustomization.h"
 #include "ArcScalableFloatDetails.h"
+#include "ArcScalableCurveFloatDetails.h"
+#include "SArcScalableCurveFloatGraphPin.h"
 
 #include "Interfaces/IPluginManager.h"
 #include "Styling/SlateStyle.h"
@@ -131,6 +133,9 @@ void FArcCoreEditorModule::StartupModule()
 	
 	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcNamedPrimaryAssetId"
 		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcNamedPrimaryAssetIdCustomization::MakeInstance));
+
+	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcScalableCurveFloat"
+		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcScalableCurveFloatDetails::MakeInstance));
 	
 	if (!StyleSet.IsValid())
 	{
@@ -217,6 +222,9 @@ void FArcCoreEditorModule::StartupModule()
 	//InstancedStructPinFactory = MakeShareable(new FArcInstancedStructPinGraphPinFactory());
 	//FEdGraphUtilities::RegisterVisualPinFactory(InstancedStructPinFactory);
 
+	ScalableCurveFloatPinFactory = MakeShareable(new FArcScalableCurveFloatPinFactory());
+	FEdGraphUtilities::RegisterVisualPinFactory(ScalableCurveFloatPinFactory);
+
 	// This code will execute after your module is loaded into memory; the exact timing is
 	// specified in the .uplugin file per-module
 }
@@ -231,6 +239,12 @@ void FArcCoreEditorModule::ShutdownModule()
 	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcAttribute");
 	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcItemSlot");
 	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcItemGrantedAbility");
+	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcScalableCurveFloat");
+
+	if (ScalableCurveFloatPinFactory.IsValid())
+	{
+		FEdGraphUtilities::UnregisterVisualPinFactory(ScalableCurveFloatPinFactory);
+	}
 
 	CreatedAssetTypeActions.Empty();
 	// This function may be called during shutdown to clean up your module.  For modules

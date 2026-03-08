@@ -56,6 +56,7 @@ private:
 	static EAssetTypeCategories::Type InputAssetCategory;
 
 	TSharedPtr<class FArcInstancedStructPinGraphPinFactory> InstancedStructPinFactory;
+	TSharedPtr<class FArcScalableCurveFloatPinFactory> ScalableCurveFloatPinFactory;
 
 public:
 	static EAssetTypeCategories::Type GetArcAssetCategory()

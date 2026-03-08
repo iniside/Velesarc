@@ -24,12 +24,11 @@
 #include "ArcCore/Items/ArcItemDefinition.h"
 #include "Items/Fragments/ArcItemFragment.h"
 #include "Items/ArcEditorItemFragment.h"
-#include "StructViewerFilter.h"
-#include "StructViewerModule.h"
+#include "SArcFragmentPicker.h"
 #include "ScopedTransaction.h"
+#include "Framework/Application/SlateApplication.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/Input/SComboButton.h"
-#include "Widgets/Layout/SScrollBox.h"
 
 #define LOCTEXT_NAMESPACE "SArcItemFragmentList"
 
@@ -156,90 +155,84 @@ void SArcItemFragmentList::RebuildTree()
 		const UScriptStruct* Struct;
 	};
 
-	// --- Runtime fragments: uncategorized as top-level leaves, categorized in groups ---
-	TArray<FragmentEntry> Uncategorized;
-	TMap<FString, TArray<FragmentEntry>> Categorized;
-
-	for (const FArcInstancedStruct& IS : ItemDef->GetFragmentSet())
+	// Builds a set header with category sub-groups from a fragment set.
+	// Uncategorized fragments appear first (sorted alphabetically), then category sub-groups (sorted alphabetically).
+	auto BuildSetGroup = [](const TSet<FArcInstancedStruct>& Set, EArcFragmentSetType SetType, const FString& GroupName) -> TSharedPtr<FArcFragmentListItem>
 	{
-		if (!IS.GetScriptStruct()) continue;
-		FString Category = IS.GetScriptStruct()->GetMetaData(TEXT("Category"));
-		FString Display = IS.GetScriptStruct()->GetMetaData(TEXT("DisplayName"));
-		FString Name = Display.Len() > 0 ? Display : IS.GetScriptStruct()->GetName();
+		if (Set.Num() == 0) return nullptr;
 
-		if (Category.Len() > 0)
-		{
-			Categorized.FindOrAdd(Category).Add({Name, IS.GetScriptStruct()});
-		}
-		else
-		{
-			Uncategorized.Add({Name, IS.GetScriptStruct()});
-		}
-	}
+		TArray<FragmentEntry> Uncategorized;
+		TMap<FString, TArray<FragmentEntry>> Categorized;
 
-	// Uncategorized fragments as top-level leaf nodes
-	Uncategorized.Sort([](const FragmentEntry& A, const FragmentEntry& B) { return A.DisplayName < B.DisplayName; });
-	for (const FragmentEntry& Entry : Uncategorized)
-	{
-		TSharedPtr<FArcFragmentListItem> Item = MakeShared<FArcFragmentListItem>();
-		Item->DisplayName = Entry.DisplayName;
-		Item->ScriptStruct = Entry.Struct;
-		Item->SetType = EArcFragmentSetType::Runtime;
-		RootItems.Add(Item);
-	}
-
-	// Categorized fragments in groups
-	TArray<FString> CategoryNames;
-	Categorized.GetKeys(CategoryNames);
-	CategoryNames.Sort();
-	for (const FString& Cat : CategoryNames)
-	{
-		TSharedPtr<FArcFragmentListItem> Group = MakeShared<FArcFragmentListItem>();
-		Group->DisplayName = Cat;
-		Group->bIsGroup = true;
-
-		TArray<FragmentEntry>& Entries = Categorized[Cat];
-		Entries.Sort([](const FragmentEntry& A, const FragmentEntry& B) { return A.DisplayName < B.DisplayName; });
-		for (const FragmentEntry& Entry : Entries)
-		{
-			TSharedPtr<FArcFragmentListItem> Child = MakeShared<FArcFragmentListItem>();
-			Child->DisplayName = Entry.DisplayName;
-			Child->ScriptStruct = Entry.Struct;
-			Child->SetType = EArcFragmentSetType::Runtime;
-			Group->Children.Add(Child);
-		}
-		RootItems.Add(Group);
-	}
-
-	// --- Scalable Float fragments in a group ---
-	auto AddSetAsGroup = [this](const TSet<FArcInstancedStruct>& Set, EArcFragmentSetType Type, const FString& GroupName)
-	{
-		if (Set.Num() == 0) return;
-
-		TSharedPtr<FArcFragmentListItem> Group = MakeShared<FArcFragmentListItem>();
-		Group->DisplayName = GroupName;
-		Group->bIsGroup = true;
-
-		TArray<FragmentEntry> Entries;
 		for (const FArcInstancedStruct& IS : Set)
 		{
 			if (!IS.GetScriptStruct()) continue;
+			FString Category = IS.GetScriptStruct()->GetMetaData(TEXT("Category"));
 			FString Display = IS.GetScriptStruct()->GetMetaData(TEXT("DisplayName"));
-			Entries.Add({Display.Len() > 0 ? Display : IS.GetScriptStruct()->GetName(), IS.GetScriptStruct()});
+			FString Name = Display.Len() > 0 ? Display : IS.GetScriptStruct()->GetName();
+
+			if (Category.Len() > 0)
+			{
+				Categorized.FindOrAdd(Category).Add({Name, IS.GetScriptStruct()});
+			}
+			else
+			{
+				Uncategorized.Add({Name, IS.GetScriptStruct()});
+			}
 		}
-		Entries.Sort([](const FragmentEntry& A, const FragmentEntry& B) { return A.DisplayName < B.DisplayName; });
-		for (const FragmentEntry& Entry : Entries)
+
+		TSharedPtr<FArcFragmentListItem> SetHeader = MakeShared<FArcFragmentListItem>();
+		SetHeader->DisplayName = GroupName;
+		SetHeader->bIsGroup = true;
+
+		// Uncategorized fragments as direct children, sorted alphabetically
+		Uncategorized.Sort([](const FragmentEntry& A, const FragmentEntry& B) { return A.DisplayName < B.DisplayName; });
+		for (const FragmentEntry& Entry : Uncategorized)
 		{
-			TSharedPtr<FArcFragmentListItem> Child = MakeShared<FArcFragmentListItem>();
-			Child->DisplayName = Entry.DisplayName;
-			Child->ScriptStruct = Entry.Struct;
-			Child->SetType = Type;
-			Group->Children.Add(Child);
+			TSharedPtr<FArcFragmentListItem> Leaf = MakeShared<FArcFragmentListItem>();
+			Leaf->DisplayName = Entry.DisplayName;
+			Leaf->ScriptStruct = Entry.Struct;
+			Leaf->SetType = SetType;
+			SetHeader->Children.Add(Leaf);
 		}
-		RootItems.Add(Group);
+
+		// Category sub-groups, sorted alphabetically
+		TArray<FString> CategoryNames;
+		Categorized.GetKeys(CategoryNames);
+		CategoryNames.Sort();
+		for (const FString& Cat : CategoryNames)
+		{
+			TSharedPtr<FArcFragmentListItem> CatGroup = MakeShared<FArcFragmentListItem>();
+			CatGroup->DisplayName = Cat;
+			CatGroup->bIsGroup = true;
+
+			TArray<FragmentEntry>& Entries = Categorized[Cat];
+			Entries.Sort([](const FragmentEntry& A, const FragmentEntry& B) { return A.DisplayName < B.DisplayName; });
+			for (const FragmentEntry& Entry : Entries)
+			{
+				TSharedPtr<FArcFragmentListItem> Leaf = MakeShared<FArcFragmentListItem>();
+				Leaf->DisplayName = Entry.DisplayName;
+				Leaf->ScriptStruct = Entry.Struct;
+				Leaf->SetType = SetType;
+				CatGroup->Children.Add(Leaf);
+			}
+			SetHeader->Children.Add(CatGroup);
+		}
+
+		return SetHeader;
 	};
 
-	AddSetAsGroup(ItemDef->GetScalableFloatFragments(), EArcFragmentSetType::ScalableFloat, TEXT("Scalable Float"));
+	// Runtime
+	if (TSharedPtr<FArcFragmentListItem> RuntimeGroup = BuildSetGroup(ItemDef->GetFragmentSet(), EArcFragmentSetType::Runtime, TEXT("Runtime")))
+	{
+		RootItems.Add(RuntimeGroup);
+	}
+
+	// Scalable Float
+	if (TSharedPtr<FArcFragmentListItem> ScalableGroup = BuildSetGroup(ItemDef->GetScalableFloatFragments(), EArcFragmentSetType::ScalableFloat, TEXT("Scalable Float")))
+	{
+		RootItems.Add(ScalableGroup);
+	}
 
 #if WITH_EDITORONLY_DATA
 	// Editor fragments via reflection (no public getter)
@@ -247,7 +240,10 @@ void SArcItemFragmentList::RebuildTree()
 	{
 		if (const TSet<FArcInstancedStruct>* EditorSet = EditorProp->ContainerPtrToValuePtr<TSet<FArcInstancedStruct>>(ItemDef))
 		{
-			AddSetAsGroup(*EditorSet, EArcFragmentSetType::Editor, TEXT("Editor"));
+			if (TSharedPtr<FArcFragmentListItem> EditorGroup = BuildSetGroup(*EditorSet, EArcFragmentSetType::Editor, TEXT("Editor")))
+			{
+				RootItems.Add(EditorGroup);
+			}
 		}
 	}
 #endif
@@ -255,13 +251,21 @@ void SArcItemFragmentList::RebuildTree()
 	if (TreeView.IsValid())
 	{
 		TreeView->RequestTreeRefresh();
-		for (const TSharedPtr<FArcFragmentListItem>& Item : RootItems)
+
+		// Expand all group nodes (set headers + category sub-groups)
+		TFunction<void(const TArray<TSharedPtr<FArcFragmentListItem>>&)> ExpandGroups =
+			[this, &ExpandGroups](const TArray<TSharedPtr<FArcFragmentListItem>>& Items)
 		{
-			if (Item->bIsGroup)
+			for (const TSharedPtr<FArcFragmentListItem>& Item : Items)
 			{
-				TreeView->SetItemExpansion(Item, true);
+				if (Item->bIsGroup)
+				{
+					TreeView->SetItemExpansion(Item, true);
+					ExpandGroups(Item->Children);
+				}
 			}
-		}
+		};
+		ExpandGroups(RootItems);
 	}
 }
 
@@ -378,50 +382,17 @@ void SArcItemFragmentList::OnSelectionChanged(
 
 TSharedRef<SWidget> SArcItemFragmentList::CreateStructViewerWidget(EArcFragmentSetType SetType)
 {
-	class FFragmentFilter : public IStructViewerFilter
-	{
-	public:
-		const UScriptStruct* BaseStruct = nullptr;
-
-		virtual bool IsStructAllowed(
-			const FStructViewerInitializationOptions& InInitOptions,
-			const UScriptStruct* InStruct,
-			TSharedRef<FStructViewerFilterFuncs> InFilterFuncs) override
-		{
-			if (!InStruct || InStruct == BaseStruct) return false;
-			if (InStruct->HasMetaData(TEXT("Hidden"))) return false;
-			return InStruct->IsChildOf(BaseStruct);
-		}
-
-		virtual bool IsUnloadedStructAllowed(
-			const FStructViewerInitializationOptions& InInitOptions,
-			const FSoftObjectPath& InStructPath,
-			TSharedRef<FStructViewerFilterFuncs> InFilterFuncs) override
-		{
-			return false;
-		}
-	};
-
-	TSharedRef<FFragmentFilter> Filter = MakeShared<FFragmentFilter>();
-	Filter->BaseStruct = ArcItemEditorPrivate::GetBaseStructForSetType(SetType);
-
-	FStructViewerInitializationOptions Options;
-	Options.bShowNoneOption = false;
-	Options.StructFilter = Filter;
-	Options.NameTypeToDisplay = EStructViewerNameTypeToDisplay::DisplayName;
-	Options.DisplayMode = EStructViewerDisplayMode::TreeView;
-
 	return SNew(SBox)
 		.MinDesiredWidth(300.f)
 		.MinDesiredHeight(400.f)
 		[
-			FModuleManager::LoadModuleChecked<FStructViewerModule>("StructViewer")
-				.CreateStructViewer(Options, FOnStructPicked::CreateLambda(
-					[this, SetType](const UScriptStruct* Picked)
-					{
-						OnStructPicked(Picked, SetType);
-						FSlateApplication::Get().DismissAllMenus();
-					}))
+			SNew(SArcFragmentPicker)
+			.BaseStruct(ArcItemEditorPrivate::GetBaseStructForSetType(SetType))
+			.OnStructPicked_Lambda([this, SetType](const UScriptStruct* Picked)
+			{
+				OnStructPicked(Picked, SetType);
+				FSlateApplication::Get().DismissAllMenus();
+			})
 		];
 }
 
@@ -510,70 +481,36 @@ void SArcItemFragmentList::RemoveFragment(TSharedPtr<FArcFragmentListItem> Item)
 
 TSharedRef<SWidget> SArcItemFragmentList::CreateReplacementViewerWidget(TSharedPtr<FArcFragmentListItem> Item)
 {
-	class FReplacementFilter : public IStructViewerFilter
+	// Build exclusion set: all structs already in the set + the current struct itself
+	TSet<const UScriptStruct*> Excluded;
+	if (const TSet<FArcInstancedStruct>* ExistingSet = GetMutableSet(Item->SetType))
 	{
-	public:
-		const UScriptStruct* BaseStruct = nullptr;
-		const UScriptStruct* CurrentStruct = nullptr;
-		const TSet<FArcInstancedStruct>* ExistingSet = nullptr;
-
-		virtual bool IsStructAllowed(
-			const FStructViewerInitializationOptions& InInitOptions,
-			const UScriptStruct* InStruct,
-			TSharedRef<FStructViewerFilterFuncs> InFilterFuncs) override
+		for (const FArcInstancedStruct& IS : *ExistingSet)
 		{
-			if (!InStruct || InStruct == BaseStruct) return false;
-			if (InStruct == CurrentStruct) return false;
-			if (InStruct->HasMetaData(TEXT("Hidden"))) return false;
-			if (!InStruct->IsChildOf(BaseStruct)) return false;
-			// Exclude types already in the set
-			if (ExistingSet)
+			if (IS.GetScriptStruct())
 			{
-				FName Name = InStruct->GetFName();
-				if (ExistingSet->FindByHash(GetTypeHash(Name), Name))
-				{
-					return false;
-				}
+				Excluded.Add(IS.GetScriptStruct());
 			}
-			return true;
 		}
-
-		virtual bool IsUnloadedStructAllowed(
-			const FStructViewerInitializationOptions& InInitOptions,
-			const FSoftObjectPath& InStructPath,
-			TSharedRef<FStructViewerFilterFuncs> InFilterFuncs) override
-		{
-			return false;
-		}
-	};
-
-	TSharedRef<FReplacementFilter> Filter = MakeShared<FReplacementFilter>();
-	Filter->BaseStruct = ArcItemEditorPrivate::GetBaseStructForSetType(Item->SetType);
-	Filter->CurrentStruct = Item->ScriptStruct.Get();
-	Filter->ExistingSet = GetMutableSet(Item->SetType);
-
-	FStructViewerInitializationOptions Options;
-	Options.bShowNoneOption = false;
-	Options.StructFilter = Filter;
-	Options.NameTypeToDisplay = EStructViewerNameTypeToDisplay::DisplayName;
-	Options.DisplayMode = EStructViewerDisplayMode::TreeView;
+	}
 
 	TWeakPtr<FArcFragmentListItem> WeakItem = Item;
 	return SNew(SBox)
 		.MinDesiredWidth(300.f)
 		.MinDesiredHeight(400.f)
 		[
-			FModuleManager::LoadModuleChecked<FStructViewerModule>("StructViewer")
-				.CreateStructViewer(Options, FOnStructPicked::CreateLambda(
-					[this, WeakItem](const UScriptStruct* Picked)
-					{
-						TSharedPtr<FArcFragmentListItem> Pinned = WeakItem.Pin();
-						if (Pinned.IsValid())
-						{
-							OnReplacementPicked(Picked, Pinned);
-						}
-						FSlateApplication::Get().DismissAllMenus();
-					}))
+			SNew(SArcFragmentPicker)
+			.BaseStruct(ArcItemEditorPrivate::GetBaseStructForSetType(Item->SetType))
+			.ExcludedStructs(Excluded)
+			.OnStructPicked_Lambda([this, WeakItem](const UScriptStruct* Picked)
+			{
+				TSharedPtr<FArcFragmentListItem> Pinned = WeakItem.Pin();
+				if (Pinned.IsValid())
+				{
+					OnReplacementPicked(Picked, Pinned);
+				}
+				FSlateApplication::Get().DismissAllMenus();
+			})
 		];
 }
 
@@ -631,25 +568,24 @@ void SArcItemFragmentList::RestoreSelection(const UScriptStruct* StructToSelect,
 {
 	if (!StructToSelect || !TreeView.IsValid()) return;
 
-	for (const TSharedPtr<FArcFragmentListItem>& Root : RootItems)
+	TFunction<bool(const TArray<TSharedPtr<FArcFragmentListItem>>&)> FindAndSelect =
+		[this, StructToSelect, SetType, &FindAndSelect](const TArray<TSharedPtr<FArcFragmentListItem>>& Items) -> bool
 	{
-		if (Root->bIsGroup)
+		for (const TSharedPtr<FArcFragmentListItem>& Item : Items)
 		{
-			for (const TSharedPtr<FArcFragmentListItem>& Child : Root->Children)
+			if (Item->bIsGroup)
 			{
-				if (Child->ScriptStruct.Get() == StructToSelect && Child->SetType == SetType)
-				{
-					TreeView->SetSelection(Child, ESelectInfo::Direct);
-					return;
-				}
+				if (FindAndSelect(Item->Children)) return true;
+			}
+			else if (Item->ScriptStruct.Get() == StructToSelect && Item->SetType == SetType)
+			{
+				TreeView->SetSelection(Item, ESelectInfo::Direct);
+				return true;
 			}
 		}
-		else if (Root->ScriptStruct.Get() == StructToSelect && Root->SetType == SetType)
-		{
-			TreeView->SetSelection(Root, ESelectInfo::Direct);
-			return;
-		}
-	}
+		return false;
+	};
+	FindAndSelect(RootItems);
 }
 
 // ---------- Helpers ----------

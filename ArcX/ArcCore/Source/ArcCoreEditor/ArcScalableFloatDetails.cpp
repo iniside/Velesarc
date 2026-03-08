@@ -30,6 +30,8 @@
 #include "PropertyCustomizationHelpers.h"
 #include "Widgets/Input/SSlider.h"
 #include "SlateOptMacros.h"
+#include "Engine/CurveTable.h"
+#include "Framework/Application/SlateApplication.h"
 
 #define LOCTEXT_NAMESPACE "AttributeDetailsCustomization"
 
@@ -59,11 +61,11 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 		RegistryTypeProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::OnCurveSourceChanged));
 		RowNameProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::OnRowNameChanged));
 
-		TSharedPtr<IPropertyHandle> CustomScalingHandlePtr = StructPropertyHandle->GetChildHandle("CustomScaling");
+		CustomScalingProperty = StructPropertyHandle->GetChildHandle("CustomScaling");
 
 		FDetailWidgetRow StructRow;
-		TSharedRef<IPropertyTypeCustomization> Instance = FInstancedStructDetails::MakeInstance();
-		Instance->CustomizeHeader(CustomScalingHandlePtr.ToSharedRef(), StructRow, StructCustomizationUtils);
+		InstancedStructCustomization = FInstancedStructDetails::MakeInstance();
+		InstancedStructCustomization->CustomizeHeader(CustomScalingProperty.ToSharedRef(), StructRow, StructCustomizationUtils);
 		
 		HeaderRow
 			.NameContent()
@@ -115,13 +117,6 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 						CreateRegistryTypeWidget()
 					]
 					+SHorizontalBox::Slot()
-					.FillWidth(0.40f)
-					.HAlign(HAlign_Fill)
-					.Padding(2.f, 0.f, 0.f, 0.f)
-					[
-						StructRow.ValueWidget.Widget
-					]
-					+SHorizontalBox::Slot()
 					.AutoWidth()
 					.HAlign(HAlign_Left)
 					[
@@ -153,6 +148,13 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 					.VAlign(VAlign_Center)
 					[
 						CreateRowNameWidget()
+					]
+					+SHorizontalBox::Slot()
+					.AutoWidth()
+					.HAlign(HAlign_Fill)
+					.Padding(2.f, 0.f, 0.f, 0.f)
+					[
+						StructRow.ValueWidget.Widget
 					]
 				]
 
@@ -741,8 +743,10 @@ void FArcScalableFloatDetails::UpdatePreviewLevels()
 
 void FArcScalableFloatDetails::CustomizeChildren( TSharedRef<class IPropertyHandle> StructPropertyHandle, class IDetailChildrenBuilder& StructBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils )
 {
-	TSharedPtr<IPropertyHandle> CustomScalingHandlePtr = StructPropertyHandle->GetChildHandle("CustomScaling");
-	StructBuilder.AddProperty(CustomScalingHandlePtr.ToSharedRef());
+	if (InstancedStructCustomization.IsValid() && CustomScalingProperty.IsValid())
+	{
+		InstancedStructCustomization->CustomizeChildren(CustomScalingProperty.ToSharedRef(), StructBuilder, StructCustomizationUtils);
+	}
 }
 
 //-------------------------------------------------------------------------------------
