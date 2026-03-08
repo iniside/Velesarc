@@ -23,11 +23,27 @@
 
 #pragma once
 
-
+#include "AttributeSet.h"
 #include "ScalableFloat.h"
 #include "StructUtils/InstancedStruct.h"
 
 #include "ArcScalableFloat.generated.h"
+
+class AActor;
+class UArcCoreAbilitySystemComponent;
+class UArcItemsStoreComponent;
+class UArcItemDefinition;
+struct FArcItemData;
+
+struct FArcScalableFloatContext
+{
+	UArcCoreAbilitySystemComponent* AbilitySystemComponent = nullptr;
+	AActor* Owner = nullptr;
+	AActor* Avatar = nullptr;
+	const FArcItemData* ItemData = nullptr;
+	UArcItemsStoreComponent* ItemsStore = nullptr;
+	const UArcItemDefinition* ItemDefinition = nullptr;
+};
 
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcScalableFloatValueScaling
@@ -37,28 +53,29 @@ struct ARCCORE_API FArcScalableFloatValueScaling
 public:
 	virtual ~FArcScalableFloatValueScaling() = default;
 
-	virtual float CalculateValue(const FScalableFloat& InValue, int32 Level) const
+	virtual float CalculateValue(const FScalableFloat& InValue, int32 Level, const FArcScalableFloatContext& Context) const
 	{
 		return InValue.GetValueAtLevel(Level);
 	}
 };
 
-USTRUCT(BlueprintType)
-struct ARCCORE_API FArcAttributeBaseScale : public FArcScalableFloatValueScaling
+USTRUCT(BlueprintType, meta = (DisplayName = "Gameplay Attribute Scaling"))
+struct ARCCORE_API FArcGameplayAttributeScaling : public FArcScalableFloatValueScaling
 {
 	GENERATED_BODY()
 
 public:
 	UPROPERTY(EditAnywhere)
-	float ScalingValue = 1;
+	FGameplayAttribute Attribute;
 	
-	virtual ~FArcAttributeBaseScale() override = default;
+	virtual ~FArcGameplayAttributeScaling() override = default;
 
-	virtual float CalculateValue(const FScalableFloat& InValue, int32 Level) const override
+	virtual float CalculateValue(const FScalableFloat& InValue, int32 Level, const FArcScalableFloatContext& Context) const override
 	{
 		return InValue.GetValueAtLevel(Level);
 	}
 };
+
 /**
  * It exists only to make different customization for Scalable float which does not take two rows.
  */
@@ -68,14 +85,14 @@ struct ARCCORE_API FArcScalableFloat : public FScalableFloat
 	GENERATED_USTRUCT_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Config", meta = (BaseStruct = "/Script/ArcCore.ArcScalableFloatValueScaling"))
+	UPROPERTY(EditAnywhere, Category = "Config", meta = (BaseStruct = "/Script/ArcCore.ArcScalableFloatValueScaling", ExcludeBaseStruct))
 	FInstancedStruct CustomScaling;
 
-	float GetScaledValue(int32 Level) const
+	float GetScaledValue(int32 Level, const FArcScalableFloatContext& Context = FArcScalableFloatContext()) const
 	{
 		if (const FArcScalableFloatValueScaling* Scaling = CustomScaling.GetPtr<FArcScalableFloatValueScaling>())
 		{
-			return Scaling->CalculateValue(*this, Level);
+			return Scaling->CalculateValue(*this, Level, Context);
 		}
 
 		return GetValueAtLevel(Level);
