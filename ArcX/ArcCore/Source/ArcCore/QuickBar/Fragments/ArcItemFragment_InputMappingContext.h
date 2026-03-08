@@ -31,7 +31,7 @@
  * 
  */
 USTRUCT(BlueprintType
-	, meta = (DisplayName = "QuickBar - Input Mapping Context"))
+	, meta = (DisplayName = "QuickBar - Input Mapping Context", Category = "Input"))
 struct ARCCORE_API FArcItemFragment_InputMappingContext : public FArcItemFragment
 {
 	GENERATED_BODY()
