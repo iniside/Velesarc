@@ -28,7 +28,7 @@
 #include "ArcItemTestsSettings.h"
 #include "NativeGameplayTags.h"
 #include "PIEIrisNetworkComponent.h"
-#include "PropertyBag.h"
+#include "StructUtils/PropertyBag.h"
 #include "ArcPersistence/ArcPersistenceSubsystem.h"
 #include "Player/ArcCorePlayerController.h"
 #include "Engine/Engine.h"
