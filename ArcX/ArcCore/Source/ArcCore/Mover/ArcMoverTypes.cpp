@@ -32,7 +32,6 @@ void FArcMovementModifier_MaxVelocity::OnStart(UMoverComponent* MoverComp, const
 	{
 		//Producer->OverrideInput = FVector::ZeroVector;
 		Producer->GaitOverride = Gait;
-		Producer->bStopImmidietly = true;
 	}
 }
 
@@ -48,7 +47,6 @@ void FArcMovementModifier_MaxVelocity::OnEnd(UMoverComponent* MoverComp, const F
 	{
 		Producer->OverrideInput.Reset();
 		Producer->GaitOverride.Reset();
-		Producer->bStopImmidietly.Reset();
 	}
 }
 
