@@ -97,7 +97,7 @@ static void DrawEditableAbilities(const TArray<FAssetData>& AbilitiesAssets, FAr
 				{
 					UBlueprint* AssetBP = Cast<UBlueprint>(AbilitiesAssets[AbilityIdx].GetAsset());
 					UClass* AbilityClass = AssetBP ? AssetBP->GeneratedClass : nullptr;
-					GrantedAbilities->Abilities.Add(FArcAbilityEntry(false, FGameplayTag::EmptyTag, AbilityClass));
+					GrantedAbilities->Abilities.Add(FArcAbilityEntry(false, FGameplayTag::EmptyTag, FGameplayTagContainer(), AbilityClass));
 				}
 			}
 			ImGui::EndCombo();

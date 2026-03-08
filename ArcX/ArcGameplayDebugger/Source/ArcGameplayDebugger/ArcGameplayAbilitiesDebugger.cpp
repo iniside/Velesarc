@@ -932,22 +932,6 @@ void FArcGameplayAbilitiesDebugger::DrawAbilitySystemDetails(UAbilitySystemCompo
 #if !UE_BUILD_SHIPPING
 	if (ArcASC && ImGui::CollapsingHeader("Spawned Ability Actors"))
 	{
-		const auto& SpawnedActors = ArcASC->GetDebug_SpawnedActors();
-		if (SpawnedActors.IsEmpty())
-		{
-			ImGui::TextDisabled("(no spawned actors)");
-		}
-		else
-		{
-			ImGui::Text("Spawned Actors: %d", SpawnedActors.Num());
-			for (const auto& Pair : SpawnedActors)
-			{
-				AActor* Actor = Pair.Value.Get();
-				FString Label = FString::Printf(TEXT("%s (Handle: %d, Valid: %s)"),
-					*GetNameSafe(Actor), Pair.Key.Handle, BoolToText(Actor != nullptr));
-				ImGui::BulletText("%s", TCHAR_TO_ANSI(*Label));
-			}
-		}
 	}
 #endif
 
