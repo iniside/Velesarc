@@ -239,8 +239,6 @@ class ARCCORE_API UArcMoverInputProducerComponent
 	GENERATED_BODY()
 	
 public:
-	
-	TOptional<bool> bStopImmidietly = false;
 	TOptional<FVector> OverrideInput;
 	
 	UPROPERTY(EditAnywhere)
