@@ -71,7 +71,7 @@ public:
 	TArray<FArcSocketSlot> Slots;
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Socket Slots"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Socket Slots", Category = "Item Attachment"))
 struct ARCCORE_API FArcItemFragment_SocketSlots : public FArcItemFragment
 {
 	GENERATED_BODY()

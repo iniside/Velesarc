@@ -76,7 +76,7 @@ public:
 	}
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Granted Passive Abilities"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Granted Passive Abilities", Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_GrantedPassiveAbilities : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

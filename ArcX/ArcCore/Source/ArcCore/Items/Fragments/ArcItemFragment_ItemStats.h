@@ -217,7 +217,7 @@ public:
 /**
  * 
  */
-USTRUCT()
+USTRUCT(meta = (Category = "Stats"))
 struct ARCCORE_API FArcItemFragment_ItemStats : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

@@ -52,7 +52,7 @@ public:
 /**
  * 
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_AbilityMontages : public FArcItemFragment
 {
 	GENERATED_BODY()

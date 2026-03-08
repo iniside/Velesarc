@@ -51,7 +51,7 @@ struct ARCCORE_API FArcItemTagCount
 	int32 Count = 1;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Requirements"))
 struct ARCCORE_API FArcItemFragment_RequiredItems : public FArcItemFragment
 {
 	GENERATED_BODY()

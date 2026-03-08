@@ -59,7 +59,7 @@ public:
 	}
 };
 
-USTRUCT()
+USTRUCT(meta = (Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_GrantAttributes : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

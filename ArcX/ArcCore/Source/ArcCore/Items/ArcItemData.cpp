@@ -27,6 +27,7 @@
 #include "Items/ArcItemSpec.h"
 
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 
 #include "ArcItemsStoreComponent.h"
 
@@ -69,10 +70,10 @@ UScriptStruct* FArcItemData::GetScriptStruct() const
 
 float FArcItemData::GetValue(const FArcScalableCurveFloat& InScalableFloat) const
 {
-	if (ScalableFloatFragments.Contains(InScalableFloat.GetOwnerType()))
+	if (const FArcScalableFloatItemFragment* const* ScalableFragment = ScalableFloatFragments.Find(InScalableFloat.GetOwnerType()))
 	{
-		return InScalableFloat.GetValue(ScalableFloatFragments[InScalableFloat.GetOwnerType()]
-			, Level);
+		return InScalableFloat.GetValue(*ScalableFragment
+			, Level, ScalableFloatContext);
 	}
 	return 0.f;
 }
@@ -80,10 +81,10 @@ float FArcItemData::GetValue(const FArcScalableCurveFloat& InScalableFloat) cons
 float FArcItemData::GetValueWithLevel(const FArcScalableCurveFloat& InScalableFloat
 									   , float InLevel) const
 {
-	if (ScalableFloatFragments.Contains(InScalableFloat.GetOwnerType()))
+	if (const FArcScalableFloatItemFragment* const* ScalableFragment = ScalableFloatFragments.Find(InScalableFloat.GetOwnerType()))
 	{
-		return InScalableFloat.GetValue(ScalableFloatFragments[InScalableFloat.GetOwnerType()]
-			, InLevel);
+		return InScalableFloat.GetValue(*ScalableFragment
+			, InLevel, ScalableFloatContext);
 	}
 	return 0.f;
 }
@@ -213,7 +214,26 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 			ScalableFloatFragments.FindOrAdd(I.GetScriptStruct()) = I.GetPtr<FArcScalableFloatItemFragment>();
 		}
 	}
-	
+
+	ScalableFloatContext.ItemData = this;
+	ScalableFloatContext.ItemsStore = OwnerComponent;
+	ScalableFloatContext.ItemDefinition = ItemDefinition;
+	ScalableFloatContext.Owner = OwnerComponent ? OwnerComponent->GetOwner() : nullptr;
+	if (ScalableFloatContext.Owner)
+	{
+		ScalableFloatContext.AbilitySystemComponent = Cast<UArcCoreAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(ScalableFloatContext.Owner));
+		if (ScalableFloatContext.AbilitySystemComponent)
+		{
+			ScalableFloatContext.Avatar = ScalableFloatContext.AbilitySystemComponent->GetAvatarActor();
+			ScalableFloatContext.Owner = ScalableFloatContext.AbilitySystemComponent->GetOwnerActor();
+		}
+	}
+	if (ScalableFloatContext.Avatar == nullptr)
+	{
+		ScalableFloatContext.Avatar = ScalableFloatContext.Owner;
+	}
+
 	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(this))
 	{
 		ItemAggregatedTags.Reset();

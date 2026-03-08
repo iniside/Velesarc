@@ -28,17 +28,17 @@
 
 class UAnimMontage;
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Animation"))
 struct ARCCORE_API FArcItemFragment_AnimMontage : public FArcItemFragment
 {
 	GENERATED_BODY()
-	
+
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
 	TSoftObjectPtr<UAnimMontage> AnimMontage;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Animation"))
 struct ARCCORE_API FArcItemFragment_AnimMontageMap : public FArcItemFragment
 {
 	GENERATED_BODY()

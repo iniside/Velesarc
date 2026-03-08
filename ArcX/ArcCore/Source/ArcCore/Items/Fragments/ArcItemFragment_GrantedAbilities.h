@@ -112,10 +112,13 @@ public:
 	FGameplayTag InputTag;
 
 	UPROPERTY(EditDefaultsOnly, SaveGame, Category = "Data")
+	FGameplayTagContainer DynamicTags;
+	
+	UPROPERTY(EditDefaultsOnly, SaveGame, Category = "Data")
 	TSubclassOf<UGameplayAbility> GrantedAbility;
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Granted Abilities"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Granted Abilities", Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_GrantedAbilities : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

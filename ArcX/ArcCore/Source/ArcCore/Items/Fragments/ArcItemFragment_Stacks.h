@@ -78,7 +78,7 @@ public:
 /**
  * 
  */
-USTRUCT()
+USTRUCT(meta = (Category = "Inventory"))
 struct ARCCORE_API FArcItemFragment_Stacks : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

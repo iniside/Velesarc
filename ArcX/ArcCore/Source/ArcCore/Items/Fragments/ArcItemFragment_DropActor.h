@@ -24,7 +24,7 @@
 #include "ArcItemFragment.h"
 #include "ArcItemFragment_DropActor.generated.h"
 
-USTRUCT()
+USTRUCT(meta = (Category = "Loot"))
 struct ARCCORE_API FArcItemFragment_DropActor : public FArcItemFragment
 {
 	GENERATED_BODY()

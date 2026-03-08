@@ -37,7 +37,7 @@ struct ARCCORE_API FArcItemInstance_GrantedGameplayEffects : public FArcItemInst
 	
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Granted Gameplay Effects"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Granted Gameplay Effects", Category = "Gameplay Ability"))
 struct ARCCORE_API FArcItemFragment_GrantedGameplayEffects : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

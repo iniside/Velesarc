@@ -26,7 +26,7 @@
 /**
  * This fragment implies that item CANNOT be added to slot, unless it matches one of @link UArcItemSlotComponent#SlotInstances
  */
-USTRUCT()
+USTRUCT(meta = (Category = "Requirements"))
 struct FArcItemFragment_RequirePresetSlot : public FArcItemFragment
 {
 	GENERATED_BODY()

@@ -66,10 +66,10 @@ void FArcItemFragment_GrantedAbilities::OnItemAddedToSlot(const FArcItemData* In
 			{
 				AbilitySpec.GetDynamicSpecSourceTags().AddTag(Ability.InputTag);
 			}
-			//else if (SlotInstance && SlotInstance->InputTag.IsValid())
-			//{
-			//	AbilitySpec.DynamicAbilityTags.AddTag(SlotInstance->InputTag);
-			//}
+			for (const FGameplayTag& DynamicTag : Ability.DynamicTags)
+			{
+				AbilitySpec.GetDynamicSpecSourceTags().AddTag(DynamicTag);
+			}
 		}
 
 		FGameplayAbilitySpecHandle NewHandle = Instance->ArcASC->GiveAbility(AbilitySpec);

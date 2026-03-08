@@ -25,6 +25,7 @@
 #include "GameplayTagContainer.h"
 #include "UObject/NoExportTypes.h"
 
+#include "ArcScalableFloat.h"
 #include "Items/ArcItemTypes.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment.h"
@@ -67,6 +68,8 @@ struct ARCCORE_API FArcItemData
 public:
 	/** Merged Scalable Fragments from this item, and items attached to it. */
 	TMap<const UScriptStruct*, const FArcScalableFloatItemFragment*> ScalableFloatFragments;
+
+	FArcScalableFloatContext ScalableFloatContext;
 
 	/** Spec from this items has been created. Immutable and never changes once created. */
 	//mutable TSharedPtr<FArcItemSpec> SpecPtr = nullptr;

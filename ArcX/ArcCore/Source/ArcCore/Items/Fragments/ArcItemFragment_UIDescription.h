@@ -25,7 +25,7 @@
 #include "ArcItemFragment_UIDescription.generated.h"
 
 USTRUCT(BlueprintType
-	, meta = (DisplayName = "UI Description"))
+	, meta = (DisplayName = "UI Description", Category = "UI"))
 struct ARCCORE_API FArcItemFragment_UIDescription : public FArcItemFragment
 {
 	GENERATED_BODY()

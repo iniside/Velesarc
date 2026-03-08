@@ -28,11 +28,11 @@
 
 class UNiagaraSystem;
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Visual Effects"))
 struct ARCCORE_API FArcItemFragment_NiagaraSystem : public FArcItemFragment
 {
 	GENERATED_BODY()
-	
+
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Client"))
 	TSoftObjectPtr<UNiagaraSystem> System;
@@ -41,7 +41,7 @@ public:
 	FName SocketName;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Category = "Visual Effects"))
 struct ARCCORE_API FArcItemFragment_NiagaraSystemMap : public FArcItemFragment
 {
 	GENERATED_BODY()

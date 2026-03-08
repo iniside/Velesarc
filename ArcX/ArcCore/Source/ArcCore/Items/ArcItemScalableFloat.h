@@ -45,7 +45,7 @@ struct ARCCORE_API FArcScalableCurveFloat
 {
 	GENERATED_BODY()
 
-protected:
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data")
 	TFieldPath<FStructProperty> ScalableFloat;
 
@@ -58,7 +58,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data")
 	EArcScalableType Type;
 
-public:
+
 	FArcScalableCurveFloat()
 		: ScalableFloat(nullptr)
 		, OwnerType(nullptr)
@@ -92,11 +92,11 @@ public:
 
 	// should never be called, but we still need this because generated code is breaking
 	// without it.
-	FArcScalableCurveFloat operator=(const FArcScalableCurveFloat& Other)
-	{
-		unimplemented();
-		return FArcScalableCurveFloat();
-	}
+	//FArcScalableCurveFloat operator=(const FArcScalableCurveFloat& Other)
+	//{
+	//	unimplemented();
+	//	return FArcScalableCurveFloat();
+	//}
 
 	const UScriptStruct* GetOwnerType() const
 	{
@@ -104,14 +104,15 @@ public:
 	}
 
 	float GetValue(const FArcScalableFloatItemFragment* InItem
-				   , float Level) const
+				   , float Level
+				   , const FArcScalableFloatContext& Context = FArcScalableFloatContext()) const
 	{
 		switch (Type)
 		{
 			case EArcScalableType::Scalable:
 			{
 				const FArcScalableFloat* DataPtr = ScalableFloat->ContainerPtrToValuePtr<FArcScalableFloat>(InItem);
-				return DataPtr->GetScaledValue(Level);
+				return DataPtr->GetScaledValue(Level, Context);
 			}
 			case EArcScalableType::Curve:
 			{
@@ -125,14 +126,15 @@ public:
 	}
 
 	float GetValue(const FArcScalableFloatItemFragment* InItem
-				   , uint8 Level) const
+				   , uint8 Level
+				   , const FArcScalableFloatContext& Context = FArcScalableFloatContext()) const
 	{
 		switch (Type)
 		{
 			case EArcScalableType::Scalable:
 			{
 				const FArcScalableFloat* DataPtr = ScalableFloat->ContainerPtrToValuePtr<FArcScalableFloat>(InItem);
-				return DataPtr->GetScaledValue(static_cast<float>(Level));
+				return DataPtr->GetScaledValue(static_cast<float>(Level), Context);
 			}
 			case EArcScalableType::Curve:
 			{
@@ -161,13 +163,13 @@ public:                                                                         
 	{                                                                                 							\
 		return InItem->GetValue(Get##PropertyName##Data());					  		  							\
 	}																				  							\
-	static float Get##PropertyName##Value(const FArcScalableFloatItemFragment* InItem, float Level)		 		\
+	static float Get##PropertyName##Value(const FArcScalableFloatItemFragment* InItem, float Level, const FArcScalableFloatContext& Context = FArcScalableFloatContext()) \
 	{                                                                                 							\
-		return Get##PropertyName##Data().GetValue(InItem, Level);					  							\
+		return Get##PropertyName##Data().GetValue(InItem, Level, Context);			  							\
 	}																											\
-	float Get##PropertyName##Direct(const float Level) const							  						\
+	float Get##PropertyName##Direct(const float Level, const FArcScalableFloatContext& Context = FArcScalableFloatContext()) const \
 	{                                                                                 							\
-		return PropertyName.GetScaledValue(Level);									  							\
+		return PropertyName.GetScaledValue(Level, Context);							  							\
 	}																				  							\
 private:
 
@@ -191,8 +193,8 @@ public:                                                                         
 		return InItem->GetValue(Get##PropertyName##Data());					  		  							\
 	}																											\
 																												\
-	static float Get##PropertyName##Value(const FArcScalableFloatItemFragment* InItem, float Level)		 		\
+	static float Get##PropertyName##Value(const FArcScalableFloatItemFragment* InItem, float Level, const FArcScalableFloatContext& Context = FArcScalableFloatContext()) \
 	{                                                                                 							\
-		return Get##PropertyName##Data().GetValue(InItem, Level);					  							\
+		return Get##PropertyName##Data().GetValue(InItem, Level, Context);			  							\
 	}                                                                                 							\
 private:																			  							\

@@ -32,7 +32,7 @@ class UMassEntityConfigAsset;
  * The DropEntityConfig defines the Mass entity template used for spawning
  * (should include FArcLootContainerFragment trait for holding the item spec).
  */
-USTRUCT()
+USTRUCT(meta = (Category = "Loot"))
 struct ARCCORE_API FArcItemFragment_Droppable : public FArcItemFragment
 {
 	GENERATED_BODY()
