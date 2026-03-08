@@ -58,7 +58,7 @@ bool FArcQuickBarInputBindHandling::OnAddedToQuickBar(UArcCoreAbilitySystemCompo
 					return false;
 				});
 				
-				if (Spec->GetPrimaryInstance()->GetAssetTags().HasTagExact(AbilityRequiredTag))
+				if (Spec->GetPrimaryInstance()->GetAssetTags().HasTagExact(AbilityRequiredTag) || Spec->GetDynamicSpecSourceTags().HasTagExact(AbilityRequiredTag))
 				{
 					bool bInputTagFromItem = false;
 					
@@ -113,7 +113,7 @@ bool FArcQuickBarInputBindHandling::OnRemovedFromQuickBar(UArcCoreAbilitySystemC
 					return false;
 				});
 				
-				if (Spec->GetPrimaryInstance()->GetAssetTags().HasTagExact(AbilityRequiredTag))
+				if (Spec->GetPrimaryInstance()->GetAssetTags().HasTagExact(AbilityRequiredTag) || Spec->GetDynamicSpecSourceTags().HasTagExact(AbilityRequiredTag))
 				{
 					bool bInputTagFromItem = false;
 					
