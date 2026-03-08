@@ -23,12 +23,12 @@
 
 #include "Tasks/TargetingTask.h"
 
-#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "ScalableFloat.h"
 
 #include "ArcTT_SphereAOE.generated.h"
 /**
- * 
+ *
  */
 UCLASS()
 class ARCCORE_API UArcTT_SphereAOE : public UTargetingTask
@@ -39,14 +39,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Config")
 	TEnumAsByte<ETraceTypeQuery> TraceChannel;
 
-	UPROPERTY(EditAnywhere, Category = "Config")
-	TSubclassOf<AActor> ActorClass;
+	UPROPERTY(EditAnywhere, Category = "Config", meta = (BaseStruct = "/Script/ArcCore.ArcTraceOrigin", ExcludeBaseStruct))
+	FInstancedStruct TraceOriginOverride;
 
 	UPROPERTY(EditAnywhere, Category = "Config")
-	FGameplayTag GlobalTargetingSource;
-	
-	UPROPERTY(EditAnywhere, Category = "Config")
 	FScalableFloat Radius;
-	
+
 	virtual void Execute(const FTargetingRequestHandle& TargetingHandle) const override;
+
+#if ENABLE_DRAW_DEBUG
+	virtual void DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const override;
+#endif
 };

@@ -21,69 +21,101 @@
 
 #include "ArcTT_SphereAOE.h"
 
-
 #include "ArcTargetingSourceContext.h"
-#include "CollisionDebugDrawingPublic.h"
-
+#include "ArcTraceOrigin.h"
 #include "CollisionQueryParams.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
-#include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerController.h"
+#include "TargetingSystem/TargetingSubsystem.h"
 
 void UArcTT_SphereAOE::Execute(const FTargetingRequestHandle& TargetingHandle) const
 {
 	Super::Execute(TargetingHandle);
-	
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
-	
+
 	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
 
-	FVector SourceLocation = FVector::ZeroVector;
-	if (GlobalTargetingSource.IsValid())
+	if (!Ctx || !Ctx->SourceActor)
 	{
-		UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(Ctx->SourceAbility->GetAbilitySystemComponentFromActorInfo());
-		if (ArcASC)
+		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
+		return;
+	}
+
+	FVector SourceLocation;
+
+	const FArcTraceOrigin* Origin = TraceOriginOverride.GetPtr<FArcTraceOrigin>();
+	if (Origin)
+	{
+		FVector Direction;
+		bool bHasDirection = false;
+		if (!Origin->Resolve(TargetingHandle, SourceLocation, Direction, bHasDirection))
 		{
-			bool bWasSuccessful = false;
-			SourceLocation = ArcASC->GetGlobalHitLocation(ArcASC, GlobalTargetingSource, bWasSuccessful);
+			SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
+			return;
 		}
 	}
 	else
 	{
 		if (TargetingResults.TargetResults.Num() > 0)
 		{
-			FTargetingDefaultResultData Data = TargetingResults.TargetResults[0];
-			
-			SourceLocation = Data.HitResult.ImpactPoint;
+			const FHitResult& PrevHit = TargetingResults.TargetResults[0].HitResult;
+			SourceLocation = PrevHit.bBlockingHit ? PrevHit.ImpactPoint : PrevHit.TraceEnd;
 		}
-		
+		else
+		{
+			SourceLocation = Ctx->SourceLocation;
+		}
 	}
+
 	UWorld* World = Ctx->SourceActor->GetWorld();
 
-	FVector StartLocation = SourceLocation;
-	FVector EndLocation = StartLocation + FVector(0,0,1);
-	FHitResult HitResult;
 	FCollisionQueryParams Params;
 	Params.OwnerTag = GetFName();
 	Params.AddIgnoredActor(Ctx->SourceActor);
 	Params.bTraceComplex = true;
-	
+
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
 	FCollisionResponseParams ResponseParams;
 	ResponseParams.CollisionResponse = ECollisionResponse::ECR_Overlap;
 
 	TArray<FHitResult> HitResults;
-	World->SweepMultiByChannel(HitResults, StartLocation, EndLocation, FQuat::Identity, CollisionChannel,
+	World->SweepMultiByChannel(HitResults, SourceLocation, SourceLocation + FVector(0, 0, 1),
+		FQuat::Identity, CollisionChannel,
 		FCollisionShape::MakeSphere(Radius.GetValue()), Params, ResponseParams);
-	
-	FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
-	ResultData->HitResult = HitResult;
-	
-	DrawDebugSphere(World, EndLocation, Radius.GetValue(), 32, FColor::Yellow, false, 2, 0, 1.f);
+
+	for (const FHitResult& Hit : HitResults)
+	{
+		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
+		ResultData->HitResult = Hit;
+	}
+
+#if ENABLE_DRAW_DEBUG
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		const float DrawTime = UTargetingSubsystem::GetOverrideTargetingLifeTime();
+		DrawDebugSphere(World, SourceLocation, Radius.GetValue(), 16, FColor::Red, false, DrawTime, 0, 1.f);
+		for (const FHitResult& Hit : HitResults)
+		{
+			DrawDebugSphere(World, Hit.ImpactPoint, 8.f, 8, FColor::Green, false, DrawTime, 0, 1.f);
+		}
+	}
+#endif
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 }
+
+#if ENABLE_DRAW_DEBUG
+void UArcTT_SphereAOE::DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const
+{
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		FTargetingDefaultResultsSet& Results = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
+		FString DebugStr = FString::Printf(TEXT("SphereAOE - Results: %d"), Results.TargetResults.Num());
+		TargetingSubsystem->DebugLine(Info, DebugStr, XOffset, YOffset, MinTextRowsToAdvance);
+	}
+}
+#endif

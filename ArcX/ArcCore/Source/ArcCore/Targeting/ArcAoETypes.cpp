@@ -25,9 +25,7 @@ FArcAoEShapeData FArcAoEShapeData::FromItemData(const FArcItemData* ItemData)
 		const float ShapeWidth = FArcScalableFloatItemFragment_TargetingShape::GetWidthValue(ItemData);
 		const float ShapeHeight = FArcScalableFloatItemFragment_TargetingShape::GetHeightValue(ItemData);
 
-		const bool bHasBoxDimensions = ShapeLength > 0.f || ShapeWidth > 0.f || ShapeHeight > 0.f;
-
-		if (ShapeConfig && bHasBoxDimensions)
+		if (ShapeConfig && ShapeConfig->Shape == EArcAoEShape::Box)
 		{
 			Result.Shape = EArcAoEShape::Box;
 			Result.BoxAlignment = ShapeConfig->BoxAlignment;

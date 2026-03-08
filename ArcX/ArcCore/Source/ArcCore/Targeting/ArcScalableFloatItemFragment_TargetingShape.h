@@ -9,7 +9,7 @@
 
 #include "ArcScalableFloatItemFragment_TargetingShape.generated.h"
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Shape Stats"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Shape Stats", Category = "Targeting"))
 struct ARCCORE_API FArcScalableFloatItemFragment_TargetingShape : public FArcScalableFloatItemFragment
 {
 	GENERATED_BODY()

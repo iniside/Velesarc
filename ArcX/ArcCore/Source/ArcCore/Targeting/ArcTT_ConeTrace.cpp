@@ -18,13 +18,11 @@
  * See the License for the specific language governing permissions
  * and limitations under the License.
  */
-
-
-
 #include "ArcTT_ConeTrace.h"
 
 #include "ArcTargetingSourceContext.h"
-#include "CollisionDebugDrawingPublic.h"
+#include "DrawDebugHelpers.h"
+#include "TargetingSystem/TargetingSubsystem.h"
 
 #include "CollisionQueryParams.h"
 #include "Engine/EngineTypes.h"
@@ -38,10 +36,16 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	Super::Execute(TargetingHandle);
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(UArcTT_ConeTrace::Execute);
-	
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
-	
+
 	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
+	if (!Ctx || !Ctx->SourceActor)
+	{
+		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
+		return;
+	}
+
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
 
 	UWorld* World = Ctx->SourceActor->GetWorld();
@@ -55,16 +59,16 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	{
 		DistanceToActor = FVector::Dist(EyeLocation, Ctx->SourceActor->GetActorLocation());
 	}
-	
+
 	FVector StartLocation = (EyeRotation.Vector() * DistanceToActor) + EyeLocation;
 	FVector EndLocation = StartLocation + EyeRotation.Vector() * ConeLength;
 	FHitResult HitResult;
 	FCollisionQueryParams Params;
 	Params.TraceTag = GetFName();
-	Params.OwnerTag = Ctx->SourceActor ? Ctx->SourceActor->GetFName() : GetFName();
+	Params.OwnerTag = Ctx->SourceActor->GetFName();
 	Params.AddIgnoredActor(Ctx->SourceActor);
 	Params.bTraceComplex = true;
-	
+
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
 	FCollisionResponseParams ResponseParams;
@@ -79,7 +83,7 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 		World->SweepSingleByChannel(HitFromSource, FromActorStartLocation, FromActorEndLocation, FQuat::Identity, CollisionChannel
 			, FCollisionShape::MakeSphere(32.f), Params);
 	}
-	
+
 	TArray<FHitResult> HitResults;
 	World->SweepMultiByChannel(HitResults, StartLocation, EndLocation, EyeRotation.Quaternion(), CollisionChannel,
 		FCollisionShape::MakeSphere(300.f), Params, ResponseParams);
@@ -104,11 +108,11 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 					continue;
 				}
 			}
-			
+
 			if (ConeRad > AngleToTarget)
 			{
 				FilteredHitResults.Add(Hit);
-			}	
+			}
 		}
 	}
 
@@ -124,7 +128,7 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 
 	// Calculate the screen-space center
 	FVector2D ScreenCenter = FVector2D(ScreenWidth / 2.0f, ScreenHeight / 2.0f);
-	
+
 	int32 BestHit = INDEX_NONE;
 
 	float BestAlignment = -1.f;
@@ -153,7 +157,7 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 			{
 				BestAlignmentDist = Alignment2;
 				BestDistance = DistSqr;
-				BestDistanceHit = HitIndex;	
+				BestDistanceHit = HitIndex;
 			}
 		}
 	}
@@ -161,29 +165,21 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = HitFromSource;
-		if (bDrawDebug)
-		DrawDebugSphere(World, HitFromSource.ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (HitResult.GetActor() && HitResult.GetActor()->GetClass()->IsChildOf(ActorClass))
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = HitResult;
-		if (bDrawDebug)
-		DrawDebugSphere(World, HitResult.ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (BestDistanceHit != INDEX_NONE)
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = FilteredHitResults[BestDistanceHit];
-		if (bDrawDebug)
-		DrawDebugSphere(World, FilteredHitResults[BestDistanceHit].ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (BestHit != INDEX_NONE)
 	{
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = FilteredHitResults[BestHit];
-		if (bDrawDebug)
-		DrawDebugSphere(World, FilteredHitResults[BestHit].ImpactPoint + FVector(0,0, -10), 16.f, 8, FColor::Yellow, false, 0.1, 0, 0.2f);
 	}
 	else if (!HitResult.bBlockingHit)
 	{
@@ -197,22 +193,35 @@ void UArcTT_ConeTrace::Execute(const FTargetingRequestHandle& TargetingHandle) c
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 		ResultData->HitResult = HitResult;
 	}
-	//DrawSphereSweeps(World, StartLocation, EndLocation, 20.f, HitResults, 0.5f);
-	if (bDrawDebug)
-	for (const FHitResult& Hit : HitResults)
-	{
-		DrawDebugSphere(World, Hit.ImpactPoint, 16.f, 8, FColor::Red, false, 0.1, 0, 0.2f);
-	}
 
-	if (bDrawDebug)
-	for (const FHitResult& Hit : FilteredHitResults)
+#if ENABLE_DRAW_DEBUG
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
 	{
-		DrawDebugSphere(World, Hit.ImpactPoint + FVector(0,0, 10), 16.f, 8, FColor::Blue, false, 0.1, 0, 0.2f);
+		const float DrawTime = UTargetingSubsystem::GetOverrideTargetingLifeTime();
+		DrawDebugCone(World, StartLocation, EyeRotation.Vector(), ConeLength, ConeRad, ConeRad,
+			12, FColor::Red, false, DrawTime, 0, 1.f);
+		for (const FHitResult& Hit : HitResults)
+		{
+			DrawDebugSphere(World, Hit.ImpactPoint, 16.f, 8, FColor::Red, false, DrawTime, 0, 0.5f);
+		}
+		for (const FHitResult& Hit : FilteredHitResults)
+		{
+			DrawDebugSphere(World, Hit.ImpactPoint + FVector(0, 0, 10), 16.f, 8, FColor::Blue, false, DrawTime, 0, 0.5f);
+		}
 	}
-	
+#endif
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
-
-	if (bDrawDebug)
-	DrawDebugCone(World, StartLocation, EyeRotation.Vector(), ConeLength, ConeRad, ConeRad
-		, 12, FColor::Red, false, 0.1, 0, 0.2f);
 }
+
+#if ENABLE_DRAW_DEBUG
+void UArcTT_ConeTrace::DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const
+{
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		FTargetingDefaultResultsSet& Results = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
+		FString DebugStr = FString::Printf(TEXT("ConeTrace - Results: %d"), Results.TargetResults.Num());
+		TargetingSubsystem->DebugLine(Info, DebugStr, XOffset, YOffset, MinTextRowsToAdvance);
+	}
+}
+#endif

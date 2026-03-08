@@ -22,39 +22,52 @@
 #include "Targeting/ArcTargetingTask_LineTrace.h"
 
 #include "ArcTargetingSourceContext.h"
-#include "Engine/World.h"
+#include "ArcTraceOrigin.h"
 #include "CollisionQueryParams.h"
+#include "DrawDebugHelpers.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/EngineTypes.h"
+#include "Engine/World.h"
 #include "GameFramework/Actor.h"
-
-UArcTargetingTask_LineTrace::UArcTargetingTask_LineTrace(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
-{
-}
+#include "TargetingSystem/TargetingSubsystem.h"
 
 void UArcTargetingTask_LineTrace::Execute(const FTargetingRequestHandle& TargetingHandle) const
 {
 	Super::Execute(TargetingHandle);
-	
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
-	
+
 	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
 
-	if (!Ctx->SourceActor)
+	if (!Ctx || !Ctx->SourceActor)
 	{
-		FHitResult HitResult;
 		FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
-		ResultData->HitResult = HitResult;
 		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 		return;
 	}
-	
-	FVector EyeLocation;
-	FRotator EyeRotation;
-	Ctx->SourceActor->GetActorEyesViewPoint(EyeLocation, EyeRotation);
 
-	FVector EndLocation = EyeLocation + EyeRotation.Vector() * 10000.f;
+	FVector StartLocation;
+	FVector Direction;
+
+	const FArcTraceOrigin* Origin = TraceOriginOverride.GetPtr<FArcTraceOrigin>();
+	if (Origin)
+	{
+		bool bHasDirection = false;
+		if (!Origin->Resolve(TargetingHandle, StartLocation, Direction, bHasDirection))
+		{
+			FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
+			SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
+			return;
+		}
+	}
+	else
+	{
+		FRotator EyeRotation;
+		Ctx->SourceActor->GetActorEyesViewPoint(StartLocation, EyeRotation);
+		Direction = EyeRotation.Vector();
+	}
+
+	FVector EndLocation = StartLocation + Direction * TraceDistance;
 	FHitResult HitResult;
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(Ctx->SourceActor);
@@ -63,81 +76,37 @@ void UArcTargetingTask_LineTrace::Execute(const FTargetingRequestHandle& Targeti
 	{
 		Params.AddIgnoredActor(Source);
 	}
-	
-	Ctx->InstigatorActor->GetWorld()->LineTraceSingleByChannel(HitResult, EyeLocation, EndLocation, ECC_Visibility, Params);
-	
+
+	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
+	Ctx->SourceActor->GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, CollisionChannel, Params);
+
 	FTargetingDefaultResultData* ResultData = new(TargetingResults.TargetResults) FTargetingDefaultResultData();
 	ResultData->HitResult = HitResult;
 
-	//DrawDebugLine(Ctx->InstigatorActor->GetWorld()
-	//, EyeLocation, EndLocation
-	//, FColor::Blue, false, 0.1, 0, 0.2f);
-	
+#if ENABLE_DRAW_DEBUG
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		const float DrawTime = UTargetingSubsystem::GetOverrideTargetingLifeTime();
+		UWorld* World = Ctx->SourceActor->GetWorld();
+		DrawDebugLine(World, StartLocation, EndLocation, FColor::Red, false, DrawTime, 0, 1.f);
+		if (HitResult.bBlockingHit)
+		{
+			DrawDebugSphere(World, HitResult.ImpactPoint, 8.f, 8, FColor::Green, false, DrawTime, 0, 1.f);
+		}
+	}
+#endif
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 }
 
-
-UArcTargetingTask_LineTraceFromSocket::UArcTargetingTask_LineTraceFromSocket(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
+#if ENABLE_DRAW_DEBUG
+void UArcTargetingTask_LineTrace::DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const
 {
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		FTargetingDefaultResultsSet& Results = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
+		FString DebugStr = FString::Printf(TEXT("LineTrace - Results: %d"), Results.TargetResults.Num());
+		TargetingSubsystem->DebugLine(Info, DebugStr, XOffset, YOffset, MinTextRowsToAdvance);
+	}
 }
-
-void UArcTargetingTask_LineTraceFromSocket::Execute(const FTargetingRequestHandle& TargetingHandle) const
-{
-	Super::Execute(TargetingHandle);
-
-	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Executing);
-	
-	FArcTargetingSourceContext* Ctx = FArcTargetingSourceContext::Find(TargetingHandle);
-	FTargetingDefaultResultsSet* HitSet = FTargetingDefaultResultsSet::Find(TargetingHandle);
-
-	if (Ctx == nullptr || HitSet == nullptr)
-	{
-		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
-		return;
-	}
-
-	if (HitSet->TargetResults.Num() == 0)
-	{
-		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
-		return;
-	}
-	USkeletalMeshComponent* SMC = Ctx->SourceActor->FindComponentByClass<USkeletalMeshComponent>();
-
-	if (SMC == nullptr)
-	{
-		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
-		return;
-	}
-
-	
-	FHitResult& CameraHit = HitSet->TargetResults[0].HitResult;
-
-	FVector HitLoc = CameraHit.bBlockingHit ? CameraHit.ImpactPoint : CameraHit.TraceEnd;
-	FVector StartLocation = SMC->GetSocketLocation(SocketName);
-	FTransform SocketTransform = SMC->GetSocketTransform(SocketName);
-
-	//const FVector Direction = (HitLoc - StartLocation).GetSafeNormal();
-	FVector Direction = SocketTransform.GetRotation().Rotator().Vector();
-	//Direction = Ctx->SourceActor->GetTransform().InverseTransformVector(Direction);
-	FVector EndLocation = StartLocation + (Direction * 10000.f);
-	//FVector EndLocation = StartLocation + (StartLocation - HitLoc).GetSafeNormal() * 10000.f;
-
-	//DrawDebugLine(Ctx->InstigatorActor->GetWorld()
-	//	, StartLocation, EndLocation
-	//	, FColor::Yellow, false, 0.1, 0, 2.f);
-	
-	FHitResult HitResult;
-	FCollisionQueryParams Params;
-	Params.AddIgnoredActor(Ctx->InstigatorActor.Get());
-	Params.AddIgnoredActor(Ctx->SourceActor.Get());
-	
-	Ctx->InstigatorActor->GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, Params);
-	HitSet->TargetResults.Empty();
-		
-	int32 Idx = HitSet->TargetResults.AddDefaulted();
-	HitSet->TargetResults[Idx].HitResult = HitResult;
-	
-	
-	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
-}
+#endif

@@ -3,11 +3,14 @@
 #include "ArcTT_ItemSphereTrace.h"
 
 #include "ArcTargetingSourceContext.h"
+#include "ArcTraceOrigin.h"
 #include "ArcScalableFloatItemFragment_TargetingShape.h"
 #include "CollisionQueryParams.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Items/ArcItemData.h"
+#include "TargetingSystem/TargetingSubsystem.h"
+#include "DrawDebugHelpers.h"
 
 void UArcTT_ItemSphereTrace::Execute(const FTargetingRequestHandle& TargetingHandle) const
 {
@@ -24,11 +27,27 @@ void UArcTT_ItemSphereTrace::Execute(const FTargetingRequestHandle& TargetingHan
 		return;
 	}
 
-	FVector SourceLocation = Ctx->SourceLocation;
-	if (TargetingResults.TargetResults.Num() > 0)
+	FVector SourceLocation;
+
+	const FArcTraceOrigin* Origin = TraceOriginOverride.GetPtr<FArcTraceOrigin>();
+	if (Origin)
 	{
-		const FHitResult& PrevHit = TargetingResults.TargetResults[0].HitResult;
-		SourceLocation = PrevHit.bBlockingHit ? PrevHit.ImpactPoint : PrevHit.TraceEnd;
+		FVector Direction;
+		bool bHasDirection = false;
+		if (!Origin->Resolve(TargetingHandle, SourceLocation, Direction, bHasDirection))
+		{
+			SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
+			return;
+		}
+	}
+	else
+	{
+		SourceLocation = Ctx->SourceLocation;
+		if (TargetingResults.TargetResults.Num() > 0)
+		{
+			const FHitResult& PrevHit = TargetingResults.TargetResults[0].HitResult;
+			SourceLocation = PrevHit.bBlockingHit ? PrevHit.ImpactPoint : PrevHit.TraceEnd;
+		}
 	}
 
 	float Radius = 200.f;
@@ -59,5 +78,29 @@ void UArcTT_ItemSphereTrace::Execute(const FTargetingRequestHandle& TargetingHan
 		ResultData->HitResult = Hit;
 	}
 
+#if ENABLE_DRAW_DEBUG
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		const float DrawTime = UTargetingSubsystem::GetOverrideTargetingLifeTime();
+		DrawDebugSphere(World, SourceLocation, Radius, 16, FColor::Red, false, DrawTime, 0, 1.f);
+		for (const FHitResult& Hit : HitResults)
+		{
+			DrawDebugSphere(World, Hit.ImpactPoint, 8.f, 8, FColor::Green, false, DrawTime, 0, 1.f);
+		}
+	}
+#endif
+
 	SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 }
+
+#if ENABLE_DRAW_DEBUG
+void UArcTT_ItemSphereTrace::DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const
+{
+	if (UTargetingSubsystem::IsTargetingDebugEnabled())
+	{
+		FTargetingDefaultResultsSet& Results = FTargetingDefaultResultsSet::FindOrAdd(TargetingHandle);
+		FString DebugStr = FString::Printf(TEXT("ItemSphereTrace - Results: %d"), Results.TargetResults.Num());
+		TargetingSubsystem->DebugLine(Info, DebugStr, XOffset, YOffset, MinTextRowsToAdvance);
+	}
+}
+#endif

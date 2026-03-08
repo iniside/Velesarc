@@ -18,18 +18,11 @@
  * See the License for the specific language governing permissions
  * and limitations under the License.
  */
-
-
-
 #pragma once
-
 
 #include "Tasks/TargetingTask.h"
 #include "ArcTT_ConeTrace.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class ARCCORE_API UArcTT_ConeTrace : public UTargetingTask
 {
@@ -43,17 +36,14 @@ public:
 	TSubclassOf<AActor> ActorClass;
 
 	UPROPERTY(EditAnywhere, Category = "Config")
-	bool bDrawDebug = false;
-	
-	UPROPERTY(EditAnywhere, Category = "Config")
 	bool bOffsetConeToActorEyes = false;
 
 	UPROPERTY(EditAnywhere, Category = "Config")
 	float FromSourceActorLength = 250.f;
-	
+
 	UPROPERTY(EditAnywhere, Category = "Config")
-	float ConeLength = 1000.f; 
-	
+	float ConeLength = 1000.f;
+
 	UPROPERTY(EditAnywhere, Category = "Config")
 	float ConeAngle = 10.f;
 
@@ -62,6 +52,10 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Config")
 	float FilterPrioritizeDistance = 200.f;
-	
+
 	virtual void Execute(const FTargetingRequestHandle& TargetingHandle) const override;
+
+#if ENABLE_DRAW_DEBUG
+	virtual void DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const override;
+#endif
 };

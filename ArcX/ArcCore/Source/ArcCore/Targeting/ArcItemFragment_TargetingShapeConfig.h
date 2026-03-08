@@ -16,6 +16,9 @@ struct ARCCORE_API FArcItemFragment_TargetingShapeConfig : public FArcItemFragme
 	virtual EDataValidationResult IsDataValid(const UArcItemDefinition* ItemDefinition, class FDataValidationContext& Context) const override;
 #endif
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	EArcAoEShape Shape = EArcAoEShape::Sphere;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Box")
 	EArcAoEBoxAlignment BoxAlignment = EArcAoEBoxAlignment::LongEdgeFacingSource;
 };

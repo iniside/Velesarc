@@ -21,14 +21,9 @@
 
 #pragma once
 
-
+#include "StructUtils/InstancedStruct.h"
 #include "Tasks/TargetingTask.h"
 #include "ArcTargetingTask_LineTrace.generated.h"
-
-/**
- * 
- */
-
 
 UCLASS()
 class ARCCORE_API UArcTargetingTask_LineTrace : public UTargetingTask
@@ -36,28 +31,18 @@ class ARCCORE_API UArcTargetingTask_LineTrace : public UTargetingTask
 	GENERATED_BODY()
 
 public:
-	UArcTargetingTask_LineTrace(const FObjectInitializer& ObjectInitializer);
-
-	/** Evaluation function called by derived classes to process the targeting request */
-	virtual void Execute(const FTargetingRequestHandle& TargetingHandle) const override;
-};
-
-UCLASS()
-class ARCCORE_API UArcTargetingTask_LineTraceFromSocket : public UTargetingTask
-{
-	GENERATED_BODY()
-
-	/** The trace channel to use */
-	UPROPERTY(EditAnywhere, Category = "Target Trace Selection | Collision Data")
+	UPROPERTY(EditAnywhere, Category = "Config")
 	TEnumAsByte<ETraceTypeQuery> TraceChannel;
 
-	/** The trace channel to use */
-	UPROPERTY(EditAnywhere, Category = "Target Trace Selection | Collision Data")
-	FName SocketName;
-	
-public:
-	UArcTargetingTask_LineTraceFromSocket(const FObjectInitializer& ObjectInitializer);
+	UPROPERTY(EditAnywhere, Category = "Config")
+	float TraceDistance = 10000.f;
 
-	/** Evaluation function called by derived classes to process the targeting request */
+	UPROPERTY(EditAnywhere, Category = "Config", meta = (BaseStruct = "/Script/ArcCore.ArcTraceOrigin", ExcludeBaseStruct))
+	FInstancedStruct TraceOriginOverride;
+
 	virtual void Execute(const FTargetingRequestHandle& TargetingHandle) const override;
+
+#if ENABLE_DRAW_DEBUG
+	virtual void DrawDebug(UTargetingSubsystem* TargetingSubsystem, FTargetingDebugInfo& Info, const FTargetingRequestHandle& TargetingHandle, float XOffset, float YOffset, int32 MinTextRowsToAdvance) const override;
+#endif
 };
