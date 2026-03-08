@@ -34,7 +34,7 @@ class UChaosClothAsset;
 /**
  * 
  */
-USTRUCT()
+USTRUCT(meta = (Category = "Item Attachment"))
 struct ARCCORE_API FArcItemFragment_ChaosClothComponent : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()

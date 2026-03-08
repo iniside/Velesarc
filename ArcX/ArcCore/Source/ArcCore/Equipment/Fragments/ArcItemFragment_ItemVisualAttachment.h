@@ -64,7 +64,7 @@ public:
  *  Items, linked by this fragment, should not be instantiated within  @class UArcItemsStoreComponent.
  *  As they should only contains data relevelant to  @class UArcItemAttachmentComponent
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Visual Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Visual Item Attachment", Category = "Item Attachment"))
 struct ARCCORE_API FArcItemFragment_ItemVisualAttachment : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

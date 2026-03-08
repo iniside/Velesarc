@@ -56,7 +56,7 @@ public:
 /**
  * 
  */
-USTRUCT()
+USTRUCT(meta = (Category = "Item Attachment"))
 struct ARCCORE_API FArcItemFragment_CustomizableObject : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()

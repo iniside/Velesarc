@@ -42,7 +42,7 @@ public:
 /**
  *
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Actor Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Actor Attachment", Category = "Item Attachment"))
 struct ARCCORE_API FArcItemFragment_ActorAttachment : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()

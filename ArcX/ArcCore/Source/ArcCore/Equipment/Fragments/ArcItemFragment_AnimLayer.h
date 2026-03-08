@@ -29,7 +29,7 @@
 #include "ArcItemFragment_AnimLayer.generated.h"
 
 USTRUCT(BlueprintType
-	, meta = (DisplayName = "Item Attachment - Anim Layer"))
+	, meta = (DisplayName = "Item Attachment - Anim Layer", Category = "Animation"))
 struct ARCCORE_API FArcItemFragment_AnimLayer : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
