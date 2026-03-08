@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "CollisionQueryFilterCallbackCore.h"
 
+class AActor;
 /**
  * Chaos collision filter that blocks all hits EXCEPT actors in the ignore list.
  * Used per-entity by the projectile movement processor.
