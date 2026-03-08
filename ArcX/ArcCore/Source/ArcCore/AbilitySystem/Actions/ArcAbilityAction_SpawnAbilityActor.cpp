@@ -19,25 +19,14 @@
  * and limitations under the License.
  */
 
-#pragma once
+#include "ArcAbilityAction_SpawnAbilityActor.h"
+#include "AbilitySystem/ArcCoreGameplayAbility.h"
 
-#include "AbilitySystem/ArcAbilityAction.h"
-#include "Items/ArcItemScalableFloat.h"
-#include "ArcAbilityAction_ExecuteTargeting.generated.h"
-
-class UArcTargetingObject;
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Execute Targeting"))
-struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
+void FArcAbilityAction_SpawnAbilityActor::Execute(FArcAbilityActionContext& Context)
 {
-	GENERATED_BODY()
-
-	/** Optional override; if null the targeting object is read from the item fragment. */
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
-
-	UPROPERTY(EditAnywhere)
-	FArcScalableCurveFloat TestScalableFloat;
-	
-	virtual void Execute(FArcAbilityActionContext& Context) override;
-};
+	Context.Ability->SpawnAbilityActor(ActorClass
+		, Context.TargetData
+		, TOptional<FVector>()
+		, SpawnOrigin
+		, CustomSpawnLocation);
+}

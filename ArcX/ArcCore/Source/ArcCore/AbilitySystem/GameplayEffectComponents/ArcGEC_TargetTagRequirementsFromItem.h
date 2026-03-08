@@ -9,7 +9,7 @@
 #include "UObject/Object.h"
 #include "ArcGEC_TargetTagRequirementsFromItem.generated.h"
 
-USTRUCT()
+USTRUCT(meta = (Category = "Gameplay Ability"))
 struct FArcItemFragment_GameplayEffectTargetTagRequirements : public FArcItemFragment
 {
 	GENERATED_BODY()

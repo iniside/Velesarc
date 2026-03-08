@@ -35,7 +35,6 @@ class UArcCoreAbilitySystemComponent;
 class UScriptStruct;
 class UArcTargetingObject;
 class UArcTargetingFilterPreset;
-class UArcActorGameplayAbility;
 struct FArcGameplayAbilityActorInfo;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogArcAbility, Log, Log);
@@ -292,11 +291,12 @@ public:
 	{
 	};
 
-protected:
+
 	UArcHeroComponentBase* GetHeroComponentFromActorInfo() const;
 
 	UArcCoreAbilitySystemComponent* GetArcASC() const;
-
+	
+protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Arc Core", meta = (DisplayName = "On Avatar Set"))
 	void BP_OnAvatarSet(const FGameplayAbilityActorInfo& ActorInfo
 						, const FGameplayAbilitySpec& Spec);
@@ -385,27 +385,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")
 	bool RemoveGameplayEffectFromTarget(FGameplayAbilityTargetDataHandle TargetData, FActiveGameplayEffectHandle Handle, int32 Stacks = -1);
 
-protected:
 	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability")
 	virtual float GetAnimationPlayRate() const;
 
-	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability", meta=(ExpandBoolAsExecs = "ReturnValue"))
-	bool SpawnAbilityActor(TSubclassOf<AActor> ActorClass
-						   , FGameplayAbilityTargetingLocationInfo TargetLocation
+	/**
+	 * Spawns an actor and initializes its UArcAbilityActorComponent (if present) with this ability's context.
+	 * Location is derived from InTargetData based on SpawnOrigin.
+	 * TargetLocation, if set, is passed to UArcAbilityActorComponent for downstream systems (e.g. projectile direction).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")
+	AActor* SpawnAbilityActor(TSubclassOf<AActor> ActorClass
 						   , const FGameplayAbilityTargetDataHandle& InTargetData
-						   , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility);
-
-	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability", meta=(ExpandBoolAsExecs = "ReturnValue"))
-	bool SpawnAbilityActorTargetData(TSubclassOf<AActor> ActorClass
-						   , const FGameplayAbilityTargetDataHandle& InTargetData
-						   , EArcAbilityActorSpawnOrigin SpawnLocationType
-						   , FVector CustomSpawnLocation
-						   , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility
-						   , FArcAbilityActorHandle& OutActorHandle);
-
-	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability", meta=(ExpandBoolAsExecs = "ReturnValue"))
-	bool GetSpawnedActor(const FArcAbilityActorHandle& OutActorHandle
-						   , AActor*& OutActor);
+						   , TOptional<FVector> TargetLocation
+						   , EArcAbilityActorSpawnOrigin SpawnOrigin = EArcAbilityActorSpawnOrigin::ImpactPoint
+						   , FVector CustomSpawnLocation = FVector::ZeroVector
+						   );
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability")

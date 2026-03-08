@@ -44,78 +44,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogArcAbilitySystem
 	, All);
 
 class UArcCoreGameplayAbility;
-class UArcActorGameplayAbility;
-
-USTRUCT(BlueprintType)
-struct ARCCORE_API FArcAbilityActorHandle
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY()
-	FGameplayAbilitySpecHandle Spec;
-
-	UPROPERTY()
-	int32 Handle = -1;
-
-	static FArcAbilityActorHandle Make(FGameplayAbilitySpecHandle InSpec)
-	{
-		FArcAbilityActorHandle ReplicationHandle;
-		ReplicationHandle.Spec = InSpec;
-
-		static int32 NewHandle = 0;
-		NewHandle++;
-		
-		ReplicationHandle.Handle = NewHandle;
-		return ReplicationHandle;
-	}
-	
-	FArcAbilityActorHandle()
-		: Handle(-1)
-	{
-		
-	}
-	
-	FArcAbilityActorHandle(const FArcAbilityActorHandle& Other)
-		: Handle(Other.Handle)
-		, Spec(Other.Spec)
-	{}
-	
-	FArcAbilityActorHandle& operator=(const FArcAbilityActorHandle& Other)
-	{
-		Handle = Other.Handle;
-		Spec = Other.Spec;
-		return *this;
-	}
-	
-	bool operator==(const FArcAbilityActorHandle& Other) const
-	{
-		return Spec == Other.Spec && Handle == Other.Handle;
-	}
-
-	friend uint32 GetTypeHash(const FArcAbilityActorHandle& Other)
-	{
-		uint32 Hash1 =  GetTypeHash(Other.Spec);
-		uint32 Hash2 = GetTypeHash(Other.Handle);
-
-		return HashCombine(Hash1
-			, Hash2);
-	}
-
-	bool IsValid() const
-	{
-		return Spec.IsValid() && Handle > -1;
-	}
-};
-
-template <>
-struct TStructOpsTypeTraits<FArcAbilityActorHandle> : public TStructOpsTypeTraitsBase2<FArcAbilityActorHandle>
-{
-	enum
-	{
-		WithCopy = true
-	};
-};
 
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcGameplayAttributeChangedData
@@ -508,70 +436,6 @@ private:
 	void InternalAnimMontageJumpToSection(UAnimMontage* NewAnimMontage
 										  , FName SectionName);
 
-	// Actor Spawning
-public:	
-	TMap<FArcAbilityActorHandle, TWeakObjectPtr<AActor>> SpawnedActors;
-	
-	/**
-	 * Predicvtively spawn actor, on client and then replace it by server version.
-	 * Actor must be replicated.   
-	 */
-	FArcAbilityActorHandle SpawnPredictedActor(TSubclassOf<AActor> InActorClass
-		, FGameplayAbilitySpecHandle InHandle
-		, const FGameplayAbilityTargetDataHandle& TargetData
-		, const FVector& Location
-		, const FRotator& Rotation);
-
-	/**
-	 * Spawn actor, which is client authoritative.
-	 * This means actor, should not replicate, and client should report events to server version to actor, via some kind of proxy.
-	 */
-	FArcAbilityActorHandle SpawnClientAuthoritativeActor(TSubclassOf<AActor> InActorClass
-		, FGameplayAbilitySpecHandle InHandle
-		, const FGameplayAbilityTargetDataHandle& TargetData
-		, const FVector& Location
-		, const FRotator& Rotation
-		, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility);
-
-	/**
-	 * Spawn snew actor on server, and then actor self replicate back to client.
-	 */
-	FArcAbilityActorHandle SpawnActor(TSubclassOf<AActor> InActorClass
-		, FGameplayAbilitySpecHandle InHandle
-		, const FGameplayAbilityTargetDataHandle& TargetData
-		, const FVector& Location
-		, const FRotator& Rotation);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerSpawnActor(TSubclassOf<AActor> InActorClass, FArcAbilityActorHandle InHandle, const FVector& Location, const FRotator& Rotation , const FGameplayAbilityTargetDataHandle& InTargetData
-																	 , TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility);
-
-	void DestroyActor(const FArcAbilityActorHandle& InHandle, bool bReplicate);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerDestroyActor(const FArcAbilityActorHandle& InHandle);
-	
-	UFUNCTION(NetMulticast, Reliable)
-	void NetMulticastSpawnActor(TSubclassOf<AActor> InActorClass, FArcAbilityActorHandle InHandle, const FVector& Location, const FRotator& Rotation);
-
-	void SendActorHitEvent(const FArcAbilityActorHandle& InHandle, const FHitResult& Hit);
-	void SendActorOverlapStartEvent(const FArcAbilityActorHandle& InHandle, const FHitResult& Hit);
-	void SendActorOverlapEndEvent(const FArcAbilityActorHandle& InHandle
-								 , UPrimitiveComponent* OverlappedComponent
-								 , AActor* OtherActor
-								 , UPrimitiveComponent* OtherComp);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerSendActorHitEventFromClient(const FArcAbilityActorHandle& InHandle, const FHitResult& Hit);
-
-	UFUNCTION(Server, Reliable)
-	void ServerSendActorOverlapStartEventClient(const FArcAbilityActorHandle& InHandle, const FHitResult& Hit);
-
-	UFUNCTION(Server, Reliable)
-	void ServerSendActorOverlapEndEventClient(const FArcAbilityActorHandle& InHandle, UPrimitiveComponent* OverlappedComponent
-										 , AActor* OtherActor
-										 , UPrimitiveComponent* OtherComp);
-	
 private:
 	// Targeting
 
@@ -684,7 +548,6 @@ public:
 	const TMap<FGameplayAbilitySpecHandle, double>& GetDebug_AbilityActivationStartTimes() const { return AbilityActivationStartTimes; }
 	const TArray<FGameplayAbilitySpecHandle>& GetDebug_InputPressedSpecHandles() const { return InputPressedSpecHandles; }
 	const TArray<FGameplayAbilitySpecHandle>& GetDebug_InputHeldSpecHandles() const { return InputHeldSpecHandles; }
-	const TMap<FArcAbilityActorHandle, TWeakObjectPtr<AActor>>& GetDebug_SpawnedActors() const { return SpawnedActors; }
 #endif
 	
 	void HandleTargetingCompleted(FTargetingRequestHandle TargetingRequestHandle, FGameplayTag TargetingTag);
@@ -717,67 +580,13 @@ public:
 	static UTargetingPreset* BP_GetGlobalTargetingPreset(UArcCoreAbilitySystemComponent* InASC, FGameplayTag TargetingTag, bool& bWasSuccessful);
 };
 
-UENUM(BlueprintType)
-enum class EArcActorSpawnMode : uint8
-{
-	ClientAuthoritative,
-	Predicted,
-	Server
-};
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FArcAbilityActorDelegate);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(FArcAbilityActorOverlapStartEvent, UPrimitiveComponent*, OverlappedComponent
-																   , AActor*, OtherActor
-																   , UPrimitiveComponent*,OtherComp 
-																   , int32, OtherBodyIndex
-																   , bool, bFromSweep
-																   , const FHitResult&, SweepResult);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FArcAbilityActorOverlapEndEvent, UPrimitiveComponent*, OverlappedComponent
-																 , AActor*, OtherActor
-																 , UPrimitiveComponent*,OtherComp
-																 , int32, OtherBodyIndex);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FiveParams(FArcAbilityActorHitEvent, UPrimitiveComponent*, HitComponent
-																 , AActor*, OtherActor
-																 , UPrimitiveComponent*, OtherComp
-																 , FVector, NormalImpulse
-																 , const FHitResult&, Hit);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FArcAbilityActorInitializedDelegate);
-
-UINTERFACE(BlueprintType)
-class ARCCORE_API UArcAbilityServerActorInterface : public UInterface
-{
-	GENERATED_BODY()
-};
-
-class ARCCORE_API IArcAbilityServerActorInterface
-{
-	GENERATED_BODY()
-};
-
-UINTERFACE(BlueprintType)
-class ARCCORE_API UArcAbilityClientAuthActorInterface : public UInterface
-{
-	GENERATED_BODY()
-};
-
-class ARCCORE_API IArcAbilityClientAuthActorInterface
-{
-	GENERATED_BODY()
-};
-
-UINTERFACE(BlueprintType)
-class ARCCORE_API UArcAbilityClientPredictedActorInterface : public UInterface
-{
-	GENERATED_BODY()
-};
-
-class ARCCORE_API IArcAbilityClientPredictedActorInterface
-{
-	GENERATED_BODY()
-};
-
+/**
+ * Lightweight component for actors spawned by abilities.
+ * Tracks the instigator (ASC + ability) and provides item data access.
+ * Add this to any actor that should be spawnable via the ability system.
+ */
 UCLASS(Blueprintable, BlueprintType, DefaultToInstanced, ClassGroup = (ArcCore), meta = (BlueprintSpawnableComponent))
 class ARCCORE_API UArcAbilityActorComponent : public UActorComponent
 {
@@ -787,66 +596,33 @@ public:
 	UPROPERTY()
 	TObjectPtr<UPrimitiveComponent> RootPrim;
 
-	UPROPERTY(BlueprintAssignable)
-	FArcAbilityActorInitializedDelegate OnInitializedEvent;
-	
-	UPROPERTY(BlueprintAssignable)
-	FArcAbilityActorOverlapStartEvent OnActorOverlapStartEvent;
-	
-	UPROPERTY(BlueprintAssignable)
-	FArcAbilityActorOverlapEndEvent OnActorOverlapEndEvent;
-
-	UPROPERTY(BlueprintAssignable)
-	FArcAbilityActorHitEvent OnActorHitEvent;
-	
-	UPROPERTY(Replicated)
-	EArcActorSpawnMode SpawnMode;
-
-	UPROPERTY(EditAnywhere)
-	bool bAllowOwnerHit = false;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility;
-
-	FGameplayAbilitySpecHandle GrantedAbility;
-
-	UPROPERTY(BlueprintReadOnly)
-	FGameplayAbilityTargetDataHandle TargetData;
-	
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<UArcCoreGameplayAbility> InstigatorAbility;
-	
-	UPROPERTY(Replicated)
+
 	TWeakObjectPtr<UArcCoreAbilitySystemComponent> ASC;
 
-	UPROPERTY(Replicated)
-	FArcAbilityActorHandle AbilityActorHandle;
-
-	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+	UPROPERTY(BlueprintReadOnly, Category = "Arc Core|Ability System")
+	FVector TargetLocation;
 	
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
-	EArcActorSpawnMode GetSpawnMode() const
-	{
-		return SpawnMode;
-	}
+	UPROPERTY(BlueprintReadOnly, Category = "Arc Core|Ability System")
+	bool bHaveTargetLocation = false;
 	
 	void Initialize(UArcCoreAbilitySystemComponent* OwningASC
 		, UArcCoreGameplayAbility* InInstigatorAbility
-		, const FArcAbilityActorHandle& InHandle
-		, const FGameplayAbilityTargetDataHandle& InTargetData
-		, TSubclassOf<UArcActorGameplayAbility> InActorGrantedAbility);
+		, TOptional<FVector> InTargetLocation = {});
 
+	UPROPERTY(BlueprintAssignable)
+	FArcAbilityActorDelegate OnInitializedDelegate;
+	
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnInitialized();
+	
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
 	AActor* GetAvatar() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
 	AActor* GetOwnerActor() const;
-	
-	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
-	void DestroyActor(bool bReplicate);
-	
+
 	UFUNCTION(BlueprintPure, Category = "Arc Core|Ability")
 	const UArcItemDefinition* GetSourceItemData() const;
 
@@ -855,104 +631,6 @@ public:
 						  , int32& OutFragment);
 
 	DECLARE_FUNCTION(execFindItemFragment);
-	
-	UFUNCTION()
-	virtual void NativeOnActorHit(UPrimitiveComponent* HitComponent
-								  , AActor* OtherActor
-								  , UPrimitiveComponent* OtherComp
-								  , FVector NormalImpulse
-								  , const FHitResult& Hit);
-
-	UFUNCTION()
-	virtual void NativeOnActorOverlapStart(UPrimitiveComponent* OverlappedComponent
-										   , AActor* OtherActor
-										   , UPrimitiveComponent* OtherComp
-										   , int32 OtherBodyIndex
-										   , bool bFromSweep
-										   , const FHitResult& SweepResult);
-
-	UFUNCTION()
-	virtual void NativeOnActorOverlapEnd(UPrimitiveComponent* OverlappedComponent
-										 , AActor* OtherActor
-										 , UPrimitiveComponent* OtherComp
-										 , int32 OtherBodyIndex);
-
-	void NativeDispatchOnActorHit(AActor* SelfActor, const FHitResult& Hit);
-	void NativeDispatchOnActorOverlapStart(AActor* SelfActor, const FHitResult& Hit);
-	void NativeDispatchOnActorOverlapEnd(AActor* SelfActor, UPrimitiveComponent* OverlappedComponent
-										 , AActor* OtherActor
-										 , UPrimitiveComponent* OtherComp);
-	
-};
-
-USTRUCT()
-struct ARCCORE_API FArcMakeLocationInfo
-{
-	GENERATED_BODY()
-
-	virtual ~FArcMakeLocationInfo() = default;
-
-	virtual void MakeLocationInfo(UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation) const {}
-};
-
-USTRUCT()
-struct ARCCORE_API FArcTransformTargetData
-{
-	GENERATED_BODY()
-
-	virtual ~FArcTransformTargetData() = default;
-
-	virtual void MakeLocationInfo(UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation) const {}
-};
-
-USTRUCT(BlueprintType, meta = (InlineDetails))
-struct FArcItemFragment_MakeLocationInfo : public FArcItemFragment
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (BaseStruct = "/Script/ArcCore.ArcMakeLocationInfo"))
-	FInstancedStruct Transformer;
-};
-
-UCLASS()
-class UArcAbilityTargetDataUtils : public UBlueprintFunctionLibrary
-{
-	GENERATED_BODY()
-
-public:
-	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
-	static void MakeLocationInfo(const FInstancedStruct& Transformer, UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation);
-
-	UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
-	static void MakeLocationInfoFragment(const FArcItemFragment_MakeLocationInfo& Transformer, UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation);
-	
-	//UFUNCTION(BlueprintCallable, Category = "Arc Core|Ability System")
-	//static FGameplayAbilityTargetDataHandle MakeProjectileTargetDataFromHitResult();
-};
-
-USTRUCT()
-struct ARCCORE_API FArcFindFloorForTarget : public FArcMakeLocationInfo
-{
-	GENERATED_BODY()
-
-	virtual ~FArcFindFloorForTarget() override = default;
-
-	virtual void MakeLocationInfo(UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation) const override;
-
-	
-};
-
-USTRUCT()
-struct ARCCORE_API FArcSourceLocationFromCharacter : public FArcMakeLocationInfo
-{
-	GENERATED_BODY()
-
-	virtual ~FArcSourceLocationFromCharacter() override = default;
-
-	virtual void MakeLocationInfo(UArcCoreGameplayAbility* InAbility, FGameplayAbilityTargetDataHandle TargetDataHandle, FGameplayAbilityTargetingLocationInfo& SourceLocation) const override;
-
-	UPROPERTY(EditAnywhere)
-	float Distance = 150.f;
 };
 
 USTRUCT(BlueprintType)
@@ -961,6 +639,9 @@ struct FArcItemFragment_ProjectileSettings : public FArcItemFragment
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<AActor> ActorClass;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float MaxVelocity = 400.0f;
 

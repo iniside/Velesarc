@@ -27,14 +27,13 @@
 
 #include "ArcAT_WaitSpawnAbilityActor.generated.h"
 
-class AArcAbilityActor;
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWaitSpawnAbilityActorDelegate
 	, AActor*
 	, SpawnedActor);
 
 /**
- *
+ * Ability task that spawns an actor using deferred spawning.
+ * After BeginSpawningActor, the caller can configure the actor before FinishSpawningActor completes it.
  */
 UCLASS()
 class ARCCORE_API UArcAT_WaitSpawnAbilityActor : public UArcAbilityTask
@@ -43,38 +42,24 @@ class ARCCORE_API UArcAT_WaitSpawnAbilityActor : public UArcAbilityTask
 
 private:
 	bool bAllowOnNonAuthority = false;
-	
+
 	FGameplayAbilityTargetDataHandle CachedTargetDataHandle;
-	
-	TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility;
-	
+
 	UPROPERTY(BlueprintAssignable)
 	FWaitSpawnAbilityActorDelegate Success;
 
 	UPROPERTY(BlueprintAssignable)
 	FWaitSpawnAbilityActorDelegate DidNotSpawn;
 
-	EArcActorSpawnMode SpawnMode = EArcActorSpawnMode::Server;
 	bool SpawnUnderTargetActor = false;
-	
+
 public:
-	/**
-	 * @brief Spawns GameplayAbility managed actor.
-	 * @param OwningAbility Hidden
-	 * @param InActorGrantedAbility Ability which will manage this actor
-	 * @param TargetData Target data which will be used to find location of actor spawn
-	 * @param AbilityActorClass Class of actor to spawn.
-	 * @param InbAllowOnNonAuthority If we should allow to spawn actor non authority.
-	 * @return 
-	 */
 	UFUNCTION(BlueprintCallable
 		, meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "true")
 		, Category = "Arc Core|Ability|Tasks")
 	static UArcAT_WaitSpawnAbilityActor* WaitSpawnAbilityActor(UGameplayAbility* OwningAbility
-															   , TSubclassOf<UArcActorGameplayAbility> InActorGrantedAbility
 															   , FGameplayAbilityTargetDataHandle TargetData
 															   , TSubclassOf<AActor> Class
-															   , EArcActorSpawnMode InSpawnMode = EArcActorSpawnMode::Server
 															   , bool InbAllowOnNonAuthority = false
 															   , bool bSpawnUnderTargetActor = true);
 
@@ -82,10 +67,8 @@ public:
 		, meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "true")
 		, Category = "Abilities")
 	bool BeginSpawningActor(UGameplayAbility* OwningAbility
-							, TSubclassOf<UArcActorGameplayAbility> InAbilityEffect
 							, FGameplayAbilityTargetDataHandle TargetData
 							, TSubclassOf<AActor> Class
-							, EArcActorSpawnMode InSpawnMode
 							, bool InbAllowOnNonAuthority
 							, bool bSpawnUnderTargetActor
 							, AActor*& SpawnedActor);
@@ -94,7 +77,6 @@ public:
 		, meta = (HidePin = "OwningAbility", DefaultToSelf = "OwningAbility", BlueprintInternalUseOnly = "true")
 		, Category = "Abilities")
 	void FinishSpawningActor(UGameplayAbility* OwningAbility
-							 , TSubclassOf<UArcActorGameplayAbility> InAbilityEffect
 							 , FGameplayAbilityTargetDataHandle TargetData
 							 , AActor* SpawnedActor);
 };

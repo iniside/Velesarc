@@ -22,22 +22,23 @@
 #pragma once
 
 #include "AbilitySystem/ArcAbilityAction.h"
-#include "Items/ArcItemScalableFloat.h"
-#include "ArcAbilityAction_ExecuteTargeting.generated.h"
+#include "GameplayTagContainer.h"
+#include "ArcAbilityAction_AddLooseTags.generated.h"
 
-class UArcTargetingObject;
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Execute Targeting"))
-struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
+/**
+ * Latent action that adds loose gameplay tags to the ability system component.
+ * Tags are removed when the action is cancelled or the ability ends.
+ *
+ * LatentTag must be set for this action to function as a latent (cancelable) action.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Add Loose Tags"))
+struct ARCCORE_API FArcAbilityAction_AddLooseTags : public FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	/** Optional override; if null the targeting object is read from the item fragment. */
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
+	UPROPERTY(EditAnywhere, Category = "Tags")
+	FGameplayTagContainer Tags;
 
-	UPROPERTY(EditAnywhere)
-	FArcScalableCurveFloat TestScalableFloat;
-	
 	virtual void Execute(FArcAbilityActionContext& Context) override;
+	virtual void CancelLatent(FArcAbilityActionContext& Context) override;
 };

@@ -19,32 +19,26 @@
  * and limitations under the License.
  */
 
-#pragma once
+#include "ArcAbilityAction_AddLooseTags.h"
+#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "AbilitySystemComponent.h"
 
-
-#include "GameFramework/ProjectileMovementComponent.h"
-#include "GameplayEffectTypes.h"
-#include "ArcAbilityPMC.generated.h"
-
-/**
- *
- */
-UCLASS(ClassGroup = Movement
-	, meta = (BlueprintSpawnableComponent)
-	, ShowCategories = (Velocity))
-class ARCCORE_API UArcAbilityPMC : public UProjectileMovementComponent
+void FArcAbilityAction_AddLooseTags::Execute(FArcAbilityActionContext& Context)
 {
-	GENERATED_BODY()
+	if (Tags.IsEmpty()) { return; }
 
-public:
-	UArcAbilityPMC();
+	UAbilitySystemComponent* ASC = Context.Ability->GetAbilitySystemComponentFromActorInfo();
+	if (!ASC) { return; }
 
-	/*
-	 * Apply effect for the lifetime of this projectile. Either to instigator,
-	 * or to the owner of this component (if the owner have AbilitySystem).
-	 */
-	void ApplyEffect(AActor* Instigator
-					 , FGameplayEffectSpecHandle EffectSpec);
+	ASC->AddLooseGameplayTags(Tags);
+}
 
-	virtual void InitializeComponent() override;
-};
+void FArcAbilityAction_AddLooseTags::CancelLatent(FArcAbilityActionContext& Context)
+{
+	if (Tags.IsEmpty()) { return; }
+
+	UAbilitySystemComponent* ASC = Context.Ability->GetAbilitySystemComponentFromActorInfo();
+	if (!ASC) { return; }
+
+	ASC->RemoveLooseGameplayTags(Tags);
+}

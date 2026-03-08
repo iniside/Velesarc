@@ -28,9 +28,6 @@
 #include "Items/Fragments/ArcItemFragment.h"
 #include "ArcItemFragment_AbilityActor.generated.h"
 
-class UArcActorGameplayAbility;
-class AArcAbilityActor;
-
 USTRUCT(BlueprintType)
 struct FArcAbilityActorItem
 {
@@ -39,9 +36,6 @@ struct FArcAbilityActorItem
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
 	TSoftClassPtr<AActor> AbilityActorClass;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game"))
-	TSubclassOf<UArcActorGameplayAbility> AbilityClass;
 };
 
 /**

@@ -584,91 +584,26 @@ float UArcCoreGameplayAbility::GetAnimationPlayRate() const
 	return 1.0f;
 }
 
-bool UArcCoreGameplayAbility::SpawnAbilityActor(TSubclassOf<AActor> ActorClass
-	, FGameplayAbilityTargetingLocationInfo TargetLocation
+AActor* UArcCoreGameplayAbility::SpawnAbilityActor(TSubclassOf<AActor> ActorClass
 	, const FGameplayAbilityTargetDataHandle& InTargetData
-	, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility)
+	, TOptional<FVector> TargetLocation
+	, EArcAbilityActorSpawnOrigin SpawnOrigin
+	, FVector CustomSpawnLocation)
 {
 	if (ActorClass == nullptr)
 	{
-		return false;
-	}
-
-	FVector Location = TargetLocation.LiteralTransform.GetLocation();
-	FRotator Rotation = TargetLocation.LiteralTransform.GetRotation().Rotator();
-
-	const bool bIsServer = ActorClass->ImplementsInterface(UArcAbilityServerActorInterface::StaticClass());
-	const bool bIsClientAuth = ActorClass->ImplementsInterface(UArcAbilityClientAuthActorInterface::StaticClass());
-	const bool bIsClientPredicted = ActorClass->ImplementsInterface(UArcAbilityClientPredictedActorInterface::StaticClass());
-
-	if (!bIsServer && !bIsClientAuth && !bIsClientPredicted)
-	{
-		checkf(false, TEXT("Actor spawned by this function needs to implement one of interfaces, ArcAbilityServerActorInterface, ArcAbilityClientAuthActorInterface, ArcAbilityClientPredictedActorInterface:"));
-		return false;
-	}
-
-	UArcCoreAbilitySystemComponent* ArcASC =  Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
-	if (ArcASC == nullptr)
-	{
-		return false;
-	}
-
-	ENetMode NM = ArcASC->GetNetMode();
-	FArcAbilityActorHandle Handle;
-	if (bIsClientAuth && (NM != ENetMode::NM_DedicatedServer))
-	{
-		Handle = ArcASC->SpawnClientAuthoritativeActor(ActorClass
-			, GetSpecHandle()
-			, InTargetData
-			, Location
-			, Rotation
-			, ActorGrantedAbility);
-
-		TWeakObjectPtr<AActor> SpawnedActor = ArcASC->SpawnedActors[Handle];
-		UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
-
-		AAC->Initialize(ArcASC, this, Handle, InTargetData,  ActorGrantedAbility);
-	}
-	else if (bIsServer && (NM != ENetMode::NM_Client))
-	{
-		Handle =  ArcASC->SpawnActor(ActorClass
-			, GetSpecHandle()
-			, InTargetData
-			, Location
-			, Rotation);
-
-		TWeakObjectPtr<AActor> SpawnedActor = ArcASC->SpawnedActors[Handle];
-		UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
-
-		AAC->Initialize(ArcASC, this, Handle, InTargetData,  ActorGrantedAbility);
-	}
-
-	return true;
-}
-
-bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> ActorClass
-	, const FGameplayAbilityTargetDataHandle& InTargetData
-	, EArcAbilityActorSpawnOrigin SpawnLocationType
-	, FVector CustomSpawnLocation
-	, TSubclassOf<UArcActorGameplayAbility> ActorGrantedAbility
-	, FArcAbilityActorHandle& OutActorHandle)
-{
-	if (ActorClass == nullptr)
-	{
-		return false;
+		return nullptr;
 	}
 
 	if (!InTargetData.IsValid(0))
 	{
-		return false;
+		return nullptr;
 	}
-
-	FTransform OriginTM = InTargetData.Get(0)->GetOrigin();
 
 	FVector Location = InTargetData.Get(0)->GetEndPoint();
 	FRotator Rotation = InTargetData.Get(0)->GetEndPointTransform().GetRotation().Rotator();
 
-	switch (SpawnLocationType)
+	switch (SpawnOrigin)
 	{
 		case EArcAbilityActorSpawnOrigin::ImpactPoint:
 		{
@@ -679,7 +614,6 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 				Location = Hit->ImpactPoint;
 				Rotation = Hit->ImpactNormal.Rotation();
 			}
-
 			break;
 		}
 		case EArcAbilityActorSpawnOrigin::ActorLocation:
@@ -708,11 +642,9 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 		}
 		case EArcAbilityActorSpawnOrigin::Origin:
 		{
-			const bool bHasOrigin = InTargetData.Get(0)->HasOrigin();
-			if (bHasOrigin)
+			if (InTargetData.Get(0)->HasOrigin())
 			{
-
-				OriginTM = InTargetData.Get(0)->GetOrigin();
+				FTransform OriginTM = InTargetData.Get(0)->GetOrigin();
 				Location = OriginTM.GetLocation();
 				Rotation = OriginTM.GetRotation().Rotator();
 			}
@@ -725,76 +657,29 @@ bool UArcCoreGameplayAbility::SpawnAbilityActorTargetData(TSubclassOf<AActor> Ac
 		}
 	}
 
-	const bool bIsServer = ActorClass->ImplementsInterface(UArcAbilityServerActorInterface::StaticClass());
-	const bool bIsClientAuth = ActorClass->ImplementsInterface(UArcAbilityClientAuthActorInterface::StaticClass());
-	const bool bIsClientPredicted = ActorClass->ImplementsInterface(UArcAbilityClientPredictedActorInterface::StaticClass());
-
-	if (!bIsServer && !bIsClientAuth && !bIsClientPredicted)
+	UWorld* World = GetWorld();
+	if (World == nullptr)
 	{
-		checkf(false, TEXT("Actor spawned by this function needs to implement one of interfaces, ArcAbilityServerActorInterface, ArcAbilityClientAuthActorInterface, ArcAbilityClientPredictedActorInterface:"));
-		return false;
+		return nullptr;
 	}
 
-	UArcCoreAbilitySystemComponent* ArcASC =  Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
-	if (ArcASC == nullptr)
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AActor* SpawnedActor = World->SpawnActor<AActor>(ActorClass, Location, Rotation, SpawnParams);
+	if (SpawnedActor == nullptr)
 	{
-		return false;
+		return nullptr;
 	}
 
-	ENetMode NM = ArcASC->GetNetMode();
-	FArcAbilityActorHandle Handle;
-	if (bIsClientAuth && (NM != ENetMode::NM_DedicatedServer))
+	UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
+	if (AAC)
 	{
-		Handle = ArcASC->SpawnClientAuthoritativeActor(ActorClass
-			, GetSpecHandle()
-			, InTargetData
-			, Location
-			, Rotation
-			, ActorGrantedAbility);
-
-		TWeakObjectPtr<AActor> SpawnedActor = ArcASC->SpawnedActors[Handle];
-		UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
-
-		AAC->Initialize(ArcASC, this, Handle, InTargetData,  ActorGrantedAbility);
-	}
-	else if (bIsServer && (NM != ENetMode::NM_Client))
-	{
-		Handle =  ArcASC->SpawnActor(ActorClass
-			, GetSpecHandle()
-			, InTargetData
-			, Location
-			, Rotation);
-
-		if (Handle.IsValid())
-		{
-			TWeakObjectPtr<AActor> SpawnedActor = ArcASC->SpawnedActors[Handle];
-			UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
-
-			AAC->Initialize(ArcASC, this, Handle, InTargetData,  ActorGrantedAbility);
-		}
+		UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+		AAC->Initialize(ArcASC, this, TargetLocation);
 	}
 
-	OutActorHandle = Handle;
-	return true;
-}
-
-bool UArcCoreGameplayAbility::GetSpawnedActor(const FArcAbilityActorHandle& OutActorHandle, AActor*& OutActor)
-{
-	UArcCoreAbilitySystemComponent* ArcASC =  Cast<UArcCoreAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
-	if (ArcASC == nullptr)
-	{
-		OutActor = nullptr;
-		return false;
-	}
-
-	if (ArcASC->SpawnedActors.Contains(OutActorHandle))
-	{
-		OutActor = ArcASC->SpawnedActors[OutActorHandle].Get();
-		return true;
-	}
-
-	OutActor = nullptr;
-	return false;
+	return SpawnedActor;
 }
 
 void UArcCoreGameplayAbility::ExecuteActionList(TArray<FInstancedStruct>& Actions, FArcAbilityActionContext& Context)

@@ -22,22 +22,28 @@
 #pragma once
 
 #include "AbilitySystem/ArcAbilityAction.h"
-#include "Items/ArcItemScalableFloat.h"
-#include "ArcAbilityAction_ExecuteTargeting.generated.h"
+#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "ArcAbilityAction_SpawnMassEntity.generated.h"
 
-class UArcTargetingObject;
+class UMassEntityConfigAsset;
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Execute Targeting"))
-struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
+/**
+ * Spawns a Mass entity from a MassEntityConfig asset using the context's TargetData
+ * to determine spawn location. Sets FTransformFragment on the spawned entity if present.
+ *
+ * Spawn location is derived from the first hit result's ImpactPoint in TargetData,
+ * or from the target data endpoint if no hit result is available.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Spawn Mass Entity"))
+struct ARCCORE_API FArcAbilityAction_SpawnMassEntity : public FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	/** Optional override; if null the targeting object is read from the item fragment. */
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
+	UPROPERTY(EditAnywhere, Category = "Mass")
+	TObjectPtr<UMassEntityConfigAsset> EntityConfig;
 
-	UPROPERTY(EditAnywhere)
-	FArcScalableCurveFloat TestScalableFloat;
-	
+	UPROPERTY(EditAnywhere, Category = "Mass")
+	EArcAbilityActorSpawnOrigin SpawnOrigin = EArcAbilityActorSpawnOrigin::ImpactPoint;
+
 	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

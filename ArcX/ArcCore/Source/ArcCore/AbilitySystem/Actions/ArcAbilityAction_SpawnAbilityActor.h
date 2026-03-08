@@ -22,22 +22,25 @@
 #pragma once
 
 #include "AbilitySystem/ArcAbilityAction.h"
-#include "Items/ArcItemScalableFloat.h"
-#include "ArcAbilityAction_ExecuteTargeting.generated.h"
+#include "AbilitySystem/ArcCoreGameplayAbility.h"
+#include "ArcAbilityAction_SpawnAbilityActor.generated.h"
 
-class UArcTargetingObject;
-
-USTRUCT(BlueprintType, meta = (DisplayName = "Execute Targeting"))
-struct ARCCORE_API FArcAbilityAction_ExecuteTargeting : public FArcAbilityAction
+/**
+ * Spawns an ability actor using the context's TargetData to determine spawn location.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Spawn Ability Actor"))
+struct ARCCORE_API FArcAbilityAction_SpawnAbilityActor : public FArcAbilityAction
 {
 	GENERATED_BODY()
 
-	/** Optional override; if null the targeting object is read from the item fragment. */
-	UPROPERTY(EditAnywhere)
-	TObjectPtr<UArcTargetingObject> TargetingObjectOverride;
+	UPROPERTY(EditAnywhere, Category = "Actor")
+	TSubclassOf<AActor> ActorClass;
 
-	UPROPERTY(EditAnywhere)
-	FArcScalableCurveFloat TestScalableFloat;
-	
+	UPROPERTY(EditAnywhere, Category = "Actor")
+	EArcAbilityActorSpawnOrigin SpawnOrigin = EArcAbilityActorSpawnOrigin::ImpactPoint;
+
+	UPROPERTY(EditAnywhere, Category = "Actor", meta = (EditCondition = "SpawnOrigin == EArcAbilityActorSpawnOrigin::Custom", EditConditionHides))
+	FVector CustomSpawnLocation = FVector::ZeroVector;
+
 	virtual void Execute(FArcAbilityActionContext& Context) override;
 };

@@ -22,39 +22,32 @@
 #include "ArcCore/AbilitySystem/Tasks/ArcAT_WaitSpawnAbilityActor.h"
 
 #include "AbilitySystemComponent.h"
-#include "ArcCore/AbilitySystem/Actors/ArcAbilityActor.h"
+#include "ArcCore/AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "ArcCore/AbilitySystem/ArcCoreGameplayAbility.h"
 #include "Components/CapsuleComponent.h"
-#include "Engine/Engine.h"
-#include "Engine/NetDriver.h"
+#include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 UArcAT_WaitSpawnAbilityActor* UArcAT_WaitSpawnAbilityActor::WaitSpawnAbilityActor(UGameplayAbility* OwningAbility
-																				  , TSubclassOf<UArcActorGameplayAbility> InActorGrantedAbility
 																				  , FGameplayAbilityTargetDataHandle TargetData
 																				  , TSubclassOf<AActor> Class
-																				  , EArcActorSpawnMode InSpawnMode
 																				  , bool InbAllowOnNonAuthority
 																				  , bool bSpawnUnderTargetActor)
 {
 	UArcAT_WaitSpawnAbilityActor* MyObj = NewAbilityTask<UArcAT_WaitSpawnAbilityActor>(OwningAbility);
 	MyObj->CachedTargetDataHandle = MoveTemp(TargetData);
-	MyObj->ActorGrantedAbility = InActorGrantedAbility;
 	MyObj->bAllowOnNonAuthority = InbAllowOnNonAuthority;
 	MyObj->SpawnUnderTargetActor = bSpawnUnderTargetActor;
-	MyObj->SpawnMode = InSpawnMode;
-	
+
 	return MyObj;
 }
 
 // ---------------------------------------------------------------------------------------
 
 bool UArcAT_WaitSpawnAbilityActor::BeginSpawningActor(UGameplayAbility* OwningAbility
-													  , TSubclassOf<UArcActorGameplayAbility> InAbilityEffect
 													  , FGameplayAbilityTargetDataHandle TargetData
 													  , TSubclassOf<AActor> Class
-													  , EArcActorSpawnMode InSpawnMode
 													  , bool InbAllowOnNonAuthority
 													  , bool bSpawnUnderTargetActor
 													  , AActor*& SpawnedActor)
@@ -64,8 +57,6 @@ bool UArcAT_WaitSpawnAbilityActor::BeginSpawningActor(UGameplayAbility* OwningAb
 	{
 		UWorld* const World = AbilitySystemComponent->GetWorld();
 
-		// don't like it. Real instigatgo might not be pawn, but it is so hardcoded in
-		// engine...
 		APawn* Instigator = Cast<APawn>(GetAvatarActor());
 		if (World)
 		{
@@ -85,15 +76,11 @@ bool UArcAT_WaitSpawnAbilityActor::BeginSpawningActor(UGameplayAbility* OwningAb
 		}
 		return false;
 	}
-	
-	UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent);
-	UArcCoreGameplayAbility* ArcGA = Cast<UArcCoreGameplayAbility>(OwningAbility);
-	
+
 	return true;
 }
 
 void UArcAT_WaitSpawnAbilityActor::FinishSpawningActor(UGameplayAbility* OwningAbility
-													   , TSubclassOf<UArcActorGameplayAbility> InAbilityEffect
 													   , FGameplayAbilityTargetDataHandle TargetData
 													   , AActor* SpawnedActor)
 {
@@ -102,7 +89,6 @@ void UArcAT_WaitSpawnAbilityActor::FinishSpawningActor(UGameplayAbility* OwningA
 		bool bTransformSet = false;
 		FTransform SpawnTransform;
 		if (FGameplayAbilityTargetData* LocationData = CachedTargetDataHandle.Get(0))
-		// Hardcode to use data 0. It's OK if data isn't useful/valid.
 		{
 			if (SpawnUnderTargetActor)
 			{
@@ -130,7 +116,6 @@ void UArcAT_WaitSpawnAbilityActor::FinishSpawningActor(UGameplayAbility* OwningA
 			}
 			else
 			{
-				// Set location. Rotation is unaffected.
 				if (LocationData->HasHitResult())
 				{
 					SpawnTransform.SetLocation(LocationData->GetHitResult()->Location);
@@ -145,6 +130,14 @@ void UArcAT_WaitSpawnAbilityActor::FinishSpawningActor(UGameplayAbility* OwningA
 		}
 
 		SpawnedActor->FinishSpawning(SpawnTransform);
+
+		UArcAbilityActorComponent* AAC = SpawnedActor->FindComponentByClass<UArcAbilityActorComponent>();
+		if (AAC)
+		{
+			UArcCoreAbilitySystemComponent* ArcASC = Cast<UArcCoreAbilitySystemComponent>(AbilitySystemComponent);
+			UArcCoreGameplayAbility* ArcGA = Cast<UArcCoreGameplayAbility>(OwningAbility);
+			AAC->Initialize(ArcASC, ArcGA);
+		}
 
 		if (ShouldBroadcastAbilityTaskDelegates())
 		{

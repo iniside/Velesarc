@@ -57,7 +57,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Preset")
 	TObjectPtr<UArcAbilityActionsPreset> Preset;
 
-	UPROPERTY(EditAnywhere, Category = "Events")
+	UPROPERTY(EditAnywhere, Category = "Events", meta = (TitleProperty))
 	TArray<FArcAbilityEventActions> EventActions;
 
 	UPROPERTY(EditAnywhere, Category = "Targeting", meta = (BaseStruct = "/Script/ArcCore.ArcAbilityAction", ExcludeBaseStruct))
