@@ -10,11 +10,9 @@
 #include "NiagaraUserRedirectionParameterStore.h"
 #include "PrimitiveSceneDesc.h"
 #include "PrimitiveSceneInfoData.h"
-#include "UObject/StrongObjectPtr.h"
 
 struct FMassEntityManager;
 class UNiagaraSystem;
-class USceneComponent;
 struct FTransformFragment;
 
 /**
@@ -115,7 +113,6 @@ private:
 	// Niagara system ownership
 	FNiagaraSystemInstanceControllerPtr Controller;
 	FNiagaraUserRedirectionParameterStore OverrideParameters;
-	TStrongObjectPtr<USceneComponent> AnchorComponent; // Lightweight transform anchor — prevents Tick_GameThread from calling Complete()
 	FNiagaraSceneProxy* NiagaraProxy = nullptr;
 	FArcNiagaraSceneProxyDesc ProxyDesc;
 

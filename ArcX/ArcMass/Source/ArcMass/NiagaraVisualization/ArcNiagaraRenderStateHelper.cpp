@@ -17,6 +17,25 @@
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "RenderingThread.h"
+#include "UObject/StrongObjectPtr.h"
+
+// ---------------------------------------------------------------------------
+// Shared anchor component — a single unregistered USceneComponent shared by
+// all FArcNiagaraRenderStateHelper instances. Prevents the null-AttachComponent
+// check in FNiagaraSystemInstance::Tick_GameThread from calling Complete().
+// Safe to share because ManualTick is synchronous (game thread) — each entity
+// sets the transform on this component right before its own tick.
+// ---------------------------------------------------------------------------
+
+static USceneComponent* GetSharedAnchorComponent()
+{
+	static TStrongObjectPtr<USceneComponent> SharedAnchor;
+	if (!SharedAnchor.IsValid())
+	{
+		SharedAnchor = TStrongObjectPtr<USceneComponent>(NewObject<USceneComponent>(GetTransientPackage()));
+	}
+	return SharedAnchor.Get();
+}
 
 // ---------------------------------------------------------------------------
 // FArcNiagaraVisFragment — destructor & move (must be in a .cpp that sees the full type)
@@ -65,9 +84,6 @@ FArcNiagaraRenderStateHelper::~FArcNiagaraRenderStateHelper()
 		Controller->Release();
 		Controller.Reset();
 	}
-
-	// Reset anchor after controller — system instance may access AttachComponent during deactivation
-	AnchorComponent.Reset();
 }
 
 // ---------------------------------------------------------------------------
@@ -80,21 +96,12 @@ void FArcNiagaraRenderStateHelper::Initialize(UWorld& World, UNiagaraSystem& Sys
 	SystemAsset = &System;
 	bCastShadowCached = bCastShadow;
 
-	// Create lightweight anchor component — FNiagaraSystemInstance::Tick_GameThread calls
-	// Complete() when GetAttachComponent() returns nullptr. This unregistered USceneComponent
-	// provides a valid pointer without needing a full actor. Its transform is synced in UpdateTransform().
-	AnchorComponent = TStrongObjectPtr<USceneComponent>(NewObject<USceneComponent>(GetTransientPackage()));
-	{
-		const FTransform& InitialTransform = EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
-		AnchorComponent->SetWorldTransform(InitialTransform);
-	}
-
 	Controller = MakeShared<FNiagaraSystemInstanceController>();
 	Controller->Initialize(
 		World,
 		System,
 		/*OverrideParameters=*/ &OverrideParameters,
-		/*AttachComponent=*/ AnchorComponent.Get(),
+		/*AttachComponent=*/ GetSharedAnchorComponent(),
 		ENiagaraTickBehavior::UsePrereqs,
 		/*bPooled=*/ false,
 		/*RandomSeedOffset=*/ 0,
@@ -130,18 +137,11 @@ void FArcNiagaraRenderStateHelper::CreateRenderState(FRegisterComponentContext* 
 	check(Scene);
 	CachedScene = Scene;
 
-	// Sync anchor component and system instance transform before creating the proxy
+	// Set the system instance's world transform before creating the proxy
 	// so that renderers created during proxy construction have the correct position.
+	if (FNiagaraSystemInstance* SystemInstance = Controller->GetSystemInstance_Unsafe())
 	{
-		const FTransform& CurrentTransform = GetTransform();
-		if (AnchorComponent.IsValid())
-		{
-			AnchorComponent->SetWorldTransform(CurrentTransform);
-		}
-		if (FNiagaraSystemInstance* SystemInstance = Controller->GetSystemInstance_Unsafe())
-		{
-			SystemInstance->SetWorldTransform(CurrentTransform);
-		}
+		SystemInstance->SetWorldTransform(GetTransform());
 	}
 
 	// Fill the Niagara-specific proxy descriptor
@@ -251,8 +251,13 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData()
 	}
 
 	// Solo systems are not ticked by the world manager — we must tick them manually.
+	// Set the shared anchor's transform to THIS entity's transform right before ticking.
+	// TickInstanceParameters_GameThread reads AttachComponent->GetComponentTransform().
+	// Safe because ManualTick is synchronous on the game thread.
 	if (SystemInstance && SystemInstance->IsSolo() && WeakWorld.IsValid())
 	{
+		const FTransform& CurrentTransform = EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
+		GetSharedAnchorComponent()->SetWorldTransform(CurrentTransform);
 		Controller->ManualTick(WeakWorld->GetDeltaSeconds(), nullptr);
 	}
 
@@ -278,6 +283,10 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData()
 			for (int32 i = 0; i < SystemInstance->GetEmitters().Num(); ++i)
 			{
 				const FNiagaraEmitterInstance& EmitterInst = SystemInstance->GetEmitters()[i].Get();
+				bool bIsComplete = EmitterInst.IsComplete() ? 1 : 0;
+				int32 nump = EmitterInst.GetNumParticles();
+				bool bIsInittialized = EmitterInst.GetParticleData().IsInitialized() ? 1 : 0;
+				
 				UE_LOG(LogMass, Log, TEXT("ArcNiagara:   Emitter[%d] Particles=%d IsComplete=%d IsDisabled=%d DataInit=%d"),
 					i,
 					EmitterInst.GetNumParticles(),
@@ -329,15 +338,9 @@ void FArcNiagaraRenderStateHelper::UpdateTransform()
 
 	const FTransform& CurrentTransform = EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
 
-	// Sync anchor component transform BEFORE the Niagara tick reads it.
-	// TickInstanceParameters_GameThread reads AttachComponent->GetComponentTransform()
-	// to update the system's WorldTransform, so the anchor must be current.
-	if (AnchorComponent.IsValid())
-	{
-		AnchorComponent->SetWorldTransform(CurrentTransform);
-	}
-
-	// Also set directly as a safety fallback in case ManualTick hasn't run yet.
+	// Update the Niagara system instance's world transform so particles spawn at the
+	// correct location. The shared anchor component transform is synced in
+	// SendDynamicRenderData() right before ManualTick.
 	if (FNiagaraSystemInstance* SystemInstance = Controller->GetSystemInstance_Unsafe())
 	{
 		SystemInstance->SetWorldTransform(CurrentTransform);
