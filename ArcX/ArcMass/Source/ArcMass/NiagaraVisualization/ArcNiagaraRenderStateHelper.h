@@ -14,6 +14,7 @@
 struct FMassEntityManager;
 class UNiagaraSystem;
 struct FTransformFragment;
+struct FArcNiagaraVisParamsFragment;
 
 /**
  * Niagara proxy desc that doesn't require a UPrimitiveComponent for GetUsedMaterials.
@@ -54,15 +55,30 @@ public:
 	void DestroyNiagaraRenderState();
 
 	/** Push dynamic render data to the scene proxy (call per frame). */
-	void SendDynamicRenderData();
+	void SendDynamicRenderData(const FTransform& Transform);
 
 	/** Update scene transform from entity's FTransformFragment. */
-	void UpdateTransform();
+	void UpdateTransform(const FTransform& Transform);
 
 	bool IsInitialized() const { return Controller.IsValid(); }
 	bool HasSceneProxy() const { return NiagaraProxy != nullptr; }
 
 	FNiagaraSystemInstanceControllerPtr GetController() const { return Controller; }
+
+	/** Orphan this helper — stops spawning, lets existing particles die naturally.
+	 * Ownership transfers to a static list; call TickOrphanedSystems() each frame. */
+	void Orphan();
+
+	/** Tick all orphaned systems — call once per frame from a processor. */
+	static void TickOrphanedSystems(UWorld& World);
+
+	/** Number of orphaned systems still fading out. */
+	static int32 GetOrphanedCount();
+
+	/** Apply parameter overrides from the params fragment to the Niagara system instance.
+	 *  Writes float/vector/color/int values into the OverrideParameters store.
+	 *  The system instance picks them up on the next ManualTick. */
+	void ApplyParameterOverrides(const FArcNiagaraVisParamsFragment& Params);
 
 	//~ Begin IPrimitiveComponent interface
 	virtual bool IsRenderStateCreated() const override;
@@ -127,4 +143,6 @@ private:
 	FSceneInterface* CachedScene = nullptr; // Raw pointer for cleanup — outlives WeakWorld during teardown
 	bool bRenderStateDirty = false;
 	bool bCastShadowCached = false;
+	bool bOrphaned = false;
+	FTransform CachedTransform;
 };

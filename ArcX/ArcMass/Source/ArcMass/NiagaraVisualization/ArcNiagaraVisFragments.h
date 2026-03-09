@@ -90,3 +90,61 @@ struct TMassFragmentTraits<FArcNiagaraVisFragment> final
 		AuthorAcceptsItsNotTriviallyCopyable = true
 	};
 };
+
+// ---------------------------------------------------------------------------
+// Per-entity Niagara parameter overrides (optional)
+//
+// Gameplay code writes parameter values here; the visualization processor
+// applies them to the Niagara system instance when bDirty is set, then
+// clears the flag. Values persist in the Niagara system between applies —
+// only set bDirty when a value actually changes.
+//
+// Usage:
+//   auto& Params = EntityManager.GetFragmentDataChecked<FArcNiagaraVisParamsFragment>(Entity);
+//   Params.SetFloat(FName("FireIntensity"), 0.8f);
+//   Params.SetColor(FName("FlameColor"), FLinearColor::Red);
+//
+// Parameter names must match User Parameter names in the Niagara system asset.
+// ---------------------------------------------------------------------------
+
+USTRUCT()
+struct ARCMASS_API FArcNiagaraVisParamsFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+	/** True when any parameter value has changed and needs to be applied.
+	 *  Set automatically by the setter methods. Cleared by the processor. */
+	bool bDirty = false;
+
+	// Scalar types
+	TMap<FName, float> FloatParams;
+	TMap<FName, int32> IntParams;
+	TMap<FName, bool> BoolParams;
+
+	// Vector types (double precision input, converted to single precision for Niagara)
+	TMap<FName, FVector2D> Vector2DParams;
+	TMap<FName, FVector> VectorParams;
+	TMap<FName, FVector4> Vector4Params;
+
+	// Color & rotation
+	TMap<FName, FLinearColor> ColorParams;
+	TMap<FName, FQuat> QuatParams;
+
+	void SetFloat(FName Name, float Value) { FloatParams.Add(Name, Value); bDirty = true; }
+	void SetInt(FName Name, int32 Value) { IntParams.Add(Name, Value); bDirty = true; }
+	void SetBool(FName Name, bool Value) { BoolParams.Add(Name, Value); bDirty = true; }
+	void SetVector2D(FName Name, const FVector2D& Value) { Vector2DParams.Add(Name, Value); bDirty = true; }
+	void SetVector(FName Name, const FVector& Value) { VectorParams.Add(Name, Value); bDirty = true; }
+	void SetVector4(FName Name, const FVector4& Value) { Vector4Params.Add(Name, Value); bDirty = true; }
+	void SetColor(FName Name, const FLinearColor& Value) { ColorParams.Add(Name, Value); bDirty = true; }
+	void SetQuat(FName Name, const FQuat& Value) { QuatParams.Add(Name, Value); bDirty = true; }
+};
+
+template<>
+struct TMassFragmentTraits<FArcNiagaraVisParamsFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};

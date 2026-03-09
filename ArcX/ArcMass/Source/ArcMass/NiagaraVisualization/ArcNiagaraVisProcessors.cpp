@@ -103,8 +103,9 @@ void UArcNiagaraVisDeinitObserver::Execute(FMassEntityManager& EntityManager, FM
 
 				if (VisFragment.RenderStateHelper)
 				{
-					VisFragment.RenderStateHelper->DestroyNiagaraRenderState();
-					delete VisFragment.RenderStateHelper;
+					// Orphan instead of destroying — lets existing particles fade out.
+					// TickOrphanedSystems() in the dynamic data processor handles cleanup.
+					VisFragment.RenderStateHelper->Orphan();
 					VisFragment.RenderStateHelper = nullptr;
 				}
 			}
@@ -128,6 +129,7 @@ void UArcNiagaraVisDynamicDataProcessor::ConfigureQueries(const TSharedRef<FMass
 {
 	EntityQuery.AddRequirement<FArcNiagaraVisFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FArcNiagaraVisParamsFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
 	EntityQuery.AddTagRequirement<FArcNiagaraVisTag>(EMassFragmentPresence::All);
 }
 
@@ -137,10 +139,14 @@ void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManag
 		[](FMassExecutionContext& Ctx)
 		{
 			const TConstArrayView<FArcNiagaraVisFragment> VisFragments = Ctx.GetFragmentView<FArcNiagaraVisFragment>();
+			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
+			TArrayView<FArcNiagaraVisParamsFragment> ParamsFragments = Ctx.GetMutableFragmentView<FArcNiagaraVisParamsFragment>();
+			const bool bHasParams = ParamsFragments.Num() > 0;
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				const FArcNiagaraVisFragment& VisFragment = VisFragments[EntityIt];
+				const FTransformFragment& Transform = Transforms[EntityIt];
 				FArcNiagaraRenderStateHelper* Helper = VisFragment.RenderStateHelper;
 
 				if (!Helper || !Helper->HasSceneProxy())
@@ -148,8 +154,26 @@ void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManag
 					continue;
 				}
 
-				Helper->UpdateTransform();
-				Helper->SendDynamicRenderData();
+				// Apply parameter overrides before ticking — values take effect on ManualTick
+				if (bHasParams)
+				{
+					FArcNiagaraVisParamsFragment& Params = ParamsFragments[EntityIt];
+					if (Params.bDirty)
+					{
+						Helper->ApplyParameterOverrides(Params);
+						Params.bDirty = false;
+					}
+				}
+
+				Helper->UpdateTransform(Transform.GetTransform());
+				Helper->SendDynamicRenderData(Transform.GetTransform());
 			}
 		});
+
+	// Tick orphaned systems — entities are gone but particles are still fading out.
+	// Must be called every frame so ManualTick keeps running on the orphaned instances.
+	if (UWorld* World = EntityManager.GetWorld())
+	{
+		FArcNiagaraRenderStateHelper::TickOrphanedSystems(*World);
+	}
 }

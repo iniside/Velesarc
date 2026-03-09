@@ -7,9 +7,11 @@
 #include "MassEntityManager.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSceneProxy.h"
+#include "NiagaraSystem.h"
 #include "NiagaraSystemInstance.h"
 #include "NiagaraSystemInstanceController.h"
 #include "NiagaraSystemRenderData.h"
+#include "NiagaraTypes.h"
 #include "PrimitiveSceneDesc.h"
 #include "PrimitiveSceneInfoData.h"
 #include "PrimitiveSceneProxyDesc.h"
@@ -37,6 +39,10 @@ static USceneComponent* GetSharedAnchorComponent()
 	return SharedAnchor.Get();
 }
 
+/** Orphaned helpers — systems whose entities have been destroyed but whose
+ *  particles are still fading out. Ticked each frame by TickOrphanedSystems(). */
+static TArray<FArcNiagaraRenderStateHelper*> OrphanedHelpers;
+
 // ---------------------------------------------------------------------------
 // FArcNiagaraVisFragment — destructor & move (must be in a .cpp that sees the full type)
 // ---------------------------------------------------------------------------
@@ -45,12 +51,10 @@ FArcNiagaraVisFragment::~FArcNiagaraVisFragment()
 {
 	if (RenderStateHelper)
 	{
-		if (RenderStateHelper->HasSceneProxy())
-		{
-			RenderStateHelper->DestroyNiagaraRenderState();
-		}
-		delete RenderStateHelper;
-		RenderStateHelper = nullptr;
+		// Don't destroy immediately — orphan the helper so existing particles
+		// can finish their lifetime. TickOrphanedSystems() manages cleanup.
+		RenderStateHelper->Orphan();
+		RenderStateHelper = nullptr; // Fragment no longer owns it
 	}
 }
 
@@ -95,6 +99,19 @@ void FArcNiagaraRenderStateHelper::Initialize(UWorld& World, UNiagaraSystem& Sys
 	WeakWorld = &World;
 	SystemAsset = &System;
 	bCastShadowCached = bCastShadow;
+	CachedTransform = EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
+
+#if WITH_EDITOR
+	// In editor, Niagara systems may not be compiled until opened in the Niagara editor.
+	// Force a synchronous compile so the system is ready to spawn particles.
+	System.WaitForCompilationComplete(/*bIncludingGPUShaders=*/ true, /*bShowProgress=*/ false);
+#endif
+
+	if (!System.IsReadyToRun())
+	{
+		UE_LOG(LogMass, Warning, TEXT("ArcNiagara: System %s is not ready to run"), *GetNameSafe(&System));
+		return;
+	}
 
 	Controller = MakeShared<FNiagaraSystemInstanceController>();
 	Controller->Initialize(
@@ -224,7 +241,7 @@ void FArcNiagaraRenderStateHelper::DestroyRenderState()
 // SendDynamicRenderData
 // ---------------------------------------------------------------------------
 
-void FArcNiagaraRenderStateHelper::SendDynamicRenderData()
+void FArcNiagaraRenderStateHelper::SendDynamicRenderData(const FTransform& Transform)
 {
 	if (!NiagaraProxy || !Controller.IsValid())
 	{
@@ -256,8 +273,7 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData()
 	// Safe because ManualTick is synchronous on the game thread.
 	if (SystemInstance && SystemInstance->IsSolo() && WeakWorld.IsValid())
 	{
-		const FTransform& CurrentTransform = EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
-		GetSharedAnchorComponent()->SetWorldTransform(CurrentTransform);
+		GetSharedAnchorComponent()->SetWorldTransform(Transform);
 		Controller->ManualTick(WeakWorld->GetDeltaSeconds(), nullptr);
 	}
 
@@ -328,38 +344,167 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData()
 // UpdateTransform
 // ---------------------------------------------------------------------------
 
-void FArcNiagaraRenderStateHelper::UpdateTransform()
+void FArcNiagaraRenderStateHelper::UpdateTransform(const FTransform& Transform)
 {
+	CachedTransform = Transform;
+
 	FSceneInterface* Scene = GetScene();
 	if (!Scene || !NiagaraProxy || !Controller.IsValid())
 	{
 		return;
 	}
 
-	const FTransform& CurrentTransform = EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
-
 	// Update the Niagara system instance's world transform so particles spawn at the
 	// correct location. The shared anchor component transform is synced in
 	// SendDynamicRenderData() right before ManualTick.
 	if (FNiagaraSystemInstance* SystemInstance = Controller->GetSystemInstance_Unsafe())
 	{
-		SystemInstance->SetWorldTransform(CurrentTransform);
+		SystemInstance->SetWorldTransform(Transform);
 	}
 
 	// Update cached bounds
-	CachedBounds = FBoxSphereBounds(FVector::ZeroVector, FVector(100.0f), 100.0f).TransformBy(CurrentTransform);
+	CachedBounds = FBoxSphereBounds(FVector::ZeroVector, FVector(100.0f), 100.0f).TransformBy(Transform);
 
 	FPrimitiveSceneDesc Desc;
 	Desc.SceneProxy = NiagaraProxy;
 	Desc.ProxyDesc = &ProxyDesc;
 	Desc.PrimitiveSceneData = &PrimitiveSceneData;
-	Desc.RenderMatrix = CurrentTransform.ToMatrixWithScale();
-	Desc.AttachmentRootPosition = CurrentTransform.GetTranslation();
+	Desc.RenderMatrix = Transform.ToMatrixWithScale();
+	Desc.AttachmentRootPosition = Transform.GetTranslation();
 	Desc.LocalBounds = FBoxSphereBounds(FVector::ZeroVector, FVector(100.0f), 100.0f);
 	Desc.Bounds = CachedBounds;
 	Desc.Mobility = EComponentMobility::Movable;
 
 	Scene->UpdatePrimitiveTransform(&Desc);
+}
+
+// ---------------------------------------------------------------------------
+// Orphaned system lifecycle
+// ---------------------------------------------------------------------------
+
+void FArcNiagaraRenderStateHelper::Orphan()
+{
+	if (bOrphaned)
+	{
+		return;
+	}
+	bOrphaned = true;
+
+	// If the system was never fully initialized, nothing to fade out
+	if (!Controller.IsValid())
+	{
+		// Nobody owns us anymore — schedule for cleanup on next TickOrphanedSystems
+		OrphanedHelpers.Add(this);
+		return;
+	}
+
+	// Stop spawning new particles, let existing ones finish their lifetime.
+	// Deactivate(false) sets the system to Inactive state: scripts still run,
+	// particles still simulate and render, but no new particles are spawned.
+	Controller->Deactivate(false);
+
+	OrphanedHelpers.Add(this);
+}
+
+void FArcNiagaraRenderStateHelper::TickOrphanedSystems(UWorld& World)
+{
+	for (int32 i = OrphanedHelpers.Num() - 1; i >= 0; --i)
+	{
+		FArcNiagaraRenderStateHelper* Helper = OrphanedHelpers[i];
+
+		FNiagaraSystemInstance* SystemInstance = Helper->Controller.IsValid()
+			? Helper->Controller->GetSystemInstance_Unsafe()
+			: nullptr;
+
+		// Clean up if: no valid system, all particles dead, or world is tearing down
+		if (!SystemInstance || SystemInstance->IsComplete() || !Helper->WeakWorld.IsValid())
+		{
+			delete Helper; // Destructor handles proxy + controller cleanup
+			OrphanedHelpers.RemoveAtSwap(i);
+			continue;
+		}
+
+		// Tick and render using the last known transform
+		Helper->SendDynamicRenderData(Helper->CachedTransform);
+	}
+}
+
+int32 FArcNiagaraRenderStateHelper::GetOrphanedCount()
+{
+	return OrphanedHelpers.Num();
+}
+
+// ---------------------------------------------------------------------------
+// Parameter overrides
+// ---------------------------------------------------------------------------
+
+void FArcNiagaraRenderStateHelper::ApplyParameterOverrides(const FArcNiagaraVisParamsFragment& Params)
+{
+	if (!Controller.IsValid())
+	{
+		return;
+	}
+
+	// --- Scalar types ---
+
+	for (const auto& [Name, Value] : Params.FloatParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetFloatDef(), Name);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value), Var, /*bAdd=*/ true);
+	}
+
+	for (const auto& [Name, Value] : Params.IntParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetIntDef(), Name);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value), Var, /*bAdd=*/ true);
+	}
+
+	// Niagara bools are stored as FNiagaraBool (int32: True = INDEX_NONE, False = 0)
+	for (const auto& [Name, Value] : Params.BoolParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetBoolDef(), Name);
+		const FNiagaraBool NiagaraValue(Value);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&NiagaraValue), Var, /*bAdd=*/ true);
+	}
+
+	// --- Vector types (double → single precision conversion) ---
+
+	for (const auto& [Name, Value] : Params.Vector2DParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetVec2Def(), Name);
+		const FVector2f Value2f(Value);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value2f), Var, /*bAdd=*/ true);
+	}
+
+	for (const auto& [Name, Value] : Params.VectorParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetVec3Def(), Name);
+		const FVector3f Value3f(Value);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value3f), Var, /*bAdd=*/ true);
+	}
+
+	for (const auto& [Name, Value] : Params.Vector4Params)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetVec4Def(), Name);
+		const FVector4f Value4f(Value);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value4f), Var, /*bAdd=*/ true);
+	}
+
+	// --- Color & rotation ---
+
+	// FLinearColor layout (4 floats) matches Niagara's color type directly
+	for (const auto& [Name, Value] : Params.ColorParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetColorDef(), Name);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value), Var, /*bAdd=*/ true);
+	}
+
+	for (const auto& [Name, Value] : Params.QuatParams)
+	{
+		FNiagaraVariable Var(FNiagaraTypeDefinition::GetQuatDef(), Name);
+		const FQuat4f Value4f(Value);
+		OverrideParameters.SetParameterData(reinterpret_cast<const uint8*>(&Value4f), Var, /*bAdd=*/ true);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +587,10 @@ FString FArcNiagaraRenderStateHelper::GetFullName() const
 
 FTransform FArcNiagaraRenderStateHelper::GetTransform() const
 {
+	if (bOrphaned)
+	{
+		return CachedTransform;
+	}
 	return EntityManager->GetFragmentDataChecked<FTransformFragment>(EntityHandle).GetTransform();
 }
 
