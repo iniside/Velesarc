@@ -17,9 +17,9 @@ struct ARCMASS_API FArcProjectileConfigFragment : public FMassConstSharedFragmen
 {
 	GENERATED_BODY()
 
-	/** Speed cap. 0 = unlimited. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
-	float MaxSpeed = 0.f;
+	/** Speed cap (cm/s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (ClampMin = "0.0"))
+	float MaxSpeed = 10000.f;
 
 	/** Multiplier on world gravity. 0 = linear (no gravity). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
@@ -29,22 +29,6 @@ struct ARCMASS_API FArcProjectileConfigFragment : public FMassConstSharedFragmen
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	bool bRotationFollowsVelocity = true;
 
-	/** Enable bounce simulation on impact. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce")
-	bool bShouldBounce = false;
-
-	/** Coefficient of restitution (1.0 = no loss, 0.0 = no bounce). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce", meta = (EditCondition = "bShouldBounce", ClampMin = "0.0", ClampMax = "1.0"))
-	float Bounciness = 0.6f;
-
-	/** Surface friction applied on bounce (0-1). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce", meta = (EditCondition = "bShouldBounce", ClampMin = "0.0", ClampMax = "1.0"))
-	float Friction = 0.2f;
-
-	/** Stop bouncing when speed drops below this threshold. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce", meta = (EditCondition = "bShouldBounce", ClampMin = "0.0"))
-	float BounceVelocityStopThreshold = 5.f;
-
 	/** Maximum distance before automatic destruction. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	float MaxDistance = 50000.f;
@@ -53,17 +37,45 @@ struct ARCMASS_API FArcProjectileConfigFragment : public FMassConstSharedFragmen
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	float CollisionRadius = 10.f;
 
-	/** Enable homing toward a target entity. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Homing")
-	bool bIsHoming = false;
-
-	/** Acceleration magnitude toward homing target (cm/s^2). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Homing", meta = (EditCondition = "bIsHoming"))
-	float HomingAcceleration = 1000.f;
-
 	/** Actor class to spawn for visualization. nullptr = no actor. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Visualization")
 	TSubclassOf<AActor> ActorClass;
+};
+
+// ---------------------------------------------------------------------------
+// Bounce config — const shared fragment (bouncing projectiles only)
+// ---------------------------------------------------------------------------
+
+USTRUCT(BlueprintType)
+struct ARCMASS_API FArcProjectileBounceConfigFragment : public FMassConstSharedFragment
+{
+	GENERATED_BODY()
+
+	/** Coefficient of restitution (1.0 = no loss, 0.0 = no bounce). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Bounciness = 0.6f;
+
+	/** Surface friction applied on bounce (0-1). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Friction = 0.2f;
+
+	/** Stop bouncing when speed drops below this threshold. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce", meta = (ClampMin = "0.0"))
+	float BounceVelocityStopThreshold = 5.f;
+};
+
+// ---------------------------------------------------------------------------
+// Homing config — const shared fragment (homing projectiles only)
+// ---------------------------------------------------------------------------
+
+USTRUCT(BlueprintType)
+struct ARCMASS_API FArcProjectileHomingConfigFragment : public FMassConstSharedFragment
+{
+	GENERATED_BODY()
+
+	/** Acceleration magnitude toward homing target (cm/s^2). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Homing")
+	float HomingAcceleration = 1000.f;
 };
 
 // ---------------------------------------------------------------------------
@@ -139,6 +151,47 @@ struct ARCMASS_API FArcProjectileTag : public FMassTag
 	GENERATED_BODY()
 };
 
+USTRUCT()
+struct ARCMASS_API FArcLinearProjectileTag : public FMassTag
+{
+	GENERATED_BODY()
+};
+
+USTRUCT()
+struct ARCMASS_API FArcHomingProjectileTag : public FMassTag
+{
+	GENERATED_BODY()
+};
+
+USTRUCT()
+struct ARCMASS_API FArcBouncingProjectileTag : public FMassTag
+{
+	GENERATED_BODY()
+};
+
+// ---------------------------------------------------------------------------
+// Shared collision context — passed to both actor and instigator interfaces
+// ---------------------------------------------------------------------------
+
+USTRUCT(BlueprintType)
+struct ARCMASS_API FArcCollisionHitContext
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Collision")
+	FHitResult HitResult;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Collision")
+	TWeakObjectPtr<UObject> Instigator;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Collision")
+	FVector Velocity = FVector::ZeroVector;
+
+	/** True when projectile exceeded max distance rather than hitting something. */
+	UPROPERTY(BlueprintReadOnly, Category = "Collision")
+	bool bExpired = false;
+};
+
 // ---------------------------------------------------------------------------
 // Interface — collision/lifecycle callbacks on visualization actor
 // ---------------------------------------------------------------------------
@@ -160,9 +213,29 @@ public:
 
 	/** Called BEFORE entity destruction on collision. */
 	UFUNCTION(BlueprintNativeEvent, Category = "Projectile")
-	void OnProjectileCollision(const FHitResult& HitResult);
+	void OnProjectileCollision(const FArcCollisionHitContext& Context);
 
 	/** Called BEFORE entity destruction when max distance exceeded. */
 	UFUNCTION(BlueprintNativeEvent, Category = "Projectile")
-	void OnProjectileExpired();
+	void OnProjectileExpired(const FArcCollisionHitContext& Context);
+};
+
+// ---------------------------------------------------------------------------
+// Interface — generic collision handler, called on instigator UObject
+// ---------------------------------------------------------------------------
+
+UINTERFACE(MinimalAPI, BlueprintType)
+class UArcCollisionHitHandler : public UInterface
+{
+	GENERATED_BODY()
+};
+
+class ARCMASS_API IArcCollisionHitHandler
+{
+	GENERATED_BODY()
+
+public:
+	/** Called when a projectile owned by this object hits something or expires. */
+	UFUNCTION(BlueprintNativeEvent, Category = "Collision")
+	void OnCollisionHit(const FArcCollisionHitContext& Context);
 };
