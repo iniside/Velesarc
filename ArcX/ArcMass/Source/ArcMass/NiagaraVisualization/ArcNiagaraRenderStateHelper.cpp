@@ -44,6 +44,35 @@ static USceneComponent* GetSharedAnchorComponent()
 static TArray<FArcNiagaraRenderStateHelper*> OrphanedHelpers;
 
 // ---------------------------------------------------------------------------
+// World cleanup — removes all orphaned helpers (and their scene proxies)
+// before the FScene destructor asserts that no primitives remain.
+// ---------------------------------------------------------------------------
+
+static bool bWorldCleanupRegistered = false;
+
+static void OnWorldCleanup(UWorld* World, bool /*bSessionEnded*/, bool /*bCleanupResources*/)
+{
+	for (int32 i = OrphanedHelpers.Num() - 1; i >= 0; --i)
+	{
+		FArcNiagaraRenderStateHelper* Helper = OrphanedHelpers[i];
+		if (Helper->GetWorld() == World || Helper->GetWorld() == nullptr)
+		{
+			delete Helper; // Destructor calls DestroyNiagaraRenderState → Scene->RemovePrimitive
+			OrphanedHelpers.RemoveAtSwap(i);
+		}
+	}
+}
+
+static void EnsureWorldCleanupRegistered()
+{
+	if (!bWorldCleanupRegistered)
+	{
+		FWorldDelegates::OnWorldCleanup.AddStatic(&OnWorldCleanup);
+		bWorldCleanupRegistered = true;
+	}
+}
+
+// ---------------------------------------------------------------------------
 // FArcNiagaraVisFragment — destructor & move (must be in a .cpp that sees the full type)
 // ---------------------------------------------------------------------------
 
@@ -96,6 +125,8 @@ FArcNiagaraRenderStateHelper::~FArcNiagaraRenderStateHelper()
 
 void FArcNiagaraRenderStateHelper::Initialize(UWorld& World, UNiagaraSystem& System, bool bCastShadow)
 {
+	EnsureWorldCleanupRegistered();
+
 	WeakWorld = &World;
 	SystemAsset = &System;
 	bCastShadowCached = bCastShadow;
@@ -390,10 +421,18 @@ void FArcNiagaraRenderStateHelper::Orphan()
 	}
 	bOrphaned = true;
 
+	// If world is tearing down (PIE exit, level transition), skip graceful fadeout.
+	// Destroy immediately so the scene proxy is removed before FScene::~FScene asserts.
+	// The caller (fragment destructor) sets its pointer to nullptr right after this returns.
+	if (!WeakWorld.IsValid() || WeakWorld->bIsTearingDown)
+	{
+		delete this; // Destructor handles proxy + controller cleanup
+		return;
+	}
+
 	// If the system was never fully initialized, nothing to fade out
 	if (!Controller.IsValid())
 	{
-		// Nobody owns us anymore — schedule for cleanup on next TickOrphanedSystems
 		OrphanedHelpers.Add(this);
 		return;
 	}
