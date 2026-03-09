@@ -7,11 +7,14 @@
 #include "MassEntityHandle.h"
 #include "NiagaraSystemInstanceController.h"
 #include "NiagaraSceneProxy.h"
+#include "NiagaraUserRedirectionParameterStore.h"
 #include "PrimitiveSceneDesc.h"
 #include "PrimitiveSceneInfoData.h"
+#include "UObject/StrongObjectPtr.h"
 
 struct FMassEntityManager;
 class UNiagaraSystem;
+class USceneComponent;
 struct FTransformFragment;
 
 /**
@@ -41,7 +44,7 @@ struct ARCMASS_API FArcNiagaraRenderStateHelper : public IPrimitiveComponent
 {
 public:
 	FArcNiagaraRenderStateHelper(FMassEntityHandle InEntityHandle, TNotNull<FMassEntityManager*> InEntityManager);
-	~FArcNiagaraRenderStateHelper();
+	virtual ~FArcNiagaraRenderStateHelper();
 
 	/** Initialize the Niagara system instance. Must be called before CreateRenderState. */
 	void Initialize(UWorld& World, UNiagaraSystem& System, bool bCastShadow);
@@ -111,6 +114,8 @@ private:
 
 	// Niagara system ownership
 	FNiagaraSystemInstanceControllerPtr Controller;
+	FNiagaraUserRedirectionParameterStore OverrideParameters;
+	TStrongObjectPtr<USceneComponent> AnchorComponent; // Lightweight transform anchor — prevents Tick_GameThread from calling Complete()
 	FNiagaraSceneProxy* NiagaraProxy = nullptr;
 	FArcNiagaraSceneProxyDesc ProxyDesc;
 
@@ -122,6 +127,7 @@ private:
 
 	TWeakObjectPtr<UNiagaraSystem> SystemAsset;
 	TWeakObjectPtr<UWorld> WeakWorld;
+	FSceneInterface* CachedScene = nullptr; // Raw pointer for cleanup — outlives WeakWorld during teardown
 	bool bRenderStateDirty = false;
 	bool bCastShadowCached = false;
 };
