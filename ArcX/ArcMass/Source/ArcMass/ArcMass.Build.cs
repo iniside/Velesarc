@@ -43,6 +43,11 @@ public class ArcMass : ModuleRules
 				, "AsyncMessageSystem"
 				, "SmartObjectsModule"
 				, "ArcPersistence"
+				, "Niagara"
+				, "NiagaraCore"
+				, "RenderCore"
+				, "RHI"
+				, "RHICore"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
