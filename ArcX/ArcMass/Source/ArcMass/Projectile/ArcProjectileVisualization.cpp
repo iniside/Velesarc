@@ -2,6 +2,7 @@
 
 #include "ArcProjectileVisualization.h"
 
+#include "ArcProjectileActorPool.h"
 #include "ArcProjectileFragments.h"
 
 #include "MassActorSubsystem.h"
@@ -39,14 +40,16 @@ void UArcProjectileActorInitObserver::Execute(FMassEntityManager& EntityManager,
 		return;
 	}
 
+	UArcProjectileActorPoolSubsystem* Pool = World->GetSubsystem<UArcProjectileActorPoolSubsystem>();
+
 	ObserverQuery.ForEachEntityChunk(Context,
-		[World](FMassExecutionContext& Ctx)
+		[Pool](FMassExecutionContext& Ctx)
 	{
 		const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 		TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 		const FArcProjectileConfigFragment& Config = Ctx.GetConstSharedFragment<FArcProjectileConfigFragment>();
 
-		if (!Config.ActorClass)
+		if (!Config.ActorClass || !Pool)
 		{
 			return;
 		}
@@ -56,10 +59,7 @@ void UArcProjectileActorInitObserver::Execute(FMassEntityManager& EntityManager,
 			const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
 			const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-			AActor* NewActor = World->SpawnActor<AActor>(Config.ActorClass, EntityTransform, SpawnParams);
+			AActor* NewActor = Pool->AcquireActor(Config.ActorClass, EntityTransform);
 			if (NewActor)
 			{
 				ActorFragments[EntityIt].SetAndUpdateHandleMap(Entity, NewActor, true);
@@ -93,8 +93,11 @@ void UArcProjectileActorDeinitObserver::ConfigureQueries(const TSharedRef<FMassE
 
 void UArcProjectileActorDeinitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	UWorld* World = EntityManager.GetWorld();
+	UArcProjectileActorPoolSubsystem* Pool = World ? World->GetSubsystem<UArcProjectileActorPoolSubsystem>() : nullptr;
+
 	ObserverQuery.ForEachEntityChunk(Context,
-		[](FMassExecutionContext& Ctx)
+		[Pool](FMassExecutionContext& Ctx)
 	{
 		TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 
@@ -103,7 +106,10 @@ void UArcProjectileActorDeinitObserver::Execute(FMassEntityManager& EntityManage
 			FMassActorFragment& ActorFragment = ActorFragments[EntityIt];
 			if (AActor* Actor = ActorFragment.GetMutable())
 			{
-				Actor->Destroy();
+				if (!Pool || !Pool->ReleaseActor(Actor))
+				{
+					Actor->Destroy();
+				}
 			}
 			ActorFragment.ResetAndUpdateHandleMap();
 		}
