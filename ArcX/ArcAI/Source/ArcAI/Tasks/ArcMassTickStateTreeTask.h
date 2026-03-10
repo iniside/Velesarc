@@ -7,13 +7,20 @@
 #include "UObject/Object.h"
 #include "ArcMassTickStateTreeTask.generated.h"
 
+/** Instance data for FArcMassTickStateTreeTask. Empty -- this task has no per-instance parameters. */
 USTRUCT()
 struct FArcMassTickStateTreeTaskInstanceData
 {
 	GENERATED_BODY()
 };
 
-USTRUCT(DisplayName="Arc Mass Tick StateTree Task", meta = (Category="AI|Common"))
+/**
+ * Task that enables StateTree tick processing for the entity while the state is active.
+ * On EnterState, it adds the tick tag to the entity so the Mass StateTree processor will tick it each frame.
+ * On ExitState, it removes the tick tag, stopping per-frame ticking.
+ * Returns Running from EnterState to keep the state active.
+ */
+USTRUCT(DisplayName="Arc Mass Tick StateTree Task", meta = (Category="AI|Common", ToolTip = "Enables StateTree tick processing for the entity while this state is active. Adds tick tag on enter, removes on exit."))
 struct FArcMassTickStateTreeTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

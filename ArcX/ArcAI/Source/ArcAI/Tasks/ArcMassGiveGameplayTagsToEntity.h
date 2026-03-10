@@ -3,20 +3,23 @@
 #include "ArcMass/ArcMassGameplayTagContainerFragment.h"
 #include "ArcMassGiveGameplayTagsToEntity.generated.h"
 
+/** Instance data for FArcMassGiveGameplayTagsToEntityTask. Holds the tags to add to the entity. */
 USTRUCT()
 struct FArcMassGiveGameplayTagsToEntityInstanceData
 {
 	GENERATED_BODY()
 
-	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	/** The gameplay tags to add to the entity's Mass gameplay tag fragment (not the GAS AbilitySystemComponent). */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer Tags;
 };
 
 /**
- * Stop, and stand on current navmesh location
+ * Instant task that adds gameplay tags to the entity's Mass gameplay tag fragment
+ * (FArcMassGameplayTagContainerFragment), not the GAS AbilitySystemComponent.
+ * When bRemoveOnExit is true, the tags are automatically removed when the state is exited.
  */
-USTRUCT(meta = (DisplayName = "Arc Mass Give Gameplay Tags To Entity", Category = "Arc|Common"))
+USTRUCT(meta = (DisplayName = "Arc Mass Give Gameplay Tags To Entity", Category = "Arc|Common", ToolTip = "Instant task. Adds gameplay tags to the entity's Mass tag fragment. Optionally removes them on state exit."))
 struct FArcMassGiveGameplayTagsToEntityTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -25,7 +28,8 @@ struct FArcMassGiveGameplayTagsToEntityTask : public FMassStateTreeTaskBase
 
 public:
 	FArcMassGiveGameplayTagsToEntityTask();
-	
+
+	/** If true, the added tags are automatically removed from the entity when this state is exited. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	bool bRemoveOnExit = false;
 	
@@ -41,6 +45,7 @@ protected:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	
+	/** Handle to the entity's Mass gameplay tag container fragment. */
 	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
 
 #if WITH_EDITOR

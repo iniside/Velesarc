@@ -6,31 +6,42 @@
 #include "MassStateTreeTypes.h"
 #include "ArcMassModifyTargetHealth.generated.h"
 
+/** Defines how a health modification is applied to the target entity. */
 UENUM()
 enum class EArcHealthOperation : uint8
 {
+	/** Increase the target's current health by ModifyValue. */
 	Add,
+	/** Decrease the target's current health by ModifyValue. */
 	Subtract,
+	/** Set the target's current health to ModifyValue, ignoring the previous value. */
 	Override
 };
 
+/** Instance data for FArcMassModifyTargetHealthTask. Holds the target entity, operation type, and value. */
 USTRUCT()
 struct FArcMassModifyTargetHealthTaskInstanceData
 {
 	GENERATED_BODY()
 
+	/** The Mass entity handle of the target whose health will be modified. Must be bound from a perception or selection result. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	FMassEntityHandle TargetEntity;
-	
+
+	/** How the health modification is applied: Add, Subtract, or Override. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	EArcHealthOperation Operation = EArcHealthOperation::Subtract;
-		
-	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+
+	/** The amount by which to modify the target's health. Interpretation depends on the Operation type. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	float ModifyValue = 0.f;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Modify Target Health", Category = "Arc|Mass"))
+/**
+ * Instant task that modifies a target entity's health using the specified operation (Add, Subtract, or Override).
+ * The target entity must have a health fragment. Completes immediately on EnterState.
+ */
+USTRUCT(meta = (DisplayName = "Arc Modify Target Health", Category = "Arc|Mass", ToolTip = "Instant task. Modifies a target entity's health by adding, subtracting, or overriding the value."))
 struct FArcMassModifyTargetHealthTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

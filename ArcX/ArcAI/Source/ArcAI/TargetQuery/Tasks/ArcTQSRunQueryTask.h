@@ -116,6 +116,11 @@ struct FArcTQSRunQueryTaskInstanceData
  * Supports two modes:
  * - DataAsset reference: set bUseInlineDefinition = false, assign QueryDefinition
  * - Inline: set bUseInlineDefinition = true, configure InlineGenerator/InlineSteps/InlineSelection directly
+ *  Typical usage pattern: run in a sibling state, storing results in a parent state's parameters:
+ *   - Parent (Has an TQS result parameter)
+ *     - Run Target Query (on success, transition to Use Query Result)
+ *     - Use Query Result
+ *
  */
 USTRUCT(meta = (DisplayName = "Arc Run Target Query", Category = "Arc|Query"))
 struct ARCAI_API FArcTQSRunQueryTask : public FMassStateTreeTaskBase

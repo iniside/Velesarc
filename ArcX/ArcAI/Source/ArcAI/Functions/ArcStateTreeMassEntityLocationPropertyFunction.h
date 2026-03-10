@@ -4,22 +4,27 @@
 
 #include "ArcStateTreeMassEntityLocationPropertyFunction.generated.h"
 
+/** Instance data for FArcStateTreeMassEntityLocationPropertyFunction. */
 USTRUCT()
 struct FStateTreeGetMassEntityLocationPropertyFunctionInstanceData
 {
 	GENERATED_BODY()
 
+	/** Mass entity wrapper whose stored/query location will be used. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FMassEnvQueryEntityInfoBlueprintWrapper Input;
 
+	/** Action the entity should perform when it reaches the end of its path (e.g., Move or Stand). */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	EMassMovementAction EndOfPathIntent = EMassMovementAction::Move;
-	
+
+	/** Resulting FMassTargetLocation built from the entity's stored location and end-of-path intent. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	FMassTargetLocation Output;;
 };
 
-USTRUCT(DisplayName = "Get Mass Entity Location")
+/** Gets an FMassTargetLocation from a Mass entity wrapper using the entity's stored/query location. */
+USTRUCT(DisplayName = "Get Mass Entity Location", meta = (ToolTip = "Gets an FMassTargetLocation from a Mass entity wrapper using the entity's stored/query location."))
 struct FArcStateTreeMassEntityLocationPropertyFunction : public FStateTreePropertyFunctionCommonBase
 {
 	GENERATED_BODY()
@@ -35,22 +40,27 @@ struct FArcStateTreeMassEntityLocationPropertyFunction : public FStateTreeProper
 #endif
 };
 
+/** Instance data for FArcStateTreeMassEntityCurrentPositionPropertyFunction. */
 USTRUCT()
 struct FStateTreeGetMassEntityCurrentPositionPropertyFunctionInstanceData
 {
 	GENERATED_BODY()
 
+	/** Mass entity wrapper whose current transform position will be read. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FMassEnvQueryEntityInfoBlueprintWrapper Input;
 
+	/** Action the entity should perform when it reaches the end of its path (e.g., Move or Stand). */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	EMassMovementAction EndOfPathIntent = EMassMovementAction::Move;
-	
+
+	/** Resulting FMassTargetLocation built from the entity's current transform position and end-of-path intent. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	FMassTargetLocation Output;;
 };
 
-USTRUCT(DisplayName = "Get Mass Entity Current Position")
+/** Gets an FMassTargetLocation from a Mass entity wrapper using the entity's current transform position. */
+USTRUCT(DisplayName = "Get Mass Entity Current Position", meta = (ToolTip = "Gets an FMassTargetLocation from a Mass entity wrapper using the entity's current transform position."))
 struct FArcStateTreeMassEntityCurrentPositionPropertyFunction : public FStateTreePropertyFunctionCommonBase
 {
 	GENERATED_BODY()

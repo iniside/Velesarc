@@ -5,20 +5,22 @@
 
 #include "ArcMassRemoveGameplayTagsFromEntityTask.generated.h"
 
+/** Instance data for FArcMassRemoveGameplayTagsFromEntityTask. Holds the tags to remove from the entity. */
 USTRUCT()
 struct FArcMassRemoveGameplayTagsFromEntityTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	/** The gameplay tags to remove from the entity's Mass gameplay tag fragment (not the GAS AbilitySystemComponent). */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer Tags;
 };
 
 /**
- * Stop, and stand on current navmesh location
+ * Instant task that removes gameplay tags from the entity's Mass gameplay tag fragment
+ * (FArcMassGameplayTagContainerFragment). This operates on Mass-level tags, not the GAS AbilitySystemComponent.
  */
-USTRUCT(meta = (DisplayName = "Arc Mass Remove Gameplay Tags From Entity", Category = "Arc|Common"))
+USTRUCT(meta = (DisplayName = "Arc Mass Remove Gameplay Tags From Entity", Category = "Arc|Common", ToolTip = "Instant task. Removes gameplay tags from the entity's Mass tag fragment."))
 struct FArcMassRemoveGameplayTagsFromEntityTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -39,6 +41,7 @@ protected:
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
+	/** Handle to the entity's Mass gameplay tag container fragment. */
 	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
 
 #if WITH_EDITOR

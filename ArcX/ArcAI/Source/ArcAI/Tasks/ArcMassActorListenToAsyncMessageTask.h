@@ -7,6 +7,7 @@
 #include "AsyncMessageHandle.h"
 #include "MassActorSubsystem.h"
 #include "StateTreeDelegate.h"
+#include "ArcMass/ArcMassAsyncMessageEndpointFragment.h"
 #include "Engine/TimerHandle.h"
 #include "Perception/ArcAISense_GameplayAbility.h"
 
@@ -17,28 +18,47 @@ struct FArcMassActorListenToAsyncMessageTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	/** Optional duration in seconds. If > 0, the task auto-completes after this time. If 0 or negative, runs indefinitely until a transition fires. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	float Duration = 0.f;
 
+	/** Output: the received async message payload as a gameplay ability event. Populated when a matching message arrives. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	FArcAIGameplayAbilityEvent Output;
-	
+
+	/** Output: the received async message payload as an instanced struct. Allows polymorphic event types derived from FArcAIBaseEvent. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TInstancedStruct<FArcAIBaseEvent> OutputInstanced;
-	
+
+	/** Delegate dispatcher that fires when a matching async message is received. Use this to trigger state tree transitions. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnResultChanged;
 
+	/** The async message channel ID to listen on. Must be a valid message ID; messages are received on the entity's actor endpoint. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FAsyncMessageId MessageToListenFor = FAsyncMessageId::Invalid;
-	
+
+	/** Internal delegate handle for the message listener callback. */
 	FDelegateHandle PerceptionChangedDelegate;
+	/** Internal timer handle for the optional duration timeout. */
 	FTimerHandle TimerHandle;
+	/** Internal handle for the bound async message listener. Cleaned up on ExitState. */
 	FAsyncMessageHandle BoundListenerHandle = FAsyncMessageHandle::Invalid;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen To Async Message Task", Category = "Arc|Events"))
+/**
+ * Latent task that listens for async gameplay messages on the entity's actor endpoint.
+ *
+ * On EnterState, retrieves the entity's actor via FMassActorFragment, binds a listener on the
+ * specified MessageToListenFor channel via AsyncGameplayMessageSystem. Returns Running.
+ * When a matching message arrives, outputs the payload (as FArcAIGameplayAbilityEvent or instanced struct)
+ * and fires OnResultChanged, signaling the entity.
+ * Optionally auto-completes after Duration seconds.
+ *
+ * This is a latent event listener — it should be the primary or only task in its state,
+ * and state transitions should be driven by the OnResultChanged delegate.
+ */
+USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen To Async Message Task", Category = "Arc|Events", ToolTip = "Latent task that listens for async gameplay messages on the entity's actor. Fires OnResultChanged when a matching message arrives. Supports optional duration timeout. Should be the primary task in its state."))
 struct FArcMassActorListenToAsyncMessageTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -65,4 +85,5 @@ protected:
 #endif
 
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorFragment;
+	TStateTreeExternalDataHandle<FArcMassAsyncMessageEndpointFragment> AsyncMessageEndpointFragment; 
 };

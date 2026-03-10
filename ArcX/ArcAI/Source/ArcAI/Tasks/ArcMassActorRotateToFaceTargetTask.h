@@ -9,19 +9,27 @@ public:
 	
 };
 
+/** Instance data for FArcMassActorRotateToFaceTargetTask. Holds the actor to rotate and the target to face. */
 USTRUCT()
 struct FArcMassActorRotateToFaceTargetTaskInstanceData
 {
 	GENERATED_BODY()
 
+	/** The actor whose rotation will be set. Typically the entity's own actor. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	TObjectPtr<AActor> InputActor;
-	
+
+	/** The target actor to face. The InputActor will be rotated to look toward this actor's location. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	TObjectPtr<AActor> Target;
 };
 
-USTRUCT(DisplayName="Arc Mass Actor Rotate To Face Target Task", meta = (Category = "Arc|Common"))
+/**
+ * Instant StateTree task that rotates the entity's actor to face a target actor.
+ * EnterState sets the rotation immediately and returns Succeeded.
+ * Can be combined with other tasks in the same state.
+ */
+USTRUCT(DisplayName="Arc Mass Actor Rotate To Face Target Task", meta = (Category = "Arc|Common", ToolTip = "Instant task that rotates the entity's actor to face a target actor and immediately succeeds."))
 struct FArcMassActorRotateToFaceTargetTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

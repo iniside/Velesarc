@@ -8,22 +8,26 @@
 #include "UObject/Object.h"
 #include "ArcAddAbilityGameplayTagTask.generated.h"
 
+/** Instance data for FArcAddAbilityGameplayTagTask. Holds the target actor and the GAS tags to add. */
 USTRUCT()
 struct FArcMassUseGameplayAbilityTagTaskInstanceData
 {
 	GENERATED_BODY()
 
 public:
+	/** The actor whose AbilitySystemComponent will receive the gameplay tags. Typically resolved from the entity's FMassActorFragment. */
 	UPROPERTY(EditAnywhere, Category = "Prameter")
 	TObjectPtr<AActor> Actor;
 
+	/** The gameplay tags to add to the actor's AbilitySystemComponent (GAS level, not Mass tags). */
 	UPROPERTY(EditAnywhere, Category = "Parameter")
 	FGameplayTagContainer TagsToAdd;
 };
 /**
- * 
+ * Instant task that adds gameplay tags to the entity's actor at the GAS (AbilitySystemComponent) level.
+ * Tags are automatically removed when the state is exited via ExitState.
  */
-USTRUCT(meta = (DisplayName = "Arc Add AbilityGameplay Tag", Category = "Arc|Action"))
+USTRUCT(meta = (DisplayName = "Arc Add AbilityGameplay Tag", Category = "Arc|Action", ToolTip = "Instant task. Adds gameplay tags to the actor's AbilitySystemComponent. Tags are removed on state exit."))
 struct ARCAI_API FArcAddAbilityGameplayTagTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -38,6 +42,7 @@ public:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	
+	/** Handle to the entity's actor fragment, used to resolve the AActor for GAS access. */
 	TStateTreeExternalDataHandle<FMassActorFragment> MassActorHandle;
 
 #if WITH_EDITOR

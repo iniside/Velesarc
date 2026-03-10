@@ -12,51 +12,67 @@ class UEnvQuery;
 class UArcMassEQSResultStore;
 class UMassSignalSubsystem;
 
+/** Instance data for FArcMassStateTreeRunEnvQueryTask. Holds the query template, config, and output result. */
 USTRUCT()
 struct FArcMassStateTreeRunEnvQueryInstanceData
 {
 	GENERATED_BODY()
 
-	// Result of the query. If an array is binded, it will output all the created values otherwise it will output the best one.
+	/** Output result of the EQS query. Supports Vector, Actor, MassEntityHandle, and MassEnvQueryEntityInfoBlueprintWrapper types. If bound to an array, outputs all matching items; otherwise outputs the best single result. */
 	UPROPERTY(EditAnywhere, Category = Out, meta = (RefType = "/Script/CoreUObject.Vector, /Script/Engine.Actor, /Script/MassEntity.MassEntityHandle, /Script/MassEQS.MassEnvQueryEntityInfoBlueprintWrapper, /Script/ArcAI.ArcMassSmartObjectItem", CanRefToArray))
 	FStateTreePropertyRef Result;
 
-	// The query template to run
+	/** The EQS query template asset to execute. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TObjectPtr<UEnvQuery> QueryTemplate;
 
-	// Query config associated with the query template.
+	/** Runtime configuration parameters for the query template. Entries must match the query's named params. */
 	UPROPERTY(EditAnywhere, EditFixedSize, Category = Parameter)
 	TArray<FAIDynamicParam> QueryConfig;
 
-	/** determines which item will be stored (All = only first matching) */
+	/** Determines how many items are stored from the query results. SingleResult returns the best match; AllMatching returns all passing items. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TEnumAsByte<EEnvQueryRunMode::Type> RunMode = EEnvQueryRunMode::SingleResult;
 
+	/** If true, stores the query result in the EQS result store subsystem under StoreName for later retrieval. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	bool bStoreInEQSStore = false;
 
+	/** Name key used to store and retrieve the result in the EQS result store. Only used when bStoreInEQSStore is true. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FName StoreName;
-	
+
+	/** Internal: the entity handle for the entity running this query. */
 	FMassEntityHandle EntityHandle;
+
+	/** Internal: the active EQS request ID. INDEX_NONE when no query is pending. */
 	int32 RequestId = INDEX_NONE;
 
+	/** Delegate dispatched when the EQS result changes (new best item differs from previous). Useful for reacting to result updates during repeated queries. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnResultChanged;
 
+	/** Delegate listener that triggers a new EQS query when invoked. Allows external events to force a re-query. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateListener TriggerQuery;
 };
 
 /**
-* Task that runs an async environment query and outputs the result to an outside parameter. Supports Actor and vector types EQS.
-* The task is usually run in a sibling state to the result user will be with the data being stored in the parent state's parameters.
-* - Parent (Has an EQS result parameter)
-*	- Run Env Query (If success go to Use Query Result)
-*	- Use Query Result
-*/
-USTRUCT(meta = (DisplayName = "Arc Run Mass Env Query", Category = "Arc|Common"))
+ * Latent StateTree task that runs an asynchronous EQS query and outputs results via property ref binding.
+ * Supports Actor, Vector, MassEntityHandle, and MassEnvQueryEntityInfoBlueprintWrapper result types.
+ *
+ * EnterState kicks off the async query and returns Running. The task signals completion when results arrive.
+ * When bFinishOnEnd is false, the task remains Running and can re-run the query at the specified Interval.
+ * Use bSignalOnResultChange to fire the OnResultChanged delegate when the best result changes between runs.
+ *
+ * Typical usage pattern: run in a sibling state, storing results in a parent state's parameters:
+ *   - Parent (Has an EQS result parameter)
+ *     - Run Env Query (on success, transition to Use Query Result)
+ *     - Use Query Result
+ *
+ * This should be the primary task in its state since it is latent.
+ */
+USTRUCT(meta = (DisplayName = "Arc Run Mass Env Query", Category = "Arc|Common", ToolTip = "Latent async EQS query task. Returns Running until results arrive. Supports repeated queries via Interval."))
 struct FArcMassStateTreeRunEnvQueryTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
@@ -73,13 +89,15 @@ struct FArcMassStateTreeRunEnvQueryTask : public FMassStateTreeTaskBase
 	static void ExecuteQueryCallback(TSharedPtr<FEnvQueryResult> QueryResult, FStateTreeWeakExecutionContext WeakContext, UMassSignalSubsystem* SignalSubsystem, FMassEntityHandle Entity
 		, UArcMassEQSResultStore* ResultStoreSubsystem, bool bFinishOnEnd, float Interval, bool bInSignalOnResultChange);
     
+	/** If true, the task completes (Succeeded) once the first query result arrives. If false, the task stays Running and can re-run periodically. */
 	UPROPERTY(EditAnywhere)
 	bool bFinishOnEnd = true;
 
-	// How often should  EQS re run after finish. -1 = Never.
+	/** How often (in seconds) the EQS query re-runs after completion. Only used when bFinishOnEnd is false. -1 means never re-run. */
 	UPROPERTY(EditAnywhere, Meta = (EditCondition="bFinishOnEnd==false"))
 	float Interval = -1;
 
+	/** If true, dispatches the OnResultChanged delegate when the best query result changes between re-runs. Only used when bFinishOnEnd is false. */
 	UPROPERTY(EditAnywhere, Meta = (EditCondition="bFinishOnEnd==false"))
 	bool bSignalOnResultChange = true;
 

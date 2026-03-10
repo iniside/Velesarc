@@ -13,22 +13,38 @@ struct FArcMassActorListenGameplayEffectAppliedTaskInstanceData
 {
 	GENERATED_BODY()
 
+	/** Tags that the applied gameplay effect must have for the delegate to fire. Leave empty to match any effect. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer RequiredTags;
-	
+
+	/** Tags that, if present on the applied gameplay effect, will prevent the delegate from firing. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer DenyTags;
-	
+
+	/** Delegate dispatcher that fires when a gameplay effect matching the tag filters is applied to the entity's actor. Use this to trigger state tree transitions. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnEffectAppliedToSelf;;
-	
+
+	/** The duration of the applied gameplay effect. Available after OnEffectAppliedToSelf fires. 0 for instant effects. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	float Duration = 0.f;
-	
+
+	/** Internal handle used to unsubscribe from the effect applied delegate on exit. */
 	FDelegateHandle OnAppliedToSelfDelegateHandle;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen Gameplay Effect Applied Task", Category = "Arc|Events"))
+/**
+ * Latent task that listens for gameplay effects applied to the entity's actor.
+ *
+ * On EnterState, retrieves the entity's actor via FMassActorFragment, gets its AbilitySystemComponent,
+ * and registers OnGameplayEffectAppliedDelegateToSelf. Returns Running.
+ * When an effect is applied that passes RequiredTags/DenyTags filtering, outputs the Duration
+ * and fires OnEffectAppliedToSelf, signaling the entity.
+ *
+ * This is a latent event listener — it should be the primary or only task in its state,
+ * and state transitions should be driven by the OnEffectAppliedToSelf delegate.
+ */
+USTRUCT(meta = (DisplayName = "Arc Mass Actor Listen Gameplay Effect Applied Task", Category = "Arc|Events", ToolTip = "Latent task that listens for gameplay effects applied to the entity's actor. Filters by RequiredTags/DenyTags. Fires OnEffectAppliedToSelf with Duration. Should be the primary task in its state."))
 struct FArcMassActorListenGameplayEffectAppliedTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

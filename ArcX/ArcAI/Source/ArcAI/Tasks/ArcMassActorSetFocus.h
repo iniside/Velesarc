@@ -6,20 +6,28 @@
 class AAIController;
 class AActor;
 
+/** Instance data for FArcMassActorSetFocusTask. Holds the AIController and focus target actor. */
 USTRUCT()
 struct FArcMassActorSetFocusTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Delay before the task ends. Default (0 or any negative) will run indefinitely, so it requires a transition in the state tree to stop it. */
+	/** The AIController whose focus will be set. Must be bound from the entity's actor. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	TObjectPtr<AAIController> AIController;
 
+	/** The actor to focus on. The AIController will continuously look at this actor while the state is active. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	TObjectPtr<AActor> FocusTarget;
 };
 
-USTRUCT(meta = (DisplayName = "Arc Mass Actor Set Focus", Category = "Arc|Common"))
+/**
+ * Latent StateTree task that sets AI focus on a target actor for the duration of the state.
+ * EnterState sets the initial focus and returns Running. Tick continuously updates the focus
+ * to keep tracking the target. ExitState clears the focus. This task runs for the entire
+ * lifetime of its state and should be used as the primary task or alongside movement tasks.
+ */
+USTRUCT(meta = (DisplayName = "Arc Mass Actor Set Focus", Category = "Arc|Common", ToolTip = "Latent task that sets and maintains AI focus on a target actor. Clears focus on state exit."))
 struct FArcMassActorSetFocusTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

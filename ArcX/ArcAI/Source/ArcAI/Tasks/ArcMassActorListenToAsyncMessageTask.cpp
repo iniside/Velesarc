@@ -20,13 +20,14 @@ FArcMassActorListenToAsyncMessageTask::FArcMassActorListenToAsyncMessageTask()
 bool FArcMassActorListenToAsyncMessageTask::Link(FStateTreeLinker& Linker)
 {
 	Linker.LinkExternalData(MassActorFragment);
-
+	Linker.LinkExternalData(AsyncMessageEndpointFragment);
 	return true;
 }
 
 void FArcMassActorListenToAsyncMessageTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
 	Builder.AddReadWrite<FMassActorFragment>();
+	Builder.AddReadWrite<FArcMassAsyncMessageEndpointFragment>();
 }
 
 EStateTreeRunStatus FArcMassActorListenToAsyncMessageTask::EnterState(FStateTreeExecutionContext& Context
@@ -39,6 +40,7 @@ EStateTreeRunStatus FArcMassActorListenToAsyncMessageTask::Tick(FStateTreeExecut
 {
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	FMassActorFragment* ActorFragment = MassCtx.GetExternalDataPtr(MassActorFragment);
+	FArcMassAsyncMessageEndpointFragment* EndpointFragment = MassCtx.GetExternalDataPtr(AsyncMessageEndpointFragment);
 	
 	UWorld* World = Context.GetWorld();
 	if (!World)
@@ -49,46 +51,71 @@ EStateTreeRunStatus FArcMassActorListenToAsyncMessageTask::Tick(FStateTreeExecut
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	TSharedPtr<FAsyncGameplayMessageSystem> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem<FAsyncGameplayMessageSystem>(World);
 	
-	if (!ActorFragment->Get())
-	{
-		MessageSystem->UnbindListener(InstanceData.BoundListenerHandle);
-		
-		return EStateTreeRunStatus::Running;	
-	}
-
 	if (InstanceData.BoundListenerHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Running;
 	}
 	
-	
-
-	UAsyncMessageBindingComponent* BindComp = ActorFragment->Get()->FindComponentByClass<UAsyncMessageBindingComponent>();
-	
-	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	IAsyncMessageBindingEndpointInterface* EndpointInterface = Cast<IAsyncMessageBindingEndpointInterface>(BindComp);
-	
-	InstanceData.BoundListenerHandle = MessageSystem->BindListener(
-		InstanceData.MessageToListenFor,
-		[this, SignalSubsystem, WeakContext = Context.MakeWeakExecutionContext(), Entity = MassCtx.GetEntity()](const FAsyncMessage& Message)
-			{
-				FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-				FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
-				if (InstanceDataPtr)
+	if (EndpointFragment)
+	{
+		UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
+		InstanceData.BoundListenerHandle = MessageSystem->BindListener(
+			InstanceData.MessageToListenFor,
+			[this, SignalSubsystem, WeakContext = Context.MakeWeakExecutionContext(), Entity = MassCtx.GetEntity()](const FAsyncMessage& Message)
 				{
-					if (InstanceDataPtr->OutputInstanced.GetScriptStruct() == Message.GetPayloadView().GetScriptStruct())
+					FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
+					FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
+					if (InstanceDataPtr)
 					{
-						InstanceDataPtr->OutputInstanced.Reset();
-						InstanceDataPtr->OutputInstanced.InitializeAsScriptStruct( Message.GetPayloadView().GetScriptStruct(), Message.GetPayloadView().GetMemory());
+						if (InstanceDataPtr->OutputInstanced.GetScriptStruct() == Message.GetPayloadView().GetScriptStruct())
+						{
+							InstanceDataPtr->OutputInstanced.Reset();
+							InstanceDataPtr->OutputInstanced.InitializeAsScriptStruct( Message.GetPayloadView().GetScriptStruct(), Message.GetPayloadView().GetMemory());
 					
-						StrongContext.BroadcastDelegate(InstanceDataPtr->OnResultChanged);
-						SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
+							StrongContext.BroadcastDelegate(InstanceDataPtr->OnResultChanged);
+							SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
+						}
 					}
 				}
-			}
-			, FAsyncMessageBindingOptions()
-			, EndpointInterface->GetEndpoint());
+				, FAsyncMessageBindingOptions()
+				, EndpointFragment->Endpoint);
+		
+		return EStateTreeRunStatus::Running;
+	}
+	
+	if (ActorFragment && ActorFragment->Get())
+	{
+		UAsyncMessageBindingComponent* BindComp = ActorFragment->Get()->FindComponentByClass<UAsyncMessageBindingComponent>();
+	
+		UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
+		IAsyncMessageBindingEndpointInterface* EndpointInterface = Cast<IAsyncMessageBindingEndpointInterface>(BindComp);
+	
+		InstanceData.BoundListenerHandle = MessageSystem->BindListener(
+			InstanceData.MessageToListenFor,
+			[this, SignalSubsystem, WeakContext = Context.MakeWeakExecutionContext(), Entity = MassCtx.GetEntity()](const FAsyncMessage& Message)
+				{
+					FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
+					FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
+					if (InstanceDataPtr)
+					{
+						if (InstanceDataPtr->OutputInstanced.GetScriptStruct() == Message.GetPayloadView().GetScriptStruct())
+						{
+							InstanceDataPtr->OutputInstanced.Reset();
+							InstanceDataPtr->OutputInstanced.InitializeAsScriptStruct( Message.GetPayloadView().GetScriptStruct(), Message.GetPayloadView().GetMemory());
+					
+							StrongContext.BroadcastDelegate(InstanceDataPtr->OnResultChanged);
+							SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
+						}
+					}
+				}
+				, FAsyncMessageBindingOptions()
+				, EndpointInterface->GetEndpoint());
+		
+		return EStateTreeRunStatus::Running;
+	}
+	
 
+	MessageSystem->UnbindListener(InstanceData.BoundListenerHandle);
 	return EStateTreeRunStatus::Running;
 }
 
