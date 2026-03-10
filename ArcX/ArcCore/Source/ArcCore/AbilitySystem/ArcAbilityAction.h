@@ -100,15 +100,4 @@ struct ARCCORE_API FArcAbilityActionList
 	TArray<FInstancedStruct> Actions;
 };
 
-USTRUCT(BlueprintType)
-struct ARCCORE_API FArcAbilityEventActions
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, meta = (Categories = "Ability.Event"))
-	FGameplayTag EventTag;
-
-	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcCore.ArcAbilityAction", ExcludeBaseStruct))
-	TArray<FInstancedStruct> Actions;
-};
 

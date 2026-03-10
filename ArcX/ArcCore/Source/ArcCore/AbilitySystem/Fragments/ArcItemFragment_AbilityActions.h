@@ -32,8 +32,8 @@ class ARCCORE_API UArcAbilityActionsPreset : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Events")
-	TArray<FArcAbilityEventActions> EventActions;
+	UPROPERTY(EditAnywhere, Category = "Events", meta = (Categories = "Ability.Event,GameplayEvent.Ability", ForceInlineRow))
+	TMap<FGameplayTag, FArcAbilityActionList> EventActions;
 
 	UPROPERTY(EditAnywhere, Category = "Targeting", meta = (BaseStruct = "/Script/ArcCore.ArcAbilityAction", ExcludeBaseStruct))
 	TArray<FInstancedStruct> OnLocalTargetResultActions;
@@ -57,8 +57,8 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Preset")
 	TObjectPtr<UArcAbilityActionsPreset> Preset;
 
-	UPROPERTY(EditAnywhere, Category = "Events", meta = (TitleProperty))
-	TArray<FArcAbilityEventActions> EventActions;
+	UPROPERTY(EditAnywhere, Category = "Events", meta = (Categories = "Ability.Event,GameplayEvent.Ability", ForceInlineRow))
+	TMap<FGameplayTag, FArcAbilityActionList> EventActions;
 
 	UPROPERTY(EditAnywhere, Category = "Targeting", meta = (BaseStruct = "/Script/ArcCore.ArcAbilityAction", ExcludeBaseStruct))
 	TArray<FInstancedStruct> OnLocalTargetResultActions;
@@ -73,7 +73,7 @@ protected:
 	TArray<FInstancedStruct> OnEndActions;
 
 public:
-	const TArray<FArcAbilityEventActions>& GetEventActions() const
+	const TMap<FGameplayTag, FArcAbilityActionList>& GetEventActions() const
 	{
 		if (Preset) { return Preset->EventActions; }
 		return EventActions;

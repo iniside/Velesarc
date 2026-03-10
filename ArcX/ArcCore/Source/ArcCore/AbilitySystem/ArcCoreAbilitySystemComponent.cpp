@@ -660,6 +660,16 @@ void UArcCoreAbilitySystemComponent::SetAbilityOnCooldown(FGameplayAbilitySpecHa
 	{
 		return;
 	}
+
+	// Clear existing cooldown timer if re-entering cooldown (e.g. cascading cost abilities)
+	if (FTimerHandle* ExistingHandle = AbilitiesOnCooldown.Find(InAbility))
+	{
+		FTimerManager& TimerMgr = GetWorld()->GetTimerManager();
+		TimerMgr.ClearTimer(*ExistingHandle);
+		CooldownTimerToSpec.Remove(*ExistingHandle);
+		AbilitiesOnCooldown.Remove(InAbility);
+	}
+
 	float Ping = 0;
 	// add some value of ping to cooldown
 	// to make some compensation on client, for the fact that server cooldown may actully

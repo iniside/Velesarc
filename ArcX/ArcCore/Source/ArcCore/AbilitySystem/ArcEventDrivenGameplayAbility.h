@@ -57,7 +57,7 @@ protected:
 	void HandleStateTreeFailed(const FGameplayEventData& Payload, FGameplayTag EventTag);
 
 	// Cached event-to-actions mappings from item fragment
-	TArray<FArcAbilityEventActions> CachedEventActions;
+	TMap<FGameplayTag, FArcAbilityActionList> CachedEventActions;
 
 	UPROPERTY()
 	TObjectPtr<UArcAT_WaitAbilityStateTree> StateTreeTask;

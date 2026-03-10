@@ -57,11 +57,11 @@ void UArcEventDrivenGameplayAbility::ActivateAbility(const FGameplayAbilitySpecH
 		{
 			// Get event tags from cached event actions
 			FGameplayTagContainer EventTags;
-			for (const FArcAbilityEventActions& EA : CachedEventActions)
+			for (const auto& [Tag, EA] : CachedEventActions)
 			{
-				if (EA.EventTag.IsValid())
+				if (Tag.IsValid())
 				{
-					EventTags.AddTag(EA.EventTag);
+					EventTags.AddTag(Tag);
 				}
 			}
 
@@ -93,19 +93,15 @@ void UArcEventDrivenGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle
 void UArcEventDrivenGameplayAbility::HandleStateTreeEvent(const FGameplayEventData& Payload, FGameplayTag EventTag)
 {
 	// Look up matching event actions
-	for (FArcAbilityEventActions& EA : CachedEventActions)
+	if (FArcAbilityActionList* EA = CachedEventActions.Find(EventTag))
 	{
-		if (EA.EventTag == EventTag)
-		{
-			FArcAbilityActionContext ActionContext;
-			ActionContext.Ability = this;
-			ActionContext.Handle = GetCurrentAbilitySpecHandle();
-			ActionContext.ActorInfo = GetCurrentActorInfo();
-			ActionContext.ActivationInfo = GetCurrentActivationInfo();
-			ActionContext.EventTag = EventTag;
-			ExecuteActionList(EA.Actions, ActionContext);
-			return;
-		}
+		FArcAbilityActionContext ActionContext;
+		ActionContext.Ability = this;
+		ActionContext.Handle = GetCurrentAbilitySpecHandle();
+		ActionContext.ActorInfo = GetCurrentActorInfo();
+		ActionContext.ActivationInfo = GetCurrentActivationInfo();
+		ActionContext.EventTag = EventTag;
+		ExecuteActionList(EA->Actions, ActionContext);
 	}
 }
 
