@@ -65,6 +65,7 @@ public class ArcAI : ModuleRules
 				, "Mover"
 				, "SlateIM"
 				, "TraceLog"
+				, "WorldConditions"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
