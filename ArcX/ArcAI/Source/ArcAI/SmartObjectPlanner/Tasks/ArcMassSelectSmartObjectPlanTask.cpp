@@ -5,6 +5,10 @@
 #include "MassStateTreeExecutionContext.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 
+#if ENABLE_VISUAL_LOG
+#include "VisualLogger/VisualLogger.h"
+#endif
+
 FArcMassSelectSmartObjectPlanTask::FArcMassSelectSmartObjectPlanTask()
 {
 	bShouldCallTick = false;
@@ -19,26 +23,25 @@ EStateTreeRunStatus FArcMassSelectSmartObjectPlanTask::EnterState(FStateTreeExec
 	UMassEntitySubsystem* MassEntitySubsystem = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
 	UArcSmartObjectPlannerSubsystem* PlannerSubsystem = Context.GetWorld()->GetSubsystem<UArcSmartObjectPlannerSubsystem>();
 	
+#if ENABLE_VISUAL_LOG	
 	FString DebugString = "Selected Next Step :\n";
+#endif
 	if (InstanceData.PlanInput.Plans.IsEmpty())
 	{
+		
+#if ENABLE_VISUAL_LOG
 		DebugString = " No plans available";
 		UE_VLOG(MassEntitySubsystem, LogGoalPlannerStep, Log, TEXT("%s"), *DebugString);
+#endif
 		//SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
 		return EStateTreeRunStatus::Failed;
 		
 	}
 	
-	TArray<FArcSmartObjectPlanStep>* PlanSteps = InstanceData.OutPlanSteps.GetMutablePtr(Context);
-	if (!PlanSteps)
-	{
-		return EStateTreeRunStatus::Failed;
-	}
-	
-	PlanSteps->Empty();
+	InstanceData.OutPlanSteps.Empty();
 	
 	int32 RandPlan = FMath::RandRange(0, InstanceData.PlanInput.Plans.Num() - 1);
-	*PlanSteps = InstanceData.PlanInput.Plans[RandPlan].Items;
+	InstanceData.OutPlanSteps = InstanceData.PlanInput.Plans[RandPlan].Items;
 	
 	PlannerSubsystem->SetDebugPlan(MassCtx.GetEntity(), InstanceData.PlanInput.Plans[RandPlan]);
 	

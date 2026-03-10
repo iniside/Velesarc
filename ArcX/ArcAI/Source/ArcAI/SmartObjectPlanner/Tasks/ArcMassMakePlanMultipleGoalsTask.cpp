@@ -4,6 +4,7 @@
 
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanRequest.h"
+#include "MassCommonFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
@@ -22,16 +23,29 @@ EStateTreeRunStatus FArcMassMakePlanMultipleGoalsTask::EnterState(FStateTreeExec
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
 
+	const FMassEntityHandle Entity = MassCtx.GetEntity();
+	const FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+
+	FVector Origin = InstanceData.SearchOrigin;
+	if (Origin.IsZero())
+	{
+		const FTransformFragment* TransformFragment = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity);
+		if (TransformFragment)
+		{
+			Origin = TransformFragment->GetTransform().GetLocation();
+		}
+	}
+
 	for (const FGameplayTagContainer& GoalTags : InstanceData.GoalRequiredTags)
 	{
 		FArcSmartObjectPlanRequest Request;
 		Request.InitialTags = InstanceData.InitialTags;
 		Request.Requires = GoalTags;
-		Request.SearchOrigin = InstanceData.SearchOrigin;
+		Request.SearchOrigin = Origin;
 		Request.SearchRadius = InstanceData.SearchRadius;
 
 		Request.FinishedDelegate.BindWeakLambda(PlannerSubsystem,
-			[WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity = MassCtx.GetEntity()]
+			[WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, Entity]
 			(const FArcSmartObjectPlanResponse& Response)
 		{
 			const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();

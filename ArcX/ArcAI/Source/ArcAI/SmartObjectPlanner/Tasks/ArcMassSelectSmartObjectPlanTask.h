@@ -11,22 +11,22 @@ struct FArcMassSelectSmartObjectPlanTaskInstanceData
 {
 	GENERATED_BODY()
 
+	// Plan response to select from (typically bound from a Make Plan task output)
 	UPROPERTY(EditAnywhere, Category = Input)
 	FArcSmartObjectPlanResponse PlanInput;
-	
-	// Result of the query. If an array is binded, it will output all the created values otherwise it will output the best one.
-	UPROPERTY(VisibleAnywhere, Category = Parameter, meta = (CanRefToArray))
-	TStateTreePropertyRef<TArray<FArcSmartObjectPlanStep>> OutPlanSteps;
+
+	// Steps from the selected plan, output for sequential execution
+	UPROPERTY(VisibleAnywhere, Category = Output, meta = (CanRefToArray))
+	TArray<FArcSmartObjectPlanStep> OutPlanSteps;
 };
 
 /**
-* Task that runs an async environment query and outputs the result to an outside parameter. Supports Actor and vector types EQS.
-* The task is usually run in a sibling state to the result user will be with the data being stored in the parent state's parameters.
-* - Parent (Has an EQS result parameter)
-*	- Run Env Query (If success go to Use Query Result)
-*	- Use Query Result
+* Randomly selects one plan from a PlanResponse and outputs its steps.
+* Separated from Make Plan tasks so that re-entering the state does not
+* re-roll a different plan while the current one is still being executed.
+* Should only be re-entered after the current plan finishes (success or fail).
 */
-USTRUCT(meta = (DisplayName = "Arc Mass Select Smart Object Plan", Category = "Common"))
+USTRUCT(meta = (DisplayName = "Arc Mass Select Smart Object Plan", Category = "Smart Object Planner"))
 struct FArcMassSelectSmartObjectPlanTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()

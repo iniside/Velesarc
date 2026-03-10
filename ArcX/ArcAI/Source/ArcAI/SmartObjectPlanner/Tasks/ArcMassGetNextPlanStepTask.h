@@ -11,41 +11,54 @@ struct FArcMassGetNextPlanStepTaskInstanceData
 {
 	GENERATED_BODY()
 
-	// Result of the query. If an array is binded, it will output all the created values otherwise it will output the best one.
-	UPROPERTY(VisibleAnywhere, Category = Parameter, meta = (CanRefToArray))
-	TStateTreePropertyRef<TArray<FArcSmartObjectPlanStep>> PlanItemsQueue;
+	// Plan steps to iterate through sequentially
+	UPROPERTY(VisibleAnywhere, Category = Input, meta = (CanRefToArray))
+	TArray<FArcSmartObjectPlanStep> PlanItemsQueue;
 
-	UPROPERTY(EditAnywhere, Category = Parameter)
-	TStateTreePropertyRef<FArcMassEntityHandleWrapper> SmartObjectEntityHandle;
-	
-	UPROPERTY(VisibleAnywhere, Category = Parameter)
-	TStateTreePropertyRef<int32> CurrentStepIdx;
+	// Output: entity handle of the smart object for the current step
+	UPROPERTY(EditAnywhere, Category = Output)
+	FArcMassEntityHandleWrapper SmartObjectEntityHandle;
 
-	UPROPERTY(VisibleAnywhere, Category = Parameter)
-	TStateTreePropertyRef<FMassSmartObjectCandidateSlots> CandidateSlots;
-	
+	// Output: candidate slots found for the current step's smart object
+	UPROPERTY(VisibleAnywhere, Category = Output)
+	FMassSmartObjectCandidateSlots CandidateSlots;
+
+	// Output: world location of the current step's smart object
+	UPROPERTY(EditAnywhere, Category = Output)
+	FVector StepLocation;
+
+	// Dispatched when all plan steps have been consumed
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnPlanFinished;
 };
 
+USTRUCT()
+struct FArcMassGetNextPlanStepTaskRuntimeInstanceData
+{
+	GENERATED_BODY()
+
+	// Plan steps to iterate through sequentially
+	UPROPERTY(VisibleAnywhere, Category = Parameter)
+	int32 CurrentStep;
+};
 /**
-* Task that runs an async environment query and outputs the result to an outside parameter. Supports Actor and vector types EQS.
-* The task is usually run in a sibling state to the result user will be with the data being stored in the parent state's parameters.
-* - Parent (Has an EQS result parameter)
-*	- Run Env Query (If success go to Use Query Result)
-*	- Use Query Result
+* Iterates through plan steps one at a time. Each entry advances the step index and outputs
+* the current step's smart object entity handle, candidate slots, and world location.
+* Fires OnPlanFinished and succeeds when all steps have been consumed. Fails if no steps exist.
 */
-USTRUCT(meta = (DisplayName = "Arc Mass Get Next Plan Step Task", Category = "Common"))
+USTRUCT(meta = (DisplayName = "Arc Mass Get Next Plan Step", Category = "Smart Object Planner"))
 struct FArcMassGetNextPlanStepTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
 
 	using FInstanceDataType = FArcMassGetNextPlanStepTaskInstanceData;
-
+	using FExecutionRuntimeDataType = FArcMassGetNextPlanStepTaskRuntimeInstanceData;
+	
 	FArcMassGetNextPlanStepTask();
 
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
-
+	virtual const UStruct* GetExecutionRuntimeDataType() const override { return FExecutionRuntimeDataType::StaticStruct(); }
+	
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
 #if WITH_EDITOR

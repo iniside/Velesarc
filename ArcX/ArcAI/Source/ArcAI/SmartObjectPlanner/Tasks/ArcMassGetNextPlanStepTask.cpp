@@ -9,7 +9,7 @@
 
 FArcMassGetNextPlanStepTask::FArcMassGetNextPlanStepTask()
 {
-	bShouldCallTick = true;
+	bShouldCallTick = false;
 	bShouldCopyBoundPropertiesOnTick = true;
 	bShouldCopyBoundPropertiesOnExitState = true;
 }
@@ -17,69 +17,70 @@ FArcMassGetNextPlanStepTask::FArcMassGetNextPlanStepTask()
 EStateTreeRunStatus FArcMassGetNextPlanStepTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
+	FExecutionRuntimeDataType& ExecutionRuntimeData = Context.GetExecutionRuntimeData(*this);
+	
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	
 	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
 
 	UMassEntitySubsystem* MassEntitySubsystem = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
 	
-	TArray<FArcSmartObjectPlanStep>* PlanSteps = InstanceData.PlanItemsQueue.GetMutablePtr(Context);
+#if ENABLE_VISUAL_LOG
 	FString DebugString = "Selected Next Step :\n";
-	if (PlanSteps->IsEmpty())
+#endif
+	if (InstanceData.PlanItemsQueue.IsEmpty())
 	{
+#if ENABLE_VISUAL_LOG
 		DebugString = " No plans available";
 		UE_VLOG(MassEntitySubsystem, LogGoalPlannerStep, Log, TEXT("%s"), *DebugString);
+#endif
 		//SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
 		return EStateTreeRunStatus::Failed;
 	}
 	
-	int32* Idx = InstanceData.CurrentStepIdx.GetMutablePtr(Context);
-	if (*Idx == INDEX_NONE)
+	if (ExecutionRuntimeData.CurrentStep == INDEX_NONE)
 	{
-		*Idx = 0;
+		ExecutionRuntimeData.CurrentStep = 0;
 	}
 	
-	if (PlanSteps->IsEmpty())
+	if (InstanceData.PlanItemsQueue.IsEmpty())
 	{
+#if ENABLE_VISUAL_LOG
 		DebugString = " No steps in plan available";
 		UE_VLOG(MassEntitySubsystem, LogGoalPlannerStep, Log, TEXT("%s"), *DebugString);
+#endif
 		//SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
 		return EStateTreeRunStatus::Failed;
 	}
 
-	if (*Idx >= PlanSteps->Num())
+	if (ExecutionRuntimeData.CurrentStep >= InstanceData.PlanItemsQueue.Num())
 	{
+#if ENABLE_VISUAL_LOG
 		DebugString = " Plan Finished";
 		UE_VLOG(MassEntitySubsystem, LogGoalPlannerStep, Log, TEXT("%s"), *DebugString);
-		*Idx = INDEX_NONE;
+#endif
+		ExecutionRuntimeData.CurrentStep = INDEX_NONE;
 		Context.BroadcastDelegate(InstanceData.OnPlanFinished);
 		return EStateTreeRunStatus::Succeeded;
 	}
 
-	const FArcSmartObjectPlanStep& Item = (*PlanSteps)[(*Idx)];
+	const FArcSmartObjectPlanStep& Item = InstanceData.PlanItemsQueue[ExecutionRuntimeData.CurrentStep];
 
-	FArcMassEntityHandleWrapper* SmartObjectEntityHandle = InstanceData.SmartObjectEntityHandle.GetMutablePtr(Context);
-	if (SmartObjectEntityHandle)
-	{
-		SmartObjectEntityHandle->EntityHandle = Item.EntityHandle;
-	}
+	InstanceData.SmartObjectEntityHandle.EntityHandle = Item.EntityHandle;
+	InstanceData.StepLocation = Item.Location;
 	
-	(*Idx)++;
+	ExecutionRuntimeData.CurrentStep++;
 	FArcSmartObjectOwnerFragment* SOOwner = MassCtx.GetEntityManager().GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(Item.EntityHandle);
 	if (SOOwner)
 	{
-		FMassSmartObjectCandidateSlots* CandidateSlots = InstanceData.CandidateSlots.GetMutablePtr(Context);
-		
-		if (CandidateSlots)
-		{
-			*CandidateSlots = Item.FoundCandidateSlots;
-		}
+		InstanceData.CandidateSlots = Item.FoundCandidateSlots;
 	}
 	
-	DebugString = FString::Printf(TEXT(" Moving to step %d / %d : Entity %s at %s"), *Idx, PlanSteps->Num(), *Item.EntityHandle.DebugGetDescription(), *Item.Location.ToString());
+#if ENABLE_VISUAL_LOG
+	DebugString = FString::Printf(TEXT(" Moving to step %d / %d : Entity %s at %s"), ExecutionRuntimeData.CurrentStep, InstanceData.PlanItemsQueue.Num(), *Item.EntityHandle.DebugGetDescription(), *Item.Location.ToString());
 	UE_VLOG(MassEntitySubsystem, LogGoalPlannerStep, Log, TEXT("%s"), *DebugString);
 	UE_VLOG_SPHERE(MassEntitySubsystem, LogGoalPlannerStep, Log, Item.Location, 25.0f, FColor::Green, TEXT("%s"), *DebugString);
+#endif
 	
 	//SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {MassCtx.GetEntity()});
 	return EStateTreeRunStatus::Succeeded;

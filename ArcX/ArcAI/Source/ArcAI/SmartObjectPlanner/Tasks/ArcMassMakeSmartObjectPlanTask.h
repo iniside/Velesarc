@@ -14,39 +14,68 @@ struct FArcMassMakeSmartObjectPlanTaskInstanceData
 {
 	GENERATED_BODY()
 
-	// Result of the query. If an array is binded, it will output all the created values otherwise it will output the best one.
+	// Tags that the goal smart object must match
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer RequiredTags;
 
-	// The query template to run
+	// Tags applied to the entity at the start of planning (used for precondition matching)
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer InitialTags;
 
+	// Additional conditions evaluated during planning (e.g. resource checks, distance filters)
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TArray<TInstancedStruct<FArcSmartObjectPlanConditionEvaluator>> CustomConditions;
-	
+
+	// Maximum distance from SearchOrigin to search for smart objects
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	float SearchRadius = 1000.f;
 
+	// Maximum number of plans the planner should return
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	int32 MaxPlans = 5;
-	
-	UPROPERTY(EditAnywhere, Category = Input)
+
+	// Override search origin. If zero, defaults to the owning entity's location.
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (Optional))
 	FVector SearchOrigin = FVector::ZeroVector;
 
-	UPROPERTY(EditAnywhere, Category = Out)
+	// Resulting plans produced by the planner
+	UPROPERTY(EditAnywhere, Category = Output)
 	TStateTreePropertyRef<FArcSmartObjectPlanResponse> PlanResponse;
 };
 
 /**
-* Task that runs an async environment query and outputs the result to an outside parameter. Supports Actor and vector types EQS.
-* The task is usually run in a sibling state to the result user will be with the data being stored in the parent state's parameters.
-* - Parent (Has an EQS result parameter)
-*	- Run Env Query (If success go to Use Query Result)
-*	- Use Query Result
+* Submits an async plan request to the Smart Object Planner subsystem.
+* Searches for smart objects matching RequiredTags within SearchRadius of the entity.
+* Defaults to the owning entity's location if SearchOrigin is not explicitly set.
+* Completes asynchronously when the planner produces results.
+*
+* Typical StateTree composition for Smart Object planning:
+*
+* Root (parameters: PlanResponse, PlanSteps[], CurrentStepIdx, SOEntityHandle, CandidateSlots)
+* |
+* |-- State: Make Plan [MakeSmartObjectPlanTask or MakePlanMultipleGoalsTask]
+* |     Async — searches for smart objects, produces PlanResponse
+* |     -> Succeeded: go to Select Plan
+* |
+* |-- State: Select Plan [SelectSmartObjectPlanTask]
+* |     Picks one plan from PlanResponse, outputs PlanSteps[]
+* |     Only re-entered after current plan finishes to avoid re-rolling mid-execution
+* |     -> Succeeded: go to Execute Plan
+* |
+* '-- State: Execute Plan
+*       |
+*       |-- State: Get Next Step [GetNextPlanStepTask]
+*       |     Advances step index, outputs SOEntityHandle + CandidateSlots for current step
+*       |     -> Succeeded: go to Execute Step
+*       |     -> OnPlanFinished: all steps consumed, plan complete
+*       |
+*       '-- State: Execute Step
+*             Claim the smart object, move to it, then use it
+*             Task: [ClaimSmartObjectTask] -> [Move to SO] -> [UseSmartObjectTask]
+*             -> Completed: go back to Get Next Step
 */
-USTRUCT(meta = (DisplayName = "Arc Mass Make Smart Object Plan", Category = "Common"))
-struct FArcMassMakeSmartObjectPlanTask: public FMassStateTreeTaskBase
+USTRUCT(meta = (DisplayName = "Arc Mass Make Smart Object Plan", Category = "Smart Object Planner"))
+struct FArcMassMakeSmartObjectPlanTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
 

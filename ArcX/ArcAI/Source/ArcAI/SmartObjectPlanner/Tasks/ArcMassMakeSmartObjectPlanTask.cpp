@@ -4,9 +4,14 @@
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanRequest.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
+#include "MassCommonFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
+
+#if ENABLE_VISUAL_LOG
+#include "VisualLogger/VisualLogger.h"
+#endif
 
 FArcMassMakeSmartObjectPlanTask::FArcMassMakeSmartObjectPlanTask()
 {
@@ -19,11 +24,24 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	
+	const FMassEntityHandle Entity = MassCtx.GetEntity();
+	const FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+
+	FVector Origin = InstanceData.SearchOrigin;
+	if (Origin.IsZero())
+	{
+		const FTransformFragment* TransformFragment = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity);
+		if (TransformFragment)
+		{
+			Origin = TransformFragment->GetTransform().GetLocation();
+		}
+	}
+
 	FArcSmartObjectPlanRequest Request;
-	Request.RequestingEntity = MassCtx.GetEntity();
+	Request.RequestingEntity = Entity;
 	Request.InitialTags = InstanceData.InitialTags;
 	Request.Requires = InstanceData.RequiredTags;
-	Request.SearchOrigin = InstanceData.SearchOrigin;
+	Request.SearchOrigin = Origin;
 	Request.SearchRadius = InstanceData.SearchRadius;
 	
 	Request.CustomConditionsArray.Reset(InstanceData.CustomConditions.Num());
@@ -37,8 +55,8 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 	
 	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
 	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	
-	Request.FinishedDelegate.BindWeakLambda(PreconSubsystem, [WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, MassSubsystem, Entity = MassCtx.GetEntity()](const FArcSmartObjectPlanResponse& Response)
+
+	Request.FinishedDelegate.BindWeakLambda(PreconSubsystem, [WeakContext = Context.MakeWeakExecutionContext(), SignalSubsystem, MassSubsystem, Entity](const FArcSmartObjectPlanResponse& Response)
 	{
 		const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 		
@@ -47,6 +65,7 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 		FArcSmartObjectPlanResponse* Plan = DataPtr->PlanResponse.GetInternalPropertyRef().GetPtrFromStrongExecutionContext<FArcSmartObjectPlanResponse>(StrongContext);
 		*Plan = Response;
 			
+#if ENABLE_VISUAL_LOG	
 		FString PlanDebugString;
 		for (const FArcSmartObjectPlanContainer& PlanRef : Plan->Plans)
 		{
@@ -57,6 +76,7 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 			}
 		}
 		UE_VLOG(MassSubsystem, LogGoalPlanner, Log, TEXT("%s"), *PlanDebugString);
+#endif
 			
 		StrongContext.FinishTask(EStateTreeFinishTaskType::Succeeded);
 
