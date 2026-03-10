@@ -14,6 +14,7 @@ public class ArcMCP : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"Json",
+			"JsonUtilities",
 			"ECABridge"
 		});
 
@@ -21,7 +22,13 @@ public class ArcMCP : ModuleRules
 		{
 			"UnrealEd",
 			"AssetTools",
-			"AssetRegistry"
+			"AssetRegistry",
+			"ArcCore",
+			"StateTreeModule",
+			"StateTreeEditorModule",
+			"PropertyBindingUtils",
+			"StructUtils",
+			"GameplayTags"
 		});
 	}
 }
