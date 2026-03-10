@@ -21,10 +21,11 @@ void UArcAreaTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext,
 	BuildContext.AddConstSharedFragment(ConfigFragment);
 
 	// Add smart object ownership fragments when a definition is provided.
-	// The area observer will create the SmartObject at the entity's transform.
+	// UArcSmartObjectAddObserver will create the SmartObject at the entity's transform.
 	if (SmartObjectDefinition)
 	{
 		BuildContext.AddFragment<FArcSmartObjectOwnerFragment>();
+		BuildContext.AddTag<FArcSmartObjectTag>();
 
 		FArcSmartObjectDefinitionSharedFragment SODefFragment;
 		SODefFragment.SmartObjectDefinition = SmartObjectDefinition;

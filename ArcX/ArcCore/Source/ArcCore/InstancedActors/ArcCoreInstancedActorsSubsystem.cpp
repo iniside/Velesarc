@@ -7,8 +7,6 @@
 #include "Algo/NoneOf.h"
 #include "EngineUtils.h"
 #include "MassCommonFragments.h"
-#include "SmartObjectSubsystem.h"
-#include "ArcMass/ArcMassSmartObjectFragments.h"
 #include "UObject/UObjectBase.h"
 
 AArcCoreInstancedActorsManager::AArcCoreInstancedActorsManager()
@@ -95,31 +93,6 @@ void UArcCoreInstancedActorsData::SwitchInstanceVisualizationWithContext(FMassEx
 void UArcCoreInstancedActorsData::OnSpawnEntities()
 {
 	Super::OnSpawnEntities();
-
-	FMassEntityManager& MassEntityManager = GetMassEntityManagerChecked();
-	USmartObjectSubsystem* SmartObjectSubsystem = MassEntityManager.GetWorld()->GetSubsystem<USmartObjectSubsystem>();
-
-	for (const FMassEntityHandle& Handle : Entities)
-	{
-		FArcSmartObjectOwnerFragment* SmartObjectOwnerFragment = MassEntityManager.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(Handle);
-		FArcSmartObjectDefinitionSharedFragment* SmartObjectDefinitionFragment = MassEntityManager.GetConstSharedFragmentDataPtr<FArcSmartObjectDefinitionSharedFragment>(Handle);
-		FTransformFragment* TransformFragment = MassEntityManager.GetFragmentDataPtr<FTransformFragment>(Handle);
-		if (!SmartObjectDefinitionFragment || !SmartObjectDefinitionFragment->SmartObjectDefinition)
-		{
-			continue;
-		}
-		if (!TransformFragment)
-		{
-			continue;
-		}
-		if (!SmartObjectOwnerFragment)
-		{
-			continue;
-		}
-
-		SmartObjectOwnerFragment->SmartObjectHandle = SmartObjectSubsystem->CreateSmartObject(*SmartObjectDefinitionFragment->SmartObjectDefinition
-			, TransformFragment->GetTransform(), FConstStructView::Make(Handle));
-	}
 }
 
 UArcCoreInstancedActorsSubsystem::UArcCoreInstancedActorsSubsystem()

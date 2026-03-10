@@ -10,6 +10,7 @@ void UArcMassSmartObjectOwnerTrait::BuildTemplate(FMassEntityTemplateBuildContex
 	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(World);
 
 	BuildContext.AddFragment<FArcSmartObjectOwnerFragment>();
+	BuildContext.AddTag<FArcSmartObjectTag>();
 
 	const FConstSharedStruct SmartObjectDefFragment = EntityManager.GetOrCreateConstSharedFragment(SmartObjectDefinition);
 	BuildContext.AddConstSharedFragment(SmartObjectDefFragment);

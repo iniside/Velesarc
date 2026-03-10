@@ -11,6 +11,17 @@
 class USmartObjectDefinition;
 
 /**
+ * Tag that triggers automatic SmartObject creation/destruction via observers.
+ * Any entity with this tag plus FArcSmartObjectOwnerFragment and
+ * FArcSmartObjectDefinitionSharedFragment will have its SmartObject managed automatically.
+ */
+USTRUCT()
+struct ARCMASS_API FArcSmartObjectTag : public FMassTag
+{
+	GENERATED_BODY()
+};
+
+/**
  * Const shared fragment: references the SmartObject definition asset.
  * Shared across all entities of the same archetype.
  */

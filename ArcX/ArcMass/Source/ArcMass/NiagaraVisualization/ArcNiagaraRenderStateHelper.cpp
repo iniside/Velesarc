@@ -43,6 +43,10 @@ static USceneComponent* GetSharedAnchorComponent()
  *  particles are still fading out. Ticked each frame by TickOrphanedSystems(). */
 static TArray<FArcNiagaraRenderStateHelper*> OrphanedHelpers;
 
+/** ALL living helpers (active + orphaned). Used by OnWorldCleanup to strip
+ *  scene proxies from active helpers before FScene::~FScene asserts. */
+static TSet<FArcNiagaraRenderStateHelper*> AllHelpers;
+
 // ---------------------------------------------------------------------------
 // World cleanup — removes all orphaned helpers (and their scene proxies)
 // before the FScene destructor asserts that no primitives remain.
@@ -52,6 +56,7 @@ static bool bWorldCleanupRegistered = false;
 
 static void OnWorldCleanup(UWorld* World, bool /*bSessionEnded*/, bool /*bCleanupResources*/)
 {
+	// Phase 1: Delete orphaned helpers for this world (nobody else will tick/clean them).
 	for (int32 i = OrphanedHelpers.Num() - 1; i >= 0; --i)
 	{
 		FArcNiagaraRenderStateHelper* Helper = OrphanedHelpers[i];
@@ -59,6 +64,19 @@ static void OnWorldCleanup(UWorld* World, bool /*bSessionEnded*/, bool /*bCleanu
 		{
 			delete Helper; // Destructor calls DestroyNiagaraRenderState → Scene->RemovePrimitive
 			OrphanedHelpers.RemoveAtSwap(i);
+		}
+	}
+
+	// Phase 2: Destroy render state of all ACTIVE helpers for this world.
+	// Entities still own these helpers — we just remove the scene proxy
+	// before FScene::~FScene() asserts that all primitives are gone.
+	// The helpers survive; when the entity is eventually destroyed, the fragment
+	// destructor calls Orphan() which detects the dead world and deletes the helper.
+	for (FArcNiagaraRenderStateHelper* Helper : AllHelpers)
+	{
+		if (Helper->GetWorld() == World && Helper->HasSceneProxy())
+		{
+			Helper->DestroyNiagaraRenderState();
 		}
 	}
 }
@@ -102,10 +120,13 @@ FArcNiagaraRenderStateHelper::FArcNiagaraRenderStateHelper(FMassEntityHandle InE
 	, EntityManager(StaticCastSharedRef<FMassEntityManager>(InEntityManager->AsShared()))
 	, CachedBounds(FBoxSphereBounds(FVector::ZeroVector, FVector(100.0f), 100.0f))
 {
+	AllHelpers.Add(this);
 }
 
 FArcNiagaraRenderStateHelper::~FArcNiagaraRenderStateHelper()
 {
+	AllHelpers.Remove(this);
+
 	if (NiagaraProxy)
 	{
 		DestroyNiagaraRenderState();
