@@ -44,17 +44,16 @@ void FArcTQSGenerator_AreaVacantSlots::GenerateItems(const FArcTQSQueryContext& 
 		}
 
 		// Iterate vacant slots
-		const TArray<int32> VacantIndices = Subsystem->GetVacantSlotIndices(Handle);
+		const TArray<FArcAreaSlotHandle> VacantSlots = Subsystem->GetVacantSlots(Handle);
 
-		for (const int32 SlotIndex : VacantIndices)
+		for (const FArcAreaSlotHandle& SlotHandle : VacantSlots)
 		{
 			FArcTQSTargetItem Item;
 			Item.TargetType = EArcTQSTargetType::Location;
 			Item.Location = AreaData.Location;
 
 			Item.ItemData = TemplateBag;
-			ArcTQS::Area::SetAreaHandle(Item.ItemData, Handle);
-			ArcTQS::Area::SetSlotIndex(Item.ItemData, SlotIndex);
+			ArcTQS::Area::SetSlotHandle(Item.ItemData, SlotHandle);
 
 			OutItems.Add(MoveTemp(Item));
 		}
@@ -63,6 +62,5 @@ void FArcTQSGenerator_AreaVacantSlots::GenerateItems(const FArcTQSQueryContext& 
 
 void FArcTQSGenerator_AreaVacantSlots::GetOutputSchema(TArray<FPropertyBagPropertyDesc>& OutDescs) const
 {
-	OutDescs.Emplace(ArcTQS::Area::Names::AreaHandle, EPropertyBagPropertyType::Struct, FArcAreaHandle::StaticStruct());
-	OutDescs.Emplace(ArcTQS::Area::Names::SlotIndex, EPropertyBagPropertyType::Int32);
+	OutDescs.Emplace(ArcTQS::Area::Names::SlotHandle, EPropertyBagPropertyType::Struct, FArcAreaSlotHandle::StaticStruct());
 }

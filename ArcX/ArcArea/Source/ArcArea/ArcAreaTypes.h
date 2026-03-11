@@ -44,6 +44,10 @@ struct ARCAREA_API FArcAreaSlotHandle
 {
 	GENERATED_BODY()
 
+	FArcAreaSlotHandle() = default;
+	FArcAreaSlotHandle(FArcAreaHandle InAreaHandle, int32 InSlotIndex)
+		: AreaHandle(InAreaHandle), SlotIndex(InSlotIndex) {}
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Area")
 	FArcAreaHandle AreaHandle;
 

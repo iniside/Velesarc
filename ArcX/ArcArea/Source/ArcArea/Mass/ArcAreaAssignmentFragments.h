@@ -19,12 +19,9 @@ struct ARCAREA_API FArcAreaAssignmentFragment : public FMassFragment
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Area")
-	FArcAreaHandle AreaHandle;
+	FArcAreaSlotHandle SlotHandle;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Area")
-	int32 SlotIndex = INDEX_NONE;
-
-	bool IsAssigned() const { return AreaHandle.IsValid() && SlotIndex != INDEX_NONE; }
+	bool IsAssigned() const { return SlotHandle.IsValid(); }
 };
 
 /**

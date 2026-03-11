@@ -13,13 +13,9 @@ struct FArcMassAssignToAreaTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Area to assign the NPC to. */
+	/** Area slot to assign the NPC to. */
 	UPROPERTY(EditAnywhere, Category = Input)
-	FArcAreaHandle AreaHandle;
-
-	/** Slot index within the area. */
-	UPROPERTY(EditAnywhere, Category = Input)
-	int32 SlotIndex = INDEX_NONE;
+	FArcAreaSlotHandle SlotHandle;
 
 	/** Output: whether the assignment succeeded. */
 	UPROPERTY(EditAnywhere, Category = Output)

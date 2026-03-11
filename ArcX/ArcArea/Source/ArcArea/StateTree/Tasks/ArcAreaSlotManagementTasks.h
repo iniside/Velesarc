@@ -16,7 +16,7 @@ struct FArcAreaDisableSlotTaskInstanceData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = Input)
-	int32 SlotIndex = INDEX_NONE;
+	FArcAreaSlotHandle SlotHandle;
 };
 
 /**
@@ -48,7 +48,7 @@ struct FArcAreaEnableSlotTaskInstanceData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = Input)
-	int32 SlotIndex = INDEX_NONE;
+	FArcAreaSlotHandle SlotHandle;
 };
 
 /**

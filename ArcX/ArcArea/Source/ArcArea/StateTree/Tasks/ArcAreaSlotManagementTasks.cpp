@@ -3,31 +3,15 @@
 #include "ArcAreaSlotManagementTasks.h"
 #include "MassStateTreeExecutionContext.h"
 #include "ArcAreaSubsystem.h"
-#include "ArcArea/Mass/ArcAreaFragments.h"
-#include "MassEntityView.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcAreaSlotManagementTasks)
-
-namespace UE::ArcArea::Private
-{
-	static FArcAreaHandle GetAreaHandleFromEntity(const FMassStateTreeExecutionContext& MassCtx)
-	{
-		const FMassEntityView EntityView(MassCtx.GetEntityManager(), MassCtx.GetEntity());
-		if (const FArcAreaFragment* Fragment = EntityView.GetFragmentDataPtr<FArcAreaFragment>())
-		{
-			return Fragment->AreaHandle;
-		}
-		return {};
-	}
-}
 
 EStateTreeRunStatus FArcAreaDisableSlotTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
 	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-	const FArcAreaHandle AreaHandle = UE::ArcArea::Private::GetAreaHandleFromEntity(MassCtx);
-	if (!AreaHandle.IsValid() || InstanceData.SlotIndex == INDEX_NONE)
+	if (!InstanceData.SlotHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
@@ -38,7 +22,7 @@ EStateTreeRunStatus FArcAreaDisableSlotTask::EnterState(FStateTreeExecutionConte
 		return EStateTreeRunStatus::Failed;
 	}
 
-	Subsystem->DisableSlot(AreaHandle, InstanceData.SlotIndex);
+	Subsystem->DisableSlot(InstanceData.SlotHandle);
 	return EStateTreeRunStatus::Succeeded;
 }
 
@@ -47,8 +31,7 @@ EStateTreeRunStatus FArcAreaEnableSlotTask::EnterState(FStateTreeExecutionContex
 	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
 	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-	const FArcAreaHandle AreaHandle = UE::ArcArea::Private::GetAreaHandleFromEntity(MassCtx);
-	if (!AreaHandle.IsValid() || InstanceData.SlotIndex == INDEX_NONE)
+	if (!InstanceData.SlotHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
@@ -59,6 +42,6 @@ EStateTreeRunStatus FArcAreaEnableSlotTask::EnterState(FStateTreeExecutionContex
 		return EStateTreeRunStatus::Failed;
 	}
 
-	Subsystem->EnableSlot(AreaHandle, InstanceData.SlotIndex);
+	Subsystem->EnableSlot(InstanceData.SlotHandle);
 	return EStateTreeRunStatus::Succeeded;
 }

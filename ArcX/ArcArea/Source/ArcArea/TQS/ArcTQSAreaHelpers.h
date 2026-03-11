@@ -10,7 +10,7 @@ namespace ArcTQS::Area
 	namespace Names
 	{
 		inline const FName AreaHandle = FName("AreaHandle");
-		inline const FName SlotIndex = FName("SlotIndex");
+		inline const FName SlotHandle = FName("SlotHandle");
 	}
 
 	/** Build a template property bag with the area schema (AreaHandle only). */
@@ -21,14 +21,11 @@ namespace ArcTQS::Area
 		return Bag;
 	}
 
-	/** Build a template property bag with the area slot schema (AreaHandle + SlotIndex). */
+	/** Build a template property bag with the area slot schema (SlotHandle). */
 	inline FInstancedPropertyBag MakeSlotTemplate()
 	{
 		FInstancedPropertyBag Bag;
-		Bag.AddProperties({
-			FPropertyBagPropertyDesc(Names::AreaHandle, EPropertyBagPropertyType::Struct, FArcAreaHandle::StaticStruct()),
-			FPropertyBagPropertyDesc(Names::SlotIndex, EPropertyBagPropertyType::Int32)
-		});
+		Bag.AddProperty(Names::SlotHandle, EPropertyBagPropertyType::Struct, FArcAreaSlotHandle::StaticStruct());
 		return Bag;
 	}
 
@@ -38,10 +35,10 @@ namespace ArcTQS::Area
 		Bag.SetValueStruct(Names::AreaHandle, Handle);
 	}
 
-	/** Write slot index into item's property bag (bag must already have schema). */
-	inline void SetSlotIndex(FInstancedPropertyBag& Bag, int32 Index)
+	/** Write slot handle into item's property bag (bag must already have schema). */
+	inline void SetSlotHandle(FInstancedPropertyBag& Bag, const FArcAreaSlotHandle& Handle)
 	{
-		Bag.SetValueInt32(Names::SlotIndex, Index);
+		Bag.SetValueStruct(Names::SlotHandle, Handle);
 	}
 
 	/** Read area handle from item's property bag. */
@@ -56,15 +53,15 @@ namespace ArcTQS::Area
 		return FArcAreaHandle();
 	}
 
-	/** Read slot index from item's property bag. */
-	inline int32 GetSlotIndex(const FArcTQSTargetItem& Item)
+	/** Read slot handle from item's property bag. */
+	inline FArcAreaSlotHandle GetSlotHandle(const FArcTQSTargetItem& Item)
 	{
-		const auto Result = Item.ItemData.GetValueInt32(Names::SlotIndex);
+		const auto Result = Item.ItemData.GetValueStruct<FArcAreaSlotHandle>(Names::SlotHandle);
 		if (Result.IsValid())
 		{
-			return Result.GetValue();
+			return *Result.GetValue();
 		}
-		UE_LOG(LogTemp, Warning, TEXT("ArcTQS::Area::GetSlotIndex — ItemData does not contain '%s'"), *Names::SlotIndex.ToString());
-		return INDEX_NONE;
+		UE_LOG(LogTemp, Warning, TEXT("ArcTQS::Area::GetSlotHandle — ItemData does not contain '%s'"), *Names::SlotHandle.ToString());
+		return FArcAreaSlotHandle();
 	}
 }

@@ -100,14 +100,26 @@ EStateTreeRunStatus FArcAreaGetSlotStateTask::EnterState(FStateTreeExecutionCont
 	InstanceData.SlotState = EArcAreaSlotState::Vacant;
 	InstanceData.AssignedEntity = FMassEntityHandle();
 
-	const FMassStateTreeExecutionContext* MassCtx = nullptr;
-	const FArcAreaData* AreaData = UE::ArcArea::Private::GetAreaDataForEntity(Context, MassCtx);
-	if (!AreaData || !AreaData->Slots.IsValidIndex(InstanceData.SlotIndex))
+	if (!InstanceData.SlotHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const FArcAreaSlotRuntime& Slot = AreaData->Slots[InstanceData.SlotIndex];
+	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
+	const UWorld* World = MassCtx.GetWorld();
+	const UArcAreaSubsystem* Subsystem = World ? World->GetSubsystem<UArcAreaSubsystem>() : nullptr;
+	if (!Subsystem)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	const FArcAreaData* AreaData = Subsystem->GetAreaData(InstanceData.SlotHandle.AreaHandle);
+	if (!AreaData || !AreaData->Slots.IsValidIndex(InstanceData.SlotHandle.SlotIndex))
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	const FArcAreaSlotRuntime& Slot = AreaData->Slots[InstanceData.SlotHandle.SlotIndex];
 	InstanceData.SlotState = Slot.State;
 	InstanceData.AssignedEntity = Slot.AssignedEntity;
 
@@ -124,14 +136,26 @@ EStateTreeRunStatus FArcAreaGetSlotDefinitionTask::EnterState(FStateTreeExecutio
 	InstanceData.bAutoPostVacancy = false;
 	InstanceData.VacancyRelevance = 0.0f;
 
-	const FMassStateTreeExecutionContext* MassCtx = nullptr;
-	const FArcAreaData* AreaData = UE::ArcArea::Private::GetAreaDataForEntity(Context, MassCtx);
-	if (!AreaData || !AreaData->SlotDefinitions.IsValidIndex(InstanceData.SlotIndex))
+	if (!InstanceData.SlotHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[InstanceData.SlotIndex];
+	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
+	const UWorld* World = MassCtx.GetWorld();
+	const UArcAreaSubsystem* Subsystem = World ? World->GetSubsystem<UArcAreaSubsystem>() : nullptr;
+	if (!Subsystem)
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	const FArcAreaData* AreaData = Subsystem->GetAreaData(InstanceData.SlotHandle.AreaHandle);
+	if (!AreaData || !AreaData->SlotDefinitions.IsValidIndex(InstanceData.SlotHandle.SlotIndex))
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[InstanceData.SlotHandle.SlotIndex];
 	InstanceData.bAutoPostVacancy = SlotDef.VacancyConfig.bAutoPostVacancy;
 	InstanceData.VacancyRelevance = SlotDef.VacancyConfig.VacancyRelevance;
 
@@ -145,7 +169,7 @@ EStateTreeRunStatus FArcAreaGetSlotDefinitionTask::EnterState(FStateTreeExecutio
 EStateTreeRunStatus FArcAreaFindVacantSlotTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	InstanceData.SlotIndex = INDEX_NONE;
+	InstanceData.SlotHandle = FArcAreaSlotHandle();
 	InstanceData.bFound = false;
 
 	const FMassStateTreeExecutionContext* MassCtx = nullptr;
@@ -159,7 +183,7 @@ EStateTreeRunStatus FArcAreaFindVacantSlotTask::EnterState(FStateTreeExecutionCo
 	{
 		if (AreaData->Slots[i].State == EArcAreaSlotState::Vacant)
 		{
-			InstanceData.SlotIndex = i;
+			InstanceData.SlotHandle = FArcAreaSlotHandle(AreaData->Handle, i);
 			InstanceData.bFound = true;
 			return EStateTreeRunStatus::Succeeded;
 		}

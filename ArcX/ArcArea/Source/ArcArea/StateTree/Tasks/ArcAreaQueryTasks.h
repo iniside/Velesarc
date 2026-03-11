@@ -105,7 +105,7 @@ struct FArcAreaGetSlotStateTaskInstanceData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = Input)
-	int32 SlotIndex = 0;
+	FArcAreaSlotHandle SlotHandle;
 
 	UPROPERTY(EditAnywhere, Category = Output)
 	EArcAreaSlotState SlotState = EArcAreaSlotState::Vacant;
@@ -115,8 +115,7 @@ struct FArcAreaGetSlotStateTaskInstanceData
 };
 
 /**
- * Gets the state and assigned entity for a specific slot by index.
- * Requires FArcAreaFragment on the entity.
+ * Gets the state and assigned entity for a specific slot.
  */
 USTRUCT(meta = (DisplayName = "Arc Get Area Slot State", Category = "Arc|Area|Self"))
 struct ARCAREA_API FArcAreaGetSlotStateTask : public FMassStateTreeTaskBase
@@ -144,7 +143,7 @@ struct FArcAreaGetSlotDefinitionTaskInstanceData
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = Input)
-	int32 SlotIndex = 0;
+	FArcAreaSlotHandle SlotHandle;
 
 	UPROPERTY(EditAnywhere, Category = Output)
 	bool bAutoPostVacancy = false;
@@ -154,8 +153,7 @@ struct FArcAreaGetSlotDefinitionTaskInstanceData
 };
 
 /**
- * Reads the design-time slot definition for a specific slot by index.
- * Requires FArcAreaFragment on the entity.
+ * Reads the design-time slot definition for a specific slot.
  */
 USTRUCT(meta = (DisplayName = "Arc Get Area Slot Definition", Category = "Arc|Area|Self"))
 struct ARCAREA_API FArcAreaGetSlotDefinitionTask : public FMassStateTreeTaskBase
@@ -182,9 +180,9 @@ struct FArcAreaFindVacantSlotTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Index of the first vacant slot found, or INDEX_NONE. */
+	/** The first vacant slot found. */
 	UPROPERTY(EditAnywhere, Category = Output)
-	int32 SlotIndex = INDEX_NONE;
+	FArcAreaSlotHandle SlotHandle;
 
 	UPROPERTY(EditAnywhere, Category = Output)
 	bool bFound = false;

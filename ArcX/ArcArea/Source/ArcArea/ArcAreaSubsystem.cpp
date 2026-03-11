@@ -59,7 +59,7 @@ FArcAreaHandle UArcAreaSubsystem::RegisterArea(
 	// Broadcast initial Vacant state for all slots
 	for (int32 i = 0; i < Definition->Slots.Num(); ++i)
 	{
-		BroadcastOnSlotStateChanged(Handle, i, EArcAreaSlotState::Vacant);
+		BroadcastOnSlotStateChanged(FArcAreaSlotHandle(Handle, i), EArcAreaSlotState::Vacant);
 	}
 
 	return Handle;
@@ -88,7 +88,7 @@ void UArcAreaSubsystem::UnregisterArea(FArcAreaHandle Handle)
 		// Broadcast Disabled so listeners can clean up (e.g., remove vacancy postings)
 		if (Slot.State != EArcAreaSlotState::Disabled)
 		{
-			BroadcastOnSlotStateChanged(Handle, i, EArcAreaSlotState::Disabled);
+			BroadcastOnSlotStateChanged(FArcAreaSlotHandle(Handle, i), EArcAreaSlotState::Disabled);
 		}
 
 		if (PreviousEntity.IsValid())
@@ -107,15 +107,15 @@ void UArcAreaSubsystem::UnregisterArea(FArcAreaHandle Handle)
 // Assignment
 // ====================================================================
 
-bool UArcAreaSubsystem::AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex, FMassEntityHandle Entity)
+bool UArcAreaSubsystem::AssignToSlot(FArcAreaSlotHandle SlotHandle, FMassEntityHandle Entity)
 {
-	FArcAreaData* Data = Areas.Find(AreaHandle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return false;
 	}
 
-	FArcAreaSlotRuntime& Slot = Data->Slots[SlotIndex];
+	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
 	if (Slot.State != EArcAreaSlotState::Vacant)
 	{
 		return false;
@@ -129,7 +129,7 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex,
 	// If the entity is already assigned elsewhere, unassign first
 	if (const FArcAreaSlotHandle* ExistingSlot = EntityAssignmentIndex.Find(Entity))
 	{
-		UnassignFromSlot(ExistingSlot->AreaHandle, ExistingSlot->SlotIndex);
+		UnassignFromSlot(*ExistingSlot);
 	}
 
 	// Set assignment state
@@ -137,15 +137,12 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex,
 	Slot.AssignedEntity = Entity;
 
 	// Add to reverse index
-	FArcAreaSlotHandle SlotHandle;
-	SlotHandle.AreaHandle = AreaHandle;
-	SlotHandle.SlotIndex = SlotIndex;
 	EntityAssignmentIndex.Add(Entity, SlotHandle);
 
 	// Update NPC's fragment
-	UpdateNPCAssignmentFragment(Entity, AreaHandle, SlotIndex);
+	UpdateNPCAssignmentFragment(Entity, SlotHandle);
 
-	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Assigned);
+	BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Assigned);
 
 	if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(Entity))
 	{
@@ -155,15 +152,15 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex,
 	return true;
 }
 
-bool UArcAreaSubsystem::UnassignFromSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
+bool UArcAreaSubsystem::UnassignFromSlot(FArcAreaSlotHandle SlotHandle)
 {
-	FArcAreaData* Data = Areas.Find(AreaHandle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return false;
 	}
 
-	FArcAreaSlotRuntime& Slot = Data->Slots[SlotIndex];
+	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
 	if (Slot.State == EArcAreaSlotState::Vacant || Slot.State == EArcAreaSlotState::Disabled)
 	{
 		return false;
@@ -182,7 +179,7 @@ bool UArcAreaSubsystem::UnassignFromSlot(FArcAreaHandle AreaHandle, int32 SlotIn
 		ClearNPCAssignmentFragment(PreviousEntity);
 	}
 
-	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Vacant);
+	BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Vacant);
 
 	if (PreviousEntity.IsValid())
 	{
@@ -199,28 +196,28 @@ bool UArcAreaSubsystem::UnassignEntity(FMassEntityHandle Entity)
 {
 	if (const FArcAreaSlotHandle* SlotHandle = EntityAssignmentIndex.Find(Entity))
 	{
-		return UnassignFromSlot(SlotHandle->AreaHandle, SlotHandle->SlotIndex);
+		return UnassignFromSlot(*SlotHandle);
 	}
 	return false;
 }
 
-int32 UArcAreaSubsystem::FindSlotForEntity(FArcAreaHandle AreaHandle, FMassEntityHandle Entity) const
+FArcAreaSlotHandle UArcAreaSubsystem::FindSlotForEntity(FArcAreaHandle AreaHandle, FMassEntityHandle Entity) const
 {
 	const FArcAreaData* Data = Areas.Find(AreaHandle);
 	if (!Data)
 	{
-		return INDEX_NONE;
+		return FArcAreaSlotHandle();
 	}
 
 	for (int32 i = 0; i < Data->Slots.Num(); ++i)
 	{
 		if (Data->Slots[i].AssignedEntity == Entity)
 		{
-			return i;
+			return FArcAreaSlotHandle(AreaHandle, i);
 		}
 	}
 
-	return INDEX_NONE;
+	return FArcAreaSlotHandle();
 }
 
 // ====================================================================
@@ -246,35 +243,35 @@ void UArcAreaSubsystem::RemoveEntityDelegates(FMassEntityHandle Entity)
 // SmartObject Bridge
 // ====================================================================
 
-void UArcAreaSubsystem::NotifySlotClaimed(FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaSubsystem::NotifySlotClaimed(FArcAreaSlotHandle SlotHandle)
 {
-	FArcAreaData* Data = Areas.Find(AreaHandle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return;
 	}
 
-	FArcAreaSlotRuntime& Slot = Data->Slots[SlotIndex];
+	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
 	if (Slot.State == EArcAreaSlotState::Assigned)
 	{
 		Slot.State = EArcAreaSlotState::Active;
-		BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Active);
+		BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Active);
 	}
 }
 
-void UArcAreaSubsystem::NotifySlotReleased(FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaSubsystem::NotifySlotReleased(FArcAreaSlotHandle SlotHandle)
 {
-	FArcAreaData* Data = Areas.Find(AreaHandle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return;
 	}
 
-	FArcAreaSlotRuntime& Slot = Data->Slots[SlotIndex];
+	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
 	if (Slot.State == EArcAreaSlotState::Active)
 	{
 		Slot.State = EArcAreaSlotState::Assigned;
-		BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Assigned);
+		BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Assigned);
 	}
 }
 
@@ -282,15 +279,15 @@ void UArcAreaSubsystem::NotifySlotReleased(FArcAreaHandle AreaHandle, int32 Slot
 // Slot Management
 // ====================================================================
 
-void UArcAreaSubsystem::DisableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaSubsystem::DisableSlot(FArcAreaSlotHandle SlotHandle)
 {
-	FArcAreaData* Data = Areas.Find(AreaHandle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return;
 	}
 
-	FArcAreaSlotRuntime& Slot = Data->Slots[SlotIndex];
+	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
 	if (Slot.State == EArcAreaSlotState::Disabled)
 	{
 		return;
@@ -307,7 +304,7 @@ void UArcAreaSubsystem::DisableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
 	}
 
 	Slot.State = EArcAreaSlotState::Disabled;
-	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Disabled);
+	BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Disabled);
 
 	if (PreviousEntity.IsValid())
 	{
@@ -318,22 +315,22 @@ void UArcAreaSubsystem::DisableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
 	}
 }
 
-void UArcAreaSubsystem::EnableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaSubsystem::EnableSlot(FArcAreaSlotHandle SlotHandle)
 {
-	FArcAreaData* Data = Areas.Find(AreaHandle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return;
 	}
 
-	FArcAreaSlotRuntime& Slot = Data->Slots[SlotIndex];
+	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
 	if (Slot.State != EArcAreaSlotState::Disabled)
 	{
 		return;
 	}
 
 	Slot.State = EArcAreaSlotState::Vacant;
-	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Vacant);
+	BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Vacant);
 }
 
 // ====================================================================
@@ -345,14 +342,14 @@ const FArcAreaData* UArcAreaSubsystem::GetAreaData(FArcAreaHandle Handle) const
 	return Areas.Find(Handle);
 }
 
-EArcAreaSlotState UArcAreaSubsystem::GetSlotState(FArcAreaHandle Handle, int32 SlotIndex) const
+EArcAreaSlotState UArcAreaSubsystem::GetSlotState(FArcAreaSlotHandle SlotHandle) const
 {
-	const FArcAreaData* Data = Areas.Find(Handle);
-	if (!Data || !Data->Slots.IsValidIndex(SlotIndex))
+	const FArcAreaData* Data = Areas.Find(SlotHandle.AreaHandle);
+	if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return EArcAreaSlotState::Disabled;
 	}
-	return Data->Slots[SlotIndex].State;
+	return Data->Slots[SlotHandle.SlotIndex].State;
 }
 
 TArray<FArcAreaHandle> UArcAreaSubsystem::FindAreasByTags(const FGameplayTagQuery& TagQuery) const
@@ -386,9 +383,9 @@ bool UArcAreaSubsystem::HasVacancy(FArcAreaHandle Handle) const
 	return false;
 }
 
-TArray<int32> UArcAreaSubsystem::GetVacantSlotIndices(FArcAreaHandle Handle) const
+TArray<FArcAreaSlotHandle> UArcAreaSubsystem::GetVacantSlots(FArcAreaHandle Handle) const
 {
-	TArray<int32> Result;
+	TArray<FArcAreaSlotHandle> Result;
 	const FArcAreaData* Data = Areas.Find(Handle);
 	if (!Data)
 	{
@@ -399,7 +396,7 @@ TArray<int32> UArcAreaSubsystem::GetVacantSlotIndices(FArcAreaHandle Handle) con
 	{
 		if (Data->Slots[i].State == EArcAreaSlotState::Vacant)
 		{
-			Result.Add(i);
+			Result.Emplace(Handle, i);
 		}
 	}
 	return Result;
@@ -409,7 +406,7 @@ TArray<int32> UArcAreaSubsystem::GetVacantSlotIndices(FArcAreaHandle Handle) con
 // NPC Fragment Management (Private)
 // ====================================================================
 
-void UArcAreaSubsystem::UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaSubsystem::UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaSlotHandle SlotHandle)
 {
 	UWorld* World = GetWorld();
 	if (!World)
@@ -431,8 +428,7 @@ void UArcAreaSubsystem::UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FA
 
 	if (FArcAreaAssignmentFragment* Fragment = EntityManager.GetFragmentDataPtr<FArcAreaAssignmentFragment>(Entity))
 	{
-		Fragment->AreaHandle = AreaHandle;
-		Fragment->SlotIndex = SlotIndex;
+		Fragment->SlotHandle = SlotHandle;
 	}
 }
 
@@ -458,7 +454,6 @@ void UArcAreaSubsystem::ClearNPCAssignmentFragment(FMassEntityHandle Entity)
 
 	if (FArcAreaAssignmentFragment* Fragment = EntityManager.GetFragmentDataPtr<FArcAreaAssignmentFragment>(Entity))
 	{
-		Fragment->AreaHandle = FArcAreaHandle();
-		Fragment->SlotIndex = INDEX_NONE;
+		Fragment->SlotHandle = FArcAreaSlotHandle();
 	}
 }

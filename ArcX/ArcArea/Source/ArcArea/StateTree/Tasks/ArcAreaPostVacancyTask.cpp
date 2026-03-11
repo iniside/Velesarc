@@ -3,7 +3,6 @@
 #include "ArcAreaPostVacancyTask.h"
 #include "MassStateTreeExecutionContext.h"
 #include "ArcAreaSubsystem.h"
-#include "ArcArea/Mass/ArcAreaFragments.h"
 #include "ArcAreaVacancyPayload.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeEntry.h"
@@ -17,13 +16,12 @@ EStateTreeRunStatus FArcAreaPostVacancyTask::EnterState(FStateTreeExecutionConte
 	InstanceData.bSucceeded = false;
 	InstanceData.VacancyHandle = {};
 
-	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
-	const FMassEntityView EntityView(MassCtx.GetEntityManager(), MassCtx.GetEntity());
-	const FArcAreaFragment* AreaFragment = EntityView.GetFragmentDataPtr<FArcAreaFragment>();
-	if (!AreaFragment || !AreaFragment->AreaHandle.IsValid() || InstanceData.SlotIndex == INDEX_NONE)
+	if (!InstanceData.SlotHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
+
+	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
 
 	UWorld* World = MassCtx.GetWorld();
 	const UArcAreaSubsystem* AreaSubsystem = World->GetSubsystem<UArcAreaSubsystem>();
@@ -33,13 +31,13 @@ EStateTreeRunStatus FArcAreaPostVacancyTask::EnterState(FStateTreeExecutionConte
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const FArcAreaData* AreaData = AreaSubsystem->GetAreaData(AreaFragment->AreaHandle);
-	if (!AreaData || !AreaData->SlotDefinitions.IsValidIndex(InstanceData.SlotIndex))
+	const FArcAreaData* AreaData = AreaSubsystem->GetAreaData(InstanceData.SlotHandle.AreaHandle);
+	if (!AreaData || !AreaData->SlotDefinitions.IsValidIndex(InstanceData.SlotHandle.SlotIndex))
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[InstanceData.SlotIndex];
+	const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[InstanceData.SlotHandle.SlotIndex];
 
 	// Build vacancy entry — same pattern as UArcAreaAutoVacancyListener::PostVacancy
 	FArcKnowledgeEntry VacancyEntry;
@@ -60,8 +58,7 @@ EStateTreeRunStatus FArcAreaPostVacancyTask::EnterState(FStateTreeExecutionConte
 
 	// Attach payload so NPCs can identify which area/slot this vacancy belongs to
 	FArcAreaVacancyPayload Payload;
-	Payload.AreaHandle = AreaFragment->AreaHandle;
-	Payload.SlotIndex = InstanceData.SlotIndex;
+	Payload.SlotHandle = InstanceData.SlotHandle;
 	VacancyEntry.Payload.InitializeAs<FArcAreaVacancyPayload>(Payload);
 
 	InstanceData.VacancyHandle = KnowledgeSubsystem->PostAdvertisement(VacancyEntry);

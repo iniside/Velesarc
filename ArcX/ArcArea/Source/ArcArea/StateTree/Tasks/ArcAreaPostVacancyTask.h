@@ -12,9 +12,9 @@ struct FArcAreaPostVacancyTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Slot index to post vacancy for. */
+	/** Slot to post vacancy for. */
 	UPROPERTY(EditAnywhere, Category = Input)
-	int32 SlotIndex = INDEX_NONE;
+	FArcAreaSlotHandle SlotHandle;
 
 	/** Output: the knowledge handle of the posted vacancy. */
 	UPROPERTY(EditAnywhere, Category = Output)

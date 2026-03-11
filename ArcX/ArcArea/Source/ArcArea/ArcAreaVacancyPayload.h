@@ -18,8 +18,5 @@ struct ARCAREA_API FArcAreaVacancyPayload : public FArcKnowledgePayload
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vacancy")
-	FArcAreaHandle AreaHandle;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vacancy")
-	int32 SlotIndex = INDEX_NONE;
+	FArcAreaSlotHandle SlotHandle;
 };

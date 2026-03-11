@@ -44,19 +44,19 @@ void UArcAreaAutoVacancyListener::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UArcAreaAutoVacancyListener::OnSlotStateChanged(FArcAreaHandle AreaHandle, int32 SlotIndex, EArcAreaSlotState NewState)
+void UArcAreaAutoVacancyListener::OnSlotStateChanged(const FArcAreaSlotHandle& SlotHandle, EArcAreaSlotState NewState)
 {
 	if (NewState == EArcAreaSlotState::Vacant)
 	{
-		PostVacancy(AreaHandle, SlotIndex);
+		PostVacancy(SlotHandle);
 	}
 	else
 	{
-		RemoveVacancy(AreaHandle, SlotIndex);
+		RemoveVacancy(SlotHandle);
 	}
 }
 
-void UArcAreaAutoVacancyListener::PostVacancy(FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaAutoVacancyListener::PostVacancy(const FArcAreaSlotHandle& SlotHandle)
 {
 	const UArcAreaSubsystem* AreaSub = GetWorld()->GetSubsystem<UArcAreaSubsystem>();
 	if (!AreaSub)
@@ -64,24 +64,20 @@ void UArcAreaAutoVacancyListener::PostVacancy(FArcAreaHandle AreaHandle, int32 S
 		return;
 	}
 
-	const FArcAreaData* Data = AreaSub->GetAreaData(AreaHandle);
-	if (!Data || !Data->SlotDefinitions.IsValidIndex(SlotIndex))
+	const FArcAreaData* Data = AreaSub->GetAreaData(SlotHandle.AreaHandle);
+	if (!Data || !Data->SlotDefinitions.IsValidIndex(SlotHandle.SlotIndex))
 	{
 		return;
 	}
 
-	const FArcAreaSlotDefinition& SlotDef = Data->SlotDefinitions[SlotIndex];
+	const FArcAreaSlotDefinition& SlotDef = Data->SlotDefinitions[SlotHandle.SlotIndex];
 	if (!SlotDef.VacancyConfig.bAutoPostVacancy)
 	{
 		return;
 	}
 
-	FArcAreaSlotHandle Key;
-	Key.AreaHandle = AreaHandle;
-	Key.SlotIndex = SlotIndex;
-
 	// Don't double-post
-	if (const FArcKnowledgeHandle* Existing = PostedVacancies.Find(Key))
+	if (const FArcKnowledgeHandle* Existing = PostedVacancies.Find(SlotHandle))
 	{
 		if (Existing->IsValid())
 		{
@@ -114,21 +110,16 @@ void UArcAreaAutoVacancyListener::PostVacancy(FArcAreaHandle AreaHandle, int32 S
 
 	// Attach payload so NPCs can identify which area/slot this vacancy belongs to
 	FArcAreaVacancyPayload Payload;
-	Payload.AreaHandle = AreaHandle;
-	Payload.SlotIndex = SlotIndex;
+	Payload.SlotHandle = SlotHandle;
 	VacancyEntry.Payload.InitializeAs<FArcAreaVacancyPayload>(Payload);
 
-	PostedVacancies.Add(Key, KnowledgeSub->PostAdvertisement(VacancyEntry));
+	PostedVacancies.Add(SlotHandle, KnowledgeSub->PostAdvertisement(VacancyEntry));
 }
 
-void UArcAreaAutoVacancyListener::RemoveVacancy(FArcAreaHandle AreaHandle, int32 SlotIndex)
+void UArcAreaAutoVacancyListener::RemoveVacancy(const FArcAreaSlotHandle& SlotHandle)
 {
-	FArcAreaSlotHandle Key;
-	Key.AreaHandle = AreaHandle;
-	Key.SlotIndex = SlotIndex;
-
 	FArcKnowledgeHandle Handle;
-	if (!PostedVacancies.RemoveAndCopyValue(Key, Handle))
+	if (!PostedVacancies.RemoveAndCopyValue(SlotHandle, Handle))
 	{
 		return;
 	}

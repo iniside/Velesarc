@@ -29,10 +29,10 @@ public:
 	virtual void Deinitialize() override;
 
 private:
-	void OnSlotStateChanged(FArcAreaHandle AreaHandle, int32 SlotIndex, EArcAreaSlotState NewState);
+	void OnSlotStateChanged(const FArcAreaSlotHandle& SlotHandle, EArcAreaSlotState NewState);
 
-	void PostVacancy(FArcAreaHandle AreaHandle, int32 SlotIndex);
-	void RemoveVacancy(FArcAreaHandle AreaHandle, int32 SlotIndex);
+	void PostVacancy(const FArcAreaSlotHandle& SlotHandle);
+	void RemoveVacancy(const FArcAreaSlotHandle& SlotHandle);
 
 	/** Maps each area slot to its posted knowledge handle. */
 	TMap<FArcAreaSlotHandle, FArcKnowledgeHandle> PostedVacancies;

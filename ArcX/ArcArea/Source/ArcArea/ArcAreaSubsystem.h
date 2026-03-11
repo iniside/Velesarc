@@ -12,9 +12,8 @@
 class UArcAreaDefinition;
 
 /** Broadcast when any slot changes state. */
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcAreaSlotStateChanged,
-	FArcAreaHandle /*AreaHandle*/,
-	int32 /*SlotIndex*/,
+DECLARE_MULTICAST_DELEGATE_TwoParams(FArcAreaSlotStateChanged,
+	const FArcAreaSlotHandle& /*SlotHandle*/,
 	EArcAreaSlotState /*NewState*/);
 
 /** Per-entity delegates for area assignment changes. */
@@ -80,11 +79,11 @@ public:
 	 * Broadcasts OnSlotStateChanged (Vacant → Assigned).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Assignment")
-	bool AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex, FMassEntityHandle Entity);
+	bool AssignToSlot(FArcAreaSlotHandle SlotHandle, FMassEntityHandle Entity);
 
 	/** Unassign an NPC from a specific slot. Broadcasts OnSlotStateChanged (→ Vacant). */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Assignment")
-	bool UnassignFromSlot(FArcAreaHandle AreaHandle, int32 SlotIndex);
+	bool UnassignFromSlot(FArcAreaSlotHandle SlotHandle);
 
 	/** Find and remove an entity from wherever it's assigned. */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Assignment")
@@ -103,18 +102,18 @@ public:
 	/** Remove the delegate entry for an entity. Called on entity cleanup. */
 	void RemoveEntityDelegates(FMassEntityHandle Entity);
 
-	/** Find which slot index an entity occupies in the given area (INDEX_NONE if not found). */
-	int32 FindSlotForEntity(FArcAreaHandle AreaHandle, FMassEntityHandle Entity) const;
+	/** Find which slot an entity occupies in the given area (invalid handle if not found). */
+	FArcAreaSlotHandle FindSlotForEntity(FArcAreaHandle AreaHandle, FMassEntityHandle Entity) const;
 
 	// ====================================================================
 	// SmartObject Bridge (notification-based)
 	// ====================================================================
 
 	/** Notify that an assigned NPC has claimed the SmartObject slot (Assigned → Active). */
-	void NotifySlotClaimed(FArcAreaHandle AreaHandle, int32 SlotIndex);
+	void NotifySlotClaimed(FArcAreaSlotHandle SlotHandle);
 
 	/** Notify that an NPC released the SmartObject claim (Active → Assigned). */
-	void NotifySlotReleased(FArcAreaHandle AreaHandle, int32 SlotIndex);
+	void NotifySlotReleased(FArcAreaSlotHandle SlotHandle);
 
 	// ====================================================================
 	// Slot Management
@@ -122,11 +121,11 @@ public:
 
 	/** Disable a slot — prevents assignment. Broadcasts OnSlotStateChanged (→ Disabled). */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Slots")
-	void DisableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex);
+	void DisableSlot(FArcAreaSlotHandle SlotHandle);
 
 	/** Re-enable a disabled slot — returns it to Vacant state. Broadcasts OnSlotStateChanged (→ Vacant). */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Slots")
-	void EnableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex);
+	void EnableSlot(FArcAreaSlotHandle SlotHandle);
 
 	// ====================================================================
 	// Queries
@@ -137,7 +136,7 @@ public:
 
 	/** Get the current state of a specific slot. */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Queries")
-	EArcAreaSlotState GetSlotState(FArcAreaHandle Handle, int32 SlotIndex) const;
+	EArcAreaSlotState GetSlotState(FArcAreaSlotHandle SlotHandle) const;
 
 	/** Find all areas matching a tag query. */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Queries")
@@ -147,15 +146,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Queries")
 	bool HasVacancy(FArcAreaHandle Handle) const;
 
-	/** Get indices of all vacant slots in an area. */
+	/** Get all vacant slots in an area. */
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Queries")
-	TArray<int32> GetVacantSlotIndices(FArcAreaHandle Handle) const;
+	TArray<FArcAreaSlotHandle> GetVacantSlots(FArcAreaHandle Handle) const;
 
 	/** Get all registered areas. */
 	const TMap<FArcAreaHandle, FArcAreaData>& GetAllAreas() const { return Areas; }
 
 private:
-	void UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaHandle AreaHandle, int32 SlotIndex);
+	void UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaSlotHandle SlotHandle);
 	void ClearNPCAssignmentFragment(FMassEntityHandle Entity);
 
 	// ---------- Storage ----------

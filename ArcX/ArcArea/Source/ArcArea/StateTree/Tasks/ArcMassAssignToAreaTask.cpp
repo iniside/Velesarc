@@ -19,7 +19,7 @@ EStateTreeRunStatus FArcMassAssignToAreaTask::EnterState(FStateTreeExecutionCont
 	InstanceData.bAssignmentSucceeded = false;
 	InstanceData.CandidateSlots.Reset();
 
-	if (!InstanceData.AreaHandle.IsValid() || InstanceData.SlotIndex == INDEX_NONE)
+	if (!InstanceData.SlotHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
@@ -37,7 +37,7 @@ EStateTreeRunStatus FArcMassAssignToAreaTask::EnterState(FStateTreeExecutionCont
 	}
 
 	const FMassEntityHandle Entity = MassCtx.GetEntity();
-	InstanceData.bAssignmentSucceeded = AreaSubsystem->AssignToSlot(InstanceData.AreaHandle, InstanceData.SlotIndex, Entity);
+	InstanceData.bAssignmentSucceeded = AreaSubsystem->AssignToSlot(InstanceData.SlotHandle, Entity);
 
 	if (!InstanceData.bAssignmentSucceeded)
 	{
@@ -45,7 +45,7 @@ EStateTreeRunStatus FArcMassAssignToAreaTask::EnterState(FStateTreeExecutionCont
 	}
 
 	// Resolve SmartObject candidate slots by matching entity tags against SO slot activity tags.
-	const FArcAreaData* AreaData = AreaSubsystem->GetAreaData(InstanceData.AreaHandle);
+	const FArcAreaData* AreaData = AreaSubsystem->GetAreaData(InstanceData.SlotHandle.AreaHandle);
 	if (!AreaData || !AreaData->SmartObjectHandle.IsValid())
 	{
 		return EStateTreeRunStatus::Succeeded;

@@ -30,7 +30,7 @@ EStateTreeRunStatus FArcMassNotifyAreaSlotClaimedTask::EnterState(FStateTreeExec
 		return EStateTreeRunStatus::Failed;
 	}
 
-	Subsystem->NotifySlotClaimed(Assignment->AreaHandle, Assignment->SlotIndex);
+	Subsystem->NotifySlotClaimed(Assignment->SlotHandle);
 
 	return EStateTreeRunStatus::Running;
 }
@@ -60,5 +60,5 @@ void FArcMassNotifyAreaSlotClaimedTask::ExitState(FStateTreeExecutionContext& Co
 		return;
 	}
 
-	Subsystem->NotifySlotReleased(Assignment->AreaHandle, Assignment->SlotIndex);
+	Subsystem->NotifySlotReleased(Assignment->SlotHandle);
 }
