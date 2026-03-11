@@ -51,10 +51,7 @@ EStateTreeRunStatus FArcAreaPostVacancyTask::EnterState(FStateTreeExecutionConte
 	else
 	{
 		VacancyEntry.Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Area.Vacancy")));
-		if (SlotDef.RoleTag.IsValid())
-		{
-			VacancyEntry.Tags.AddTag(SlotDef.RoleTag);
-		}
+		VacancyEntry.Tags.AppendTags(AreaData->AreaTags);
 	}
 
 	VacancyEntry.Location = AreaData->Location;
@@ -65,7 +62,6 @@ EStateTreeRunStatus FArcAreaPostVacancyTask::EnterState(FStateTreeExecutionConte
 	FArcAreaVacancyPayload Payload;
 	Payload.AreaHandle = AreaFragment->AreaHandle;
 	Payload.SlotIndex = InstanceData.SlotIndex;
-	Payload.RoleTag = SlotDef.RoleTag;
 	VacancyEntry.Payload.InitializeAs<FArcAreaVacancyPayload>(Payload);
 
 	InstanceData.VacancyHandle = KnowledgeSubsystem->PostAdvertisement(VacancyEntry);

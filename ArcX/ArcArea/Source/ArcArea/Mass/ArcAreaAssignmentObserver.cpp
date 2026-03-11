@@ -34,11 +34,13 @@ void UArcAreaAssignmentRemoveObserver::Execute(FMassEntityManager& EntityManager
 		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
 			const FArcAreaAssignmentFragment& Assignment = AssignmentFragments[EntityIt];
+			const FMassEntityHandle EntityHandle = Ctx.GetEntity(EntityIt);
+
 			if (Assignment.IsAssigned())
 			{
-				const FMassEntityHandle EntityHandle = Ctx.GetEntity(EntityIt);
 				Subsystem->UnassignEntity(EntityHandle);
 			}
+			Subsystem->RemoveEntityDelegates(EntityHandle);
 		}
 	});
 }

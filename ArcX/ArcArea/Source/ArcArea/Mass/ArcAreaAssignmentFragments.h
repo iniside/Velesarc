@@ -24,9 +24,6 @@ struct ARCAREA_API FArcAreaAssignmentFragment : public FMassFragment
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Area")
 	int32 SlotIndex = INDEX_NONE;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Area")
-	FGameplayTag RoleTag;
-
 	bool IsAssigned() const { return AreaHandle.IsValid() && SlotIndex != INDEX_NONE; }
 };
 

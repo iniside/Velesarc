@@ -97,7 +97,7 @@ void UArcAreaAutoVacancyListener::PostVacancy(FArcAreaHandle AreaHandle, int32 S
 
 	FArcKnowledgeEntry VacancyEntry;
 
-	// Build tags: use custom tags or auto-construct from role
+	// Build tags: use custom vacancy tags or auto-construct from area tags
 	if (!SlotDef.VacancyConfig.VacancyTags.IsEmpty())
 	{
 		VacancyEntry.Tags = SlotDef.VacancyConfig.VacancyTags;
@@ -105,10 +105,7 @@ void UArcAreaAutoVacancyListener::PostVacancy(FArcAreaHandle AreaHandle, int32 S
 	else
 	{
 		VacancyEntry.Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Area.Vacancy")));
-		if (SlotDef.RoleTag.IsValid())
-		{
-			VacancyEntry.Tags.AddTag(SlotDef.RoleTag);
-		}
+		VacancyEntry.Tags.AppendTags(Data->AreaTags);
 	}
 
 	VacancyEntry.Location = Data->Location;
@@ -119,7 +116,6 @@ void UArcAreaAutoVacancyListener::PostVacancy(FArcAreaHandle AreaHandle, int32 S
 	FArcAreaVacancyPayload Payload;
 	Payload.AreaHandle = AreaHandle;
 	Payload.SlotIndex = SlotIndex;
-	Payload.RoleTag = SlotDef.RoleTag;
 	VacancyEntry.Payload.InitializeAs<FArcAreaVacancyPayload>(Payload);
 
 	PostedVacancies.Add(Key, KnowledgeSub->PostAdvertisement(VacancyEntry));

@@ -3,7 +3,6 @@
 #include "ArcTQSGenerator_AreaVacantSlots.h"
 #include "ArcTQSAreaHelpers.h"
 #include "ArcAreaSubsystem.h"
-#include "ArcAreaSlotDefinition.h"
 #include "Engine/World.h"
 
 void FArcTQSGenerator_AreaVacantSlots::GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const
@@ -21,7 +20,6 @@ void FArcTQSGenerator_AreaVacantSlots::GenerateItems(const FArcTQSQueryContext& 
 	}
 
 	const float MaxDistSq = MaxDistance > 0.0f ? MaxDistance * MaxDistance : 0.0f;
-	const bool bFilterByRole = RoleTagFilter.IsValid();
 
 	FInstancedPropertyBag TemplateBag = ArcTQS::Area::MakeSlotTemplate();
 
@@ -50,15 +48,6 @@ void FArcTQSGenerator_AreaVacantSlots::GenerateItems(const FArcTQSQueryContext& 
 
 		for (const int32 SlotIndex : VacantIndices)
 		{
-			// Role filter
-			if (bFilterByRole && AreaData.SlotDefinitions.IsValidIndex(SlotIndex))
-			{
-				if (AreaData.SlotDefinitions[SlotIndex].RoleTag != RoleTagFilter)
-				{
-					continue;
-				}
-			}
-
 			FArcTQSTargetItem Item;
 			Item.TargetType = EArcTQSTargetType::Location;
 			Item.Location = AreaData.Location;

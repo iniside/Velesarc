@@ -147,16 +147,10 @@ struct FArcAreaGetSlotDefinitionTaskInstanceData
 	int32 SlotIndex = 0;
 
 	UPROPERTY(EditAnywhere, Category = Output)
-	FGameplayTag RoleTag;
-
-	UPROPERTY(EditAnywhere, Category = Output)
 	bool bAutoPostVacancy = false;
 
 	UPROPERTY(EditAnywhere, Category = Output)
 	float VacancyRelevance = 0.0f;
-
-	UPROPERTY(EditAnywhere, Category = Output)
-	int32 SmartObjectSlotIndex = 0;
 };
 
 /**
@@ -188,10 +182,6 @@ struct FArcAreaFindVacantSlotTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** Optional: only consider slots with this role tag. */
-	UPROPERTY(EditAnywhere, Category = Input)
-	FGameplayTag RoleTagFilter;
-
 	/** Index of the first vacant slot found, or INDEX_NONE. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	int32 SlotIndex = INDEX_NONE;
@@ -202,7 +192,7 @@ struct FArcAreaFindVacantSlotTaskInstanceData
 
 /**
  * Finds the first vacant slot in the current Area entity.
- * Optionally filtered by role tag. Returns Failed if no vacancy found.
+ * Returns Failed if no vacancy found.
  * Requires FArcAreaFragment on the entity.
  */
 USTRUCT(meta = (DisplayName = "Arc Find Vacant Slot", Category = "Arc|Area|Self"))

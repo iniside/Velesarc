@@ -17,6 +17,13 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcAreaSlotStateChanged,
 	int32 /*SlotIndex*/,
 	EArcAreaSlotState /*NewState*/);
 
+/** Per-entity delegates for area assignment changes. */
+struct FArcAreaEntityDelegates
+{
+	FSimpleMulticastDelegate OnAssigned;
+	FSimpleMulticastDelegate OnUnassigned;
+};
+
 /**
  * Central authority for area data and NPC slot assignments.
  *
@@ -83,6 +90,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcArea|Assignment")
 	bool UnassignEntity(FMassEntityHandle Entity);
 
+	// ====================================================================
+	// Per-Entity Assignment Delegates
+	// ====================================================================
+
+	/** Get or create the delegate pair for an entity. Use to bind listeners. */
+	FArcAreaEntityDelegates& GetOrCreateEntityDelegates(FMassEntityHandle Entity);
+
+	/** Find existing delegate pair for an entity. Returns nullptr if none. Use for unbind/cleanup. */
+	FArcAreaEntityDelegates* FindEntityDelegates(FMassEntityHandle Entity);
+
+	/** Remove the delegate entry for an entity. Called on entity cleanup. */
+	void RemoveEntityDelegates(FMassEntityHandle Entity);
+
 	/** Find which slot index an entity occupies in the given area (INDEX_NONE if not found). */
 	int32 FindSlotForEntity(FArcAreaHandle AreaHandle, FMassEntityHandle Entity) const;
 
@@ -135,7 +155,7 @@ public:
 	const TMap<FArcAreaHandle, FArcAreaData>& GetAllAreas() const { return Areas; }
 
 private:
-	void UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaHandle AreaHandle, int32 SlotIndex, FGameplayTag RoleTag);
+	void UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaHandle AreaHandle, int32 SlotIndex);
 	void ClearNPCAssignmentFragment(FMassEntityHandle Entity);
 
 	// ---------- Storage ----------
@@ -145,4 +165,7 @@ private:
 
 	/** Reverse index: entity → area slot (for fast UnassignEntity lookup). */
 	TMap<FMassEntityHandle, FArcAreaSlotHandle> EntityAssignmentIndex;
+
+	/** Per-entity delegates for assignment/unassignment notifications. */
+	TMap<FMassEntityHandle, FArcAreaEntityDelegates> EntityAssignmentDelegates;
 };

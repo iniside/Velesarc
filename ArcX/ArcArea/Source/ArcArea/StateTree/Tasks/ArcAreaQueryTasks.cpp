@@ -121,10 +121,8 @@ EStateTreeRunStatus FArcAreaGetSlotStateTask::EnterState(FStateTreeExecutionCont
 EStateTreeRunStatus FArcAreaGetSlotDefinitionTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	InstanceData.RoleTag = FGameplayTag();
 	InstanceData.bAutoPostVacancy = false;
 	InstanceData.VacancyRelevance = 0.0f;
-	InstanceData.SmartObjectSlotIndex = 0;
 
 	const FMassStateTreeExecutionContext* MassCtx = nullptr;
 	const FArcAreaData* AreaData = UE::ArcArea::Private::GetAreaDataForEntity(Context, MassCtx);
@@ -134,10 +132,8 @@ EStateTreeRunStatus FArcAreaGetSlotDefinitionTask::EnterState(FStateTreeExecutio
 	}
 
 	const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[InstanceData.SlotIndex];
-	InstanceData.RoleTag = SlotDef.RoleTag;
 	InstanceData.bAutoPostVacancy = SlotDef.VacancyConfig.bAutoPostVacancy;
 	InstanceData.VacancyRelevance = SlotDef.VacancyConfig.VacancyRelevance;
-	InstanceData.SmartObjectSlotIndex = SlotDef.SmartObjectSlotIndex;
 
 	return EStateTreeRunStatus::Succeeded;
 }
@@ -159,26 +155,14 @@ EStateTreeRunStatus FArcAreaFindVacantSlotTask::EnterState(FStateTreeExecutionCo
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const bool bHasFilter = InstanceData.RoleTagFilter.IsValid();
-
 	for (int32 i = 0; i < AreaData->Slots.Num(); ++i)
 	{
-		if (AreaData->Slots[i].State != EArcAreaSlotState::Vacant)
+		if (AreaData->Slots[i].State == EArcAreaSlotState::Vacant)
 		{
-			continue;
+			InstanceData.SlotIndex = i;
+			InstanceData.bFound = true;
+			return EStateTreeRunStatus::Succeeded;
 		}
-
-		if (bHasFilter && AreaData->SlotDefinitions.IsValidIndex(i))
-		{
-			if (!AreaData->SlotDefinitions[i].RoleTag.MatchesTag(InstanceData.RoleTagFilter))
-			{
-				continue;
-			}
-		}
-
-		InstanceData.SlotIndex = i;
-		InstanceData.bFound = true;
-		return EStateTreeRunStatus::Succeeded;
 	}
 
 	return EStateTreeRunStatus::Failed;

@@ -20,10 +20,6 @@ struct ARCAREA_API FArcTQSGenerator_AreaVacantSlots : public FArcTQSGenerator
 	UPROPERTY(EditAnywhere, Category = "Generator")
 	FGameplayTagQuery AreaTagQuery;
 
-	/** Optional: only include slots matching this role tag. */
-	UPROPERTY(EditAnywhere, Category = "Generator")
-	FGameplayTag RoleTagFilter;
-
 	/** Maximum distance from querier. 0 = unlimited. */
 	UPROPERTY(EditAnywhere, Category = "Generator", meta = (ClampMin = 0.0))
 	float MaxDistance = 0.0f;

@@ -22,7 +22,4 @@ struct ARCAREA_API FArcAreaVacancyPayload : public FArcKnowledgePayload
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vacancy")
 	int32 SlotIndex = INDEX_NONE;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vacancy")
-	FGameplayTag RoleTag;
 };

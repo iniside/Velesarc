@@ -16,7 +16,7 @@ struct ARCAREA_API FArcAreaVacancyConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vacancy")
 	bool bAutoPostVacancy = false;
 
-	/** Tags for the vacancy knowledge entry. If empty, auto-constructed from RoleTag. */
+	/** Tags for the vacancy knowledge entry. If empty, uses "Area.Vacancy" + area tags. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vacancy")
 	FGameplayTagContainer VacancyTags;
 
@@ -31,17 +31,9 @@ struct ARCAREA_API FArcAreaSlotDefinition
 {
 	GENERATED_BODY()
 
-	/** What role this slot expects (e.g., "Role.Blacksmith", "Role.Guard"). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slot")
-	FGameplayTag RoleTag;
-
 	/** NPC capabilities must match this query to be assigned to this slot. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slot")
 	FGameplayTagQuery RequirementQuery;
-
-	/** Which SmartObject slot index this area slot maps to. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slot")
-	int32 SmartObjectSlotIndex = 0;
 
 	/** Vacancy posting configuration. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Slot")

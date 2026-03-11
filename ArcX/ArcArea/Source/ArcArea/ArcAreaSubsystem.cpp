@@ -20,6 +20,7 @@ void UArcAreaSubsystem::Deinitialize()
 {
 	Areas.Empty();
 	EntityAssignmentIndex.Empty();
+	EntityAssignmentDelegates.Empty();
 	Super::Deinitialize();
 }
 
@@ -76,17 +77,26 @@ void UArcAreaSubsystem::UnregisterArea(FArcAreaHandle Handle)
 	for (int32 i = 0; i < Data->Slots.Num(); ++i)
 	{
 		FArcAreaSlotRuntime& Slot = Data->Slots[i];
+		const FMassEntityHandle PreviousEntity = Slot.AssignedEntity;
 
-		if (Slot.AssignedEntity.IsValid())
+		if (PreviousEntity.IsValid())
 		{
-			EntityAssignmentIndex.Remove(Slot.AssignedEntity);
-			ClearNPCAssignmentFragment(Slot.AssignedEntity);
+			EntityAssignmentIndex.Remove(PreviousEntity);
+			ClearNPCAssignmentFragment(PreviousEntity);
 		}
 
 		// Broadcast Disabled so listeners can clean up (e.g., remove vacancy postings)
 		if (Slot.State != EArcAreaSlotState::Disabled)
 		{
 			BroadcastOnSlotStateChanged(Handle, i, EArcAreaSlotState::Disabled);
+		}
+
+		if (PreviousEntity.IsValid())
+		{
+			if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(PreviousEntity))
+			{
+				Delegates->OnUnassigned.Broadcast();
+			}
 		}
 	}
 
@@ -122,8 +132,6 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex,
 		UnassignFromSlot(ExistingSlot->AreaHandle, ExistingSlot->SlotIndex);
 	}
 
-	const FArcAreaSlotDefinition& SlotDef = Data->SlotDefinitions[SlotIndex];
-
 	// Set assignment state
 	Slot.State = EArcAreaSlotState::Assigned;
 	Slot.AssignedEntity = Entity;
@@ -135,9 +143,14 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaHandle AreaHandle, int32 SlotIndex,
 	EntityAssignmentIndex.Add(Entity, SlotHandle);
 
 	// Update NPC's fragment
-	UpdateNPCAssignmentFragment(Entity, AreaHandle, SlotIndex, SlotDef.RoleTag);
+	UpdateNPCAssignmentFragment(Entity, AreaHandle, SlotIndex);
 
 	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Assigned);
+
+	if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(Entity))
+	{
+		Delegates->OnAssigned.Broadcast();
+	}
 
 	return true;
 }
@@ -171,6 +184,14 @@ bool UArcAreaSubsystem::UnassignFromSlot(FArcAreaHandle AreaHandle, int32 SlotIn
 
 	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Vacant);
 
+	if (PreviousEntity.IsValid())
+	{
+		if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(PreviousEntity))
+		{
+			Delegates->OnUnassigned.Broadcast();
+		}
+	}
+
 	return true;
 }
 
@@ -200,6 +221,25 @@ int32 UArcAreaSubsystem::FindSlotForEntity(FArcAreaHandle AreaHandle, FMassEntit
 	}
 
 	return INDEX_NONE;
+}
+
+// ====================================================================
+// Per-Entity Assignment Delegates
+// ====================================================================
+
+FArcAreaEntityDelegates& UArcAreaSubsystem::GetOrCreateEntityDelegates(FMassEntityHandle Entity)
+{
+	return EntityAssignmentDelegates.FindOrAdd(Entity);
+}
+
+FArcAreaEntityDelegates* UArcAreaSubsystem::FindEntityDelegates(FMassEntityHandle Entity)
+{
+	return EntityAssignmentDelegates.Find(Entity);
+}
+
+void UArcAreaSubsystem::RemoveEntityDelegates(FMassEntityHandle Entity)
+{
+	EntityAssignmentDelegates.Remove(Entity);
 }
 
 // ====================================================================
@@ -257,9 +297,9 @@ void UArcAreaSubsystem::DisableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
 	}
 
 	// Clear assignment directly (skip intermediate Vacant broadcast)
-	if (Slot.AssignedEntity.IsValid())
+	const FMassEntityHandle PreviousEntity = Slot.AssignedEntity;
+	if (PreviousEntity.IsValid())
 	{
-		const FMassEntityHandle PreviousEntity = Slot.AssignedEntity;
 		Slot.AssignedEntity = FMassEntityHandle();
 
 		EntityAssignmentIndex.Remove(PreviousEntity);
@@ -268,6 +308,14 @@ void UArcAreaSubsystem::DisableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
 
 	Slot.State = EArcAreaSlotState::Disabled;
 	BroadcastOnSlotStateChanged(AreaHandle, SlotIndex, EArcAreaSlotState::Disabled);
+
+	if (PreviousEntity.IsValid())
+	{
+		if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(PreviousEntity))
+		{
+			Delegates->OnUnassigned.Broadcast();
+		}
+	}
 }
 
 void UArcAreaSubsystem::EnableSlot(FArcAreaHandle AreaHandle, int32 SlotIndex)
@@ -361,7 +409,7 @@ TArray<int32> UArcAreaSubsystem::GetVacantSlotIndices(FArcAreaHandle Handle) con
 // NPC Fragment Management (Private)
 // ====================================================================
 
-void UArcAreaSubsystem::UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaHandle AreaHandle, int32 SlotIndex, FGameplayTag RoleTag)
+void UArcAreaSubsystem::UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FArcAreaHandle AreaHandle, int32 SlotIndex)
 {
 	UWorld* World = GetWorld();
 	if (!World)
@@ -385,7 +433,6 @@ void UArcAreaSubsystem::UpdateNPCAssignmentFragment(FMassEntityHandle Entity, FA
 	{
 		Fragment->AreaHandle = AreaHandle;
 		Fragment->SlotIndex = SlotIndex;
-		Fragment->RoleTag = RoleTag;
 	}
 }
 
@@ -413,6 +460,5 @@ void UArcAreaSubsystem::ClearNPCAssignmentFragment(FMassEntityHandle Entity)
 	{
 		Fragment->AreaHandle = FArcAreaHandle();
 		Fragment->SlotIndex = INDEX_NONE;
-		Fragment->RoleTag = FGameplayTag();
 	}
 }

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MassStateTreeTypes.h"
+#include "MassSmartObjectRequest.h"
 #include "ArcAreaTypes.h"
 #include "ArcMassAssignToAreaTask.generated.h"
 
@@ -23,6 +24,10 @@ struct FArcMassAssignToAreaTaskInstanceData
 	/** Output: whether the assignment succeeded. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	bool bAssignmentSucceeded = false;
+
+	/** Output: SmartObject candidate slots from the area slot definition (1-4). */
+	UPROPERTY(EditAnywhere, Category = Output)
+	FMassSmartObjectCandidateSlots CandidateSlots;
 };
 
 /**

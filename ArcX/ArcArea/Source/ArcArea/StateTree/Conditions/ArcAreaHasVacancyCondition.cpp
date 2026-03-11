@@ -10,7 +10,6 @@
 
 bool FArcAreaHasVacancyCondition::TestCondition(FStateTreeExecutionContext& Context) const
 {
-	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	const FMassStateTreeExecutionContext& MassCtx = static_cast<const FMassStateTreeExecutionContext&>(Context);
 
 	const FMassEntityView EntityView(MassCtx.GetEntityManager(), MassCtx.GetEntity());
@@ -26,30 +25,6 @@ bool FArcAreaHasVacancyCondition::TestCondition(FStateTreeExecutionContext& Cont
 		return bInvert;
 	}
 
-	const FArcAreaData* AreaData = Subsystem->GetAreaData(AreaFragment->AreaHandle);
-	if (!AreaData)
-	{
-		return bInvert;
-	}
-
-	bool bHasVacancy = false;
-	if (InstanceData.RoleTagFilter.IsValid())
-	{
-		for (int32 i = 0; i < AreaData->Slots.Num(); ++i)
-		{
-			if (AreaData->Slots[i].State == EArcAreaSlotState::Vacant
-				&& AreaData->SlotDefinitions.IsValidIndex(i)
-				&& AreaData->SlotDefinitions[i].RoleTag == InstanceData.RoleTagFilter)
-			{
-				bHasVacancy = true;
-				break;
-			}
-		}
-	}
-	else
-	{
-		bHasVacancy = Subsystem->HasVacancy(AreaFragment->AreaHandle);
-	}
-
+	const bool bHasVacancy = Subsystem->HasVacancy(AreaFragment->AreaHandle);
 	return bInvert ? !bHasVacancy : bHasVacancy;
 }
