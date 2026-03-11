@@ -6,6 +6,7 @@
 #include "MassCommonFragments.h"
 #include "MassDebugger.h"
 #include "MassEntitySubsystem.h"
+#include "MassSignalSubsystem.h"
 #include "MassStateTreeFragments.h"
 #include "MassStateTreeSubsystem.h"
 #include "NeedsSystem/ArcNeedsFragment.h"
@@ -16,6 +17,13 @@
 #include "Engine/GameViewportClient.h"
 #include "Kismet/GameplayStatics.h"
 #include "StateTree.h"
+#include "StateTreeExecutionContext.h"
+#include "AsyncGameplayMessageSystem.h"
+#include "AsyncMessageWorldSubsystem.h"
+#include "ArcMass/ArcMassAsyncMessageEndpointFragment.h"
+#include "Perception/ArcAISense_GameplayAbility.h"
+#include "ArcImGuiReflectionWidget.h"
+#include "SmartObjectPlanner/Tasks/ArcMassUseSmartObjectTask.h"
 
 namespace
 {
@@ -112,7 +120,7 @@ void FArcAIDebugger::RefreshEntityList()
 void FArcAIDebugger::Draw()
 {
 #if WITH_MASSENTITY_DEBUG
-	ImGui::SetNextWindowSize(ImVec2(950, 650), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(1300, 650), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("AI Debugger", &bShow))
 	{
 		ImGui::End();
@@ -149,9 +157,10 @@ void FArcAIDebugger::Draw()
 
 	ImGui::Separator();
 
-	// Split into two panes
+	// Split into three panes
 	float PanelWidth = ImGui::GetContentRegionAvail().x;
-	float LeftPanelWidth = PanelWidth * 0.30f;
+	float LeftPanelWidth = PanelWidth * 0.20f;
+	float RightPanelWidth = PanelWidth * 0.30f;
 
 	// Left panel: entity list
 	if (ImGui::BeginChild("AIEntityListPanel", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
@@ -162,10 +171,20 @@ void FArcAIDebugger::Draw()
 
 	ImGui::SameLine();
 
-	// Right panel: entity detail
-	if (ImGui::BeginChild("AIEntityDetailPanel", ImVec2(0, 0), ImGuiChildFlags_Borders))
+	// Middle panel: entity detail
+	float MiddlePanelWidth = ImGui::GetContentRegionAvail().x - RightPanelWidth - ImGui::GetStyle().ItemSpacing.x;
+	if (ImGui::BeginChild("AIEntityDetailPanel", ImVec2(MiddlePanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
 	{
 		DrawEntityDetailPanel();
+	}
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	// Right panel: selected state details
+	if (ImGui::BeginChild("AISelectedStatePanel", ImVec2(0, 0), ImGuiChildFlags_Borders))
+	{
+		DrawSelectedStatePanel();
 	}
 	ImGui::EndChild();
 
@@ -272,35 +291,268 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 							{
 								const FStateTreeExecutionFrame& Frame = ExecState->ActiveFrames[FrameIdx];
 
-								FString FrameLabel = FString::Printf(TEXT("Frame %d"), FrameIdx);
-								if (Frame.StateTree)
+								if (!Frame.StateTree)
 								{
-									FrameLabel = FString::Printf(TEXT("Frame %d [%s]"), FrameIdx, *Frame.StateTree->GetName());
+									continue;
+								}
+
+								FString FrameLabel = FString::Printf(TEXT("Frame %d [%s]"), FrameIdx, *Frame.StateTree->GetName());
+
+								// Collect active state handles for this frame
+								TSet<uint16> ActiveStateIndices;
+								for (int32 StateIdx = 0; StateIdx < Frame.ActiveStates.Num(); StateIdx++)
+								{
+									ActiveStateIndices.Add(Frame.ActiveStates[StateIdx].Index);
 								}
 
 								if (ImGui::TreeNodeEx(TCHAR_TO_ANSI(*FrameLabel), ImGuiTreeNodeFlags_DefaultOpen))
 								{
-									// Show active states in this frame
-									for (int32 StateIdx = 0; StateIdx < Frame.ActiveStates.Num(); StateIdx++)
+									TConstArrayView<FCompactStateTreeState> AllStates = Frame.StateTree->GetStates();
+
+									// Recursive lambda to draw state hierarchy
+									TFunction<void(uint16, uint16)> DrawStateTree = [&, FrameIdx](uint16 Begin, uint16 End)
 									{
-										FStateTreeStateHandle StateHandle = Frame.ActiveStates[StateIdx];
-
-										FString StateName = TEXT("?");
-										if (Frame.StateTree)
+										for (uint16 Idx = Begin; Idx < End; )
 										{
-											const FCompactStateTreeState* CompactState = Frame.StateTree->GetStateFromHandle(StateHandle);
-											if (CompactState)
+											if (!AllStates.IsValidIndex(Idx))
 											{
-												StateName = CompactState->Name.ToString();
+												break;
 											}
-										}
 
-										ImGui::BulletText("%s", TCHAR_TO_ANSI(*StateName));
-									}
+											const FCompactStateTreeState& State = AllStates[Idx];
+											const bool bIsActive = ActiveStateIndices.Contains(Idx);
+											const bool bHasChildren = State.HasChildren();
+
+											FString StateLabel = State.Name.ToString();
+
+											// Append type suffix for non-standard states
+											if (State.Type == EStateTreeStateType::Linked || State.Type == EStateTreeStateType::LinkedAsset)
+											{
+												StateLabel += TEXT(" (Linked)");
+											}
+											else if (State.Type == EStateTreeStateType::Subtree)
+											{
+												StateLabel += TEXT(" (Subtree)");
+											}
+
+											ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanAvailWidth;
+											if (!bHasChildren)
+											{
+												NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+											}
+											if (bIsActive)
+											{
+												NodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
+											}
+											if (SelectedStateFrameIdx == FrameIdx && SelectedStateIdx == Idx)
+											{
+												NodeFlags |= ImGuiTreeNodeFlags_Selected;
+											}
+
+											if (bIsActive)
+											{
+												ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
+											}
+
+											ImGui::PushID(Idx);
+											bool bNodeOpen = ImGui::TreeNodeEx(TCHAR_TO_ANSI(*StateLabel), NodeFlags);
+
+											if (ImGui::IsItemClicked())
+											{
+												SelectedStateFrameIdx = FrameIdx;
+												SelectedStateIdx = Idx;
+												bSelectedNested = false;
+											}
+
+											ImGui::PopID();
+
+											if (bIsActive)
+											{
+												ImGui::PopStyleColor();
+											}
+
+											if (bHasChildren && bNodeOpen)
+											{
+												DrawStateTree(State.ChildrenBegin, State.ChildrenEnd);
+												ImGui::TreePop();
+											}
+
+											// Advance to next sibling
+											Idx = State.GetNextSibling();
+										}
+									};
+
+									// Draw full hierarchy starting from all root-level states
+									DrawStateTree(0, static_cast<uint16>(AllStates.Num()));
 
 									ImGui::TreePop();
 								}
 							}
+
+							// Scan active task instance data for nested Gameplay Interaction state trees
+							for (int32 ScanFrameIdx = 0; ScanFrameIdx < ExecState->ActiveFrames.Num(); ScanFrameIdx++)
+							{
+								const FStateTreeExecutionFrame& ScanFrame = ExecState->ActiveFrames[ScanFrameIdx];
+								if (!ScanFrame.StateTree || !ScanFrame.ActiveInstanceIndexBase.IsValid())
+								{
+									continue;
+								}
+
+								TConstArrayView<FCompactStateTreeState> ScanStates = ScanFrame.StateTree->GetStates();
+								int32 ScanRunningIndex = ScanFrame.ActiveInstanceIndexBase.Get();
+
+								for (int32 AS = 0; AS < ScanFrame.ActiveStates.Num(); AS++)
+								{
+									uint16 ActiveIdx = ScanFrame.ActiveStates[AS].Index;
+									if (!ScanStates.IsValidIndex(ActiveIdx))
+									{
+										continue;
+									}
+
+									const FCompactStateTreeState& ActiveState = ScanStates[ActiveIdx];
+
+									for (int32 DataIdx = 0; DataIdx < ActiveState.InstanceDataNum; DataIdx++)
+									{
+										int32 StorageIdx = ScanRunningIndex + DataIdx;
+										if (!InstanceData->IsValidIndex(StorageIdx) || InstanceData->IsObject(StorageIdx))
+										{
+											continue;
+										}
+
+										FConstStructView View = InstanceData->GetStruct(StorageIdx);
+										if (View.GetScriptStruct() != FArcMassUseSmartObjectTaskInstanceData::StaticStruct())
+										{
+											continue;
+										}
+
+										const FArcMassUseSmartObjectTaskInstanceData& TaskData = View.Get<const FArcMassUseSmartObjectTaskInstanceData>();
+										const FArcGameplayInteractionContext& GICtx = TaskData.GameplayInteractionContext;
+										const UArcGameplayInteractionSmartObjectBehaviorDefinition* GIDef = GICtx.GetDefinition();
+
+										if (!GIDef)
+										{
+											continue;
+										}
+
+										if (!GIDef->IsA<UArcAIGameplayInteractionSmartObjectBehaviorDefinition>())
+										{
+											ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Gameplay Interaction: Running");
+											continue;
+										}
+
+										// Render nested Gameplay Interaction state tree
+										const FStateTreeInstanceData& NestedInstanceData = GICtx.GetStateTreeInstanceData();
+										const FStateTreeExecutionState* NestedExecState = NestedInstanceData.GetExecutionState();
+										if (!NestedExecState)
+										{
+											continue;
+										}
+
+										for (int32 NFrameIdx = 0; NFrameIdx < NestedExecState->ActiveFrames.Num(); NFrameIdx++)
+										{
+											const FStateTreeExecutionFrame& NFrame = NestedExecState->ActiveFrames[NFrameIdx];
+											if (!NFrame.StateTree)
+											{
+												continue;
+											}
+
+											FString NFrameLabel = FString::Printf(TEXT("Gameplay Interaction [%s]"), *NFrame.StateTree->GetName());
+
+											TSet<uint16> NActiveStateIndices;
+											for (int32 NAS = 0; NAS < NFrame.ActiveStates.Num(); NAS++)
+											{
+												NActiveStateIndices.Add(NFrame.ActiveStates[NAS].Index);
+											}
+
+											ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.2f, 1.0f));
+											bool bNFrameOpen = ImGui::TreeNodeEx(TCHAR_TO_ANSI(*NFrameLabel), ImGuiTreeNodeFlags_DefaultOpen);
+											ImGui::PopStyleColor();
+
+											if (bNFrameOpen)
+											{
+												TConstArrayView<FCompactStateTreeState> NAllStates = NFrame.StateTree->GetStates();
+
+												TFunction<void(uint16, uint16)> DrawNestedStates = [&](uint16 Begin, uint16 End)
+												{
+													for (uint16 Idx = Begin; Idx < End; )
+													{
+														if (!NAllStates.IsValidIndex(Idx))
+														{
+															break;
+														}
+
+														const FCompactStateTreeState& State = NAllStates[Idx];
+														const bool bIsActive = NActiveStateIndices.Contains(Idx);
+														const bool bHasChildren = State.HasChildren();
+
+														FString StateLabel = State.Name.ToString();
+														if (State.Type == EStateTreeStateType::Linked || State.Type == EStateTreeStateType::LinkedAsset)
+														{
+															StateLabel += TEXT(" (Linked)");
+														}
+														else if (State.Type == EStateTreeStateType::Subtree)
+														{
+															StateLabel += TEXT(" (Subtree)");
+														}
+
+														ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanAvailWidth;
+														if (!bHasChildren)
+														{
+															NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+														}
+														if (bIsActive)
+														{
+															NodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
+														}
+														if (bSelectedNested && NestedTaskStorageIdx == StorageIdx
+															&& SelectedStateFrameIdx == NFrameIdx && SelectedStateIdx == Idx)
+														{
+															NodeFlags |= ImGuiTreeNodeFlags_Selected;
+														}
+
+														if (bIsActive)
+														{
+															ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
+														}
+
+														ImGui::PushID(static_cast<int>(Idx) + 10000 * (NFrameIdx + 1));
+														bool bNodeOpen = ImGui::TreeNodeEx(TCHAR_TO_ANSI(*StateLabel), NodeFlags);
+
+														if (ImGui::IsItemClicked())
+														{
+															SelectedStateFrameIdx = NFrameIdx;
+															SelectedStateIdx = Idx;
+															bSelectedNested = true;
+															NestedTaskStorageIdx = StorageIdx;
+														}
+
+														ImGui::PopID();
+
+														if (bIsActive)
+														{
+															ImGui::PopStyleColor();
+														}
+
+														if (bHasChildren && bNodeOpen)
+														{
+															DrawNestedStates(State.ChildrenBegin, State.ChildrenEnd);
+															ImGui::TreePop();
+														}
+
+														Idx = State.GetNextSibling();
+													}
+												};
+
+												DrawNestedStates(0, static_cast<uint16>(NAllStates.Num()));
+												ImGui::TreePop();
+											}
+										}
+									}
+
+									ScanRunningIndex += ActiveState.InstanceDataNum;
+								}
+							}
+
 						}
 					}
 				}
@@ -402,7 +654,7 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 			ImGui::SameLine(150);
 			ImGui::ProgressBar(Ratio, ImVec2(200, 0));
 			ImGui::SameLine();
-			ImGui::Text("%.1f (Rate: %.2f)", Hunger->CurrentValue, Hunger->ChangeRate);
+			ImGui::Text("%.3f (Rate: %.4f)", Hunger->CurrentValue, Hunger->ChangeRate);
 		}
 
 		if (const FArcThirstNeedFragment* Thirst = Manager->GetFragmentDataPtr<FArcThirstNeedFragment>(Entity))
@@ -413,7 +665,7 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 			ImGui::SameLine(150);
 			ImGui::ProgressBar(Ratio, ImVec2(200, 0));
 			ImGui::SameLine();
-			ImGui::Text("%.1f (Rate: %.2f)", Thirst->CurrentValue, Thirst->ChangeRate);
+			ImGui::Text("%.3f (Rate: %.4f)", Thirst->CurrentValue, Thirst->ChangeRate);
 		}
 
 		if (const FArcFatigueNeedFragment* Fatigue = Manager->GetFragmentDataPtr<FArcFatigueNeedFragment>(Entity))
@@ -424,7 +676,7 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 			ImGui::SameLine(150);
 			ImGui::ProgressBar(Ratio, ImVec2(200, 0));
 			ImGui::SameLine();
-			ImGui::Text("%.1f (Rate: %.2f)", Fatigue->CurrentValue, Fatigue->ChangeRate);
+			ImGui::Text("%.3f (Rate: %.4f)", Fatigue->CurrentValue, Fatigue->ChangeRate);
 		}
 
 		if (!bHasAnyNeeds)
@@ -463,6 +715,296 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 		else
 		{
 			ImGui::TextDisabled("No GoalPlanInfo on this entity");
+		}
+	}
+
+	// === SEND ACTIONS ===
+	if (ImGui::CollapsingHeader("Actions"))
+	{
+		DrawSendAsyncMessage();
+		ImGui::Spacing();
+		DrawSendStateTreeEvent();
+	}
+#endif
+}
+
+void FArcAIDebugger::DrawSelectedStatePanel()
+{
+#if WITH_MASSENTITY_DEBUG
+	ImGui::Text("Selected State Details");
+	ImGui::Separator();
+
+	if (SelectedEntityIndex == INDEX_NONE || !CachedEntities.IsValidIndex(SelectedEntityIndex))
+	{
+		ImGui::TextDisabled("Select an AI entity from the list");
+		return;
+	}
+
+	if (SelectedStateFrameIdx == INDEX_NONE || SelectedStateIdx == MAX_uint16)
+	{
+		ImGui::TextDisabled("Select a state from the tree");
+		return;
+	}
+
+	FMassEntityManager* Manager = GetEntityManager();
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FEntityEntry& Entry = CachedEntities[SelectedEntityIndex];
+	const FMassEntityHandle Entity = Entry.Entity;
+
+	if (!Manager->IsEntityActive(Entity))
+	{
+		ImGui::TextDisabled("Entity is no longer active");
+		return;
+	}
+
+	const FMassStateTreeInstanceFragment* InstanceST = Manager->GetFragmentDataPtr<FMassStateTreeInstanceFragment>(Entity);
+	if (!InstanceST || !InstanceST->InstanceHandle.IsValid())
+	{
+		ImGui::TextDisabled("No valid instance handle");
+		return;
+	}
+
+	UWorld* World = GetDebugWorld();
+	UMassStateTreeSubsystem* STSubsystem = World ? World->GetSubsystem<UMassStateTreeSubsystem>() : nullptr;
+	if (!STSubsystem)
+	{
+		return;
+	}
+
+	const FStateTreeInstanceData* InstanceData = STSubsystem->GetInstanceData(InstanceST->InstanceHandle);
+	if (!InstanceData)
+	{
+		return;
+	}
+
+	// If selection is in a nested Gameplay Interaction tree, resolve to nested instance data
+	if (bSelectedNested)
+	{
+		if (!InstanceData->IsValidIndex(NestedTaskStorageIdx) || InstanceData->IsObject(NestedTaskStorageIdx))
+		{
+			ImGui::TextDisabled("Nested task data no longer valid");
+			return;
+		}
+		FConstStructView TaskView = InstanceData->GetStruct(NestedTaskStorageIdx);
+		if (TaskView.GetScriptStruct() != FArcMassUseSmartObjectTaskInstanceData::StaticStruct())
+		{
+			ImGui::TextDisabled("Nested task data type mismatch");
+			return;
+		}
+		const FArcMassUseSmartObjectTaskInstanceData& TaskData = TaskView.Get<const FArcMassUseSmartObjectTaskInstanceData>();
+		InstanceData = &TaskData.GameplayInteractionContext.GetStateTreeInstanceData();
+	}
+
+	const FStateTreeExecutionState* ExecState = InstanceData->GetExecutionState();
+	if (!ExecState || !ExecState->ActiveFrames.IsValidIndex(SelectedStateFrameIdx))
+	{
+		ImGui::TextDisabled("Selected frame is no longer valid");
+		return;
+	}
+
+	const FStateTreeExecutionFrame& SelFrame = ExecState->ActiveFrames[SelectedStateFrameIdx];
+	if (!SelFrame.StateTree || !SelFrame.ActiveInstanceIndexBase.IsValid())
+	{
+		ImGui::TextDisabled("Frame has no state tree");
+		return;
+	}
+
+	TConstArrayView<FCompactStateTreeState> SelStates = SelFrame.StateTree->GetStates();
+	if (!SelStates.IsValidIndex(SelectedStateIdx))
+	{
+		ImGui::TextDisabled("Selected state index is invalid");
+		return;
+	}
+
+	const FCompactStateTreeState& SelState = SelStates[SelectedStateIdx];
+
+	// Check if the state is currently active
+	bool bSelStateActive = false;
+	for (int32 AS = 0; AS < SelFrame.ActiveStates.Num(); AS++)
+	{
+		if (SelFrame.ActiveStates[AS].Index == SelectedStateIdx)
+		{
+			bSelStateActive = true;
+			break;
+		}
+	}
+
+	ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Instance Data: %s",
+		TCHAR_TO_ANSI(*SelState.Name.ToString()));
+
+	if (!bSelStateActive)
+	{
+		ImGui::TextDisabled("State is not currently active");
+	}
+	else if (SelState.InstanceDataNum == 0)
+	{
+		ImGui::TextDisabled("No instance data for this state");
+	}
+	else
+	{
+		// Walk active states in order to compute the storage offset
+		int32 RunningIndex = SelFrame.ActiveInstanceIndexBase.Get();
+		bool bFound = false;
+
+		for (int32 AS = 0; AS < SelFrame.ActiveStates.Num(); AS++)
+		{
+			uint16 ActiveIdx = SelFrame.ActiveStates[AS].Index;
+			if (ActiveIdx == SelectedStateIdx)
+			{
+				bFound = true;
+				break;
+			}
+			if (SelStates.IsValidIndex(ActiveIdx))
+			{
+				RunningIndex += SelStates[ActiveIdx].InstanceDataNum;
+			}
+		}
+
+		if (bFound)
+		{
+			for (int32 i = 0; i < SelState.InstanceDataNum; i++)
+			{
+				int32 StorageIdx = RunningIndex + i;
+				if (InstanceData->IsValidIndex(StorageIdx) && !InstanceData->IsObject(StorageIdx))
+				{
+					FConstStructView View = InstanceData->GetStruct(StorageIdx);
+					FString ItemLabel = FString::Printf(TEXT("[%d]"), i);
+					ArcImGuiReflection::DrawStructView(*ItemLabel, View);
+				}
+				else if (InstanceData->IsValidIndex(StorageIdx))
+				{
+					ImGui::TextDisabled("[%d]: (UObject instance)", i);
+				}
+			}
+		}
+	}
+#endif
+}
+
+void FArcAIDebugger::DrawSendAsyncMessage()
+{
+#if WITH_MASSENTITY_DEBUG
+	if (SelectedEntityIndex == INDEX_NONE || !CachedEntities.IsValidIndex(SelectedEntityIndex))
+	{
+		return;
+	}
+
+	ImGui::Text("Send Async Message");
+	ImGui::InputText("Message Tag##Async", AsyncMessageTagBuf, IM_ARRAYSIZE(AsyncMessageTagBuf));
+
+	if (ImGui::Button("Send Async Message"))
+	{
+		FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(ANSI_TO_TCHAR(AsyncMessageTagBuf)), false);
+		if (!Tag.IsValid())
+		{
+			return;
+		}
+
+		UWorld* World = GetDebugWorld();
+		if (!World)
+		{
+			return;
+		}
+
+		FMassEntityManager* Manager = GetEntityManager();
+		if (!Manager)
+		{
+			return;
+		}
+
+		const FMassEntityHandle Entity = CachedEntities[SelectedEntityIndex].Entity;
+		if (!Manager->IsEntityActive(Entity))
+		{
+			return;
+		}
+
+		TSharedPtr<FAsyncGameplayMessageSystem> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem<FAsyncGameplayMessageSystem>(World);
+		if (!MessageSystem.IsValid())
+		{
+			return;
+		}
+
+		const FArcMassAsyncMessageEndpointFragment* EndpointFragment = Manager->GetFragmentDataPtr<FArcMassAsyncMessageEndpointFragment>(Entity);
+		if (!EndpointFragment || !EndpointFragment->Endpoint.IsValid())
+		{
+			return;
+		}
+
+		FArcAIBaseEvent Payload;
+		FAsyncMessageId MessageId(Tag);
+		MessageSystem->QueueMessageForBroadcast(MessageId, FConstStructView::Make(Payload), EndpointFragment->Endpoint);
+	}
+#endif
+}
+
+void FArcAIDebugger::DrawSendStateTreeEvent()
+{
+#if WITH_MASSENTITY_DEBUG
+	if (SelectedEntityIndex == INDEX_NONE || !CachedEntities.IsValidIndex(SelectedEntityIndex))
+	{
+		return;
+	}
+
+	ImGui::Text("Send StateTree Event");
+	ImGui::InputText("Event Tag##ST", StateTreeEventTagBuf, IM_ARRAYSIZE(StateTreeEventTagBuf));
+
+	if (ImGui::Button("Send StateTree Event"))
+	{
+		FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(ANSI_TO_TCHAR(StateTreeEventTagBuf)), false);
+		if (!Tag.IsValid())
+		{
+			return;
+		}
+
+		UWorld* World = GetDebugWorld();
+		if (!World)
+		{
+			return;
+		}
+
+		FMassEntityManager* Manager = GetEntityManager();
+		if (!Manager)
+		{
+			return;
+		}
+
+		const FMassEntityHandle Entity = CachedEntities[SelectedEntityIndex].Entity;
+		if (!Manager->IsEntityActive(Entity))
+		{
+			return;
+		}
+
+		const FMassStateTreeSharedFragment* StateTreeShared = Manager->GetConstSharedFragmentDataPtr<FMassStateTreeSharedFragment>(Entity);
+		FMassStateTreeInstanceFragment* InstanceST = Manager->GetFragmentDataPtr<FMassStateTreeInstanceFragment>(Entity);
+		if (!StateTreeShared || !InstanceST || !InstanceST->InstanceHandle.IsValid())
+		{
+			return;
+		}
+
+		UMassStateTreeSubsystem* STSubsystem = World->GetSubsystem<UMassStateTreeSubsystem>();
+		if (!STSubsystem)
+		{
+			return;
+		}
+
+		FStateTreeInstanceData* STData = STSubsystem->GetInstanceData(InstanceST->InstanceHandle);
+		if (!STData)
+		{
+			return;
+		}
+
+		FArcAIBaseEvent Payload;
+		FStateTreeMinimalExecutionContext Context(STSubsystem, StateTreeShared->StateTree, *STData);
+		Context.SendEvent(Tag, FConstStructView::Make(Payload));
+
+		UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
+		if (SignalSubsystem)
+		{
+			SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
 		}
 	}
 #endif

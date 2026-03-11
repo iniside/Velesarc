@@ -13,6 +13,8 @@
 #include "MassEntityQuery.h"
 #include "MassCommonFragments.h"
 #include "MassExecutionContext.h"
+#include "SmartObjectSubsystem.h"
+#include "SmartObjectRequestTypes.h"
 
 // ====================================================================
 // Helpers
@@ -69,6 +71,56 @@ namespace
 		case EArcAreaSlotState::Active:   return ActiveColor;
 		case EArcAreaSlotState::Disabled: return DisabledColor;
 		default:                          return FColor::White;
+		}
+	}
+
+	// SmartObject slot state helpers
+	static const ImVec4 ImSOFreeColor(0.2f, 0.8f, 0.2f, 1.0f);
+	static const ImVec4 ImSOClaimedColor(0.8f, 0.6f, 0.2f, 1.0f);
+	static const ImVec4 ImSOOccupiedColor(0.2f, 0.6f, 1.0f, 1.0f);
+	static const ImVec4 ImSODisabledColor(0.6f, 0.2f, 0.2f, 1.0f);
+	static const ImVec4 ImSOInvalidColor(0.4f, 0.4f, 0.4f, 1.0f);
+
+	const FString SOSlotStateToString(ESmartObjectSlotState State)
+	{
+		switch (State)
+		{
+		case ESmartObjectSlotState::Free:     return TEXT("Free");
+		case ESmartObjectSlotState::Claimed:  return TEXT("Claimed");
+		case ESmartObjectSlotState::Occupied: return TEXT("Occupied");
+		default:                              return TEXT("Invalid");
+		}
+	}
+
+	ImVec4 SOSlotStateColor(ESmartObjectSlotState State)
+	{
+		switch (State)
+		{
+		case ESmartObjectSlotState::Free:     return ImSOFreeColor;
+		case ESmartObjectSlotState::Claimed:  return ImSOClaimedColor;
+		case ESmartObjectSlotState::Occupied: return ImSOOccupiedColor;
+		default:                              return ImSOInvalidColor;
+		}
+	}
+
+	const FString TagMergingPolicyToString(ESmartObjectTagMergingPolicy Policy)
+	{
+		switch (Policy)
+		{
+		case ESmartObjectTagMergingPolicy::Combine:  return TEXT("Combine");
+		case ESmartObjectTagMergingPolicy::Override:  return TEXT("Override");
+		default:                                     return TEXT("Unknown");
+		}
+	}
+
+	const FString TagFilteringPolicyToString(ESmartObjectTagFilteringPolicy Policy)
+	{
+		switch (Policy)
+		{
+		case ESmartObjectTagFilteringPolicy::NoFilter: return TEXT("NoFilter");
+		case ESmartObjectTagFilteringPolicy::Combine:  return TEXT("Combine");
+		case ESmartObjectTagFilteringPolicy::Override:  return TEXT("Override");
+		default:                                       return TEXT("Unknown");
 		}
 	}
 }
@@ -216,8 +268,8 @@ void FArcAreaDebugger::RefreshAssignableEntities()
 				Entry.Location = Transform.GetTransform().GetLocation();
 				Entry.EligibleRoles = Config.EligibleRoles;
 				Entry.bCurrentlyAssigned = Assignment.IsAssigned();
-				Entry.CurrentAreaHandle = Assignment.AreaHandle;
-				Entry.CurrentSlotIndex = Assignment.SlotIndex;
+				Entry.CurrentAreaHandle = Assignment.SlotHandle.AreaHandle;
+				Entry.CurrentSlotIndex = Assignment.SlotHandle.SlotIndex;
 
 				// Build label
 				FString RolesStr;
@@ -550,56 +602,227 @@ void FArcAreaDebugger::DrawAreaDetailPanel()
 
 void FArcAreaDebugger::DrawSmartObjectSection(const FArcAreaData& AreaData)
 {
-	if (ImGui::CollapsingHeader("SmartObject", ImGuiTreeNodeFlags_DefaultOpen))
+	if (!ImGui::CollapsingHeader("SmartObject", ImGuiTreeNodeFlags_DefaultOpen))
 	{
-		if (AreaData.SmartObjectHandle.IsValid())
+		return;
+	}
+
+	if (!AreaData.SmartObjectHandle.IsValid())
+	{
+		ImGui::TextDisabled("No SmartObject linked");
+		return;
+	}
+
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const USmartObjectSubsystem* SOSubsystem = World->GetSubsystem<USmartObjectSubsystem>();
+	if (!SOSubsystem)
+	{
+		ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "SmartObject subsystem unavailable");
+		return;
+	}
+
+	ImGui::TextColored(ImTagColor, "SmartObject: Linked");
+
+	// Gather all SO slot handles
+	TArray<FSmartObjectSlotHandle> AllSOSlots;
+	SOSubsystem->GetAllSlots(AreaData.SmartObjectHandle, AllSOSlots);
+
+	ImGui::Text("SO Slots: %d", AllSOSlots.Num());
+
+	// --- SO-level definition info (read from the first slot's view) ---
+	if (AllSOSlots.Num() > 0)
+	{
+		SOSubsystem->ReadSlotData(AllSOSlots[0], [](FConstSmartObjectSlotView SlotView)
 		{
-			ImGui::TextColored(ImTagColor, "SmartObject: Valid");
+			const USmartObjectDefinition& Def = SlotView.GetSmartObjectDefinition();
 
-			// Show which slots map to which SO slots
-			if (ImGui::BeginTable("##SOSlotMap", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+			// Object-level activity tags
+			const FGameplayTagContainer& ObjActivityTags = Def.GetActivityTags();
+			if (!ObjActivityTags.IsEmpty())
 			{
-				ImGui::TableSetupColumn("Area Slot", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-				ImGui::TableSetupColumn("SO Slot Index", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-				ImGui::TableSetupColumn("Occupant", ImGuiTableColumnFlags_WidthStretch);
-				ImGui::TableHeadersRow();
+				ImGui::TextColored(ImTagColor, "Object Activity Tags:");
+				ImGui::SameLine();
+				ImGui::Text("%s", TCHAR_TO_ANSI(*ObjActivityTags.ToStringSimple()));
+			}
+			else
+			{
+				ImGui::TextDisabled("Object Activity Tags: (none)");
+			}
 
-				for (int32 i = 0; i < AreaData.SlotDefinitions.Num(); ++i)
+			// Object-level user tag filter
+			const FGameplayTagQuery& ObjUserFilter = Def.GetUserTagFilter();
+			if (!ObjUserFilter.IsEmpty())
+			{
+				ImGui::Text("Object User Tag Filter: %s", TCHAR_TO_ANSI(*ObjUserFilter.GetDescription()));
+			}
+
+			// Policies
+			ImGui::Text("Activity Tag Merging: %s",
+				TCHAR_TO_ANSI(*TagMergingPolicyToString(Def.GetActivityTagsMergingPolicy())));
+			ImGui::Text("User Tag Filtering: %s",
+				TCHAR_TO_ANSI(*TagFilteringPolicyToString(Def.GetUserTagsFilteringPolicy())));
+		});
+	}
+
+	ImGui::Spacing();
+
+	// --- Per-slot detail table ---
+	if (ImGui::TreeNodeEx("SO Slot Details", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		if (ImGui::BeginTable("##SOSlotDetails", 6,
+			ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
+		{
+			ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+			ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+			ImGui::TableSetupColumn("Activity Tags", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Runtime Tags", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("User Tag Filter", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+			ImGui::TableHeadersRow();
+
+			for (int32 i = 0; i < AllSOSlots.Num(); ++i)
+			{
+				const FSmartObjectSlotHandle& SlotHandle = AllSOSlots[i];
+				const ESmartObjectSlotState SOState = SOSubsystem->GetSlotState(SlotHandle);
+				const FGameplayTagContainer& RuntimeTags = SOSubsystem->GetSlotTags(SlotHandle);
+
+				ImGui::PushID(i);
+				ImGui::TableNextRow();
+
+				// Index
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("%d", i);
+
+				// State
+				ImGui::TableSetColumnIndex(1);
+				ImGui::TextColored(SOSlotStateColor(SOState), "%s", TCHAR_TO_ANSI(*SOSlotStateToString(SOState)));
+
+				// Activity Tags, User Tag Filter, Enabled — need the slot view
+				SOSubsystem->ReadSlotData(SlotHandle, [i, &RuntimeTags](FConstSmartObjectSlotView SlotView)
 				{
-					const FArcAreaSlotDefinition& SlotDef = AreaData.SlotDefinitions[i];
-					ImGui::TableNextRow();
-
-					ImGui::TableSetColumnIndex(0);
-					ImGui::Text("%d", i);
-
-					ImGui::TableSetColumnIndex(1);
-					ImGui::Text("%d", SlotDef.SmartObjectSlotIndex);
-
+					// Activity Tags (merged per policy)
 					ImGui::TableSetColumnIndex(2);
-					if (AreaData.Slots.IsValidIndex(i))
+					FGameplayTagContainer MergedActivityTags;
+					SlotView.GetActivityTags(MergedActivityTags);
+					if (!MergedActivityTags.IsEmpty())
 					{
-						const FArcAreaSlotRuntime& SlotRuntime = AreaData.Slots[i];
-						if (SlotRuntime.AssignedEntity.IsValid())
-						{
-							ImVec4 StateCol = SlotStateColor(SlotRuntime.State);
-							ImGui::TextColored(StateCol, "E%d [%s]",
-								SlotRuntime.AssignedEntity.Index,
-								TCHAR_TO_ANSI(*SlotStateToString(SlotRuntime.State)));
-						}
-						else
-						{
-							ImGui::TextDisabled("--");
-						}
+						ImGui::TextColored(ImTagColor, "%s", TCHAR_TO_ANSI(*MergedActivityTags.ToStringSimple()));
+					}
+					else
+					{
+						ImGui::TextDisabled("(none)");
+					}
+
+					// Runtime Tags
+					ImGui::TableSetColumnIndex(3);
+					if (!RuntimeTags.IsEmpty())
+					{
+						ImGui::Text("%s", TCHAR_TO_ANSI(*RuntimeTags.ToStringSimple()));
+					}
+					else
+					{
+						ImGui::TextDisabled("(none)");
+					}
+
+					// User Tag Filter
+					ImGui::TableSetColumnIndex(4);
+					const FSmartObjectSlotDefinition& SlotDef = SlotView.GetDefinition();
+					if (!SlotDef.UserTagFilter.IsEmpty())
+					{
+						ImGui::Text("%s", TCHAR_TO_ANSI(*SlotDef.UserTagFilter.GetDescription()));
+					}
+					else
+					{
+						ImGui::TextDisabled("(none)");
+					}
+
+					// Enabled
+					ImGui::TableSetColumnIndex(5);
+					ImGui::Text("%s", SlotDef.bEnabled ? "Yes" : "No");
+				});
+
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+
+		ImGui::TreePop();
+	}
+
+	ImGui::Spacing();
+
+	// --- Area Slot ↔ SO Slot matching preview ---
+	if (ImGui::TreeNodeEx("Tag Matching Preview", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::TextDisabled("Shows which SO slots each area slot would match via tag-based resolution");
+		ImGui::Spacing();
+
+		for (int32 AreaSlotIdx = 0; AreaSlotIdx < AreaData.SlotDefinitions.Num(); ++AreaSlotIdx)
+		{
+			const FArcAreaSlotDefinition& SlotDef = AreaData.SlotDefinitions[AreaSlotIdx];
+			FString ReqStr = SlotDef.RequirementQuery.GetDescription();
+			FString NodeLabel = FString::Printf(TEXT("Area Slot %d%s"), AreaSlotIdx,
+				ReqStr.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" — %s"), *ReqStr));
+
+			ImGui::PushID(AreaSlotIdx);
+
+			if (ImGui::TreeNode(TCHAR_TO_ANSI(*NodeLabel)))
+			{
+				// Show all SO slots with their activity tags and state
+				// (Tag matching now happens at assignment time using entity tags, not slot definition)
+				ImGui::TextDisabled("SO slot matching uses entity tags at assignment time");
+				ImGui::Spacing();
+
+				int32 TaggedCount = 0;
+				int32 UntaggedCount = 0;
+				for (int32 s = 0; s < AllSOSlots.Num(); ++s)
+				{
+					FGameplayTagContainer ActivityTags;
+					SOSubsystem->ReadSlotData(AllSOSlots[s], [&ActivityTags](FConstSmartObjectSlotView SlotView)
+					{
+						SlotView.GetActivityTags(ActivityTags);
+					});
+
+					ESmartObjectSlotState SOState = SOSubsystem->GetSlotState(AllSOSlots[s]);
+
+					if (!ActivityTags.IsEmpty())
+					{
+						ImGui::BulletText("SO Slot %d", s);
+						ImGui::SameLine();
+						ImGui::TextColored(SOSlotStateColor(SOState), "[%s]", TCHAR_TO_ANSI(*SOSlotStateToString(SOState)));
+						ImGui::SameLine();
+						ImGui::TextDisabled("Tags: %s", TCHAR_TO_ANSI(*ActivityTags.ToStringSimple()));
+						TaggedCount++;
+					}
+					else
+					{
+						UntaggedCount++;
 					}
 				}
 
-				ImGui::EndTable();
+				if (UntaggedCount > 0)
+				{
+					ImGui::TextColored(ImAssignedColor, "%d untagged SO slot(s) (fallback)", UntaggedCount);
+				}
+
+				if (TaggedCount == 0 && UntaggedCount == 0)
+				{
+					ImGui::TextColored(ImDisabledColor, "No SO slots found");
+				}
+
+				ImGui::TreePop();
 			}
+
+			ImGui::PopID();
 		}
-		else
-		{
-			ImGui::TextDisabled("No SmartObject linked");
-		}
+
+		ImGui::TreePop();
 	}
 }
 
@@ -627,14 +850,12 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 		return;
 	}
 
-	if (ImGui::BeginTable("##SlotTable", 6,
+	if (ImGui::BeginTable("##SlotTable", 4,
 		ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
 	{
 		ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 30.0f);
 		ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-		ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthStretch);
 		ImGui::TableSetupColumn("Assigned Entity", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-		ImGui::TableSetupColumn("SO Slot", ImGuiTableColumnFlags_WidthFixed, 60.0f);
 		ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 180.0f);
 		ImGui::TableHeadersRow();
 
@@ -654,19 +875,8 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 			ImGui::TableSetColumnIndex(1);
 			ImGui::TextColored(SlotStateColor(SlotRuntime.State), "%s", TCHAR_TO_ANSI(*SlotStateToString(SlotRuntime.State)));
 
-			// Role
-			ImGui::TableSetColumnIndex(2);
-			if (SlotDef.RoleTag.IsValid())
-			{
-				ImGui::Text("%s", TCHAR_TO_ANSI(*SlotDef.RoleTag.ToString()));
-			}
-			else
-			{
-				ImGui::TextDisabled("(none)");
-			}
-
 			// Assigned entity
-			ImGui::TableSetColumnIndex(3);
+			ImGui::TableSetColumnIndex(2);
 			if (SlotRuntime.AssignedEntity.IsValid())
 			{
 				ImGui::TextColored(SlotStateColor(SlotRuntime.State), "E%d (SN:%d)",
@@ -677,12 +887,8 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 				ImGui::TextDisabled("--");
 			}
 
-			// SO Slot mapping
-			ImGui::TableSetColumnIndex(4);
-			ImGui::Text("%d", SlotDef.SmartObjectSlotIndex);
-
 			// Actions
-			ImGui::TableSetColumnIndex(5);
+			ImGui::TableSetColumnIndex(3);
 			if (SlotRuntime.State == EArcAreaSlotState::Vacant)
 			{
 				if (ImGui::SmallButton("Assign"))
@@ -694,7 +900,7 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 				ImGui::SameLine();
 				if (ImGui::SmallButton("Disable"))
 				{
-					Sub->DisableSlot(AreaHandle, i);
+					Sub->DisableSlot(FArcAreaSlotHandle(AreaHandle, i));
 					RefreshAreaList();
 				}
 			}
@@ -702,7 +908,7 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 			{
 				if (ImGui::SmallButton("Unassign"))
 				{
-					Sub->UnassignFromSlot(AreaHandle, i);
+					Sub->UnassignFromSlot(FArcAreaSlotHandle(AreaHandle, i));
 					RefreshAreaList();
 				}
 			}
@@ -710,7 +916,7 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 			{
 				if (ImGui::SmallButton("Enable"))
 				{
-					Sub->EnableSlot(AreaHandle, i);
+					Sub->EnableSlot(FArcAreaSlotHandle(AreaHandle, i));
 					RefreshAreaList();
 				}
 			}
@@ -744,10 +950,6 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 
 void FArcAreaDebugger::DrawSlotDefinitionDetails(const FArcAreaSlotDefinition& SlotDef, int32 SlotIndex)
 {
-	ImGui::Text("Role: %s", SlotDef.RoleTag.IsValid()
-		? TCHAR_TO_ANSI(*SlotDef.RoleTag.ToString()) : "(none)");
-	ImGui::Text("SmartObject Slot Index: %d", SlotDef.SmartObjectSlotIndex);
-
 	// Requirement query
 	FString ReqStr = SlotDef.RequirementQuery.GetDescription();
 	if (ReqStr.IsEmpty())
@@ -770,7 +972,7 @@ void FArcAreaDebugger::DrawSlotDefinitionDetails(const FArcAreaSlotDefinition& S
 		}
 		else
 		{
-			ImGui::TextDisabled("Tags: Auto-constructed from role");
+			ImGui::TextDisabled("Tags: Auto-constructed from area tags");
 		}
 		ImGui::TreePop();
 	}
@@ -891,7 +1093,7 @@ void FArcAreaDebugger::DrawAssignEntityPopup()
 				{
 					if (Sub)
 					{
-						Sub->AssignToSlot(ListEntry.Handle, AssignTargetSlotIndex, EntEntry.Entity);
+						Sub->AssignToSlot(FArcAreaSlotHandle(ListEntry.Handle, AssignTargetSlotIndex), EntEntry.Entity);
 						RefreshAreaList();
 						RefreshAssignableEntities();
 					}
