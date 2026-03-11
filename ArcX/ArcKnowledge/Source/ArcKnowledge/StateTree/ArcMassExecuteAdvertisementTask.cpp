@@ -4,30 +4,20 @@
 #include "ArcAdvertisementInstruction_StateTree.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "MassActorSubsystem.h"
-#include "MassAIBehaviorTypes.h"
 #include "MassCommonFragments.h"
 #include "MassEntityFragments.h"
-#include "MassSignalSubsystem.h"
-#include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
-#include "StateTreeAsyncExecutionContext.h"
 #include "StateTreeLinker.h"
 
 FArcMassExecuteAdvertisementTask::FArcMassExecuteAdvertisementTask()
 {
-	bShouldCallTick = false;
+	bShouldCallTick = true;
 }
 
 bool FArcMassExecuteAdvertisementTask::Link(FStateTreeLinker& Linker)
 {
 	Linker.LinkExternalData(TransformHandle);
-	Linker.LinkExternalData(SignalSubsystemHandle);
 	return true;
-}
-
-void FArcMassExecuteAdvertisementTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
-{
-	Builder.AddReadWrite(SignalSubsystemHandle);
 }
 
 EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
@@ -85,61 +75,55 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 	InstanceData.ExecutionContext.SetAdvertisementHandle(InstanceData.AdvertisementHandle);
 	InstanceData.ExecutionContext.SetAdvertisementPayload(Entry->Payload);
 
-	// Activate the StateTree
-	if (!InstanceData.ExecutionContext.Activate(*Instruction))
+	// Activate the StateTree — pass Mass execution context for fragment resolution
+	if (!InstanceData.ExecutionContext.Activate(*Instruction, &MassCtx.GetMassEntityExecutionContext()))
 	{
 		UE_LOG(LogArcAdvertisement, Warning, TEXT("ExecuteAdvertisementTask: Failed to activate advertisement StateTree."));
 		return EStateTreeRunStatus::Failed;
 	}
 
-	// Register ticker for per-frame updates (same pattern as ArcMassUseSmartObjectTask)
-	UMassSignalSubsystem* SignalSubsystem = &Context.GetExternalData(SignalSubsystemHandle);
-	const bool bCompleteOnSuccessLocal = bCompleteOnSuccess;
-	const bool bCancelOnInterruptLocal = bCancelOnInterrupt;
-	const FArcKnowledgeHandle AdvHandle = InstanceData.AdvertisementHandle;
-
-	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(KnowledgeSubsystem,
-		[SignalSubsystem, KnowledgeSubsystem, WeakContext = Context.MakeWeakExecutionContext(),
-		 EntityHandle, AdvHandle, bCompleteOnSuccessLocal, bCancelOnInterruptLocal](float DeltaTime)
-		{
-			const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-			FInstanceDataType* DataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
-			if (!DataPtr)
-			{
-				return false;
-			}
-
-			const bool bKeepTicking = DataPtr->ExecutionContext.Tick(DeltaTime);
-			if (!bKeepTicking)
-			{
-				const EStateTreeRunStatus FinalStatus = DataPtr->ExecutionContext.GetLastRunStatus();
-
-				if (bCompleteOnSuccessLocal && FinalStatus == EStateTreeRunStatus::Succeeded)
-				{
-					KnowledgeSubsystem->CompleteAdvertisement(AdvHandle);
-				}
-				else if (bCancelOnInterruptLocal)
-				{
-					KnowledgeSubsystem->CancelAdvertisement(AdvHandle);
-				}
-
-				StrongContext.FinishTask(EStateTreeFinishTaskType::Succeeded);
-				SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {EntityHandle});
-				return false;
-			}
-
-			return true;
-		}));
-
 	return EStateTreeRunStatus::Running;
+}
+
+EStateTreeRunStatus FArcMassExecuteAdvertisementTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	const bool bStillRunning = InstanceData.ExecutionContext.Tick(DeltaTime, &MassCtx.GetMassEntityExecutionContext());
+	return bStillRunning ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
 }
 
 void FArcMassExecuteAdvertisementTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (!InstanceData.AdvertisementHandle.IsValid())
+	{
+		return;
+	}
+
+	const EStateTreeRunStatus InnerStatus = InstanceData.ExecutionContext.GetLastRunStatus();
+	const bool bInterrupted = (Transition.CurrentRunStatus == EStateTreeRunStatus::Running);
+
+	UWorld* World = MassCtx.GetWorld();
+	UArcKnowledgeSubsystem* KnowledgeSubsystem = World ? World->GetSubsystem<UArcKnowledgeSubsystem>() : nullptr;
+
+	if (KnowledgeSubsystem)
+	{
+		if (!bInterrupted && bCompleteOnSuccess && InnerStatus == EStateTreeRunStatus::Succeeded)
+		{
+			KnowledgeSubsystem->CompleteAdvertisement(InstanceData.AdvertisementHandle);
+		}
+		else if (bInterrupted && bCancelOnInterrupt)
+		{
+			KnowledgeSubsystem->CancelAdvertisement(InstanceData.AdvertisementHandle);
+		}
+	}
 
 	if (InstanceData.ExecutionContext.IsValid())
 	{
-		InstanceData.ExecutionContext.Deactivate();
+		InstanceData.ExecutionContext.Deactivate(&MassCtx.GetMassEntityExecutionContext());
 	}
 }

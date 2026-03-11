@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "StateTreeSchema.h"
+#include "MassStateTreeSchema.h"
 #include "GameFramework/Actor.h"
 #include "ArcAdvertisementStateTreeSchema.generated.h"
 
@@ -28,7 +28,7 @@ namespace UE::ArcKnowledge::Names
  * - AdvertisementHandle (FArcKnowledgeHandle) — the knowledge handle of the advertisement
  */
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Advertisement Behavior"))
-class ARCKNOWLEDGE_API UArcAdvertisementStateTreeSchema : public UStateTreeSchema
+class ARCKNOWLEDGE_API UArcAdvertisementStateTreeSchema : public UMassStateTreeSchema
 {
 	GENERATED_BODY()
 

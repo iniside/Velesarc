@@ -9,8 +9,6 @@
 #include "MassEntityFragments.h"
 #include "ArcMassExecuteAdvertisementTask.generated.h"
 
-class UMassSignalSubsystem;
-
 USTRUCT()
 struct FArcMassExecuteAdvertisementTaskInstanceData
 {
@@ -28,9 +26,11 @@ struct FArcMassExecuteAdvertisementTaskInstanceData
 /**
  * StateTree task that executes a claimed advertisement's behavioral instruction.
  * Extracts the FArcAdvertisementInstruction_StateTree from the advertisement entry,
- * creates an execution context, and runs the StateTree until completion.
+ * creates an execution context, and ticks the inner StateTree each frame via Tick().
  *
  * The advertisement must be claimed before executing this task.
+ * The user must ensure the outer StateTree ticks frequently enough for the inner
+ * StateTree to run smoothly.
  */
 USTRUCT(meta = (DisplayName = "Arc Execute Advertisement", Category = "ArcKnowledge"))
 struct ARCKNOWLEDGE_API FArcMassExecuteAdvertisementTask : public FMassStateTreeTaskBase
@@ -44,8 +44,8 @@ struct ARCKNOWLEDGE_API FArcMassExecuteAdvertisementTask : public FMassStateTree
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 
 	virtual bool Link(FStateTreeLinker& Linker) override;
-	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
 	/** Whether to complete the advertisement when the behavior finishes successfully. */
@@ -63,5 +63,4 @@ struct ARCKNOWLEDGE_API FArcMassExecuteAdvertisementTask : public FMassStateTree
 
 private:
 	TStateTreeExternalDataHandle<FTransformFragment> TransformHandle;
-	TStateTreeExternalDataHandle<UMassSignalSubsystem> SignalSubsystemHandle;
 };

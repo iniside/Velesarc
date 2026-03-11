@@ -4,12 +4,8 @@
 #include "ArcKnowledgeTypes.h"
 #include "MassEntityHandle.h"
 #include "StateTreeTaskBase.h"
-#include "StateTreeConditionBase.h"
-#include "StateTreeEvaluatorBase.h"
-#include "StateTreeConsiderationBase.h"
 #include "Conditions/StateTreeAIConditionBase.h"
 #include "Tasks/StateTreeAITask.h"
-#include "Subsystems/WorldSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcAdvertisementStateTreeSchema)
 
@@ -36,12 +32,12 @@ UArcAdvertisementStateTreeSchema::UArcAdvertisementStateTreeSchema()
 
 bool UArcAdvertisementStateTreeSchema::IsStructAllowed(const UScriptStruct* InScriptStruct) const
 {
-	return InScriptStruct->IsChildOf(FStateTreeConditionCommonBase::StaticStruct())
-		|| InScriptStruct->IsChildOf(FStateTreeEvaluatorCommonBase::StaticStruct())
+	// Super allows Mass types + common evaluator/condition/consideration/propfunc.
+	// We additionally allow common tasks and AI task/condition types.
+	return Super::IsStructAllowed(InScriptStruct)
 		|| InScriptStruct->IsChildOf(FStateTreeTaskCommonBase::StaticStruct())
 		|| InScriptStruct->IsChildOf(FStateTreeAITaskBase::StaticStruct())
-		|| InScriptStruct->IsChildOf(FStateTreeAIConditionBase::StaticStruct())
-		|| InScriptStruct->IsChildOf(FStateTreeConsiderationCommonBase::StaticStruct());
+		|| InScriptStruct->IsChildOf(FStateTreeAIConditionBase::StaticStruct());
 }
 
 bool UArcAdvertisementStateTreeSchema::IsClassAllowed(const UClass* InClass) const
@@ -51,9 +47,11 @@ bool UArcAdvertisementStateTreeSchema::IsClassAllowed(const UClass* InClass) con
 
 bool UArcAdvertisementStateTreeSchema::IsExternalItemAllowed(const UStruct& InStruct) const
 {
-	return InStruct.IsChildOf(AActor::StaticClass())
-		|| InStruct.IsChildOf(UActorComponent::StaticClass())
-		|| InStruct.IsChildOf(UWorldSubsystem::StaticClass());
+	// Super allows Mass fragments (regular, shared, const shared) + WorldSubsystems.
+	// We additionally allow Actors and ActorComponents for property binding.
+	return Super::IsExternalItemAllowed(InStruct)
+		|| InStruct.IsChildOf(AActor::StaticClass())
+		|| InStruct.IsChildOf(UActorComponent::StaticClass());
 }
 
 void UArcAdvertisementStateTreeSchema::PostLoad()

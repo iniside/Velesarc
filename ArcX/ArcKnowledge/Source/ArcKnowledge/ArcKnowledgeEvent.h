@@ -28,17 +28,17 @@ struct ARCKNOWLEDGE_API FArcKnowledgeChangedEvent
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadOnly, Category = "Event")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Event")
 	EArcKnowledgeEventType EventType = EArcKnowledgeEventType::Registered;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Event")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Event")
 	FArcKnowledgeHandle Handle;
 
 	/** Tags on the entry at the time of the event. */
-	UPROPERTY(BlueprintReadOnly, Category = "Event")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Event")
 	FGameplayTagContainer Tags;
 
 	/** Location of the knowledge entry. */
-	UPROPERTY(BlueprintReadOnly, Category = "Event")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Event")
 	FVector Location = FVector::ZeroVector;
 };

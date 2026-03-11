@@ -11,6 +11,7 @@
 #include "StateTreeExecutionTypes.h"
 #include "ArcAdvertisementExecutionContext.generated.h"
 
+struct FMassExecutionContext;
 struct FGameplayTag;
 struct FStateTreeExecutionContext;
 struct FArcAdvertisementInstruction_StateTree;
@@ -47,18 +48,22 @@ public:
 
 	/**
 	 * Prepares the StateTree execution context and starts the tree.
+	 * @param Instruction The StateTree instruction to execute.
+	 * @param MassContext Optional Mass execution context — when provided, creates FMassStateTreeExecutionContext
+	 *                    enabling Mass-specific nodes and entity fragment binding in the inner tree.
 	 * @return True if the tree started successfully and is ready to be ticked.
 	 */
-	bool Activate(const FArcAdvertisementInstruction_StateTree& Instruction);
+	bool Activate(const FArcAdvertisementInstruction_StateTree& Instruction, FMassExecutionContext* MassContext = nullptr);
 
 	/**
 	 * Updates the underlying StateTree.
+	 * @param MassContext Optional Mass execution context for fragment resolution.
 	 * @return True if still running, false if done.
 	 */
-	bool Tick(float DeltaTime);
+	bool Tick(float DeltaTime, FMassExecutionContext* MassContext = nullptr);
 
 	/** Stops the underlying StateTree. */
-	void Deactivate();
+	void Deactivate(FMassExecutionContext* MassContext = nullptr);
 
 	/** Sends event for the StateTree. Will be received on the next tick. */
 	void SendEvent(const FGameplayTag Tag, const FConstStructView Payload = FConstStructView(), const FName Origin = FName());
@@ -68,7 +73,7 @@ protected:
 	 * Injects all external data views into the StateTree execution context.
 	 * @return True if all required data views are valid.
 	 */
-	bool SetContextRequirements(FStateTreeExecutionContext& StateTreeContext);
+	bool SetContextRequirements(FStateTreeExecutionContext& StateTreeContext, FMassExecutionContext* MassContext);
 
 	UPROPERTY()
 	FStateTreeInstanceData StateTreeInstanceData;

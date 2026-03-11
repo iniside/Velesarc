@@ -30,7 +30,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeEntry
 	FVector Location = FVector::ZeroVector;
 
 	/** Who or what produced this fact (optional). */
-	UPROPERTY(BlueprintReadWrite, Category = "Knowledge")
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Knowledge")
 	FMassEntityHandle SourceEntity;
 
 	/** 0-1 relevance for query scoring. Not decayed automatically. */
@@ -38,7 +38,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeEntry
 	float Relevance = 1.0f;
 
 	/** When this entry was registered or last updated (world time). */
-	UPROPERTY(BlueprintReadOnly, Category = "Knowledge")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knowledge")
 	double Timestamp = 0.0;
 
 	/** How long this entry lives in seconds. 0 = infinite (default). Measured from Timestamp. */
@@ -59,7 +59,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeEntry
 	FInstancedStruct Instruction;
 
 	/** Internal handle — set by the subsystem on registration. */
-	UPROPERTY(BlueprintReadOnly, Category = "Knowledge")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knowledge")
 	FArcKnowledgeHandle Handle;
 
 	/** Whether this entry has been claimed (for advertisement entries). */
@@ -67,6 +67,6 @@ struct ARCKNOWLEDGE_API FArcKnowledgeEntry
 	bool bClaimed = false;
 
 	/** Who claimed this entry (for advertisement entries). */
-	UPROPERTY(BlueprintReadOnly, Category = "Knowledge")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Knowledge")
 	FMassEntityHandle ClaimedBy;
 };

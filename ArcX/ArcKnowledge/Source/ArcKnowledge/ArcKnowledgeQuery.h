@@ -19,20 +19,20 @@ struct ARCKNOWLEDGE_API FArcKnowledgeQueryContext
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadWrite, Category = "Context")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Context")
 	FVector QueryOrigin = FVector::ZeroVector;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Context")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Context")
 	FMassEntityHandle QuerierEntity;
 
 	/** Generic context data for filters/scorers that need additional querier info. */
-	UPROPERTY(BlueprintReadWrite, Category = "Context")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Context")
 	FInstancedStruct QuerierContext;
 
 	TWeakObjectPtr<UWorld> World;
 	FMassEntityManager* EntityManager = nullptr;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Context")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Context")
 	double CurrentTime = 0.0;
 };
 
@@ -73,7 +73,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeQueryResult
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Result")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Result", meta = (ShowOnlyInnerProperties))
 	FArcKnowledgeEntry Entry;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Result")
