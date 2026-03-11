@@ -287,7 +287,25 @@ TSharedRef<ITableRow> SArcItemFragmentList::OnGenerateRow(
 
 	// Leaf row: [Name text (click selects row)] [▼ replace dropdown] [× delete]
 	TWeakPtr<FArcFragmentListItem> WeakItem = Item;
+
+	// Build tooltip: struct name + doc comment if available
+	FText RowTooltip;
+	if (const UScriptStruct* Struct = Item->ScriptStruct.Get())
+	{
+		FText DocTooltip = Struct->GetToolTipText();
+		FString StructName = Struct->GetName();
+		if (DocTooltip.IsEmpty() || DocTooltip.ToString() == StructName)
+		{
+			RowTooltip = FText::FromString(StructName);
+		}
+		else
+		{
+			RowTooltip = FText::Format(LOCTEXT("FragmentRowTooltipFmt", "{0}\n{1}"), FText::FromString(StructName), DocTooltip);
+		}
+	}
+
 	return SNew(STableRow<TSharedPtr<FArcFragmentListItem>>, OwnerTable)
+	.ToolTipText(RowTooltip)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()

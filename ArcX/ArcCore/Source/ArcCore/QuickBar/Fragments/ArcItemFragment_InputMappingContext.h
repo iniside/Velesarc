@@ -31,7 +31,7 @@
  * 
  */
 USTRUCT(BlueprintType
-	, meta = (DisplayName = "QuickBar - Input Mapping Context", Category = "Input"))
+	, meta = (DisplayName = "QuickBar - Input Mapping Context", Category = "Input", ToolTip = "Adds an Enhanced Input mapping context when the item is active in the quick bar. Use for items that need custom input bindings while held, like weapons with aim and fire or tools with special controls."))
 struct ARCCORE_API FArcItemFragment_InputMappingContext : public FArcItemFragment
 {
 	GENERATED_BODY()

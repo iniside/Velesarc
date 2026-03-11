@@ -29,7 +29,7 @@
 
 #include "ArcItemFragment_ItemAttachmentSlots.generated.h"
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "A single visual attachment slot entry mapping a SlotId to mesh sockets and attachment handlers. Defines where and how attached items are visually represented on the host item."))
 struct ARCCORE_API FArcItemAttachmentSlotEntry
 {
 	GENERATED_BODY()
@@ -54,7 +54,7 @@ public:
  *
  * These are sockets On item, to which OTHER items can be attached.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Item Attachment Slots", Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Item Attachment Slots", Category = "Item Attachment", ToolTip = "Defines visual socket slots on this item where other items can be attached. Each slot maps to mesh sockets and attachment handlers. Use for items that host sub-items like backpacks with pouches or weapons with attachable scopes."))
 struct ARCCORE_API FArcItemFragment_ItemAttachmentSlots : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()

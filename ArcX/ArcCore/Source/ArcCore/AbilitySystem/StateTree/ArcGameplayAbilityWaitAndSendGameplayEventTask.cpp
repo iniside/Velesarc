@@ -46,3 +46,18 @@ void FArcGameplayAbilityWaitAndSendGameplayEventTask::ExitState(FStateTreeExecut
 {
 
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityWaitAndSendGameplayEventTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->EventTag.IsValid())
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "WaitAndSendEventDesc", "Wait {0}s → {1}"), FText::AsNumber(InstanceData->WaitTime), FText::FromString(InstanceData->EventTag.ToString()));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "WaitAndSendEventDescDefault", "Wait And Send Event");
+}
+#endif

@@ -27,3 +27,18 @@ EStateTreeRunStatus FArcGameplayAbilityApplyEffectsTask::EnterState(FStateTreeEx
 
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityApplyEffectsTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->EffectTag.IsValid())
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "ApplyEffectsDesc", "Apply Effects: {0}"), FText::FromString(InstanceData->EffectTag.ToString()));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "ApplyEffectsDescDefault", "Apply All Effects");
+}
+#endif

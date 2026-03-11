@@ -8,7 +8,7 @@
 /**
  * 
  */
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Visualization", Category = "Gameplay Ability", ToolTip = "Defines the client-side targeting visualization for this item's ability. References an actor class spawned to preview the targeting area (e.g., a ground decal or holographic indicator) and a global targeting tag for system identification."))
 struct ARCCORE_API FArcItemFragment_TargetingVisualization : public FArcItemFragment
 {
 	GENERATED_BODY()

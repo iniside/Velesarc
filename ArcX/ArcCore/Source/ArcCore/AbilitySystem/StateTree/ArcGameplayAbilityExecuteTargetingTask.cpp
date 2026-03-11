@@ -120,3 +120,18 @@ void FArcGameplayAbilityExecuteTargetingTask::ExitState(FStateTreeExecutionConte
 		}
 	}
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityExecuteTargetingTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->TargetingObject)
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "ExecuteTargetingDesc", "Execute Targeting: {0}"), FText::FromString(GetNameSafe(InstanceData->TargetingObject)));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "ExecuteTargetingDescDefault", "Execute Targeting");
+}
+#endif

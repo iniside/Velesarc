@@ -59,3 +59,21 @@ void FArcItemFragment_GrantedGameplayEffects::OnItemRemovedFromSlot(const FArcIt
 		ArcASC->RemoveActiveGameplayEffect(Handle);
 	}
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_GrantedGameplayEffects::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment_ItemInstanceBase::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_GrantedAbilities")),
+		FName(TEXT("FArcItemFragment_GrantAttributes"))
+	};
+	Desc.Prerequisites = { FName(TEXT("AbilitySystemComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Applies persistent gameplay effects while the item is equipped. "
+		"Effects are applied on slot entry and removed on slot exit. "
+		"Use for passive stat buffs, resistances, or any effect tied to equipping an item. "
+		"For on-hit/on-use effects, use FArcItemFragment_AbilityEffectsToApply instead.");
+	return Desc;
+}
+#endif // WITH_EDITOR

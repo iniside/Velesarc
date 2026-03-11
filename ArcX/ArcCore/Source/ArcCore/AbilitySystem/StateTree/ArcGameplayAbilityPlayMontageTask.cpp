@@ -141,3 +141,22 @@ void FArcGameplayAbilityPlayMontageTask::ExitState(FStateTreeExecutionContext& C
 		AnimInstance->Montage_Stop(InstanceData.EndBlendTime, InstanceData.MontageToPlay);
 	}
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityPlayMontageTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->MontageToPlay)
+		{
+			if (InstanceData->bIsLooping)
+			{
+				return FText::Format(NSLOCTEXT("ArcCore", "PlayMontageLoopDesc", "Play Montage (Loop): {0}"), FText::FromString(GetNameSafe(InstanceData->MontageToPlay)));
+			}
+			return FText::Format(NSLOCTEXT("ArcCore", "PlayMontageDesc", "Play Montage: {0}"), FText::FromString(GetNameSafe(InstanceData->MontageToPlay)));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "PlayMontageDescDefault", "Play Montage");
+}
+#endif

@@ -29,7 +29,7 @@
 
 class UGameplayEffect;
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "A single SetByCaller attribute modifier entry. Pairs a gameplay tag key with a float magnitude, used by the backing GameplayEffect to apply attribute changes."))
 struct ARCCORE_API FArcGrantAttributesSetByCaller
 {
 	GENERATED_BODY()
@@ -41,7 +41,7 @@ struct ARCCORE_API FArcGrantAttributesSetByCaller
 	float Magnitude = 0;
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data tracking dynamic attribute modifiers and the applied gameplay effect handle. Stores per-item dynamic SetByCaller attribute adjustments at runtime."))
 struct ARCCORE_API FArcItemInstance_GrantAttributes : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -59,7 +59,7 @@ public:
 	}
 };
 
-USTRUCT(meta = (Category = "Gameplay Ability"))
+USTRUCT(meta = (DisplayName = "Grant Attributes", Category = "Gameplay Ability", ToolTip = "Modifies gameplay attributes on the owning character when equipped. Uses a backing GameplayEffect with SetByCaller magnitudes for both static and dynamic attribute modifiers. Use for items that add health, strength, or other attribute bonuses."))
 struct ARCCORE_API FArcItemFragment_GrantAttributes : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
@@ -86,4 +86,8 @@ public:
 	{
 		return FArcItemFragment_GrantAttributes::StaticStruct();
 	}
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

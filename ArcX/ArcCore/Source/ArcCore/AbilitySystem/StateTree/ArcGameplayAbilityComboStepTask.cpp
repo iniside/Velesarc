@@ -200,3 +200,18 @@ void FArcGameplayAbilityComboStepTask::ExitState(FStateTreeExecutionContext& Con
 	CInputontext.bIgnoreAllPressedKeysUntilRelease = false;
 	Subsystem->RemoveMappingContext(InstanceData.InputMappingContext, CInputontext);
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityComboStepTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->MontageToPlay)
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "ComboStepDesc", "Combo Step: {0}"), FText::FromString(GetNameSafe(InstanceData->MontageToPlay)));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "ComboStepDescDefault", "Combo Step");
+}
+#endif

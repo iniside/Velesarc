@@ -26,7 +26,7 @@
 #include "Items/ArcItemInstance.h"
 #include "ArcItemFragment_Stacks.generated.h"
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data tracking the current stack count of an item. Persists across save/load and replicates for change detection."))
 struct ARCCORE_API FArcItemInstance_Stacks : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -78,7 +78,7 @@ public:
 /**
  * 
  */
-USTRUCT(meta = (Category = "Inventory"))
+USTRUCT(meta = (DisplayName = "Stacks", Category = "Inventory", ToolTip = "Enables item stacking with a configurable initial stack count. Creates mutable FArcItemInstance_Stacks for runtime stack tracking. Use with FArcItemStackMethod_StackByType on the definition."))
 struct ARCCORE_API FArcItemFragment_Stacks : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
@@ -99,4 +99,8 @@ public:
 	}
 
 	virtual void OnItemAdded(const FArcItemData* InItem) const override;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

@@ -28,7 +28,7 @@
 
 class UNiagaraSystem;
 
-USTRUCT(BlueprintType, meta = (Category = "Visual Effects"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Niagara System", Category = "Visual Effects", ToolTip = "References a Niagara particle system to spawn on the item, attached to the specified socket. Use for weapon trails, enchantment glows, or ambient item VFX."))
 struct ARCCORE_API FArcItemFragment_NiagaraSystem : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -41,7 +41,7 @@ public:
 	FName SocketName;
 };
 
-USTRUCT(BlueprintType, meta = (Category = "Visual Effects"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Niagara System Map", Category = "Visual Effects", ToolTip = "Maps gameplay tags to Niagara particle systems, allowing different VFX per gameplay event or state. Use when an item needs multiple VFX keyed by action type."))
 struct ARCCORE_API FArcItemFragment_NiagaraSystemMap : public FArcItemFragment
 {
 	GENERATED_BODY()

@@ -21,3 +21,10 @@ EStateTreeRunStatus FArcGameplayAbilityApplyCooldownTask::EnterState(FStateTreeE
 
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityApplyCooldownTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcCore", "ApplyCooldownDesc", "Apply Cooldown");
+}
+#endif

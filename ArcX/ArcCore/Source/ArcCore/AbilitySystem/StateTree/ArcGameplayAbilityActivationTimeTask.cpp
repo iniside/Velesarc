@@ -67,3 +67,36 @@ void FArcGameplayAbilityGetItemScalableFloatPropertyFunction::Execute(FStateTree
 	
 	InstanceData.Value = 0;
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityActivationTimeTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->EventTag.IsValid())
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "ActivationTimeDesc", "Wait Activation Time → {0}"), FText::FromString(InstanceData->EventTag.ToString()));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "ActivationTimeDescDefault", "Wait Activation Time");
+}
+
+FText FArcGameplayAbilityGetActivationTimePropertyFunction::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcCore", "GetActivationTimeDesc", "Get Activation Time");
+}
+
+FText FArcGameplayAbilityGetItemScalableFloatPropertyFunction::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && !InstanceData->ScalableFloatName.IsNone())
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "GetItemScalableFloatDesc", "Get Item Float: {0}"), FText::FromName(InstanceData->ScalableFloatName));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "GetItemScalableFloatDescDefault", "Get Item Scalable Float");
+}
+#endif

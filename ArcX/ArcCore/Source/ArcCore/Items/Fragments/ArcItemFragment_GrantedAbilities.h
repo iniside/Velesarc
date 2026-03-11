@@ -30,7 +30,7 @@ class UGameplayAbility;
 class UArcItemsStoreComponent;
 class UArcCoreAbilitySystemComponent;
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Custom data attached to a gameplay ability spec linking it back to its source item definition and item instance ID."))
 struct ARCCORE_API FArcAbilitySpecCustomData
 {
 	GENERATED_BODY()
@@ -42,7 +42,7 @@ struct ARCCORE_API FArcAbilitySpecCustomData
 	FArcItemId SourceItemId;
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data tracking gameplay ability spec handles granted by the item. Manages pending abilities that await ASC readiness and stores handles for removal on unequip."))
 struct ARCCORE_API FArcItemInstance_GrantedAbilities : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -94,7 +94,7 @@ protected:
 };
 
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "A single ability grant entry specifying a gameplay ability class, optional input binding tag, and dynamic tags. Used as an array element in FArcItemFragment_GrantedAbilities."))
 struct FArcAbilityEntry
 {
 	GENERATED_BODY()
@@ -118,7 +118,7 @@ public:
 	TSubclassOf<UGameplayAbility> GrantedAbility;
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Granted Abilities", Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Granted Abilities", Category = "Gameplay Ability", ToolTip = "Grants gameplay abilities to the owning character when the item is equipped to a slot, and removes them when unequipped. Each entry specifies an ability class, optional input binding tag, and dynamic tags. Use for weapons, tools, and any equippable item that gives the player active actions."))
 struct ARCCORE_API FArcItemFragment_GrantedAbilities : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
@@ -146,4 +146,8 @@ public:
 protected:
 	void HandleOnAbilityGiven(FGameplayAbilitySpec& AbilitySpec, const FArcItemData* InItem) const;
 	void UpdatePendingAbility(const FArcItemData* InItem) const;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

@@ -99,3 +99,18 @@ void FArcGameplayAbilityWaitInputTask::ExitState(FStateTreeExecutionContext& Con
 	CInputontext.bIgnoreAllPressedKeysUntilRelease = false;
 	Subsystem->RemoveMappingContext(InstanceData.InputMappingContext, CInputontext);
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityWaitInputTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->InputAction)
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "WaitInputDesc", "Wait For Input: {0}"), FText::FromString(GetNameSafe(InstanceData->InputAction)));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "WaitInputDescDefault", "Wait For Input");
+}
+#endif

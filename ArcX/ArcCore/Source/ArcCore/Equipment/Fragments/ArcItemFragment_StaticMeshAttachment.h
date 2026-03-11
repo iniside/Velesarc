@@ -34,7 +34,7 @@ class UStaticMesh;
  * To attach static mesh @link FArcItemFragment_StaticMeshAttachment#StaticMeshAttach
  * when Item is added to slot.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Static Mesh Attachment", ShowTooltip, Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Static Mesh Attachment", ShowTooltip, Category = "Item Attachment", ToolTip = "Attaches a static mesh to the character when the item is equipped. AttachTags are matched against socket tag requirements. Use for weapons, shields, or any item with a static mesh visual."))
 struct ARCCORE_API FArcItemFragment_StaticMeshAttachment : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -51,9 +51,13 @@ public:
 	TSoftObjectPtr<UStaticMesh> StaticMeshAttachClass;
 	
 	virtual ~FArcItemFragment_StaticMeshAttachment() override = default;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages static mesh asset attachment. Loads and attaches a static mesh to the character socket when items with FArcItemFragment_StaticMeshAttachment are equipped."))
 struct ARCCORE_API FArcAttachmentHandler_StaticMesh : public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

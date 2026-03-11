@@ -7,7 +7,7 @@
 
 #include "ArcItemFragment_TargetingShapeConfig.generated.h"
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Shape Config", Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Shape Config", Category = "Gameplay Ability", ToolTip = "Configures the geometric shape used for area-of-effect targeting. Selects between shapes (Sphere, Box, etc.) and provides shape-specific alignment settings. Pair with FArcScalableFloatItemFragment_TargetingShape to define level-scaled dimensions."))
 struct ARCCORE_API FArcItemFragment_TargetingShapeConfig : public FArcItemFragment
 {
 	GENERATED_BODY()

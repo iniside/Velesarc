@@ -29,7 +29,7 @@
 #include "ArcItemFragment_AnimLayer.generated.h"
 
 USTRUCT(BlueprintType
-	, meta = (DisplayName = "Item Attachment - Anim Layer", Category = "Animation"))
+	, meta = (DisplayName = "Item Attachment - Anim Layer", Category = "Animation", ToolTip = "Links animation layers to the character when the item is equipped. AnimLayerToLink specifies UAnimInstance classes whose animation logic is applied. Use for items that change how the character animates, like weapon hold poses."))
 struct ARCCORE_API FArcItemFragment_AnimLayer : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()

@@ -35,24 +35,31 @@ struct FArcGameplayAbilityComboStepTaskInstanceData
 {
 	GENERATED_BODY()
 
+	/** The ability system component used for handling gameplay events. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 
+	/** Animation montage containing UArcAnimNotify_MarkComboWindow notifies that define the combo window. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TObjectPtr<UAnimMontage> MontageToPlay;
 
+	/** Input action that triggers the combo when pressed within the combo window. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TObjectPtr<UInputAction> InputAction;
 
+	/** Optional input mapping context added at high priority for the combo step duration. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TObjectPtr<UInputMappingContext> InputMappingContext;
 
+	/** Delegate broadcast when the combo input is successfully triggered within the combo window. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnComboTriggered;
 
+	/** Gameplay tag sent as event when the combo window closes without input. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTag ComboMissed;
 
+	/** Gameplay tag sent as gameplay event when the combo input is pressed during the window. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTag InputPressedTag;
 
@@ -78,7 +85,13 @@ struct FArcGameplayAbilityComboStepTaskInstanceData
 	TArray<FArcNotifyEvent> NotifyEvents;
 };
 
-USTRUCT()
+/**
+ * Manages a single combo step by tracking a combo window defined by UArcAnimNotify_MarkComboWindow notifies in a montage.
+ * Binds an input action and broadcasts OnComboTriggered when the player presses it within the combo window.
+ * Also fires gameplay events from any UArcAnimNotify_MarkGameplayEvent notifies found in the montage.
+ * Succeeds when the combo window ends. Cleans up input bindings and mapping context on exit.
+ */
+USTRUCT(meta = (DisplayName = "Combo Step", Tooltip = "Manages a single combo step by tracking a combo window defined by UArcAnimNotify_MarkComboWindow notifies in a montage. Binds an input action and broadcasts OnComboTriggered when the player presses it within the combo window. Also fires gameplay events from any UArcAnimNotify_MarkGameplayEvent notifies found in the montage. Succeeds when the combo window ends. Cleans up input bindings and mapping context on exit."))
 struct FArcGameplayAbilityComboStepTask : public FArcGameplayAbilityTaskBase
 {
 	GENERATED_BODY()
@@ -97,4 +110,8 @@ public:
 	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const override;
+#endif
 };

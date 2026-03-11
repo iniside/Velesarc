@@ -154,3 +154,24 @@ void FArcItemFragment_GrantedAbilities::UpdatePendingAbility(const FArcItemData*
 		}
 	}
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_GrantedAbilities::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment_ItemInstanceBase::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_AbilityEffectsToApply")),
+		FName(TEXT("FArcItemFragment_AbilityMontages")),
+		FName(TEXT("FArcItemFragment_AbilityGameplayCue")),
+		FName(TEXT("FArcItemFragment_AbilityActorMap"))
+	};
+	Desc.Prerequisites = { FName(TEXT("AbilitySystemComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Grants gameplay abilities when the item is equipped to a slot. "
+		"Abilities are revoked on unequip. Each FArcAbilityEntry specifies one ability class "
+		"and an optional InputTag for activation binding. "
+		"Set bAddInputTag=true to auto-derive the input tag from the slot. "
+		"Requires the owning actor to have a UArcCoreAbilitySystemComponent.");
+	return Desc;
+}
+#endif // WITH_EDITOR

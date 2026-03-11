@@ -29,7 +29,7 @@
 
 class UArcItemDefinition;
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Defines a single logical socket slot for item attachment. Specifies the SlotId tag, optional item type filter, required tags, display name, and an optional default item to auto-attach."))
 struct ARCCORE_API FArcSocketSlot
 {
 	GENERATED_BODY()
@@ -71,7 +71,7 @@ public:
 	TArray<FArcSocketSlot> Slots;
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Socket Slots", Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Socket Slots", Category = "Item Attachment", ToolTip = "Defines logical socket slots where child items can be attached in the inventory system. Each slot specifies a SlotId tag, optional item type and tag filters, and an optional default item. Supports reusable presets via UArcItemSocketSlotsPreset."))
 struct ARCCORE_API FArcItemFragment_SocketSlots : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -95,4 +95,8 @@ public:
 	}
 	
 	virtual ~FArcItemFragment_SocketSlots() override = default;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

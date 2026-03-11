@@ -27,7 +27,7 @@
 
 #include "ArcItemFragment_Tags.generated.h"
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Tags", Category = "Tags"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Tags", Category = "Tags", ToolTip = "Categorizes and filters items using gameplay tags. ItemTags identify the item, AssetTags are indexed for searches, GrantedTags are applied to the owner when equipped, RequiredTags and DenyTags gate equipping or visibility."))
 struct ARCCORE_API FArcItemFragment_Tags : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -67,6 +67,10 @@ public:
 	FGameplayTagContainer DenyTags;
 
 	virtual ~FArcItemFragment_Tags() override = default;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 
 	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const override
 	{

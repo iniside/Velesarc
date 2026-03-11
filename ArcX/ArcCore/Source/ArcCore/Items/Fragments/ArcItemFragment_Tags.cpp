@@ -19,20 +19,19 @@
  * and limitations under the License.
  */
 
-#pragma once
+#include "ArcItemFragment_Tags.h"
 
-#include "ArcItemFragment.h"
-#include "ArcItemFragment_DropActor.generated.h"
-
-USTRUCT(meta = (DisplayName = "Drop Actor", Category = "Loot", ToolTip = "Specifies the actor class spawned when this item is dropped into the world as a pickup. DropActorClass is the visual representation, InteractionCustomData configures pickup interaction."))
-struct ARCCORE_API FArcItemFragment_DropActor : public FArcItemFragment
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_Tags::GetDescription(const UScriptStruct* InStruct) const
 {
-	GENERATED_BODY()
-	
-public:
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game"))
-	TSoftClassPtr<AActor> DropActorClass;
-
-	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcCore.ArcCoreInteractionCustomData"))
-	TArray<FInstancedStruct> InteractionCustomData;
-};
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.UsageNotes = TEXT(
+		"Foundational fragment for item categorization. "
+		"ItemTags identify the item type (indexed by asset registry). "
+		"AssetTags are additional indexed tags for search/filter (e.g., item family for random spawning). "
+		"GrantedTags are applied to the owning actor when equipped. "
+		"RequiredTags and DenyTags gate whether the item can be equipped or seen. "
+		"Most items should have this fragment.");
+	return Desc;
+}
+#endif // WITH_EDITOR

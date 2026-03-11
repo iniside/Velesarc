@@ -27,7 +27,7 @@
 
 #include "ArcItemFragment_RequiredItems.generated.h"
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "Pairs an item definition with a required count. Used to specify exact item types and quantities needed for crafting, use, or other requirement checks."))
 struct ARCCORE_API FArcItemDefCount
 {
 	GENERATED_BODY()
@@ -39,7 +39,7 @@ struct ARCCORE_API FArcItemDefCount
 	int32 Count = 1;
 };
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "Pairs a set of required gameplay tags with a count. Items matching all required tags satisfy this requirement. Used for tag-based crafting or use prerequisites."))
 struct ARCCORE_API FArcItemTagCount
 {
 	GENERATED_BODY()
@@ -51,7 +51,7 @@ struct ARCCORE_API FArcItemTagCount
 	int32 Count = 1;
 };
 
-USTRUCT(BlueprintType, meta = (Category = "Requirements"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Required Items", Category = "Requirements", ToolTip = "Defines items required to use or craft this item. RequiredItemDefs specifies exact item definitions with counts, RequiredItemsWithTags matches items by tag criteria."))
 struct ARCCORE_API FArcItemFragment_RequiredItems : public FArcItemFragment
 {
 	GENERATED_BODY()

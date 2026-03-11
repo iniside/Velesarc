@@ -28,7 +28,7 @@
 
 #include "ArcItemFragment_ItemVisualAttachment.generated.h"
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data for visual item attachments. Stores the current visual item reference, which can change at runtime (e.g., transmogrification or skin swaps)."))
 struct ARCCORE_API FArcItemInstance_ItemVisualAttachment : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -64,7 +64,7 @@ public:
  *  Items, linked by this fragment, should not be instantiated within  @class UArcItemsStoreComponent.
  *  As they should only contains data relevelant to  @class UArcItemAttachmentComponent
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Visual Item Attachment", Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Visual Item Attachment", Category = "Item Attachment", ToolTip = "References another ArcItemDefinition that provides visual attachment data (meshes, VFX, etc.) for this item. The referenced visual item is not instantiated in the items store; it only supplies data to UArcItemAttachmentComponent. Use when visual representation is defined as a separate item definition rather than inline mesh/actor references."))
 struct ARCCORE_API FArcItemFragment_ItemVisualAttachment : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

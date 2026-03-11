@@ -20,3 +20,18 @@ EStateTreeRunStatus FArcGameplayAbilityEndAbilityTask::EnterState(FStateTreeExec
 
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityEndAbilityTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->bWasCancelled)
+		{
+			return NSLOCTEXT("ArcCore", "EndAbilityCancelledDesc", "Cancel Ability");
+		}
+	}
+	return NSLOCTEXT("ArcCore", "EndAbilityDesc", "End Ability");
+}
+#endif

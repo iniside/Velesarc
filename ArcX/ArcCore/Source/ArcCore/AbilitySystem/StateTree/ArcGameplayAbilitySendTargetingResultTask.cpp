@@ -36,3 +36,18 @@ EStateTreeRunStatus FArcGameplayAbilitySendTargetingResultTask::EnterState(FStat
 
 	return EStateTreeRunStatus::Succeeded;
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilitySendTargetingResultTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	if (InstanceDataView.IsValid())
+	{
+		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
+		if (InstanceData && InstanceData->TargetingObject)
+		{
+			return FText::Format(NSLOCTEXT("ArcCore", "SendTargetingResultDesc", "Send Targeting Result: {0}"), FText::FromString(GetNameSafe(InstanceData->TargetingObject)));
+		}
+	}
+	return NSLOCTEXT("ArcCore", "SendTargetingResultDescDefault", "Send Targeting Result");
+}
+#endif

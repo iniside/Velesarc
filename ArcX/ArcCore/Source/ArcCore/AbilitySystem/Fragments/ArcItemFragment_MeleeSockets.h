@@ -28,7 +28,7 @@
  * Configures per-weapon melee trace geometry: socket names for the sweep endpoints,
  * trace radius, collision channel, and whether to use the character mesh or weapon mesh.
  */
-USTRUCT(BlueprintType, meta = (Category = "Melee"))
+USTRUCT(BlueprintType, meta = (Category = "Melee", ToolTip = "Configures melee weapon trace geometry: tip and base socket names for sweep endpoints, trace radius, collision channel, and whether to use the character mesh or the attached weapon mesh."))
 struct ARCCORE_API FArcItemFragment_MeleeSockets : public FArcItemFragment
 {
 	GENERATED_BODY()

@@ -48,7 +48,7 @@ public:
 	TArray<FInstancedStruct> OnEndActions;
 };
 
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Ability Actions", Category = "Gameplay Ability", ToolTip = "Defines data-driven ability actions for this item. Maps gameplay event tags to action lists and provides hooks for targeting results, activation, and end lifecycle events. Actions are FArcAbilityAction subclasses composed via FInstancedStruct. Can reference a shared UArcAbilityActionsPreset data asset or define actions inline."))
 struct ARCCORE_API FArcItemFragment_AbilityActions : public FArcItemFragment
 {
 	GENERATED_BODY()

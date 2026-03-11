@@ -37,7 +37,7 @@ class UStaticMeshComponent;
  * To attach static mesh @link FArcItemFragment_StaticMeshAttachment#StaticMeshAttach
  * when Item is added to slot.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Static Mesh Component Attachment", ShowTooltip, Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Static Mesh Component Attachment", Category = "Item Attachment", ToolTip = "Spawns a UStaticMeshComponent on the character when this item is equipped. Unlike the simple Static Mesh Attachment fragment, this creates an actual component with a configurable class, relative transform, and attach tags for socket matching. Processed by FArcAttachmentHandler_ComponentStaticMesh."))
 struct ARCCORE_API FArcItemFragment_StaticMeshComponentAttachment : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -59,7 +59,7 @@ public:
 	virtual ~FArcItemFragment_StaticMeshComponentAttachment() override = default;
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages static mesh component lifecycle. Spawns, attaches, and removes UStaticMeshComponent instances when items with FArcItemFragment_StaticMeshComponentAttachment are equipped/unequipped."))
 struct ARCCORE_API FArcAttachmentHandler_ComponentStaticMesh: public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

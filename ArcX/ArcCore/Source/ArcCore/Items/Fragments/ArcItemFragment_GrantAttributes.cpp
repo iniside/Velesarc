@@ -102,3 +102,21 @@ void FArcItemFragment_GrantAttributes::OnItemRemovedFromSlot(const FArcItemData*
 	FArcItemInstance_GrantAttributes* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantAttributes>(InItem);
 	ASC->RemoveActiveGameplayEffect(Instance->AppliedEffectHandle);
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_GrantAttributes::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment_ItemInstanceBase::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_GrantedGameplayEffects")),
+		FName(TEXT("FArcItemFragment_ItemStats"))
+	};
+	Desc.Prerequisites = { FName(TEXT("AbilitySystemComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Modifies gameplay attributes via a backing GameplayEffect with SetByCaller magnitudes. "
+		"StaticAttributes are set at equip time; DynamicAttributes in the instance data "
+		"can be modified at runtime. "
+		"BackingGameplayEffect must have SetByCaller modifiers matching the tags used.");
+	return Desc;
+}
+#endif // WITH_EDITOR

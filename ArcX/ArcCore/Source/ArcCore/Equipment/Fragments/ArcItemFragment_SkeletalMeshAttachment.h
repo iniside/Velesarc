@@ -35,7 +35,7 @@ class USkeletalMeshComponent;
 /**
  *
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Skeletal Mesh Attachment", Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Skeletal Mesh Attachment", Category = "Item Attachment", ToolTip = "Attaches a skeletal mesh to the character when the item is equipped. Supports leader pose and optional anim instance. Use for items needing animated or deformable visuals like bows or articulated weapons."))
 struct ARCCORE_API FArcItemFragment_SkeletalMeshAttachment : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -69,9 +69,13 @@ public:
 	TSoftClassPtr<UAnimInstance> SkeletalMeshAnimInstance;
 
 	virtual ~FArcItemFragment_SkeletalMeshAttachment() override = default;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages skeletal mesh asset attachment. Loads and attaches a skeletal mesh (with optional anim instance) when items with FArcItemFragment_SkeletalMeshAttachment are equipped."))
 struct ARCCORE_API FArcAttachmentHandler_SkeletalMesh : public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

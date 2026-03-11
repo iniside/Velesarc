@@ -28,7 +28,7 @@
 
 class UAnimMontage;
 
-USTRUCT(BlueprintType, meta = (Category = "Animation"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Anim Montage", Category = "Animation", ToolTip = "References a single animation montage associated with this item. Use for simple items that play one animation, like a consumable use animation."))
 struct ARCCORE_API FArcItemFragment_AnimMontage : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -38,7 +38,7 @@ public:
 	TSoftObjectPtr<UAnimMontage> AnimMontage;
 };
 
-USTRUCT(BlueprintType, meta = (Category = "Animation"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Anim Montage Map", Category = "Animation", ToolTip = "Maps gameplay tags to animation montages, allowing different animations per event. Use when an item needs multiple context-dependent animations."))
 struct ARCCORE_API FArcItemFragment_AnimMontageMap : public FArcItemFragment
 {
 	GENERATED_BODY()

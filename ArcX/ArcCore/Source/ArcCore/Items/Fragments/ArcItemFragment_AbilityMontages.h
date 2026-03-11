@@ -30,7 +30,7 @@
 
 class UAnimMontage;
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "A single animation montage entry with section, play rate, and desired play time. Used as a value in tag-to-montage maps for event-driven ability animations."))
 struct ARCCORE_API FArcEventMontageItem
 {
 	GENERATED_BODY()
@@ -52,7 +52,7 @@ public:
 /**
  * 
  */
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Ability Montages", Category = "Gameplay Ability", ToolTip = "Defines animation montages used by gameplay abilities on this item. StartMontage plays on ability activation, EventTagToMontageMap maps gameplay event tags to specific montages. Use for weapons or tools with custom attack or use animations."))
 struct ARCCORE_API FArcItemFragment_AbilityMontages : public FArcItemFragment
 {
 	GENERATED_BODY()
@@ -69,4 +69,8 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Montages", meta = (ForceInlineRow, AssetBundles = "Game"))
 	TMap<FGameplayTag, FArcEventMontageItem> EventTagToMontageMap;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

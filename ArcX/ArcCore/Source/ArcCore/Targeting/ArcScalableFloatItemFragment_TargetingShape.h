@@ -9,7 +9,7 @@
 
 #include "ArcScalableFloatItemFragment_TargetingShape.generated.h"
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Shape Stats", Category = "Targeting"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Shape Stats", Category = "Targeting", ToolTip = "Level-scalable numeric dimensions for area-of-effect targeting shapes. Provides Radius (for spheres), and Length/Width/Height (for boxes). Values scale with item level via FScalableFloat curves. Pair with FArcItemFragment_TargetingShapeConfig to select the shape type."))
 struct ARCCORE_API FArcScalableFloatItemFragment_TargetingShape : public FArcScalableFloatItemFragment
 {
 	GENERATED_BODY()

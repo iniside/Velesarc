@@ -30,7 +30,7 @@ class UGameplayAbility;
 class UArcItemsStoreComponent;
 class UArcCoreAbilitySystemComponent;
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data tracking passive gameplay ability spec handles granted by the item. Manages pending abilities and stores handles for removal on unequip."))
 struct ARCCORE_API FArcItemInstance_GrantedPassiveAbilities : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -76,7 +76,7 @@ public:
 	}
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Granted Passive Abilities", Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Granted Passive Abilities", Category = "Gameplay Ability", ToolTip = "Grants passive gameplay abilities automatically when the item is equipped to a slot. Unlike Granted Abilities, these do not require input bindings. Use for armor passives, trinket effects, or always-active item behaviors."))
 struct ARCCORE_API FArcItemFragment_GrantedPassiveAbilities : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

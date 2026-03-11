@@ -8,7 +8,7 @@
 /**
  * 
  */
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Ability Gameplay Cue", Category = "Gameplay Ability", ToolTip = "Associates a GameplayCue tag with this item. When the item's ability triggers the cue, the system plays the corresponding visual/audio feedback. Use for hit impacts, activation flashes, or status effect visuals."))
 struct ARCCORE_API FArcItemFragment_AbilityGameplayCue : public FArcItemFragment
 {
 	GENERATED_BODY()

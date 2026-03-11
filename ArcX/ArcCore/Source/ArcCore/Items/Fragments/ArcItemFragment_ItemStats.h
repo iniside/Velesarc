@@ -34,7 +34,7 @@
  * Struct which calculates current value of item stat.
  * Replicates only two properties.
  */
-USTRUCT()
+USTRUCT(meta = (ToolTip = "A single replicated item stat. Tracks additive, multiplicative, and division modifiers from multiple sources and calculates a final value. Only Attribute and FinalValue are replicated."))
 struct FArcItemStatReplicated
 {
 	GENERATED_BODY()
@@ -122,7 +122,7 @@ public:
 	}
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data holding precalculated item stats. Stores replicated stat values and a local name-to-float cache. Persists across save/load."))
 struct ARCCORE_API FArcItemInstance_ItemStats : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -217,7 +217,7 @@ public:
 /**
  * 
  */
-USTRUCT(meta = (Category = "Stats"))
+USTRUCT(meta = (DisplayName = "Item Stats", Category = "Stats", ToolTip = "Defines numeric stat attributes for the item (damage, armor, etc.). Stats are calculated using additive, multiplicative, and division modifiers and recalculated when attachments change. Creates mutable FArcItemInstance_ItemStats."))
 struct ARCCORE_API FArcItemFragment_ItemStats : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()

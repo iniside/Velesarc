@@ -19,30 +19,24 @@
  * and limitations under the License.
  */
 
-
-
-#include "ArcItemFragment_Stacks.h"
-
-#include "Items/ArcItemsHelpers.h"
-
-void FArcItemFragment_Stacks::OnItemAdded(const FArcItemData* InItem) const
-{
-	FArcItemInstance_Stacks* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_Stacks>(InItem);
-
-	Instance->Stacks = InitialStacks;
-}
+#include "ArcItemFragment_SocketSlots.h"
 
 #if WITH_EDITOR
-FArcFragmentDescription FArcItemFragment_Stacks::GetDescription(const UScriptStruct* InStruct) const
+FArcFragmentDescription FArcItemFragment_SocketSlots::GetDescription(const UScriptStruct* InStruct) const
 {
-	FArcFragmentDescription Desc = FArcItemFragment_ItemInstanceBase::GetDescription(InStruct);
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
 	Desc.CommonPairings = {
-		FName(TEXT("FArcItemFragment_RequiredItems"))
+		FName(TEXT("FArcItemFragment_ActorAttachment")),
+		FName(TEXT("FArcItemFragment_StaticMeshAttachment")),
+		FName(TEXT("FArcItemFragment_SkeletalMeshAttachment")),
+		FName(TEXT("FArcItemFragment_ItemAttachmentSlots"))
 	};
 	Desc.UsageNotes = TEXT(
-		"Enables item stacking. InitialStacks sets the count when the item is first created. "
-		"Requires the item definition to use FArcItemStackMethod_StackByType as its StackMethod. "
-		"Creates mutable FArcItemInstance_Stacks for runtime stack tracking.");
+		"Defines logical socket slots where child items can be attached. "
+		"Each FArcSocketSlot specifies a SlotId tag, optional item type/tag filters, "
+		"and an optional DefaultSocketItemDefinition for auto-attach. "
+		"Can use a shared UArcItemSocketSlotsPreset data asset via the Preset property. "
+		"Child items with attachment fragments match sockets via AttachTags.");
 	return Desc;
 }
 #endif // WITH_EDITOR

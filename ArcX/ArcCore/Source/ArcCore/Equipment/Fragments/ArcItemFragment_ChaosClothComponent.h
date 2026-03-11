@@ -34,7 +34,7 @@ class UChaosClothAsset;
 /**
  * 
  */
-USTRUCT(meta = (Category = "Item Attachment"))
+USTRUCT(meta = (DisplayName = "Item Attachment - Chaos Cloth", Category = "Item Attachment", ToolTip = "Attaches a Chaos Cloth simulation component to the character when this item is equipped. References a ChaosClothAsset and an optional custom ClothComponent class. Processed by FArcAttachmentHandler_ChaosCloth for cloth physics on capes, skirts, banners, etc."))
 struct ARCCORE_API FArcItemFragment_ChaosClothComponent : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -49,7 +49,7 @@ public:
 	TSoftObjectPtr<UChaosClothAsset> ClothAsset;
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages Chaos Cloth component lifecycle. Creates, attaches, and removes cloth simulation components when items with FArcItemFragment_ChaosClothComponent are equipped/unequipped."))
 struct ARCCORE_API FArcAttachmentHandler_ChaosCloth : public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

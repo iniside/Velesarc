@@ -29,7 +29,7 @@
 #include "Templates/SubclassOf.h"
 #include "ArcItemFragment_ActorAttachment.generated.h"
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "Holds a soft reference to an actor class used for item attachment. Lightweight wrapper for async-loadable actor class references."))
 struct ARCCORE_API FArcItemAttachmentData
 {
 	GENERATED_BODY()
@@ -42,7 +42,7 @@ public:
 /**
  *
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Actor Attachment", Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Actor Attachment", Category = "Item Attachment", ToolTip = "Spawns and attaches a full actor to the character when the item is equipped. Use for complex items requiring their own components, logic, or tick behavior beyond a simple mesh attachment."))
 struct ARCCORE_API FArcItemFragment_ActorAttachment : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -75,9 +75,13 @@ public:
 	TSoftClassPtr<class AActor> ActorClass;
 
 	virtual ~FArcItemFragment_ActorAttachment() override = default;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages actor spawning and lifecycle. Creates, attaches, and destroys full actor instances when items with FArcItemFragment_ActorAttachment are equipped/unequipped."))
 struct ARCCORE_API FArcAttachmentHandler_Actor : public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

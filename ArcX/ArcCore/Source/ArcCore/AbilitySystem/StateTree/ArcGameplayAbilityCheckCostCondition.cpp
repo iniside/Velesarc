@@ -19,3 +19,10 @@ bool FArcGameplayAbilityCheckCostCondition::TestCondition(FStateTreeExecutionCon
 		ArcAbility->GetCurrentActorInfo(),
 		nullptr);
 }
+
+#if WITH_EDITOR
+FText FArcGameplayAbilityCheckCostCondition::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
+{
+	return NSLOCTEXT("ArcCore", "CheckCostDesc", "Check Cost");
+}
+#endif

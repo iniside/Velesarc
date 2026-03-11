@@ -9,7 +9,7 @@
 
 #include "ArcScalableFloatItemFragment_TargetingTrace.generated.h"
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Trace Stats", Category = "Targeting"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Targeting Trace Stats", Category = "Targeting", ToolTip = "Level-scalable numeric parameters for line-trace targeting. Provides Distance (max trace range in cm). Values scale with item level via FScalableFloat curves. Use for ranged weapons, ray-cast abilities, or any trace-based targeting system."))
 struct ARCCORE_API FArcScalableFloatItemFragment_TargetingTrace : public FArcScalableFloatItemFragment
 {
 	GENERATED_BODY()

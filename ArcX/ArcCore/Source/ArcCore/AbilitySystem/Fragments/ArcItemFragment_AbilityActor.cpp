@@ -22,3 +22,31 @@
 
 
 #include "ArcItemFragment_AbilityActor.h"
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_AbilityActor::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_GrantedAbilities"))
+	};
+	Desc.UsageNotes = TEXT(
+		"References a single actor class spawned by abilities for this item. "
+		"Commonly used for projectiles, area effects, or summons. "
+		"For items with multiple ability actors keyed by tag, use FArcItemFragment_AbilityActorMap instead.");
+	return Desc;
+}
+
+FArcFragmentDescription FArcItemFragment_AbilityActorMap::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_GrantedAbilities"))
+	};
+	Desc.UsageNotes = TEXT(
+		"Maps gameplay tags to ability actor classes, enabling different actor types per ability event. "
+		"Use when an item has multiple ability actors keyed by action type (e.g., primary fire vs alt fire). "
+		"For a single actor class, use FArcItemFragment_AbilityActor instead.");
+	return Desc;
+}
+#endif // WITH_EDITOR

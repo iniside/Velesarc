@@ -29,7 +29,7 @@
 
 class UGameplayEffect;
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (ToolTip = "A single entry mapping gameplay effects to source/target tag requirements. Effects in this entry are only applied when the source and target satisfy the required/ignored tag conditions."))
 struct ARCCORE_API FArcMapEffectItem
 {
 	GENERATED_BODY()
@@ -60,7 +60,7 @@ public:
 	}
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data holding pre-built gameplay effect specs. Populated at item initialization from FArcItemFragment_AbilityEffectsToApply and queried by abilities at runtime."))
 struct ARCCORE_API FArcItemInstance_EffectToApply : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -115,7 +115,7 @@ public:
 	//}
 };
 
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Ability Effects To Apply", Category = "Gameplay Ability", ToolTip = "Stores pre-built gameplay effect specs keyed by gameplay tag, used by abilities to apply effects on hit or activation. Supports source and target tag requirements for conditional application. Use for weapons or consumables that deal damage or apply status effects."))
 struct ARCCORE_API FArcItemFragment_AbilityEffectsToApply : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
@@ -138,4 +138,8 @@ public:
 	
 	virtual void OnItemInitialize(const FArcItemData* InItem) const override;
 	virtual void OnItemChanged(const FArcItemData* InItem) const override;
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

@@ -207,3 +207,22 @@ void FArcAttachmentHandler_Actor::HandleOnItemLoaded(UArcItemAttachmentComponent
 {
 
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_ActorAttachment::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_SocketSlots")),
+		FName(TEXT("FArcItemFragment_ItemAttachmentSlots"))
+	};
+	Desc.Prerequisites = { FName(TEXT("UArcItemAttachmentComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Spawns and attaches a full actor to the character when equipped. "
+		"AttachTags must match the socket's tag requirements. "
+		"Use bAttachToCharacterMesh to attach to the character's skeletal mesh instead of root. "
+		"The actor lifecycle is managed by FArcAttachmentHandler_Actor. "
+		"For simpler visuals, prefer StaticMesh or SkeletalMesh attachment fragments.");
+	return Desc;
+}
+#endif // WITH_EDITOR

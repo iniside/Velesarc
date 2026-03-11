@@ -35,7 +35,7 @@ class USkeletalMeshComponent;
 /**
  *
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Skeletal Mesh Component Attachment", Category = "Item Attachment"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Item Attachment - Skeletal Mesh Component Attachment", Category = "Item Attachment", ToolTip = "Spawns a USkeletalMeshComponent on the character when this item is equipped. Supports leader pose, custom anim instances, attach tags for socket matching, and a configurable component class. Use for items with skeletal animation (bows, shields with moving parts, animated backpacks). Processed by FArcAttachmentHandler_SkeletalMeshComponent."))
 struct ARCCORE_API FArcItemFragment_SkeletalMeshComponentAttachment : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -71,7 +71,7 @@ public:
 	virtual ~FArcItemFragment_SkeletalMeshComponentAttachment() override = default;
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages skeletal mesh component lifecycle. Spawns, attaches, and removes USkeletalMeshComponent instances (with optional anim instance) when items with FArcItemFragment_SkeletalMeshComponentAttachment are equipped/unequipped."))
 struct ARCCORE_API FArcAttachmentHandler_SkeletalMeshComponent : public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

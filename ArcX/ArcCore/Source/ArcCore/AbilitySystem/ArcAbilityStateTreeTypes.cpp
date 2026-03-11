@@ -300,24 +300,6 @@ bool FArcGameplayAbilityStateTreeContext::SetContextRequirements(FStateTreeExecu
 			OutDataViews[1] = FStateTreeDataView(Avatar);
 			OutDataViews[2] = FStateTreeDataView(Ability);
 			OutDataViews[3] = FStateTreeDataView(AbilitySystem);
-				
-			//for (int32 Index = 0; Index < ExternalDescs.Num(); Index++)
-			//{
-			//	const FStateTreeExternalDataDesc& Desc = ExternalDescs[Index];
-			//	if (Desc.Struct != nullptr)
-			//	{
-			//		if (World != nullptr && Desc.Struct->IsChildOf(UWorldSubsystem::StaticClass()))
-			//		{
-			//			UWorldSubsystem* Subsystem = World->GetSubsystemBase(Cast<UClass>(const_cast<UStruct*>(ToRawPtr(Desc.Struct))));
-			//			OutDataViews[Index] = FStateTreeDataView(Subsystem);
-			//		}
-			//		else if (Desc.Struct->IsChildOf(AActor::StaticClass()))
-			//		{
-			//			OutDataViews[Index] = FStateTreeDataView(ContextActor);
-			//		}
-			//	}
-			//}
-				
 			return true;
 		})
 	);

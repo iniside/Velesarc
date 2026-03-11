@@ -22,3 +22,20 @@
 
 
 #include "ArcItemFragment_AbilityMontages.h"
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_AbilityMontages::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_GrantedAbilities")),
+		FName(TEXT("FArcItemFragment_AbilityEffectsToApply"))
+	};
+	Desc.UsageNotes = TEXT(
+		"Defines animation montages used by gameplay abilities on this item. "
+		"StartMontage plays on ability activation. EventTagToMontageMap maps "
+		"gameplay event tags to specific montages for combo or branching animations. "
+		"Abilities look up montages from this fragment at runtime.");
+	return Desc;
+}
+#endif // WITH_EDITOR

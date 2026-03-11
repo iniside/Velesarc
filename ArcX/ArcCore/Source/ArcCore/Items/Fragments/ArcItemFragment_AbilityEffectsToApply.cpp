@@ -145,5 +145,24 @@ void FArcItemFragment_AbilityEffectsToApply::OnItemChanged(const FArcItemData* I
 				, *SocketItem->GetItemDefinition()->GetName());
 		}
 	}
-	
+
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_AbilityEffectsToApply::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment_ItemInstanceBase::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_GrantedAbilities")),
+		FName(TEXT("FArcItemFragment_AbilityMontages")),
+		FName(TEXT("FArcItemFragment_AbilityGameplayCue"))
+	};
+	Desc.Prerequisites = { FName(TEXT("AbilitySystemComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Pre-builds gameplay effect specs at item initialization, keyed by gameplay tag. "
+		"Abilities query these specs at activation to apply effects on hit or use. "
+		"Each FArcMapEffectItem entry supports source/target tag requirements for conditional application. "
+		"For persistent equip effects, use FArcItemFragment_GrantedGameplayEffects instead.");
+	return Desc;
+}
+#endif // WITH_EDITOR

@@ -56,7 +56,7 @@ public:
 /**
  * 
  */
-USTRUCT(meta = (Category = "Item Attachment"))
+USTRUCT(meta = (DisplayName = "Item Attachment - Customizable Object", Category = "Item Attachment", ToolTip = "Integrates a Mutable CustomizableObject with the item attachment system. Allows items to modify character appearance through CustomizableObject parameters (e.g., armor pieces that alter body mesh, clothing that changes material slots). Processed by FArcAttachmentHandler_CustomizableObject."))
 struct ARCCORE_API FArcItemFragment_CustomizableObject : public FArcItemFragment_ItemAttachment
 {
 	GENERATED_BODY()
@@ -68,7 +68,7 @@ struct ARCCORE_API FArcItemFragment_CustomizableObject : public FArcItemFragment
 	TSoftObjectPtr<UCustomizableObject> CustomizableObjectSoft;
 };
 
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Attachment handler that manages Mutable CustomizableObject integration. Applies CustomizableObject parameters to the character mesh when items with FArcItemFragment_CustomizableObject are equipped, and reverts them on unequip."))
 struct ARCCORE_API FArcAttachmentHandler_CustomizableObject : public FArcAttachmentHandlerCommon
 {
 	GENERATED_BODY()

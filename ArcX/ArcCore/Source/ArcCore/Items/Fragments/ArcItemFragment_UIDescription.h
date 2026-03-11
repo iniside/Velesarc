@@ -25,7 +25,7 @@
 #include "ArcItemFragment_UIDescription.generated.h"
 
 USTRUCT(BlueprintType
-	, meta = (DisplayName = "UI Description", Category = "UI"))
+	, meta = (DisplayName = "UI Description", Category = "UI", ToolTip = "Display data for the item in UI: name, description text, and icon image. Almost every item should have this fragment."))
 struct ARCCORE_API FArcItemFragment_UIDescription : public FArcItemFragment
 {
 	GENERATED_BODY()

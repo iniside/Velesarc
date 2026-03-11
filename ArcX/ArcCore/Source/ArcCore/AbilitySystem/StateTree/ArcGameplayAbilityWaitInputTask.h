@@ -16,15 +16,19 @@ struct FArcGameplayAbilityWaitInputTaskInstanceData
 {
 	GENERATED_BODY()
 
+	/** The ability system component used to resolve the avatar pawn for input binding. */
 	UPROPERTY(EditAnywhere, Category = Input)
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;
 
+	/** The input action to listen for. When triggered, broadcasts OnInputTriggered. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TObjectPtr<UInputAction> InputAction;
 
+	/** Optional input mapping context added at high priority for the wait duration. Removed on exit. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	TObjectPtr<UInputMappingContext> InputMappingContext;
 
+	/** Delegate broadcast each time the input action is triggered. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnInputTriggered;
 
@@ -35,7 +39,12 @@ struct FArcGameplayAbilityWaitInputTaskInstanceData
 	int32 ReleasedHandle;
 };
 
-USTRUCT()
+/**
+ * Waits for a specific input action to be triggered, broadcasting OnInputTriggered each time.
+ * Optionally adds an input mapping context at high priority for the duration of the task.
+ * Stays Running indefinitely. Cleans up input bindings and mapping context on exit.
+ */
+USTRUCT(meta = (DisplayName = "Wait For Input", Tooltip = "Waits for a specific input action to be triggered, broadcasting OnInputTriggered each time. Optionally adds an input mapping context at high priority for the duration of the task. Stays Running indefinitely. Cleans up input bindings and mapping context on exit."))
 struct FArcGameplayAbilityWaitInputTask : public FArcGameplayAbilityTaskBase
 {
 	GENERATED_BODY()
@@ -50,4 +59,8 @@ public:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const override;
+#endif
 };

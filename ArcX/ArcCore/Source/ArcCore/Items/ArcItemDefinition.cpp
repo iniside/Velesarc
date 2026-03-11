@@ -413,6 +413,65 @@ UArcItemDefinition* UArcItemDefinition::LoadItemData(const FGameplayTag& InItemT
 	return ItemBlueprint;
 }
 
+bool UArcItemDefinition::AddFragmentByType(UScriptStruct* InFragmentType)
+{
+	if (!InFragmentType)
+	{
+		return false;
+	}
+
+	const FName StructName = InFragmentType->GetFName();
+
+	if (InFragmentType->IsChildOf(FArcItemFragment::StaticStruct()))
+	{
+		if (FragmentSet.FindByHash(GetTypeHash(StructName), StructName))
+		{
+			return false;
+		}
+		FInstancedStruct Instance;
+		Instance.InitializeAs(InFragmentType);
+		FragmentSet.Add(FArcInstancedStruct(Instance));
+		return true;
+	}
+	else if (InFragmentType->IsChildOf(FArcScalableFloatItemFragment::StaticStruct()))
+	{
+		if (ScalableFloatFragmentSet.FindByHash(GetTypeHash(StructName), StructName))
+		{
+			return false;
+		}
+		FInstancedStruct Instance;
+		Instance.InitializeAs(InFragmentType);
+		ScalableFloatFragmentSet.Add(FArcInstancedStruct(Instance));
+		return true;
+	}
+
+	return false;
+}
+
+bool UArcItemDefinition::RemoveFragmentByType(UScriptStruct* InFragmentType)
+{
+	if (!InFragmentType)
+	{
+		return false;
+	}
+
+	const FName StructName = InFragmentType->GetFName();
+
+	if (InFragmentType->IsChildOf(FArcItemFragment::StaticStruct()))
+	{
+		FArcInstancedStruct Key;
+		Key.StructName = StructName;
+		return FragmentSet.Remove(Key) > 0;
+	}
+	else if (InFragmentType->IsChildOf(FArcScalableFloatItemFragment::StaticStruct()))
+	{
+		FArcInstancedStruct Key;
+		Key.StructName = StructName;
+		return ScalableFloatFragmentSet.Remove(Key) > 0;
+	}
+
+	return false;
+}
 
 #if WITH_EDITORONLY_DATA
 void UArcItemDefinitionTemplate::SetNewOrReplaceItemTemplate(UArcItemDefinition* TargetItemDefinition)

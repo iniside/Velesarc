@@ -27,7 +27,7 @@
 #include "ArcItemFragment_GrantedGameplayEffects.generated.h"
 
 class UGameplayEffect;
-USTRUCT()
+USTRUCT(meta = (ToolTip = "Mutable instance data tracking active gameplay effect handles granted by the item. Handles are stored for removal when the item is unequipped."))
 struct ARCCORE_API FArcItemInstance_GrantedGameplayEffects : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
@@ -37,7 +37,7 @@ struct ARCCORE_API FArcItemInstance_GrantedGameplayEffects : public FArcItemInst
 	
 };
 
-USTRUCT(BlueprintType, meta = (DisplayName = "Granted Gameplay Effects", Category = "Gameplay Ability"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Granted Gameplay Effects", Category = "Gameplay Ability", ToolTip = "Applies gameplay effects to the owning character when the item is equipped to a slot, and removes them when unequipped. Use for stat buffs, resistances, or any persistent effect tied to wearing or holding an item."))
 struct ARCCORE_API FArcItemFragment_GrantedGameplayEffects : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
@@ -68,4 +68,8 @@ public:
 	virtual ~FArcItemFragment_GrantedGameplayEffects() override
 	{
 	}
+
+#if WITH_EDITOR
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const override;
+#endif
 };

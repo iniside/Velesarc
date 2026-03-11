@@ -98,3 +98,21 @@ void FArcAttachmentHandler_StaticMesh::HandleItemAttach(UArcItemAttachmentCompon
 		InAttachmentComponent->CallbackItemAttached(InItemId);
 	}
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_StaticMeshAttachment::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_SocketSlots")),
+		FName(TEXT("FArcItemFragment_ItemAttachmentSlots"))
+	};
+	Desc.Prerequisites = { FName(TEXT("UArcItemAttachmentComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Attaches a static mesh to the character when equipped. "
+		"AttachTags are matched against socket tag requirements to determine which socket to use. "
+		"Uses FArcAttachmentHandler_StaticMesh for async loading and attachment. "
+		"Simplest visual attachment — use for weapons, shields, or items with a single static mesh.");
+	return Desc;
+}
+#endif // WITH_EDITOR

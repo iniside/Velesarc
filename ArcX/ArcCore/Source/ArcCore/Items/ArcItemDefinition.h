@@ -151,6 +151,20 @@ public:
 		Instance.InitializeAs<T>(InFragment);
 		FragmentSet.Add(FArcInstancedStruct(Instance));
 	}
+
+	/**
+	 * Add a default-initialized fragment of the given type. Determines the correct
+	 * fragment set (FragmentSet vs ScalableFloatFragmentSet) automatically.
+	 * Returns false if the type is invalid or already exists.
+	 */
+	bool AddFragmentByType(UScriptStruct* InFragmentType);
+
+	/**
+	 * Remove a fragment of the given type from the appropriate fragment set.
+	 * Returns false if the type was not found.
+	 */
+	bool RemoveFragmentByType(UScriptStruct* InFragmentType);
+
 public:
 	UArcItemDefinition();
 

@@ -26,6 +26,7 @@
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
 #include "UObject/AssetRegistryTagsContext.h"
+#include "ArcFragmentDescription.h"
 
 #include "ArcItemFragment.generated.h"
 
@@ -46,6 +47,11 @@ public:
 	virtual EDataValidationResult IsDataValid(const UArcItemDefinition* ItemDefinition, class FDataValidationContext& Context) const
 	{
 		return EDataValidationResult::NotValidated;
+	}
+
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const
+	{
+		return FArcFragmentDescription::BuildBaseDescription(InStruct);
 	}
 #endif
 	virtual ~FArcItemFragment()
@@ -272,6 +278,11 @@ public:
 	virtual EDataValidationResult IsDataValid(const UArcItemDefinition* ItemDefinition, class FDataValidationContext& Context) const
 	{
 		return EDataValidationResult::NotValidated;
+	}
+
+	virtual FArcFragmentDescription GetDescription(const UScriptStruct* InStruct) const
+	{
+		return FArcFragmentDescription::BuildBaseDescription(InStruct);
 	}
 #endif
 	void Initialize(const UScriptStruct* InStruct);

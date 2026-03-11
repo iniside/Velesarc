@@ -118,3 +118,21 @@ void FArcAttachmentHandler_SkeletalMesh::HandleItemAttach(UArcItemAttachmentComp
 	
 	InAttachmentComponent->AddAttachmentForItem(ItemAttachment->ItemDefinition, SpawnedComponent);
 }
+
+#if WITH_EDITOR
+FArcFragmentDescription FArcItemFragment_SkeletalMeshAttachment::GetDescription(const UScriptStruct* InStruct) const
+{
+	FArcFragmentDescription Desc = FArcItemFragment::GetDescription(InStruct);
+	Desc.CommonPairings = {
+		FName(TEXT("FArcItemFragment_SocketSlots")),
+		FName(TEXT("FArcItemFragment_ItemAttachmentSlots"))
+	};
+	Desc.Prerequisites = { FName(TEXT("UArcItemAttachmentComponent")) };
+	Desc.UsageNotes = TEXT(
+		"Attaches a skeletal mesh to the character when equipped. "
+		"Supports leader pose (bUseLeaderPose) to follow the character's skeleton, "
+		"and an optional SkeletalMeshAnimInstance for custom animation. "
+		"Use for items needing animated or deformable visuals like bows or cloaks.");
+	return Desc;
+}
+#endif // WITH_EDITOR
