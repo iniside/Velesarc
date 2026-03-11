@@ -1,14 +1,12 @@
 ﻿#include "ArcMassWaitTask.h"
 
+#include "MassCommands.h"
 #include "MassCommonTypes.h"
 #include "MassEntitySubsystem.h"
 #include "MassExecutionContext.h"
 #include "MassNavigationTypes.h"
 #include "MassSignalSubsystem.h"
-#include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
-#include "StateTreeExecutionContext.h"
-#include "StateTreeLinker.h"
 
 FArcMassWaitTask::FArcMassWaitTask()
 {
@@ -17,55 +15,42 @@ FArcMassWaitTask::FArcMassWaitTask()
 	bShouldCopyBoundPropertiesOnExitState = false;
 }
 
-bool FArcMassWaitTask::Link(FStateTreeLinker& Linker)
-{
-	Linker.LinkExternalData(MassWaitFragment);
-
-	return true;
-}
-
-void FArcMassWaitTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
-{
-	Builder.AddReadWrite<FArcMassWaitTaskFragment>();
-}
-
 EStateTreeRunStatus FArcMassWaitTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	
+
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-	UMassSignalSubsystem* MassSignalSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+	FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+	const FMassEntityHandle Entity = MassCtx.GetEntity();
 
-	FArcMassWaitTaskFragment* MassWait = MassCtx.GetExternalDataPtr(MassWaitFragment);
-	MassWait->Duration = InstanceData.Duration;
-	MassWait->Time = 0;
+	const float WaitDuration = InstanceData.Duration;
 	InstanceData.Time = 0.f;
-	
-	EntityManager.Defer().AddTag<FArcMassWaitTaskTag>(MassCtx.GetEntity());
 
-	
-	
-	//if (InstanceData.Duration > 0.f)
-	//{
-	//	MassSignalSubsystem->DelaySignalEntityDeferred(MassCtx.GetMassEntityExecutionContext(),
-	//		UE::Mass::Signals::NewStateTreeTaskRequired, MassCtx.GetEntity(), InstanceData.Duration);
-	//}
-	
+	EntityManager.Defer().PushCommand<FMassDeferredCommand<EMassCommandOperationType::Add>>(
+		[Entity, WaitDuration](FMassEntityManager& Mgr)
+		{
+			FArcMassWaitTaskFragment& WaitFragment = Mgr.AddSparseElementToEntity<FArcMassWaitTaskFragment>(Entity);
+			WaitFragment.Duration = WaitDuration;
+			WaitFragment.Time = 0.f;
+			Mgr.AddSparseElementToEntity<FArcMassWaitTaskTag>(Entity);
+		});
+
 	return EStateTreeRunStatus::Running;
 }
 
 EStateTreeRunStatus FArcMassWaitTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	FArcMassWaitTaskFragment* MassWait = MassCtx.GetExternalDataPtr(MassWaitFragment);
+	FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+	FStructView WaitView = EntityManager.GetMutableSparseElementDataForEntity(FArcMassWaitTaskFragment::StaticStruct(), MassCtx.GetEntity());
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	
-	if (MassWait->Time >= InstanceData.Duration)
+
+	if (FArcMassWaitTaskFragment* MassWait = WaitView.GetPtr<FArcMassWaitTaskFragment>())
 	{
-		
-		return EStateTreeRunStatus::Succeeded;
+		if (MassWait->Time >= InstanceData.Duration)
+		{
+			return EStateTreeRunStatus::Succeeded;
+		}
 	}
 
 	return EStateTreeRunStatus::Running;
@@ -89,28 +74,28 @@ FText FArcMassWaitTask::GetDescription(const FGuid& ID, FStateTreeDataView Insta
 UArcMassWaitTaskProcessor::UArcMassWaitTaskProcessor()
 	: EntityQuery_Conditional(*this)
 {
-	ExecutionFlags = (int32)EProcessorExecutionFlags::AllNetModes;
+	//bAutoRegisterWithProcessingPhases = true;
+	ExecutionFlags = (int32)EProcessorExecutionFlags::All;
+	ProcessingPhase = EMassProcessingPhase::PrePhysics;
 	ExecutionOrder.ExecuteInGroup = UE::Mass::ProcessorGroupNames::Tasks;
 	ExecutionOrder.ExecuteBefore.Add(UE::Mass::ProcessorGroupNames::Avoidance);
+	
+	QueryBasedPruning = EMassQueryBasedPruning::Never;
 }
 
 void UArcMassWaitTaskProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	Super::ConfigureQueries(EntityManager);
-
-	EntityQuery_Conditional.AddRequirement<FArcMassWaitTaskFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery_Conditional.AddTagRequirement<FArcMassWaitTaskTag>(EMassFragmentPresence::All);
+	EntityQuery_Conditional.AddSparseRequirement<FArcMassWaitTaskFragment>(EMassFragmentPresence::All);
+	EntityQuery_Conditional.AddSparseRequirement<FArcMassWaitTaskTag>(EMassFragmentPresence::All);
 	EntityQuery_Conditional.AddSubsystemRequirement<UMassSignalSubsystem>(EMassFragmentAccess::ReadWrite);
 
-	EntityQuery_Conditional.RegisterWithProcessor(*this);
+	//EntityQuery_Conditional.RegisterWithProcessor(*this);
 }
 
 void UArcMassWaitTaskProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& MassEntityManager)
 {
 	Super::InitializeInternal(Owner, MassEntityManager);
 	SignalSubsystem = UWorld::GetSubsystem<UMassSignalSubsystem>(Owner.GetWorld());
-
-
 }
 
 void UArcMassWaitTaskProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -119,26 +104,32 @@ void UArcMassWaitTaskProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	{
 		return;
 	}
-	
+
 	TArray<FMassEntityHandle> EntitiesToSignalPathDone;
 
 	EntityQuery_Conditional.ForEachEntityChunk(Context, [this, &EntitiesToSignalPathDone](FMassExecutionContext& MyContext)
 	{
-		TArrayView<FArcMassWaitTaskFragment> TransformList = MyContext.GetMutableFragmentView<FArcMassWaitTaskFragment>();
-			
 		const float WorldDeltaTime = MyContext.GetDeltaTimeSeconds();
 
-		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateEntityIterator(); EntityIt; ++EntityIt)
+		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateSparseEntityIterator(); EntityIt; ++EntityIt)
 		{
-			FArcMassWaitTaskFragment& WaitTime = TransformList[EntityIt];
-			WaitTime.Time += WorldDeltaTime;
-			
-			if (WaitTime.Time >= WaitTime.Duration)
+			FArcMassWaitTaskFragment* WaitTime = MyContext.GetMutableSparseElement<FArcMassWaitTaskFragment>(EntityIt);
+			if (!WaitTime)
 			{
-				FMassEntityHandle Handle = MyContext.GetEntity(EntityIt);
-				EntitiesToSignalPathDone.Add(Handle);
+				continue;
+			}
 
-				MyContext.Defer().RemoveTag<FArcMassWaitTaskTag>(Handle);
+			WaitTime->Time += WorldDeltaTime;
+
+			if (WaitTime->Time >= WaitTime->Duration)
+			{
+				FMassEntityHandle Entity = MyContext.GetEntity(EntityIt);
+				EntitiesToSignalPathDone.Add(MyContext.GetEntity(EntityIt));
+				MyContext.Defer().PushCommand<FMassDeferredCommand<EMassCommandOperationType::Remove>>([Entity](FMassEntityManager& Mgr)
+				{
+					Mgr.RemoveSparseElementFromEntity<FArcMassWaitTaskFragment>(Entity);
+					Mgr.RemoveSparseElementFromEntity<FArcMassWaitTaskTag>(Entity);
+				});
 			}
 		}
 	});

@@ -3,7 +3,7 @@
 #include "ArcMassTickStateTreeTask.h"
 
 #include "ArcMassStateTreeTickProcessor.h"
-#include "MassEntitySubsystem.h"
+#include "MassCommands.h"
 #include "MassStateTreeExecutionContext.h"
 
 FArcMassTickStateTreeTask::FArcMassTickStateTreeTask()
@@ -14,11 +14,12 @@ FArcMassTickStateTreeTask::FArcMassTickStateTreeTask()
 EStateTreeRunStatus FArcMassTickStateTreeTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	
-	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
-	
-	EntityManager.Defer().AddTag<FArcMassTickStateTreeTag>(MassCtx.GetEntity());
+	FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+
+	EntityManager.Defer().PushCommand<FMassDeferredCommand<EMassCommandOperationType::Add>>([Entity = MassCtx.GetEntity()](FMassEntityManager& Mgr)
+	{
+		Mgr.AddSparseElementToEntity<FArcMassTickStateTreeTag>(Entity);
+	});
 	
 	return EStateTreeRunStatus::Running;
 }
@@ -26,11 +27,12 @@ EStateTreeRunStatus FArcMassTickStateTreeTask::EnterState(FStateTreeExecutionCon
 void FArcMassTickStateTreeTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	
-	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
-	
-	EntityManager.Defer().RemoveTag<FArcMassTickStateTreeTag>(MassCtx.GetEntity());
+	FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+
+	EntityManager.Defer().PushCommand<FMassDeferredCommand<EMassCommandOperationType::Remove>>([Entity = MassCtx.GetEntity()](FMassEntityManager& Mgr)
+	{
+		Mgr.RemoveSparseElementFromEntity<FArcMassTickStateTreeTag>(Entity);
+	});
 }
 
 #if WITH_EDITOR

@@ -5,9 +5,9 @@
 
 #include "ArcMassWaitTask.generated.h"
 
-/** Mass fragment storing per-entity wait timer state. Used by UArcMassWaitTaskProcessor to tick down the wait. */
+/** Sparse fragment storing per-entity wait timer state. Used by UArcMassWaitTaskProcessor to tick down the wait. */
 USTRUCT()
-struct FArcMassWaitTaskFragment : public FMassFragment
+struct FArcMassWaitTaskFragment : public FMassSparseFragment
 {
 	GENERATED_BODY()
 
@@ -19,9 +19,9 @@ public:
 	float Time = 0;
 };
 
-/** Mass tag added to entities that have an active wait in progress. Used by UArcMassWaitTaskProcessor to query waiting entities. */
+/** Sparse tag added to entities that have an active wait in progress. Used by UArcMassWaitTaskProcessor to query waiting entities. */
 USTRUCT()
-struct FArcMassWaitTaskTag : public FMassTag
+struct FArcMassWaitTaskTag : public FMassSparseTag
 {
 	GENERATED_BODY()
 };
@@ -56,11 +56,8 @@ struct FArcMassWaitTask : public FMassStateTreeTaskBase
 
 public:
 	FArcMassWaitTask();
-	
+
 protected:
-	virtual bool Link(FStateTreeLinker& Linker) override;
-	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
-	
 	virtual const UStruct* GetInstanceDataType() const override
 	{
 		return FInstanceDataType::StaticStruct();
@@ -72,9 +69,6 @@ protected:
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
 #endif
-
-	/** Handle to the entity's wait fragment, storing the per-entity timer state. */
-	TStateTreeExternalDataHandle<FArcMassWaitTaskFragment> MassWaitFragment;
 };
 
 class UMassSignalSubsystem;
