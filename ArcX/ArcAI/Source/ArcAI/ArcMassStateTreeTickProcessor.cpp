@@ -9,8 +9,11 @@
 UArcMassStateTreeTickProcessor::UArcMassStateTreeTickProcessor()
 	: EntityQuery_Conditional(*this)
 {
+	bAutoRegisterWithProcessingPhases = true;
 	ExecutionOrder.ExecuteInGroup = UE::Mass::ProcessorGroupNames::Tasks;
 	ExecutionOrder.ExecuteBefore.Add(UE::Mass::ProcessorGroupNames::Avoidance);
+	
+	QueryBasedPruning = EMassQueryBasedPruning::Never;
 }
 
 void UArcMassStateTreeTickProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
@@ -18,7 +21,7 @@ void UArcMassStateTreeTickProcessor::ConfigureQueries(const TSharedRef<FMassEnti
 	EntityQuery_Conditional.AddRequirement<FMassStateTreeInstanceFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery_Conditional.AddConstSharedRequirement<FMassStateTreeSharedFragment>();
 	
-	EntityQuery_Conditional.AddTagRequirement<FArcMassTickStateTreeTag>(EMassFragmentPresence::All);
+	EntityQuery_Conditional.AddSparseRequirement<FArcMassTickStateTreeTag>(EMassFragmentPresence::All);
 	EntityQuery_Conditional.AddSubsystemRequirement<UMassStateTreeSubsystem>(EMassFragmentAccess::ReadWrite);
 	EntityQuery_Conditional.RegisterWithProcessor(*this);
 }
@@ -46,7 +49,7 @@ void UArcMassStateTreeTickProcessor::Execute(FMassEntityManager& EntityManager, 
 			
 		const float WorldDeltaTime = MyContext.GetDeltaTimeSeconds();
 			
-		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateEntityIterator(); EntityIt; ++EntityIt)
+		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateSparseEntityIterator(); EntityIt; ++EntityIt)
 		{
 			const FMassEntityHandle Entity = MyContext.GetEntity(EntityIt);
 			

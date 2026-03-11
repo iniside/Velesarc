@@ -3,16 +3,16 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MassEntityElementTypes.h"
 #include "MassProcessor.h"
 #include "ArcMassStateTreeTickProcessor.generated.h"
 
 class UMassStateTreeSubsystem;
 
 USTRUCT()
-struct FArcMassTickStateTreeTag : public FMassTag
+struct FArcMassTickStateTreeTag : public FMassSparseTag
 {
 	GENERATED_BODY()
-	
 };
 
 /**
