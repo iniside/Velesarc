@@ -31,6 +31,14 @@ EStateTreeRunStatus FArcMassClaimAdvertisementTask::EnterState(FStateTreeExecuti
 	const FMassEntityHandle Entity = MassCtx.GetEntity();
 	InstanceData.bClaimSucceeded = Subsystem->ClaimAdvertisement(InstanceData.AdvertisementHandle, Entity);
 
+	if (InstanceData.bClaimSucceeded)
+	{
+		if (const FArcKnowledgeEntry* Entry = Subsystem->GetKnowledgeEntry(InstanceData.AdvertisementHandle))
+		{
+			InstanceData.OwnerEntity.EntityHandle = Entry->SourceEntity;
+		}
+	}
+
 	return InstanceData.bClaimSucceeded ? EStateTreeRunStatus::Succeeded : EStateTreeRunStatus::Failed;
 }
 

@@ -6,6 +6,8 @@
 #include "MassStateTreeTypes.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcKnowledgeEntry.h"
+#include "ArcMass/ArcMassEntityHandleWrapper.h"
+#include "ArcMass/ArcMassEntityHandleWrapper.h"
 #include "ArcMassClaimAdvertisementTask.generated.h"
 
 USTRUCT()
@@ -20,6 +22,10 @@ struct FArcMassClaimAdvertisementTaskInstanceData
 	/** Output: whether the claim succeeded. */
 	UPROPERTY(EditAnywhere, Category = Output)
 	bool bClaimSucceeded = false;
+
+	/** Output: the entity that owns (posted) the claimed advertisement. */
+	UPROPERTY(EditAnywhere, Category = Output)
+	FArcMassEntityHandleWrapper OwnerEntity;
 };
 
 /**
