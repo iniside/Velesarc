@@ -8,6 +8,8 @@
 #include "ArcSmartObjectPlanRequest.h"
 #include "GameplayDebuggerCategory.h"
 #include "Subsystems/WorldSubsystem.h"
+struct FArcSmartObjectPlanEvaluationContext;
+
 #include "ArcSmartObjectPlannerSubsystem.generated.h"
 
 /**
@@ -62,10 +64,10 @@ public:
 		TArray<FArcSmartObjectPlanContainer>& OutPlans,
 		TArray<bool>& UsedEntities,
 		int32 MaxPlans,
-		FMassEntityManager* EntityManager = nullptr);
+		const FArcSmartObjectPlanEvaluationContext* Context = nullptr);
 
 	static bool EvaluateCustomConditions(const FArcPotentialEntity& Entity,
-								FMassEntityManager& EntityManager);
+								const FArcSmartObjectPlanEvaluationContext& Context);
 
 private:
 	TArray<FArcSmartObjectPlanRequest> RequestQueue;

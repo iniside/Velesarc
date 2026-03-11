@@ -2,16 +2,15 @@
 
 #include "ArcSmartObjectPlanPathfindingCondition.h"
 
-#include "MassCommonFragments.h"
 #include "MassEntityManager.h"
 #include "NavigationSystem.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
 
 bool FArcSmartObjectPlanPathfindingCondition::CanUseEntity(
 	const FArcPotentialEntity& Entity,
-	const FMassEntityManager& EntityManager) const
+	const FArcSmartObjectPlanEvaluationContext& Context) const
 {
-	const UWorld* World = EntityManager.GetWorld();
+	const UWorld* World = Context.EntityManager->GetWorld();
 	if (!World)
 	{
 		return false;
@@ -23,13 +22,7 @@ bool FArcSmartObjectPlanPathfindingCondition::CanUseEntity(
 		return false;
 	}
 
-	const FTransformFragment* RequestingTransform = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity.RequestingEntity);
-	if (!RequestingTransform)
-	{
-		return false;
-	}
-
-	const FVector Start = RequestingTransform->GetTransform().GetLocation();
+	const FVector Start = Context.RequestingLocation;
 	const FVector End = Entity.Location;
 
 	FPathFindingQuery Query(nullptr, *NavSys->GetDefaultNavDataInstance(), Start, End);

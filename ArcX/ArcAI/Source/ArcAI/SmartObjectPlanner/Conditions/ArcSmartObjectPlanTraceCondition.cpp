@@ -3,7 +3,6 @@
 #include "ArcSmartObjectPlanTraceCondition.h"
 
 #include "CollisionQueryParams.h"
-#include "MassCommonFragments.h"
 #include "MassEntityManager.h"
 #include "Engine/HitResult.h"
 #include "Engine/World.h"
@@ -11,23 +10,16 @@
 
 bool FArcSmartObjectPlanTraceCondition::CanUseEntity(
 	const FArcPotentialEntity& Entity,
-	const FMassEntityManager& EntityManager) const
+	const FArcSmartObjectPlanEvaluationContext& Context) const
 {
-	const UWorld* World = EntityManager.GetWorld();
+	const UWorld* World = Context.EntityManager->GetWorld();
 	if (!World)
 	{
 		return false;
 	}
 
-	// Get the requesting entity's location
-	const FTransformFragment* RequestingTransform = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity.RequestingEntity);
-	if (!RequestingTransform)
-	{
-		return false;
-	}
-
 	const FVector HeightOffsetVec(0.f, 0.f, HeightOffset);
-	const FVector Start = RequestingTransform->GetTransform().GetLocation() + HeightOffsetVec;
+	const FVector Start = Context.RequestingLocation + HeightOffsetVec;
 	const FVector End = Entity.Location + HeightOffsetVec;
 
 	FCollisionQueryParams Params;

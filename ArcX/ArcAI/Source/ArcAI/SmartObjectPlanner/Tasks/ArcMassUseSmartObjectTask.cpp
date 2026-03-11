@@ -21,7 +21,7 @@
 
 FArcMassUseSmartObjectTask::FArcMassUseSmartObjectTask()
 {
-	bShouldCallTick = false;
+	bShouldCallTick = true;
 }
 
 bool FArcMassUseSmartObjectTask::Link(FStateTreeLinker& Linker)
@@ -55,60 +55,49 @@ EStateTreeRunStatus FArcMassUseSmartObjectTask::EnterState(FStateTreeExecutionCo
 	UMassEntitySubsystem* MassEntitySubsystem = Context.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
 	UMassSignalSubsystem* SignalSubsystem = Context.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
 
+	// Actor is optional — not all Mass entities have one
 	FMassActorFragment* ActorFragment = MassCtx.GetEntityManager().GetFragmentDataPtr<FMassActorFragment>(MassCtx.GetEntity());
-	AActor* Interactor = const_cast<AActor*>(ActorFragment->Get());
+	AActor* Interactor = ActorFragment ? const_cast<AActor*>(ActorFragment->Get()) : nullptr;
 
-	bool bHaveRunActorBehavior = false;
-	if (Interactor)
+	bool bHaveRunBehavior = false;
+
+	// GameplayInteraction — check definition presence, actor is optional
+	const UArcAIGameplayInteractionSmartObjectBehaviorDefinition* GI = SOSubsystem->GetBehaviorDefinition<UArcAIGameplayInteractionSmartObjectBehaviorDefinition>(InstanceData.SmartObjectClaimHandle);
+	if (GI)
 	{
-		const UArcAIGameplayInteractionSmartObjectBehaviorDefinition* GI = SOSubsystem->GetBehaviorDefinition<UArcAIGameplayInteractionSmartObjectBehaviorDefinition>(InstanceData.SmartObjectClaimHandle);
-		if (GI)
+		InstanceData.GameplayInteractionContext.SetOwner(SOSubsystem);
+		InstanceData.GameplayInteractionContext.SetContextEntity(MassCtx.GetEntity());
+		InstanceData.GameplayInteractionContext.SetSmartObjectEntity(InstanceData.SmartObjectEntityHandle.EntityHandle);
+		InstanceData.GameplayInteractionContext.SetContextActor(Interactor);
+		InstanceData.GameplayInteractionContext.SetSmartObjectActor(Interactor);
+		InstanceData.GameplayInteractionContext.SetClaimedHandle(InstanceData.SmartObjectClaimHandle);
+
+		if (const TOptional<FTransform> SlotTransform = SOSubsystem->GetSlotTransform(InstanceData.SmartObjectClaimHandle))
 		{
-			InstanceData.GameplayInteractionContext.SetContextEntity(MassCtx.GetEntity());
-			InstanceData.GameplayInteractionContext.SetSmartObjectEntity(InstanceData.SmartObjectEntityHandle.EntityHandle);
-
-			InstanceData.GameplayInteractionContext.SetContextActor(Interactor);
-			InstanceData.GameplayInteractionContext.SetSmartObjectActor(Interactor);
-			InstanceData.GameplayInteractionContext.SetClaimedHandle(InstanceData.SmartObjectClaimHandle);
-
-			InstanceData.GameplayInteractionContext.Activate(*GI);
-
-			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(Interactor, [SignalSubsystem, SOSubsystem, Interactor, WeakContext = Context.MakeWeakExecutionContext(), EntityHandle = MassCtx.GetEntity()](float DeltaTime)
-			{
-				const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-				FInstanceDataType* DataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
-					if (!DataPtr)
-					{
-						return false;
-					}
-
-					const bool bKeepTicking = DataPtr->GameplayInteractionContext.Tick(DeltaTime);
-					if (bKeepTicking == false)
-					{
-						SOSubsystem->Release(DataPtr->SmartObjectClaimHandle);
-						StrongContext.FinishTask(EStateTreeFinishTaskType::Succeeded);
-
-						SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {EntityHandle});
-						return false;;
-					}
-
-					return true;
-			}));
-
-			bHaveRunActorBehavior = true;
+			InstanceData.GameplayInteractionContext.SetSlotTransform(SlotTransform.GetValue());
 		}
 
+		if (!InstanceData.GameplayInteractionContext.Activate(*GI, &MassCtx.GetMassEntityExecutionContext()))
+		{
+			return EStateTreeRunStatus::Failed;
+		}
+
+		bHaveRunBehavior = true;
+	}
+
+	// GameplayBehavior — requires an actor
+	if (Interactor)
+	{
 		const UGameplayBehaviorSmartObjectBehaviorDefinition* BD = SOSubsystem->GetBehaviorDefinition<UGameplayBehaviorSmartObjectBehaviorDefinition>(InstanceData.SmartObjectClaimHandle);
 		if (BD)
 		{
-			const UGameplayBehaviorConfig* GameplayBehaviorConfig = BD != nullptr ? BD->GameplayBehaviorConfig.Get() : nullptr;
+			const UGameplayBehaviorConfig* GameplayBehaviorConfig = BD->GameplayBehaviorConfig.Get();
 			InstanceData.GameplayBehavior = GameplayBehaviorConfig != nullptr ? GameplayBehaviorConfig->GetBehavior(*Context.GetWorld()) : nullptr;
 
 			if (!InstanceData.GameplayBehavior)
 			{
 				return EStateTreeRunStatus::Failed;
 			}
-
 
 			const bool bBehaviorActive = UGameplayBehaviorSubsystem::TriggerBehavior(*InstanceData.GameplayBehavior
 				, *Interactor, GameplayBehaviorConfig, nullptr);
@@ -120,7 +109,7 @@ EStateTreeRunStatus FArcMassUseSmartObjectTask::EnterState(FStateTreeExecutionCo
 				{
 					const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 					FInstanceDataType* DataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
-					//if (DataPtr && DataPtr->GameplayBehavior == &InBehavior)
+					if (DataPtr)
 					{
 						SOSubsystem->Release(DataPtr->SmartObjectClaimHandle);
 						DataPtr->GameplayBehavior = nullptr;
@@ -130,56 +119,70 @@ EStateTreeRunStatus FArcMassUseSmartObjectTask::EnterState(FStateTreeExecutionCo
 					}
 				});
 
-				bHaveRunActorBehavior = true;
+				bHaveRunBehavior = true;
 			}
 		}
 	}
 
-
-	bool bRunMassBehavior = false;
-	if (bAlwaysRunMassBehavior || bHaveRunActorBehavior == false)
-	{
-		bRunMassBehavior = true;
-	}
+	// MassBehavior
+	bool bRunMassBehavior = bAlwaysRunMassBehavior || !bHaveRunBehavior;
 
 	const USmartObjectMassBehaviorDefinition* MBD = SOSubsystem->GetBehaviorDefinition<USmartObjectMassBehaviorDefinition>(InstanceData.SmartObjectClaimHandle);
 	if (bRunMassBehavior && MBD)
 	{
-		const FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
-		const FMassSmartObjectHandler MassSmartObjectHandler(MassStateTreeContext.GetMassEntityExecutionContext(), *SOSubsystem, *SignalSubsystem);
+		const FMassSmartObjectHandler MassSmartObjectHandler(MassCtx.GetMassEntityExecutionContext(), *SOSubsystem, *SignalSubsystem);
 
 		FMassSmartObjectUserFragment& SOUser = Context.GetExternalData(SmartObjectUserHandle);
 
 		if (SOUser.InteractionHandle.IsValid())
 		{
-			//MASSBEHAVIOR_LOG(Error, TEXT("Agent is already using smart object slot %s."), *LexToString(SOUser.InteractionHandle));
-			return bHaveRunActorBehavior ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+			return bHaveRunBehavior ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
 		}
 
-		if (!MassSmartObjectHandler.StartUsingSmartObject(MassStateTreeContext.GetEntity(), SOUser, InstanceData.SmartObjectClaimHandle))
+		if (!MassSmartObjectHandler.StartUsingSmartObject(MassCtx.GetEntity(), SOUser, InstanceData.SmartObjectClaimHandle))
 		{
-			return bHaveRunActorBehavior ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+			return bHaveRunBehavior ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
 		}
 
 		FMassMoveTargetFragment& MoveTarget = Context.GetExternalData(MoveTargetHandle);
 
 		MoveTarget.CreateNewAction(EMassMovementAction::Animate, *World);
 
-		bool bSuccess = UE::MassNavigation::ActivateActionAnimate(Interactor, MassStateTreeContext.GetEntity(), MoveTarget);
+		UE::MassNavigation::ActivateActionAnimate(Interactor, MassCtx.GetEntity(), MoveTarget);
 
-		return bSuccess ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+		return EStateTreeRunStatus::Running;
 	}
 
-	return bHaveRunActorBehavior ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+	return bHaveRunBehavior ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
 }
 
-void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transitio) const
+EStateTreeRunStatus FArcMassUseSmartObjectTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (InstanceData.GameplayInteractionContext.IsValid())
+	{
+		FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+
+		const bool bStillRunning = InstanceData.GameplayInteractionContext.Tick(DeltaTime, &MassCtx.GetMassEntityExecutionContext());
+		if (!bStillRunning)
+		{
+			return EStateTreeRunStatus::Succeeded;
+		}
+	}
+
+	return EStateTreeRunStatus::Running;
+}
+
+void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
 	InstanceData.GameplayBehavior = nullptr;
 	if (InstanceData.GameplayInteractionContext.IsValid())
 	{
-		InstanceData.GameplayInteractionContext.Deactivate();
+		InstanceData.GameplayInteractionContext.Deactivate(&MassCtx.GetMassEntityExecutionContext());
 	}
 
 	FMassSmartObjectUserFragment& SOUser = Context.GetExternalData(SmartObjectUserHandle);
@@ -188,11 +191,10 @@ void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, 
 	{
 		MASSBEHAVIOR_LOG(VeryVerbose, TEXT("Exiting state with a valid InteractionHandle: stop using the smart object."));
 
-		const FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
 		USmartObjectSubsystem& SmartObjectSubsystem = Context.GetExternalData(SmartObjectSubsystemHandle);
 		UMassSignalSubsystem& SignalSubsystem = Context.GetExternalData(MassSignalSubsystemHandle);
-		const FMassSmartObjectHandler MassSmartObjectHandler(MassStateTreeContext.GetMassEntityExecutionContext(), SmartObjectSubsystem, SignalSubsystem);
-		MassSmartObjectHandler.StopUsingSmartObject(MassStateTreeContext.GetEntity(), SOUser, EMassSmartObjectInteractionStatus::Aborted);
+		const FMassSmartObjectHandler MassSmartObjectHandler(MassCtx.GetMassEntityExecutionContext(), SmartObjectSubsystem, SignalSubsystem);
+		MassSmartObjectHandler.StopUsingSmartObject(MassCtx.GetEntity(), SOUser, EMassSmartObjectInteractionStatus::Aborted);
 	}
 	else
 	{

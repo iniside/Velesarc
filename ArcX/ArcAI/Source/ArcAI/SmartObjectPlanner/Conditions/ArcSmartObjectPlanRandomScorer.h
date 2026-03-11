@@ -24,5 +24,5 @@ struct FArcSmartObjectPlanRandomScorer : public FArcSmartObjectPlanConditionEval
 	float MaxScore = 1.f;
 
 	virtual float ScoreEntity(const FArcPotentialEntity& Entity,
-							  const FMassEntityManager& EntityManager) const override;
+							  const FArcSmartObjectPlanEvaluationContext& Context) const override;
 };

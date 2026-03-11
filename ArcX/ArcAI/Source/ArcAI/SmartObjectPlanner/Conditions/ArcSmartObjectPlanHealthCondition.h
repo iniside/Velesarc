@@ -38,5 +38,5 @@ struct FArcSmartObjectPlanHealthCondition : public FArcSmartObjectPlanConditionE
 	bool bTestRequestingEntity = false;
 
 	virtual bool CanUseEntity(const FArcPotentialEntity& Entity,
-							  const FMassEntityManager& EntityManager) const override;
+							  const FArcSmartObjectPlanEvaluationContext& Context) const override;
 };

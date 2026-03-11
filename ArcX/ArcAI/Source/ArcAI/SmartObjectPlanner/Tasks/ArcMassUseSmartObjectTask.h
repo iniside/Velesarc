@@ -49,7 +49,7 @@ struct FArcMassUseSmartObjectTaskInstanceData
 * animation and slot release on exit.
 */
 USTRUCT(meta = (DisplayName = "Arc Mass Use Smart Object", Category = "Smart Object Planner"))
-struct FArcMassUseSmartObjectTask: public FMassStateTreeTaskBase
+struct FArcMassUseSmartObjectTask : public FMassStateTreeTaskBase
 {
 	GENERATED_BODY()
 
@@ -62,7 +62,8 @@ struct FArcMassUseSmartObjectTask: public FMassStateTreeTaskBase
 	virtual bool Link(FStateTreeLinker& Linker) override;
 	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
-	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transitio) const override;
+	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
+	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
 	UPROPERTY(EditAnywhere)
 	bool bAlwaysRunMassBehavior = true;

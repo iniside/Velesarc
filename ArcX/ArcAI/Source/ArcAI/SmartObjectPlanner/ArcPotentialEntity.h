@@ -10,7 +10,6 @@ struct FArcPotentialEntity
 {
 	GENERATED_BODY()
 
-	FMassEntityHandle RequestingEntity;
 	FMassEntityHandle EntityHandle;
 	FVector Location;
 	FGameplayTagContainer Provides;

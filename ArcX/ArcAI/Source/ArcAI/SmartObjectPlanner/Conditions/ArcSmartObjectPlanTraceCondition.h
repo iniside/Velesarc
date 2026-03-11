@@ -28,5 +28,5 @@ struct FArcSmartObjectPlanTraceCondition : public FArcSmartObjectPlanConditionEv
 	bool bInvert = false;
 
 	virtual bool CanUseEntity(const FArcPotentialEntity& Entity,
-							  const FMassEntityManager& EntityManager) const override;
+							  const FArcSmartObjectPlanEvaluationContext& Context) const override;
 };

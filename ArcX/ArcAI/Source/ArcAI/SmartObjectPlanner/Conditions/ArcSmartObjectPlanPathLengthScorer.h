@@ -25,5 +25,5 @@ struct FArcSmartObjectPlanPathLengthScorer : public FArcSmartObjectPlanCondition
 	FNavAgentProperties NavAgentProperties;
 
 	virtual float ScoreEntity(const FArcPotentialEntity& Entity,
-							  const FMassEntityManager& EntityManager) const override;
+							  const FArcSmartObjectPlanEvaluationContext& Context) const override;
 };

@@ -9,9 +9,9 @@
 
 bool FArcSmartObjectPlanOverlapCondition::CanUseEntity(
 	const FArcPotentialEntity& Entity,
-	const FMassEntityManager& EntityManager) const
+	const FArcSmartObjectPlanEvaluationContext& Context) const
 {
-	const UWorld* World = EntityManager.GetWorld();
+	const UWorld* World = Context.EntityManager->GetWorld();
 	if (!World)
 	{
 		return false;

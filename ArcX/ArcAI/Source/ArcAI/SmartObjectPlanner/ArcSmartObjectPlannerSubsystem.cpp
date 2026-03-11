@@ -101,7 +101,6 @@ void UArcSmartObjectPlannerSubsystem::GatherCandidates(
 		}
 
 		FArcPotentialEntity PotentialEntity;
-		PotentialEntity.RequestingEntity = Request.RequestingEntity;
 		PotentialEntity.EntityHandle = Info.Entity;
 		PotentialEntity.Location = Info.Location;
 		PotentialEntity.Provides = GoalPlanInfo->Provides;
@@ -152,7 +151,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 	TArray<FArcSmartObjectPlanContainer>& OutPlans,
 	TArray<bool>& UsedEntities,
 	int32 MaxPlans,
-	FMassEntityManager* EntityManager)
+	const FArcSmartObjectPlanEvaluationContext* Context)
 {
 	// Stop if we already have enough plans
 	if (OutPlans.Num() >= MaxPlans)
@@ -198,7 +197,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 			continue;
 		}
 
-		if (EntityManager && !EvaluateCustomConditions(Entity, *EntityManager))
+		if (Context && !EvaluateCustomConditions(Entity, *Context))
 		{
 			continue;
 		}
@@ -240,7 +239,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 					RequirementPlans,
 					UsedEntities,
 					1,
-					EntityManager);
+					Context);
 
 				UsedEntities[EntityIndex] = false; // Unreserve
 
@@ -310,7 +309,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 						OutPlans,
 						UsedEntities,
 						MaxPlans,
-						EntityManager))
+						Context))
 					{
 						bFoundValidPlan = true;
 					}
@@ -365,7 +364,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 			OutPlans,
 			UsedEntities,
 			MaxPlans,
-			EntityManager))
+			Context))
 		{
 			bFoundValidPlan = true;
 		}
@@ -404,6 +403,14 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 
 	FMassEntityManager& EntityManager = GetWorld()->GetSubsystem<UMassEntitySubsystem>()->GetMutableEntityManager();
 
+	FArcSmartObjectPlanEvaluationContext Context;
+	Context.RequestingEntity = Request.RequestingEntity;
+	Context.EntityManager = &EntityManager;
+	if (const FTransformFragment* Transform = EntityManager.GetFragmentDataPtr<FTransformFragment>(Request.RequestingEntity))
+	{
+		Context.RequestingLocation = Transform->GetTransform().GetLocation();
+	}
+
 	FGameplayTagContainer CurrentTags = Request.InitialTags;
 	FGameplayTagContainer AlreadyProvided = Request.InitialTags;
 	TArray<FArcSmartObjectPlanStep> CurrentPlan;
@@ -417,7 +424,7 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 		Response.Plans,
 		UsedEntities,
 		Request.MaxPlans,
-		&EntityManager
+		&Context
 	);
 
 	// Sort plans by efficiency
@@ -449,11 +456,11 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 }
 
 
-bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(const FArcPotentialEntity& Entity, FMassEntityManager& EntityManager)
+bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(const FArcPotentialEntity& Entity, const FArcSmartObjectPlanEvaluationContext& Context)
 {
 	for (const FConstStructView& View : Entity.CustomConditions)
 	{
-		if (View.Get<FArcSmartObjectPlanConditionEvaluator>().CanUseEntity(Entity, EntityManager) == false)
+		if (View.Get<FArcSmartObjectPlanConditionEvaluator>().CanUseEntity(Entity, Context) == false)
 		{
 			return false;
 		}

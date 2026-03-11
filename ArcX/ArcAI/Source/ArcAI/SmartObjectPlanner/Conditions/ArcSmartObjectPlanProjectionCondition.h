@@ -21,5 +21,5 @@ struct FArcSmartObjectPlanProjectionCondition : public FArcSmartObjectPlanCondit
 	FVector ProjectionExtent = FVector(100.f, 100.f, 250.f);
 
 	virtual bool CanUseEntity(const FArcPotentialEntity& Entity,
-							  const FMassEntityManager& EntityManager) const override;
+							  const FArcSmartObjectPlanEvaluationContext& Context) const override;
 };

@@ -6,7 +6,7 @@
 
 float FArcSmartObjectPlanRandomScorer::ScoreEntity(
 	const FArcPotentialEntity& Entity,
-	const FMassEntityManager& EntityManager) const
+	const FArcSmartObjectPlanEvaluationContext& Context) const
 {
 	return FMath::FRandRange(MinScore, MaxScore);
 }

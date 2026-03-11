@@ -4,18 +4,17 @@
 
 #include "ArcMass/ArcMassFragments.h"
 #include "MassEntityManager.h"
-#include "ArcMass/ArcMassFragments.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
 
 bool FArcSmartObjectPlanHealthCondition::CanUseEntity(
 	const FArcPotentialEntity& Entity,
-	const FMassEntityManager& EntityManager) const
+	const FArcSmartObjectPlanEvaluationContext& Context) const
 {
 	const FMassEntityHandle TargetEntity = bTestRequestingEntity
-		? Entity.RequestingEntity
+		? Context.RequestingEntity
 		: Entity.EntityHandle;
 
-	const FArcMassHealthFragment* HealthFragment = EntityManager.GetFragmentDataPtr<FArcMassHealthFragment>(TargetEntity);
+	const FArcMassHealthFragment* HealthFragment = Context.EntityManager->GetFragmentDataPtr<FArcMassHealthFragment>(TargetEntity);
 	if (!HealthFragment)
 	{
 		return false;

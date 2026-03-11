@@ -21,5 +21,5 @@ struct FArcSmartObjectPlanPathfindingCondition : public FArcSmartObjectPlanCondi
 	FNavAgentProperties NavAgentProperties;
 
 	virtual bool CanUseEntity(const FArcPotentialEntity& Entity,
-							  const FMassEntityManager& EntityManager) const override;
+							  const FArcSmartObjectPlanEvaluationContext& Context) const override;
 };
