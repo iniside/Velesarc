@@ -16,6 +16,6 @@ struct ARCMASS_API FArcMassEntityHandleWrapper
 	GENERATED_BODY()
 	
 public:
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FMassEntityHandle EntityHandle;
 };
