@@ -61,13 +61,15 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 		const FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
 		
 		FInstanceDataType* DataPtr = StrongContext.GetInstanceDataPtr<FInstanceDataType>();
-
-		FArcSmartObjectPlanResponse* Plan = DataPtr->PlanResponse.GetInternalPropertyRef().GetPtrFromStrongExecutionContext<FArcSmartObjectPlanResponse>(StrongContext);
-		*Plan = Response;
+		if (!DataPtr)
+		{
+			return;
+		}
+		DataPtr->PlanResponse = Response;
 			
 #if ENABLE_VISUAL_LOG	
 		FString PlanDebugString;
-		for (const FArcSmartObjectPlanContainer& PlanRef : Plan->Plans)
+		for (const FArcSmartObjectPlanContainer& PlanRef : DataPtr->PlanResponse.Plans)
 		{
 			PlanDebugString += FString::Printf(TEXT("Plan with %d steps:\n"), PlanRef.Items.Num());
 			for (const FArcSmartObjectPlanStep& Item : PlanRef.Items)

@@ -40,7 +40,7 @@ struct FArcMassMakeSmartObjectPlanTaskInstanceData
 
 	// Resulting plans produced by the planner
 	UPROPERTY(EditAnywhere, Category = Output)
-	TStateTreePropertyRef<FArcSmartObjectPlanResponse> PlanResponse;
+	FArcSmartObjectPlanResponse PlanResponse;
 };
 
 /**
