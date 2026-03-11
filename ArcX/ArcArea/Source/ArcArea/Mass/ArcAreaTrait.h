@@ -8,6 +8,7 @@
 #include "ArcAreaTrait.generated.h"
 
 class USmartObjectDefinition;
+class UStateTree;
 
 /**
  * Trait that configures a Mass entity as an area.
@@ -16,6 +17,9 @@ class USmartObjectDefinition;
  * When SmartObjectDefinition is set, also adds FArcSmartObjectOwnerFragment
  * and FArcSmartObjectDefinitionSharedFragment so the observer can create
  * the SmartObject on spawn.
+ *
+ * When StateTree is set, adds MassStateTree shared/instance fragments
+ * for StateTree execution. Must use UArcAreaStateTreeSchema.
  *
  * Requires FTransformFragment.
  */
@@ -34,5 +38,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Area")
 	TObjectPtr<USmartObjectDefinition> SmartObjectDefinition;
 
+	/** Optional StateTree asset to run on this area. Must use UArcAreaStateTreeSchema. */
+	UPROPERTY(EditAnywhere, Category = "StateTree",
+		meta = (RequiredAssetDataTags = "Schema=/Script/ArcArea.ArcAreaStateTreeSchema"))
+	TObjectPtr<UStateTree> StateTree;
+
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
+	virtual bool ValidateTemplate(const FMassEntityTemplateBuildContext& BuildContext, const UWorld& World, FAdditionalTraitRequirements& OutTraitRequirements) const override;
 };
