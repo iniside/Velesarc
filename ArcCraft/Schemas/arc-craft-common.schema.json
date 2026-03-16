@@ -1,0 +1,343 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "arc-craft-common.schema.json",
+	"title": "ArcCraft Common Definitions",
+	"description": "Shared definitions for ArcCraft JSON asset schemas.",
+	"$defs": {
+		"gameplayTag": {
+			"type": "string",
+			"description": "A gameplay tag in dot notation (e.g., 'Resource.Metal').",
+			"pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+		},
+		"gameplayTagContainer": {
+			"type": "array",
+			"description": "An array of gameplay tag strings.",
+			"items": { "$ref": "#/$defs/gameplayTag" }
+		},
+		"tagQuerySimple": {
+			"type": "object",
+			"description": "A simple tag query matching against a set of tags.",
+			"required": ["type", "tags"],
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": ["AnyTagsMatch", "AllTagsMatch", "NoTagsMatch"]
+				},
+				"tags": { "$ref": "#/$defs/gameplayTagContainer" }
+			},
+			"additionalProperties": false
+		},
+		"tagQueryCompound": {
+			"type": "object",
+			"description": "A compound tag query combining sub-expressions.",
+			"required": ["type", "expressions"],
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": ["AnyExprMatch", "AllExprMatch", "NoExprMatch"]
+				},
+				"expressions": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/tagQuery" }
+				}
+			},
+			"additionalProperties": false
+		},
+		"tagQuery": {
+			"description": "A gameplay tag query — either a simple tag-set match or a compound expression.",
+			"oneOf": [
+				{ "$ref": "#/$defs/tagQuerySimple" },
+				{ "$ref": "#/$defs/tagQueryCompound" }
+			]
+		},
+		"modType": {
+			"type": "string",
+			"description": "Stat modification type.",
+			"enum": ["Additive", "Multiply", "Division"]
+		},
+		"statEntry": {
+			"type": "object",
+			"description": "A single stat value with modification type.",
+			"required": ["value", "modType"],
+			"properties": {
+				"value": { "type": "number" },
+				"modType": { "$ref": "#/$defs/modType" },
+				"attribute": {
+					"type": "string",
+					"description": "Optional gameplay attribute path."
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier": {
+			"description": "An output modifier applied during crafting. Discriminated by the 'type' field.",
+			"oneOf": [
+				{ "$ref": "#/$defs/outputModifier_Stats" },
+				{ "$ref": "#/$defs/outputModifier_Abilities" },
+				{ "$ref": "#/$defs/outputModifier_Effects" },
+				{ "$ref": "#/$defs/outputModifier_TransferStats" },
+				{ "$ref": "#/$defs/outputModifier_Random" },
+				{ "$ref": "#/$defs/outputModifier_RandomPool" },
+				{ "$ref": "#/$defs/outputModifier_MaterialProperties" }
+			]
+		},
+		"modifierBaseFields": {
+			"description": "Base fields shared by all modifier types (both output and craft).",
+			"type": "object",
+			"properties": {
+				"minQuality": {
+					"type": "number",
+					"default": 0.0,
+					"description": "Minimum quality threshold. 0 = always applies."
+				},
+				"triggerTags": {
+					"$ref": "#/$defs/gameplayTagContainer",
+					"description": "Tags that must be present on ingredients. Empty = always match."
+				},
+				"weight": {
+					"type": "number",
+					"default": 1.0,
+					"description": "Selection priority weight among competing modifiers."
+				},
+				"qualityScaling": {
+					"type": "number",
+					"default": 1.0,
+					"description": "How much quality affects output values. 0 = none, 1 = linear."
+				}
+			}
+		},
+		"craftModifier": {
+			"description": "A terminal modifier for quality bands and pool entries. Only Stats, Abilities, Effects.",
+			"oneOf": [
+				{ "$ref": "#/$defs/craftModifier_Stats" },
+				{ "$ref": "#/$defs/craftModifier_Abilities" },
+				{ "$ref": "#/$defs/craftModifier_Effects" }
+			]
+		},
+		"craftModifier_Stats": {
+			"type": "object",
+			"description": "Terminal stats modifier for quality bands and pool entries.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Stats" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"stats": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/statEntry" }
+				}
+			},
+			"additionalProperties": false
+		},
+		"craftModifier_Abilities": {
+			"type": "object",
+			"description": "Terminal abilities modifier for quality bands and pool entries.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Abilities" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"abilities": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"abilityClass": { "type": "string" },
+							"level": { "type": "integer", "default": 1 }
+						}
+					}
+				}
+			},
+			"additionalProperties": false
+		},
+		"craftModifier_Effects": {
+			"type": "object",
+			"description": "Terminal effects modifier for quality bands and pool entries.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Effects" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"effects": {
+					"type": "array",
+					"items": { "type": "string" },
+					"description": "Class paths for gameplay effects."
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_Stats": {
+			"type": "object",
+			"description": "Adds stats to the output item, scaled by ingredient quality.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Stats" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": {
+					"type": "number",
+					"default": 1.0,
+					"description": "How much quality affects stats. 0 = no effect, 1 = linear."
+				},
+				"stats": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/statEntry" }
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_Abilities": {
+			"type": "object",
+			"description": "Grants abilities on the output item when trigger tags are present.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Abilities" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"abilities": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"abilityClass": { "type": "string" },
+							"level": { "type": "integer", "default": 1 }
+						}
+					}
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_Effects": {
+			"type": "object",
+			"description": "Grants gameplay effects based on ingredient tags and quality threshold.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Effects" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"effects": {
+					"type": "array",
+					"items": { "type": "string" },
+					"description": "Class paths for gameplay effects."
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_TransferStats": {
+			"type": "object",
+			"description": "Transfers stats from a specific ingredient slot to the output.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "TransferStats" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"ingredientSlot": {
+					"type": "integer",
+					"default": 0,
+					"description": "Index of the ingredient slot to transfer from."
+				},
+				"transferScale": {
+					"type": "number",
+					"default": 1.0,
+					"description": "Scale factor applied to transferred stats."
+				},
+				"scaleByQuality": {
+					"type": "boolean",
+					"default": true,
+					"description": "Whether quality multiplier also scales transferred stats."
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_Random": {
+			"type": "object",
+			"description": "Evaluates a ChooserTable for random modifier selection.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "Random" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"chooserTable": { "type": "string" },
+				"maxRolls": { "type": "integer", "default": 1, "minimum": 1 },
+				"allowDuplicates": { "type": "boolean", "default": false },
+				"qualityAffectsRolls": { "type": "boolean", "default": false },
+				"qualityBonusRollThreshold": { "type": "number", "default": 2.0 }
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_RandomPool": {
+			"type": "object",
+			"description": "Selects entries from a RandomPoolDefinition asset.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "RandomPool" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"poolDefinition": { "type": "string" },
+				"selectionMode": {
+					"type": "object",
+					"description": "Selection mode parameters."
+				}
+			},
+			"additionalProperties": false
+		},
+		"outputModifier_MaterialProperties": {
+			"type": "object",
+			"description": "Evaluates a MaterialPropertyTable for tag-based modifier contributions.",
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "MaterialProperties" },
+				"slotTag": { "$ref": "#/$defs/gameplayTag" },
+				"minQuality": { "type": "number", "default": 0.0 },
+				"triggerTags": { "$ref": "#/$defs/gameplayTagContainer" },
+				"weight": { "type": "number", "default": 1.0 },
+				"qualityScaling": { "type": "number", "default": 1.0 },
+				"propertyTable": { "type": "string" },
+				"baseIngredientCount": { "type": "integer", "default": 0, "minimum": 0 },
+				"extraCraftTimeBonus": { "type": "number", "default": 0.0 },
+				"useRecipeTierTable": { "type": "boolean", "default": true },
+				"recipeTags": { "$ref": "#/$defs/gameplayTagContainer" }
+			},
+			"additionalProperties": false
+		},
+		"qualityBand": {
+			"type": "object",
+			"description": "A quality band with eligibility threshold, weight, and modifiers.",
+			"required": ["name"],
+			"properties": {
+				"name": { "type": "string" },
+				"minQuality": { "type": "number", "default": 0.0, "minimum": 0.0 },
+				"baseWeight": { "type": "number", "default": 1.0, "exclusiveMinimum": 0.0 },
+				"qualityWeightBias": { "type": "number", "default": 0.0 },
+				"modifiers": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/craftModifier" }
+				}
+			},
+			"additionalProperties": false
+		}
+	}
+}

@@ -1,0 +1,18 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "ArcGit Source Control",
+    "Description": "Git source control provider with LFS locking, changelists, and shelving support",
+    "Category": "Developer",
+    "CreatedBy": "Arc",
+    "EnabledByDefault": true,
+    "CanContainContent": false,
+    "Modules": [
+        {
+            "Name": "ArcGitSourceControl",
+            "Type": "Developer",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

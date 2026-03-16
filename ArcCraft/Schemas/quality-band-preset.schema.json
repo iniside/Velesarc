@@ -1,0 +1,28 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "quality-band-preset.schema.json",
+	"title": "ArcCraft Quality Band Preset",
+	"description": "Schema for ArcCraft quality band preset JSON files.",
+	"type": "object",
+	"required": ["$type", "name"],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Relative path to the JSON schema file."
+		},
+		"$type": {
+			"const": "QualityBandPreset",
+			"description": "Asset type discriminator."
+		},
+		"name": {
+			"type": "string",
+			"description": "Display name for the preset."
+		},
+		"qualityBands": {
+			"type": "array",
+			"description": "Quality bands, ordered from lowest to highest quality.",
+			"items": { "$ref": "arc-craft-common.schema.json#/$defs/qualityBand" }
+		}
+	},
+	"additionalProperties": false
+}

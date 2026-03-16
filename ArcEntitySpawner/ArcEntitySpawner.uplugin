@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcEntitySpawner",
+	"Description": "Mass entity spawner with TQS integration and StateTree-driven spawn modes.",
+	"Category": "ArcX",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcEntitySpawner",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{"Name": "MassGameplay", "Enabled": true},
+		{"Name": "StateTree", "Enabled": true},
+		{"Name": "ArcMass", "Enabled": true},
+		{"Name": "ArcAI", "Enabled": true}
+	]
+}

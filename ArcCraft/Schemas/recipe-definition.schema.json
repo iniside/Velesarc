@@ -1,0 +1,99 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "recipe-definition.schema.json",
+	"title": "ArcCraft Recipe Definition",
+	"description": "Schema for ArcCraft recipe definition JSON files.",
+	"type": "object",
+	"required": ["$type", "name"],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Relative path to the JSON schema file."
+		},
+		"$type": {
+			"const": "RecipeDefinition",
+			"description": "Asset type discriminator."
+		},
+		"recipeId": {
+			"type": "string",
+			"description": "Unique recipe GUID.",
+			"pattern": "^[0-9A-Fa-f]{32}$|^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+		},
+		"name": {
+			"type": "string",
+			"description": "Display name for the recipe."
+		},
+		"recipeTags": {
+			"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+		},
+		"craftTime": {
+			"type": "number",
+			"default": 5.0,
+			"description": "Craft time in seconds."
+		},
+		"requiredStationTags": {
+			"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+		},
+		"requiredInstigatorTags": {
+			"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+		},
+		"ingredients": {
+			"type": "array",
+			"description": "Ingredient slot definitions.",
+			"items": {
+				"type": "object"
+			}
+		},
+		"outputItemDefinition": {
+			"type": "string",
+			"description": "Asset path to the output item definition."
+		},
+		"outputAmount": {
+			"type": "integer",
+			"default": 1,
+			"minimum": 1
+		},
+		"outputLevel": {
+			"type": "integer",
+			"default": 1,
+			"minimum": 0,
+			"maximum": 255
+		},
+		"outputModifiers": {
+			"type": "array",
+			"items": { "$ref": "arc-craft-common.schema.json#/$defs/outputModifier" }
+		},
+		"modifierSlots": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"slotTag": { "$ref": "arc-craft-common.schema.json#/$defs/gameplayTag" }
+				}
+			}
+		},
+		"maxUsableSlots": {
+			"type": "integer",
+			"default": 0,
+			"minimum": 0
+		},
+		"slotSelectionMode": {
+			"type": "string",
+			"enum": ["HighestWeight", "Random", "Ordered"],
+			"default": "HighestWeight"
+		},
+		"qualityTierTable": {
+			"type": "string",
+			"description": "Soft object path to a QualityTierTable asset."
+		},
+		"qualityAffectsLevel": {
+			"type": "boolean",
+			"default": false
+		},
+		"recipeType": {
+			"type": "string",
+			"description": "Primary asset type for registration."
+		}
+	},
+	"additionalProperties": false
+}

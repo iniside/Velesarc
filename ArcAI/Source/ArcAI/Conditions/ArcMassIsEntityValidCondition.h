@@ -1,0 +1,36 @@
+﻿#pragma once
+#include "MassEQSBlueprintLibrary.h"
+#include "MassStateTreeTypes.h"
+
+#include "ArcMassIsEntityValidCondition.generated.h"
+
+USTRUCT()
+struct FArcMassIsEntityValidConditionInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	FMassEnvQueryEntityInfoBlueprintWrapper TargetInput;
+};
+
+USTRUCT(DisplayName="Arc Mass Is Entity Valid")
+struct FArcMassIsEntityValidCondition : public FMassStateTreeConditionBase
+{
+	GENERATED_BODY()
+	
+public:
+	using FInstanceDataType = FArcMassIsEntityValidConditionInstanceData;
+
+	FArcMassIsEntityValidCondition() = default;
+
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	
+	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
+	
+	UPROPERTY(EditAnywhere, Category = Condition)
+	bool bInvert = false;
+
+#if WITH_EDITOR
+	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
+#endif
+};

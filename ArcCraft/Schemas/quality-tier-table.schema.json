@@ -1,0 +1,46 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "quality-tier-table.schema.json",
+	"title": "ArcCraft Quality Tier Table",
+	"description": "Schema for ArcCraft quality tier table JSON files.",
+	"type": "object",
+	"required": ["$type", "tiers"],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Relative path to the JSON schema file."
+		},
+		"$type": {
+			"const": "QualityTierTable",
+			"description": "Asset type discriminator."
+		},
+		"name": {
+			"type": "string",
+			"description": "Optional name for the tier table."
+		},
+		"tiers": {
+			"type": "array",
+			"description": "Quality tiers, ordered from lowest to highest.",
+			"items": {
+				"type": "object",
+				"required": ["tag", "value", "multiplier"],
+				"properties": {
+					"tag": {
+						"$ref": "arc-craft-common.schema.json#/$defs/gameplayTag",
+						"description": "The gameplay tag representing this tier."
+					},
+					"value": {
+						"type": "integer",
+						"description": "Numerical value for this tier. Higher = better."
+					},
+					"multiplier": {
+						"type": "number",
+						"description": "Quality multiplier. 1.0 = baseline."
+					}
+				},
+				"additionalProperties": false
+			}
+		}
+	},
+	"additionalProperties": false
+}
