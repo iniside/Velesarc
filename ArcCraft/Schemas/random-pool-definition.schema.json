@@ -1,0 +1,138 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "random-pool-definition.schema.json",
+	"title": "ArcCraft Random Pool Definition",
+	"description": "Schema for ArcCraft random pool definition JSON files.",
+	"type": "object",
+	"required": ["$type", "name"],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Relative path to the JSON schema file."
+		},
+		"$type": {
+			"const": "RandomPoolDefinition",
+			"description": "Asset type discriminator."
+		},
+		"name": {
+			"type": "string",
+			"description": "Display name for the random pool."
+		},
+		"entries": {
+			"type": "array",
+			"description": "All possible entries in this pool.",
+			"items": { "$ref": "#/$defs/randomPoolEntry" }
+		}
+	},
+	"additionalProperties": false,
+	"$defs": {
+		"weightModifier": {
+			"type": "object",
+			"description": "Tag-conditional weight modifier.",
+			"properties": {
+				"requiredTags": {
+					"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+				},
+				"bonusWeight": {
+					"type": "number",
+					"default": 0.0,
+					"description": "Additive bonus to entry weight when tags match."
+				},
+				"weightMultiplier": {
+					"type": "number",
+					"default": 1.0,
+					"description": "Multiplicative factor applied after bonus."
+				}
+			},
+			"additionalProperties": false
+		},
+		"valueSkewRule": {
+			"type": "object",
+			"description": "Tag-conditional value scaling.",
+			"properties": {
+				"requiredTags": {
+					"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+				},
+				"valueScale": {
+					"type": "number",
+					"default": 1.0,
+					"description": "Multiplied into effective quality."
+				},
+				"valueOffset": {
+					"type": "number",
+					"default": 0.0,
+					"description": "Added after valueScale is applied."
+				}
+			},
+			"additionalProperties": false
+		},
+		"randomPoolEntry": {
+			"type": "object",
+			"description": "A single entry in the random pool.",
+			"required": ["name"],
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "Display name for the entry."
+				},
+				"requiredIngredientTags": {
+					"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+				},
+				"denyIngredientTags": {
+					"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer"
+				},
+				"minQuality": {
+					"type": "number",
+					"default": 0.0,
+					"minimum": 0.0,
+					"description": "Minimum average quality for eligibility."
+				},
+				"baseWeight": {
+					"type": "number",
+					"default": 1.0,
+					"exclusiveMinimum": 0.0,
+					"description": "Base selection weight."
+				},
+				"qualityWeightScaling": {
+					"type": "number",
+					"default": 0.0,
+					"description": "How much quality scales the weight."
+				},
+				"weightModifiers": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/weightModifier" }
+				},
+				"cost": {
+					"type": "number",
+					"default": 1.0,
+					"minimum": 0.0,
+					"description": "Budget cost when selected."
+				},
+				"valueScale": {
+					"type": "number",
+					"default": 1.0,
+					"description": "Base multiplier for effective quality."
+				},
+				"valueSkew": {
+					"type": "number",
+					"default": 0.0,
+					"description": "Base offset for effective quality."
+				},
+				"scaleByQuality": {
+					"type": "boolean",
+					"default": true,
+					"description": "Whether quality factors into effective value."
+				},
+				"valueSkewRules": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/valueSkewRule" }
+				},
+				"modifiers": {
+					"type": "array",
+					"items": { "$ref": "arc-craft-common.schema.json#/$defs/craftModifier" }
+				}
+			},
+			"additionalProperties": false
+		}
+	}
+}

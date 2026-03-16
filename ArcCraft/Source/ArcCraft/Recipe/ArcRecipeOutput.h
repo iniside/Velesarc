@@ -1,0 +1,288 @@
+/**
+ * This file is part of Velesarc
+ * Copyright (C) 2025-2025 Lukasz Baran
+ *
+ * Licensed under the European Union Public License (EUPL), Version 1.2 or –
+ * as soon as they will be approved by the European Commission – later versions
+ * of the EUPL (the "License");
+ *
+ * You may not use this work except in compliance with the License.
+ * You may get a copy of the License at:
+ *
+ * https://eupl.eu/
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ */
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Misc/DataValidation.h"
+#include "GameplayTagContainer.h"
+#include "Items/ArcItemTypes.h"
+#include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "StructUtils/InstancedStruct.h"
+#include "Templates/SubclassOf.h"
+
+#include "ArcRecipeOutput.generated.h"
+
+struct FArcItemSpec;
+struct FArcCraftPendingModifier;
+class UGameplayEffect;
+class UChooserTable;
+class UArcRandomModifierEntry;
+class UArcRandomPoolDefinition;
+
+/**
+ * Base struct for output modifier rules.
+ * Each modifier defines how ingredients affect the crafted output item.
+ * Uses instanced struct pattern for extensibility.
+ */
+USTRUCT(BlueprintType)
+struct ARCCRAFT_API FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** Slot tag this modifier targets at recipe level.
+	 *  Empty = unslotted (always applies, bypasses slot resolution). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slot")
+	FGameplayTag SlotTag;
+
+	/** Minimum quality threshold. Only trigger if average quality >= this value. 0 = always. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
+	float MinQualityThreshold = 0.0f;
+
+	/** Tags that must ALL be present on any single consumed ingredient to trigger this modifier.
+	 *  Empty = always match (no tag requirement). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
+	FGameplayTagContainer TriggerTags;
+
+	/** Manual weight for selection priority among competing modifiers.
+	 *  Higher weight = more likely to be chosen during slot resolution. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier", meta = (ClampMin = "0.001"))
+	float Weight = 1.0f;
+
+	/** How much quality affects output values.
+	 *  0.0 = quality has no effect, 1.0 = linear scaling, 2.0 = double scaling. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier")
+	float QualityScalingFactor = 1.0f;
+
+	/**
+	 * Evaluate this modifier and produce pending results for slot-based resolution.
+	 * Each pending modifier carries exactly one atomic result (stat, ability, or effect).
+	 * Checks eligibility (MinQualityThreshold, TriggerTags) before producing results.
+	 *
+	 * @param ConsumedIngredients     The actual items matched to each ingredient slot.
+	 * @param IngredientQualityMults  Quality multiplier for each ingredient slot (parallel array).
+	 * @param AverageQuality          Weighted average quality across all ingredients.
+	 * @return Pending modifiers to be resolved through the recipe's slot configuration.
+	 */
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const;
+
+	virtual ~FArcRecipeOutputModifier() = default;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const;
+#endif
+
+protected:
+	/** Check if this modifier passes MinQualityThreshold and TriggerTags gates. */
+	bool IsEligible(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		float AverageQuality) const;
+};
+
+/**
+ * Adds a stat to the output item, scaled by ingredient quality.
+ * Formula: FinalValue = BaseValue * (1.0 + (AverageQuality - 1.0) * QualityScalingFactor)
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Stat Modifier"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_Stats : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** Base stat to add to the output item. */
+	UPROPERTY(EditAnywhere, Category = "Stats")
+	FArcItemAttributeStat BaseStat;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+};
+
+/**
+ * Grants an ability on the output item if any consumed ingredient has ALL of the trigger tags.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Ability Modifier"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_Abilities : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** Ability to grant when trigger conditions are met. */
+	UPROPERTY(EditAnywhere, Category = "Abilities")
+	FArcAbilityEntry AbilityToGrant;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+};
+
+/**
+ * Grants a gameplay effect on the output item based on ingredient tags and quality threshold.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Effect Modifier"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_Effects : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** Gameplay effect to grant when trigger conditions are met. */
+	UPROPERTY(EditAnywhere, Category = "Effects")
+	TSubclassOf<UGameplayEffect> EffectToGrant;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+};
+
+/**
+ * Transfers stats from a specific ingredient slot to the output item with optional scaling.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Ingredient Stat Transfer"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_TransferStats : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** Index of the ingredient slot to transfer stats from. */
+	UPROPERTY(EditAnywhere, Category = "Transfer")
+	int32 IngredientSlotIndex = 0;
+
+	/** Scale factor applied to transferred stats. */
+	UPROPERTY(EditAnywhere, Category = "Transfer")
+	float TransferScale = 1.0f;
+
+	/** If true, the ingredient's quality multiplier also scales the transferred stats. */
+	UPROPERTY(EditAnywhere, Category = "Transfer")
+	bool bScaleByQuality = true;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+};
+
+/**
+ * Evaluates a UChooserTable at craft time to randomly select modifier entries.
+ * The chooser table filters and weights rows based on ingredient tags, quality,
+ * and other context from FArcRecipeCraftContext.
+ *
+ * Each selected row returns a UArcRandomModifierEntry (as the chooser's UObject result),
+ * whose modifiers are then applied to the output item.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Random Modifier (Chooser)"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_Random : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** The ChooserTable asset to evaluate. Rows should return UArcRandomModifierEntry objects. */
+	UPROPERTY(EditAnywhere, Category = "Random")
+	TSoftObjectPtr<UChooserTable> ModifierChooserTable;
+
+	/** Number of times to roll (evaluate) the chooser table. Each roll can produce one entry. */
+	UPROPERTY(EditAnywhere, Category = "Random", meta = (ClampMin = 1))
+	int32 MaxRolls = 1;
+
+	/** If false, the same UArcRandomModifierEntry cannot be selected more than once. */
+	UPROPERTY(EditAnywhere, Category = "Random")
+	bool bAllowDuplicates = false;
+
+	/** If true, quality above QualityBonusRollThreshold grants additional rolls. */
+	UPROPERTY(EditAnywhere, Category = "Random|Quality")
+	bool bQualityAffectsRolls = false;
+
+	/** Average quality multiplier threshold at which a bonus roll is granted.
+	 *  Each full multiple of this threshold adds one bonus roll. */
+	UPROPERTY(EditAnywhere, Category = "Random|Quality",
+		meta = (EditCondition = "bQualityAffectsRolls", ClampMin = "0.01"))
+	float QualityBonusRollThreshold = 2.0f;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+};
+
+/**
+ * Self-contained random modifier that selects entries from a UArcRandomPoolDefinition.
+ * Selection strategy is determined by an instanced struct (FArcRandomPoolSelectionMode),
+ * allowing new strategies to be added without modifying this struct.
+ *
+ * Unlike FArcRecipeOutputModifier_Random (Chooser-based), this requires no external
+ * ChooserTable or per-row data assets — all entries are defined inline in the pool asset.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Random Modifier (Pool)"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_RandomPool : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** The pool definition asset containing all possible entries. */
+	UPROPERTY(EditAnywhere, Category = "RandomPool")
+	TSoftObjectPtr<UArcRandomPoolDefinition> PoolDefinition;
+
+	/** Selection mode — determines how entries are picked from the pool.
+	 *  Use "Simple Random" for weighted random rolls, or "Budget" for point-based selection. */
+	UPROPERTY(EditAnywhere, Category = "RandomPool",
+		meta = (BaseStruct = "/Script/ArcCraft.ArcRandomPoolSelectionMode", ExcludeBaseStruct))
+	FInstancedStruct SelectionMode;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+};
+
+/**
+ * Adds attribute modifiers (SetByCaller tag/magnitude pairs) to the output item,
+ * backed by a GameplayEffect. Magnitudes are scaled by ingredient quality.
+ */
+USTRUCT(BlueprintType, meta = (DisplayName = "Attribute Modifier"))
+struct ARCCRAFT_API FArcRecipeOutputModifier_AttributeModifier : public FArcRecipeOutputModifier
+{
+	GENERATED_BODY()
+
+public:
+	/** The backing GameplayEffect for SetByCaller attribute modifiers. */
+	UPROPERTY(EditAnywhere, Category = "AttributeModifier")
+	TSubclassOf<UGameplayEffect> BackingGameplayEffect;
+
+	/** Base attribute values. Keys are SetByCaller tags, values are magnitudes.
+	 *  Quality scaling applies to all magnitudes. */
+	UPROPERTY(EditAnywhere, Category = "AttributeModifier")
+	TMap<FGameplayTag, float> BaseAttributes;
+
+	virtual TArray<FArcCraftPendingModifier> Evaluate(
+		const TArray<FArcItemSpec>& ConsumedIngredients,
+		const TArray<float>& IngredientQualityMults,
+		float AverageQuality) const override;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+};

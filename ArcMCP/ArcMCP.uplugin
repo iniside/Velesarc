@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcMCP",
+	"Description": "Game-side MCP commands for ECABridge server.",
+	"Category": "ArcX",
+	"CanContainContent": false,
+	"Modules": [
+		{
+			"Name": "ArcMCP",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ECABridge",
+			"Enabled": true
+		}
+	]
+}

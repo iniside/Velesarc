@@ -1,0 +1,32 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Arc Game Settings",
+    "Description": "MVVM-based game settings system",
+    "Category": "ArcX",
+    "CreatedBy": "Lukasz Baran",
+    "CanContainContent": true,
+    "Installed": false,
+    "EditorCustomVirtualPath": "Arcx",
+    "Modules": [
+        {
+            "Name": "ArcGameSettings",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "ArcGameSettingsEditor",
+            "Type": "Editor",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        { "Name": "ArcCore", "Enabled": true },
+        { "Name": "ArcAudio", "Enabled": true },
+        { "Name": "ModelViewViewModel", "Enabled": true },
+        { "Name": "CommonUI", "Enabled": true },
+        { "Name": "EnhancedInput", "Enabled": true },
+        { "Name": "ArcEditorTools", "Enabled": true }
+    ]
+}

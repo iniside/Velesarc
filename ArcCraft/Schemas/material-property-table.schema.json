@@ -1,0 +1,95 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "material-property-table.schema.json",
+	"title": "ArcCraft Material Property Table",
+	"description": "Schema for ArcCraft material property table JSON files.",
+	"type": "object",
+	"required": ["$type", "name"],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"description": "Relative path to the JSON schema file."
+		},
+		"$type": {
+			"const": "MaterialPropertyTable",
+			"description": "Asset type discriminator."
+		},
+		"name": {
+			"type": "string",
+			"description": "Display name for the table."
+		},
+		"maxActiveRules": {
+			"type": "integer",
+			"default": 0,
+			"minimum": 0,
+			"description": "Maximum rules that can fire per craft. 0 = unlimited."
+		},
+		"extraIngredientWeightBonus": {
+			"type": "number",
+			"default": 0.1,
+			"description": "Weight bonus per extra ingredient."
+		},
+		"extraTimeWeightBonusCap": {
+			"type": "number",
+			"default": 1.0,
+			"minimum": 0.0,
+			"description": "Maximum weight bonus from extra craft time."
+		},
+		"baseBandBudget": {
+			"type": "number",
+			"default": 0.0,
+			"description": "Base budget for band selection. 0 = no budget."
+		},
+		"budgetPerQuality": {
+			"type": "number",
+			"default": 0.0,
+			"description": "Additional budget per unit of quality above 1.0."
+		},
+		"rules": {
+			"type": "array",
+			"description": "Material property rules.",
+			"items": { "$ref": "#/$defs/materialPropertyRule" }
+		}
+	},
+	"additionalProperties": false,
+	"$defs": {
+		"materialPropertyRule": {
+			"type": "object",
+			"description": "A rule mapping tag patterns to quality bands.",
+			"required": ["name"],
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "Display name for the rule."
+				},
+				"tagQuery": {
+					"$ref": "arc-craft-common.schema.json#/$defs/tagQuery",
+					"description": "Tag query that must match ingredient tags."
+				},
+				"requiredRecipeTags": {
+					"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer",
+					"description": "Recipe must have ALL of these tags for rule to fire."
+				},
+				"priority": {
+					"type": "integer",
+					"default": 0,
+					"description": "Higher priority rules are evaluated first."
+				},
+				"outputTags": {
+					"$ref": "arc-craft-common.schema.json#/$defs/gameplayTagContainer",
+					"description": "Tags added to output when this rule fires."
+				},
+				"qualityBandPreset": {
+					"type": "string",
+					"description": "Soft object path to shared QualityBandPreset asset."
+				},
+				"qualityBands": {
+					"type": "array",
+					"items": { "$ref": "arc-craft-common.schema.json#/$defs/qualityBand" },
+					"description": "Inline quality bands (ignored if preset is set)."
+				}
+			},
+			"additionalProperties": false
+		}
+	}
+}
