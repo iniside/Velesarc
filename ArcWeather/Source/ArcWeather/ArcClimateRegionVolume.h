@@ -21,6 +21,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
 	FArcClimateParams BaseClimate;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
+	float HumidityThreshold = 70.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Climate")
+	float FreezeThreshold = 0.f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Climate")
 	TObjectPtr<UBoxComponent> BoxComponent;
 

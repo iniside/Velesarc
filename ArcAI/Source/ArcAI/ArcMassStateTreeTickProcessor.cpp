@@ -4,7 +4,7 @@
 
 #include "MassStateTreeExecutionContext.h"
 #include "MassStateTreeFragments.h"
-#include "Tasks/ArcMassActorMoveToTask.h"
+#include "Tasks/ArcMassDrawDebugSphereTask.h"
 
 UArcMassStateTreeTickProcessor::UArcMassStateTreeTickProcessor()
 	: EntityQuery_Conditional(*this)

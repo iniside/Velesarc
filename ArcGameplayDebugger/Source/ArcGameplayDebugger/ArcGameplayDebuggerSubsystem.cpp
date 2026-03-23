@@ -216,6 +216,13 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ImGui::EndMenu();
 				}
 
+				// ---- Weather ----
+				if (ImGui::BeginMenu("Weather"))
+				{
+					ToggleDebuggerMenuItem("Weather Minimap", WeatherMinimapDebugger);
+					ImGui::EndMenu();
+				}
+
 				// ---- AI (includes Navigation) ----
 				if (ImGui::BeginMenu("AI"))
 				{
@@ -235,6 +242,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Spatial Hash Minimap", SpatialHashMinimapDebugger);
 					ToggleDebuggerMenuItem("Visualization Minimap", VisualizationMinimapDebugger);
+					ToggleDebuggerMenuItem("ArcIW Minimap", IWMinimapDebugger);
 					ImGui::EndMenu();
 				}
 
@@ -267,6 +275,8 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				DrawIfVisible(VisualizationMinimapDebugger);
 				DrawIfVisible(ConditionDebugger);
 				DrawIfVisible(NeedsDebugger);
+				DrawIfVisible(WeatherMinimapDebugger);
+				DrawIfVisible(IWMinimapDebugger);
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();

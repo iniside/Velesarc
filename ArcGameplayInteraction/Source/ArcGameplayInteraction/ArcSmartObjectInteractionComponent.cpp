@@ -7,7 +7,9 @@
 #include "InstancedActorsComponent.h"
 #include "MassAgentComponent.h"
 #include "MassEntityManager.h"
+#include "MassEntitySubsystem.h"
 #include "SmartObjectSubsystem.h"
+#include "ArcMass/ArcVisEntityComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
@@ -74,25 +76,31 @@ bool UArcSmartObjectInteractionComponent::StartInteraction(APawn* Interactor)
 	if (UInstancedActorsComponent* IAComp = OwnerActor->FindComponentByClass<UInstancedActorsComponent>())
 	{
 		EntityHandle = IAComp->GetMassEntityHandle();
-		TSharedPtr<FMassEntityManager> EM = IAComp->GetMassEntityManager();
-		EntityManager = EM.Get();
+
 	}
 	else if (UMassAgentComponent* AgentComp = OwnerActor->FindComponentByClass<UMassAgentComponent>())
 	{
 		EntityHandle = AgentComp->GetEntityHandle();
 	}
-
+	else if (UArcVisEntityComponent* VisEntityComp = OwnerActor->FindComponentByClass<UArcVisEntityComponent>())
+	{
+		EntityHandle = VisEntityComp->GetEntityHandle();
+	}
+	
 	if (!EntityHandle.IsValid())
 	{
 		return false;
 	}
-
+	
+	UMassEntitySubsystem* EntitySubsystem = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	
+	const FMassEntityManager& EM = EntitySubsystem->GetEntityManager();
+	
 	// Get smart object handle from the entity's fragment
 	const FArcSmartObjectOwnerFragment* SOFragment = nullptr;
-	if (EntityManager)
-	{
-		SOFragment = EntityManager->GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(EntityHandle);
-	}
+	
+	SOFragment = EM.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(EntityHandle);
+	
 
 	if (!SOFragment || !SOFragment->SmartObjectHandle.IsValid())
 	{
@@ -129,6 +137,14 @@ bool UArcSmartObjectInteractionComponent::StartInteraction(APawn* Interactor)
 		return false;
 	}
 
+	TOptional<FTransform> SlotTransform = SOSubsystem->GetSlotTransform(ClaimHandle);
+	if (SlotTransform.IsSet())
+	{
+		GameplayInteractionContext.SetSlotTransform(SlotTransform.GetValue());
+	}
+	
+	GameplayInteractionContext.SetSmartObjectActor(GetOwner());
+	
 	// Setup and activate the interaction context
 	GameplayInteractionContext.SetSmartObjectEntity(EntityHandle);
 	GameplayInteractionContext.SetContextActor(Interactor);

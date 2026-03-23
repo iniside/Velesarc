@@ -179,7 +179,7 @@ public:
 	TSubclassOf<UGameplayEffect> BackingGameplayEffect;
 
 	/** Base attribute values. Keys are SetByCaller tags, values are magnitudes. */
-	UPROPERTY(EditAnywhere, Category = "AttributeModifier")
+	UPROPERTY(EditAnywhere, Category = "AttributeModifier", meta = (Categories = "SetByCaller", ForceInlineRow))
 	TMap<FGameplayTag, float> BaseAttributes;
 
 	virtual void Apply(

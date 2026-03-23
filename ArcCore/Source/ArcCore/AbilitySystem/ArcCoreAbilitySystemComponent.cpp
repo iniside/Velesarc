@@ -41,7 +41,6 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/ActorChannel.h"
 #include "GameplayEffect.h"
-#include "GameplayEffectExecutionCalculation.h"
 #include "Net/Core/PushModel/PushModel.h"
 #include "Net/UnrealNetwork.h"
 #include "Targeting/ArcTargetingObject.h"
@@ -543,6 +542,24 @@ TArray<FInstancedStruct>& UArcCoreAbilitySystemComponent::GetActiveGameplayEffec
 	
 	static TArray<FInstancedStruct> ReturnValue;
 	return ReturnValue;
+}
+
+void UArcCoreAbilitySystemComponent::AddAbilitySystemData(const FInstancedStruct& Data)
+{
+	const UScriptStruct* StructType = Data.GetScriptStruct();
+	if (!StructType)
+	{
+		return;
+	}
+
+	const FObjectKey Key(StructType);
+	if (AbilitySystemDataMap.Contains(Key))
+	{
+		UE_LOG(LogArcAbilitySystem, Warning, TEXT("AbilitySystemData of type [%s] already exists on [%s]. Overwriting."),
+			*StructType->GetName(), *GetNameSafe(GetOwner()));
+	}
+
+	AbilitySystemDataMap.Add(Key, Data);
 }
 
 void UArcCoreAbilitySystemComponent::OnRemoveAbility(FGameplayAbilitySpec& AbilitySpec)

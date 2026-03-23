@@ -2,6 +2,7 @@
 
 #pragma once
 
+struct FAssetData;
 class UAbilitySystemComponent;
 
 class FArcGameplayEffectsDebugger
@@ -16,7 +17,14 @@ public:
 private:
 	void DrawASCSelector();
 	void DrawEffectsDetails(UAbilitySystemComponent* InASC);
+	void DrawApplyEffect(UAbilitySystemComponent* InASC);
+	void RefreshEffectAssetList();
 
 	// Currently selected ASC (weak pointer to avoid preventing GC)
 	TWeakObjectPtr<UAbilitySystemComponent> SelectedASC;
+
+	// Apply-effect state
+	TArray<FAssetData> CachedEffectAssets;
+	int32 SelectedEffectIndex = -1;
+	char EffectApplyFilter[256] = {};
 };

@@ -15,7 +15,7 @@
 UArcNiagaraVisInitObserver::UArcNiagaraVisInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcNiagaraVisTag::StaticStruct();
+	ObservedTypes.Add(FArcNiagaraVisTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -79,7 +79,7 @@ void UArcNiagaraVisInitObserver::Execute(FMassEntityManager& EntityManager, FMas
 UArcNiagaraVisDeinitObserver::UArcNiagaraVisDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcNiagaraVisTag::StaticStruct();
+	ObservedTypes.Add(FArcNiagaraVisTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }

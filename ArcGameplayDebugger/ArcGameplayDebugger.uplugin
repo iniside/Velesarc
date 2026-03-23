@@ -71,6 +71,10 @@
 		{
 			"Name": "ArcMass",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcInstancedWorld",
+			"Enabled": true
 		}
 	]
 }

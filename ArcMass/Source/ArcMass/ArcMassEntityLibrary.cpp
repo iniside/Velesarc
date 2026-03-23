@@ -2,6 +2,7 @@
 
 #include "ArcMassEntityLibrary.h"
 
+#include "ArcMassPhysicsEntityLink.h"
 #include "MassAgentComponent.h"
 #include "Engine/World.h"
 
@@ -128,6 +129,20 @@ void UArcMassEntityLibrary::DestroyEntity(const UObject* WorldContextObject, con
 	{
 		EntityManager.Defer().DestroyEntity(InEntity);
 	}
+}
+
+FMassEntityHandle UArcMassEntityLibrary::ResolveHitToEntity(const FHitResult& HitResult, EArcMassResult& ExecResult)
+{
+	FMassEntityHandle Handle = ArcMassPhysicsEntityLink::ResolveHitFromPhysicsObject(HitResult);
+	if (Handle.IsValid())
+	{
+		ExecResult = EArcMassResult::Valid;
+		return Handle;
+	}
+	
+	Handle = ArcMassPhysicsEntityLink::ResolveHit(HitResult);
+	ExecResult = Handle.IsValid() ? EArcMassResult::Valid : EArcMassResult::NotValid;
+	return Handle;
 }
 
 #undef LOCTEXT_NAMESPACE

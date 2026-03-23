@@ -23,11 +23,20 @@
 			"Name": "ArcMassPlayerPersistence",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcMassEditor",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
 		{
 			"Name": "MassGameplay",
+			"Enabled": true
+		},
+		{
+			"Name": "EngineAssetDefinitions",
 			"Enabled": true
 		}
 	]

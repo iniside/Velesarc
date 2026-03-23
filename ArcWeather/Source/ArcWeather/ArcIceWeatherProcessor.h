@@ -27,8 +27,9 @@ private:
 	float CurrentSignalTime = 0;
 };
 
-// Trait to add ice fragment + health fragment to an entity template
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Ice Trait"))
+/** Trait that adds ice and health fragments to a Mass entity.
+ *  Enables the entity to participate in ice weather effects (accumulation and thawing). */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Ice", Category = "Weather"))
 class ARCWEATHER_API UArcIceTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

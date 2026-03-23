@@ -184,7 +184,9 @@ struct ARCMASS_API FArcInfluenceSourceFragment : public FMassConstSharedFragment
 };
 
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Base trait for influence mapping sources.
+ *  Configures a Mass entity to emit influence into one or more channels within a radius. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Influence Mapping", Category = "Mass"))
 class UArcInfluenceMappingTraitBase : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

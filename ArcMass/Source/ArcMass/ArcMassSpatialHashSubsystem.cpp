@@ -597,7 +597,7 @@ void UArcMassSpatialHashUpdateProcessor::Execute(FMassEntityManager& EntityManag
 UArcMassSpatialHashObserver::UArcMassSpatialHashObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMassSpatialHashFragment::StaticStruct();
+	ObservedTypes.Add(FArcMassSpatialHashFragment::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }
@@ -653,7 +653,7 @@ void UArcMassSpatialHashObserver::Execute(FMassEntityManager& EntityManager, FMa
 UArcMassSpatialHashRemoveObserver::UArcMassSpatialHashRemoveObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMassSpatialHashFragment::StaticStruct();
+	ObservedTypes.Add(FArcMassSpatialHashFragment::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }

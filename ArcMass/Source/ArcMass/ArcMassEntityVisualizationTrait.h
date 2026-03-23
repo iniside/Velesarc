@@ -7,7 +7,9 @@
 #include "ArcMassEntityVisualization.h"
 #include "ArcMassEntityVisualizationTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Trait that adds visualization configuration to a Mass entity.
+ *  Controls how the entity is visually represented (mesh, materials, LOD settings). */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Entity Visualization", Category = "Visualization"))
 class ARCMASS_API UArcEntityVisualizationTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

@@ -12,7 +12,7 @@
 UArcMassAsyncMessageEndpointAddObserver::UArcMassAsyncMessageEndpointAddObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMassAsyncMessageEndpointTag::StaticStruct();
+	ObservedTypes.Add(FArcMassAsyncMessageEndpointTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }
@@ -48,7 +48,7 @@ void UArcMassAsyncMessageEndpointAddObserver::Execute(FMassEntityManager& Entity
 UArcMassAsyncMessageEndpointRemoveObserver::UArcMassAsyncMessageEndpointRemoveObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMassAsyncMessageEndpointTag::StaticStruct();
+	ObservedTypes.Add(FArcMassAsyncMessageEndpointTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }

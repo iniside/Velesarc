@@ -801,7 +801,7 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 UArcMobileVisEntityInitObserver::UArcMobileVisEntityInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMobileVisEntityTag::StaticStruct();
+	ObservedTypes.Add(FArcMobileVisEntityTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -928,7 +928,7 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 UArcMobileVisEntityDeinitObserver::UArcMobileVisEntityDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMobileVisEntityTag::StaticStruct();
+	ObservedTypes.Add(FArcMobileVisEntityTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -1004,7 +1004,7 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 UArcMobileVisSourceDeinitObserver::UArcMobileVisSourceDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMobileVisSourceTag::StaticStruct();
+	ObservedTypes.Add(FArcMobileVisSourceTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }

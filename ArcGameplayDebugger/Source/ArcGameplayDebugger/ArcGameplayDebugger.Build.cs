@@ -49,6 +49,7 @@ public class ArcGameplayDebugger : ModuleRules
 				"MassMovement",
 				"StateTreeModule",
 				"ArcMass",
+				"ArcInstancedWorld",
 				"ArcKnowledge",
 				"ArcArea",
 				"SmartObjectsModule",
@@ -58,7 +59,8 @@ public class ArcGameplayDebugger : ModuleRules
 				"MassSignals",
 				"ArcGameplayInteraction",
 				"ArcConditionEffects",
-				"ArcNeeds"
+				"ArcNeeds",
+				"ArcWeather"
 
 				// ... add other public dependencies that you statically link with here ...
 			}

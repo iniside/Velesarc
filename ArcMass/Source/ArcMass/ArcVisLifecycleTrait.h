@@ -7,7 +7,9 @@
 #include "ArcVisLifecycle.h"
 #include "ArcVisLifecycleTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Vis Lifecycle"))
+/** Trait that adds visualization lifecycle configuration to a Mass entity.
+ *  Controls when and how the entity's visual representation is created and destroyed. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Vis Lifecycle", Category = "Visualization"))
 class ARCMASS_API UArcVisLifecycleTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

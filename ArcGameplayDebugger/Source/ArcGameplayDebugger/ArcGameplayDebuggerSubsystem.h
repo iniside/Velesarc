@@ -29,6 +29,8 @@
 #include "ArcVisualizationMinimapDebugger.h"
 #include "ArcConditionImGuiDebugger.h"
 #include "ArcNeedsDebugger.h"
+#include "ArcWeatherMinimapDebugger.h"
+#include "ArcIWMinimapDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -90,6 +92,10 @@ private:
 	FArcConditionImGuiDebugger ConditionDebugger;
 
 	FArcNeedsDebugger NeedsDebugger;
+
+	FArcWeatherMinimapDebugger WeatherMinimapDebugger;
+
+	FArcIWMinimapDebugger IWMinimapDebugger;
 
 	void Toggle();
 	

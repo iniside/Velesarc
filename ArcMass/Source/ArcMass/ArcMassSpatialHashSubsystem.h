@@ -364,7 +364,7 @@ struct ARCMASS_API FArcMassSpatialHashCombinationIndex
 /** Trait that adds spatial hash tracking to an entity.
  *  Set bMoveable to true for entities that move (per-frame updates),
  *  false for static entities (observer-only add/remove). */
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Spatial Hash"))
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Spatial Hash", Category = "Mass"))
 class ARCMASS_API UArcMassSpatialHashTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

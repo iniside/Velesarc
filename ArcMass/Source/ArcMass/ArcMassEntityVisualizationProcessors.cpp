@@ -490,7 +490,7 @@ void UArcVisDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManage
 UArcVisEntityInitObserver::UArcVisEntityInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcVisEntityTag::StaticStruct();
+	ObservedTypes.Add(FArcVisEntityTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -624,7 +624,7 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 UArcVisEntityDeinitObserver::UArcVisEntityDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcVisEntityTag::StaticStruct();
+	ObservedTypes.Add(FArcVisEntityTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }

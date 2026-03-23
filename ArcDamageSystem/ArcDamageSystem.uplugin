@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcDamageSystem",
+	"Description": "Tag-filtered damage type attributes with condition resistance bridge",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"Plugins": [
+		{
+			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcConditionEffects",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
+		}
+	],
+	"Modules": [
+		{
+			"Name": "ArcDamageSystem",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

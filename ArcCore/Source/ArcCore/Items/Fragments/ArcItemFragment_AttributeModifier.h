@@ -50,7 +50,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<UGameplayEffect> BackingGameplayEffect;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, meta = (Categories = "SetByCaller", ForceInlineRow))
 	TMap<FGameplayTag, float> Attributes;
 
 	FActiveGameplayEffectHandle AppliedEffectHandle;

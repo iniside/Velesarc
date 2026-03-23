@@ -37,6 +37,14 @@ struct ARCWEATHER_API FArcWeatherCell
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
 	float HumidityOffset = 0.f;
 
+	// Humidity percentage at which this cell counts as "raining"
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
+	float HumidityThreshold = 70.f;
+
+	// Temperature (C) below which this cell counts as "freezing"
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
+	float FreezeThreshold = 0.f;
+
 	FArcClimateParams GetEffective() const
 	{
 		FArcClimateParams Result;
@@ -79,6 +87,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
 	FArcClimateParams DefaultClimate;
 
+	// Default thresholds for cells outside any climate region
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
+	float DefaultHumidityThreshold = 70.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
+	float DefaultFreezeThreshold = 0.f;
+
+	// Degrees below freeze threshold at which cold intensity = 1.0 (unclamped beyond)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather", meta = (ClampMin = "0.01"))
+	float ColdNormalizationDelta = 15.f;
+
+	// Humidity points above rain threshold at which rain intensity = 1.0 (unclamped beyond)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather", meta = (ClampMin = "0.01"))
+	float RainNormalizationDelta = 30.f;
+
 	// --- Seasons ---
 
 	// Each entry is a climate offset applied globally for that season
@@ -99,11 +122,13 @@ public:
 	// --- Base climate (set by region volumes on BeginPlay) ---
 
 	UFUNCTION(BlueprintCallable, Category = "Weather")
-	void SetBaseClimate(const FIntVector& CellCoords, const FArcClimateParams& Climate);
+	void SetBaseClimate(const FIntVector& CellCoords, const FArcClimateParams& Climate,
+	    float HumidityThreshold, float FreezeThreshold);
 
 	// Set base climate for all cells overlapping the given bounds
 	UFUNCTION(BlueprintCallable, Category = "Weather")
-	void SetBaseClimateInBounds(const FBox& Bounds, const FArcClimateParams& Climate);
+	void SetBaseClimateInBounds(const FBox& Bounds, const FArcClimateParams& Climate,
+	    float HumidityThreshold, float FreezeThreshold);
 
 	// Remove cells within bounds (reverts them to DefaultClimate)
 	UFUNCTION(BlueprintCallable, Category = "Weather")
@@ -132,6 +157,27 @@ public:
 	// Returns base climate at a world location (no weather offset)
 	UFUNCTION(BlueprintCallable, Category = "Weather")
 	FArcClimateParams GetBaseClimateAtLocation(const FVector& Location) const;
+
+	// Returns true if it is raining at a world location (humidity >= threshold AND above freezing)
+	UFUNCTION(BlueprintCallable, Category = "Weather")
+	bool IsRainingAtLocation(const FVector& Location) const;
+
+	// Returns true if it is freezing at a world location (temperature < freeze threshold)
+	UFUNCTION(BlueprintCallable, Category = "Weather")
+	bool IsFreezingAtLocation(const FVector& Location) const;
+
+	// Returns cold intensity: 0 if not freezing, (FreezeThreshold - Temperature) / ColdNormalizationDelta otherwise
+	UFUNCTION(BlueprintCallable, Category = "Weather")
+	float GetColdIntensityAtLocation(const FVector& Location) const;
+
+	// Returns rain intensity: 0 if not raining, (Humidity - HumidityThreshold) / RainNormalizationDelta otherwise
+	UFUNCTION(BlueprintCallable, Category = "Weather")
+	float GetRainIntensityAtLocation(const FVector& Location) const;
+
+	// --- Debug accessors ---
+
+	const TMap<FIntVector, FArcWeatherCell>& GetGrid() const { return Grid; }
+	TMap<FIntVector, FArcWeatherCell>& GetMutableGrid() { return Grid; }
 
 private:
 	// Sparse global grid: only cells that have been written to exist

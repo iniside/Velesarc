@@ -11,7 +11,7 @@
  * Trait that configures an NPC Mass entity for area assignment.
  * Adds the assignment fragment, config shared fragment, and the assignment tag.
  */
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Area Assignment"))
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Area Assignment", Category = "Area"))
 class ARCAREA_API UArcAreaAssignmentTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

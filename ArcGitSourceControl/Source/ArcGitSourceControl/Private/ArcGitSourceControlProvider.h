@@ -74,8 +74,8 @@ public:
 	virtual bool UsesFileRevisions() const override;
 	virtual bool UsesSnapshots() const override;
 	virtual bool AllowsDiffAgainstDepot() const override;
-	virtual TOptional<bool> IsAtLatestRevision() const override;
-	virtual TOptional<int> GetNumLocalChanges() const override;
+	virtual TOptional<bool> HasChangesToSync() const override;
+	virtual TOptional<bool> HasChangesToCheckIn() const override;
 	virtual void Tick() override;
 	virtual TArray< TSharedRef<class ISourceControlLabel> > GetLabels( const FString& InMatchingSpec ) const override;
 	virtual TArray<FSourceControlChangelistRef> GetChangelists( EStateCacheUsage::Type InStateCacheUsage ) override;

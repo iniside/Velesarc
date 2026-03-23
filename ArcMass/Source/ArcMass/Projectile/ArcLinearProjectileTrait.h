@@ -8,7 +8,9 @@
 
 #include "ArcLinearProjectileTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Trait that configures a Mass entity as a linear (straight-line) projectile.
+ *  Adds projectile config for speed, lifetime, collision, and damage. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Linear Projectile", Category = "Projectiles"))
 class ARCMASS_API UArcLinearProjectileTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

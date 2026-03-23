@@ -24,7 +24,6 @@
 	],
 	"Plugins": [
 		{"Name": "GameplayAbilities", "Enabled": true},
-		{"Name": "MassEntity", "Enabled": true},
 		{"Name": "MassGameplay", "Enabled": true},
 		{"Name": "ArcCore", "Enabled": true}
 	]

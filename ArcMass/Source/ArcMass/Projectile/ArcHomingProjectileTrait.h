@@ -8,7 +8,9 @@
 
 #include "ArcHomingProjectileTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Trait that configures a Mass entity as a homing projectile.
+ *  Adds projectile config and homing config for target tracking behavior. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Homing Projectile", Category = "Projectiles"))
 class ARCMASS_API UArcHomingProjectileTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

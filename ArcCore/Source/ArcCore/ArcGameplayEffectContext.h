@@ -69,7 +69,7 @@ public:
 	FArcTargetDataId TargetDataHandle;
 
 	// it's only going to be valid on Authority.
-	TArray<FMassEntityHandle> TargetEntities;
+	FMassEntityHandle TargetEntity;
 
 	mutable FMassEntityHandle InstigatorEntity;
 

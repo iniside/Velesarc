@@ -334,7 +334,9 @@ protected:
 // Trait — opts entities into the lifecycle system
 // ---------------------------------------------------------------------------
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Lifecycle"))
+/** Trait that opts a Mass entity into the lifecycle system.
+ *  Adds lifecycle config for managing entity spawning, despawning, and state transitions. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Lifecycle", Category = "Lifecycle"))
 class ARCMASS_API UArcLifecycleTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

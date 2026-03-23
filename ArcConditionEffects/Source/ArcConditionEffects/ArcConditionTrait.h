@@ -15,22 +15,11 @@
 // A composite trait is provided for convenience.
 // ---------------------------------------------------------------------------
 
-// ===== MACRO: Declares a per-condition trait ================================
+// Group A: Hysteresis — conditions that ramp up and decay with thermal-style curves.
 
-#define ARC_DECLARE_CONDITION_TRAIT(Name) \
-	UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = Name##Condition)) \
-	class ARCCONDITIONEFFECTS_API UArc##Name##ConditionTrait : public UMassEntityTraitBase \
-	{ \
-		GENERATED_BODY() \
-	public: \
-		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Condition") \
-		FArc##Name##ConditionConfig ConditionConfig; \
-		\
-		virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override; \
-	};
-
-// Group A: Hysteresis
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Burning Condition"))
+/** Trait that adds the burning condition to a Mass entity.
+ *  Thermal hysteresis condition — entity accumulates heat and ignites above threshold. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Burning Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcBurningConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -42,7 +31,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = BleedingCondition))
+/** Trait that adds the bleeding condition to a Mass entity.
+ *  Biological hysteresis condition — entity loses health over time from open wounds. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Bleeding Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcBleedingConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -54,7 +45,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = ChilledCondition))
+/** Trait that adds the chilled condition to a Mass entity.
+ *  Thermal hysteresis condition — entity accumulates cold, slowing movement and actions. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Chilled Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcChilledConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -66,7 +59,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = ShockedCondition))
+/** Trait that adds the shocked condition to a Mass entity.
+ *  Environmental hysteresis condition — electrical buildup causes periodic stuns. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Shocked Condition"), Category = "Conditions")
 class ARCCONDITIONEFFECTS_API UArcShockedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -78,7 +73,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = PoisonedCondition))
+/** Trait that adds the poisoned condition to a Mass entity.
+ *  Biological hysteresis condition — toxins deal sustained damage and reduce healing. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Poisoned Condition"))
 class ARCCONDITIONEFFECTS_API UArcPoisonedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -90,7 +87,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = DiseasedCondition))
+/** Trait that adds the diseased condition to a Mass entity.
+ *  Biological hysteresis condition — infection weakens stats and may spread to nearby entities. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Diseased Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcDiseasedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -102,7 +101,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = WeakenedCondition))
+/** Trait that adds the weakened condition to a Mass entity.
+ *  Biological hysteresis condition — reduces entity's damage output and resistances. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Weakened Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcWeakenedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -114,8 +115,11 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-// Group B: Linear
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = OiledCondition))
+// Group B: Linear — conditions that decay at a constant rate over time.
+
+/** Trait that adds the oiled condition to a Mass entity.
+ *  Linear decay condition — coats the entity in oil, increasing fire vulnerability. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Oiled Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcOiledConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -127,7 +131,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = WetCondition))
+/** Trait that adds the wet condition to a Mass entity.
+ *  Linear decay condition — soaks the entity, increasing shock vulnerability and reducing fire. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Wet Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcWetConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -139,7 +145,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = CorrodedCondition))
+/** Trait that adds the corroded condition to a Mass entity.
+ *  Linear decay condition — degrades armor and equipment durability over time. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Corroded Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcCorrodedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -151,8 +159,11 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-// Group C: Environmental
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = BlindedCondition))
+// Group C: Environmental — conditions triggered by the surrounding environment.
+
+/** Trait that adds the blinded condition to a Mass entity.
+ *  Environmental condition — reduces perception range and accuracy. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Blinded Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcBlindedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -164,7 +175,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = SuffocatingCondition))
+/** Trait that adds the suffocating condition to a Mass entity.
+ *  Environmental condition — entity takes damage from lack of breathable air. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Suffocating Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcSuffocatingConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -176,7 +189,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = ExhaustedCondition))
+/** Trait that adds the exhausted condition to a Mass entity.
+ *  Environmental condition — drains stamina and slows movement from overexertion. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Exhausted Condition", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcExhaustedConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -194,7 +209,9 @@ public:
 // Composite Trait — adds all 13 conditions at once (convenience)
 // ---------------------------------------------------------------------------
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "All Conditions"))
+/** Trait that adds all 13 condition types to a Mass entity at once.
+ *  Convenience composite — configures thermal, biological, linear, and environmental conditions. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc All Conditions", Category = "Conditions"))
 class ARCCONDITIONEFFECTS_API UArcAllConditionsTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

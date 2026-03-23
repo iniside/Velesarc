@@ -547,7 +547,7 @@ void UArcMassReplicationSubsystem::ApplyPayloadToEntity(FMassEntityHandle Entity
 UArcMassNetIdAssignObserver::UArcMassNetIdAssignObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMassReplicatedTag::StaticStruct();
+	ObservedTypes.Add(FArcMassReplicatedTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }

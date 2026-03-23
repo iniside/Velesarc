@@ -19,7 +19,7 @@
 UArcProjectileActorInitObserver::UArcProjectileActorInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcProjectileTag::StaticStruct();
+	ObservedTypes.Add(FArcProjectileTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -80,7 +80,7 @@ void UArcProjectileActorInitObserver::Execute(FMassEntityManager& EntityManager,
 UArcProjectileActorDeinitObserver::UArcProjectileActorDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcProjectileTag::StaticStruct();
+	ObservedTypes.Add(FArcProjectileTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }

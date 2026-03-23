@@ -13,7 +13,7 @@
 UArcSmartObjectAddObserver::UArcSmartObjectAddObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcSmartObjectTag::StaticStruct();
+	ObservedTypes.Add(FArcSmartObjectTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -63,7 +63,7 @@ void UArcSmartObjectAddObserver::Execute(FMassEntityManager& EntityManager, FMas
 UArcSmartObjectRemoveObserver::UArcSmartObjectRemoveObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcSmartObjectTag::StaticStruct();
+	ObservedTypes.Add(FArcSmartObjectTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }

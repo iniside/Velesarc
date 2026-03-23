@@ -18,6 +18,10 @@
 
 #include "GameplayEffectComponents/TargetTagRequirementsGameplayEffectComponent.h"
 #include "Items/ArcItemDefinition.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "GameplayEffect.h"
+#include "AssetRegistry/AssetData.h"
+#include "Engine/Blueprint.h"
 
 namespace Arcx::GameplayDebugger::Effects
 {
@@ -154,6 +158,8 @@ void FArcGameplayEffectsDebugger::Draw()
 	UAbilitySystemComponent* ASC = SelectedASC.Get();
 	if (ASC)
 	{
+		DrawApplyEffect(ASC);
+		ImGui::Separator();
 		DrawEffectsDetails(ASC);
 	}
 	else
@@ -289,6 +295,119 @@ void FArcGameplayEffectsDebugger::DrawASCSelector()
 			}
 		}
 		ImGui::EndCombo();
+	}
+}
+
+void FArcGameplayEffectsDebugger::RefreshEffectAssetList()
+{
+	CachedEffectAssets.Reset();
+	SelectedEffectIndex = -1;
+
+	TArray<FAssetData> FoundAssets;
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	AssetRegistry.GetAssetsByClass(UBlueprint::StaticClass()->GetClassPathName(), FoundAssets, /*bSearchSubClasses=*/true);
+	
+	FString EffectExportPath = FObjectPropertyBase::GetExportPath(UGameplayEffect::StaticClass());
+	for (const FAssetData& EffectAsset : FoundAssets)
+	{
+		if (EffectAsset.FindTag(FBlueprintTags::NativeParentClassPath))
+		{
+			FString ParentClassPath;
+			EffectAsset.GetTagValue(FBlueprintTags::NativeParentClassPath, ParentClassPath);
+
+			
+			if (ParentClassPath == EffectExportPath)
+			{
+				CachedEffectAssets.Add(EffectAsset);
+			}
+		}
+	}
+	CachedEffectAssets.Sort([](const FAssetData& A, const FAssetData& B)
+	{
+		return A.AssetName.LexicalLess(B.AssetName);
+	});
+}
+
+void FArcGameplayEffectsDebugger::DrawApplyEffect(UAbilitySystemComponent* InASC)
+{
+	if (!ImGui::CollapsingHeader("Apply Effect"))
+	{
+		return;
+	}
+
+	// Lazy-load the asset list on first open
+	if (CachedEffectAssets.IsEmpty())
+	{
+		RefreshEffectAssetList();
+	}
+
+	if (ImGui::Button("Refresh"))
+	{
+		RefreshEffectAssetList();
+	}
+
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(300);
+	ImGui::InputText("##ApplyFilter", EffectApplyFilter, IM_ARRAYSIZE(EffectApplyFilter));
+	ImGui::SameLine();
+	if (ImGui::SmallButton("Clear##ApplyFilterClear"))
+	{
+		EffectApplyFilter[0] = '\0';
+	}
+
+	FString FilterStr(EffectApplyFilter);
+
+	ImGui::BeginChild("##EffectList", ImVec2(0, 200), ImGuiChildFlags_Borders);
+	for (int32 Idx = 0; Idx < CachedEffectAssets.Num(); Idx++)
+	{
+		const FAssetData& Asset = CachedEffectAssets[Idx];
+		FString AssetName = Asset.AssetName.ToString();
+
+		if (!FilterStr.IsEmpty() && !AssetName.Contains(FilterStr))
+		{
+			continue;
+		}
+
+		bool bSelected = (Idx == SelectedEffectIndex);
+		if (ImGui::Selectable(TCHAR_TO_ANSI(*AssetName), bSelected))
+		{
+			SelectedEffectIndex = Idx;
+		}
+	}
+	ImGui::EndChild();
+
+	bool bCanApply = InASC && SelectedEffectIndex >= 0 && SelectedEffectIndex < CachedEffectAssets.Num();
+	if (!bCanApply)
+	{
+		ImGui::BeginDisabled();
+	}
+
+	if (ImGui::Button("Apply"))
+	{
+		UObject* LoadedAsset = CachedEffectAssets[SelectedEffectIndex].GetAsset();
+		UBlueprint* GEBlueprint = Cast<UBlueprint>(LoadedAsset);
+		if (GEBlueprint)
+		{
+			if (GEBlueprint->GeneratedClass && GEBlueprint->GeneratedClass->IsChildOf(UGameplayEffect::StaticClass()))
+			{
+				UClass* GEClass = GEBlueprint->GeneratedClass;
+				const UGameplayEffect* GEDefault = GEClass->GetDefaultObject<UGameplayEffect>();
+				InASC->ApplyGameplayEffectToSelf(GEDefault, 1.0f, InASC->MakeEffectContext());
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Failed to load GameplayEffect from asset: %s"), *CachedEffectAssets[SelectedEffectIndex].AssetName.ToString());
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Failed to load GameplayEffect from asset: %s"), *CachedEffectAssets[SelectedEffectIndex].AssetName.ToString());
+		}
+	}
+
+	if (!bCanApply)
+	{
+		ImGui::EndDisabled();
 	}
 }
 

@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcInstancedWorld",
+	"Description": "Converts level-placed composite actors into Mass entities with lazy ISM representation.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"EditorCustomVirtualPath": "Arcx",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Modules": [
+		{
+			"Name": "ArcInstancedWorld",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcInstancedWorldEditor",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "MassGameplay",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMass",
+			"Enabled": true
+		}
+	]
+}

@@ -24,6 +24,7 @@
 #include "AbilitySystemGlobals.h"
 #include "ArcAbilitiesBPF.h"
 #include "ArcAbilitiesTypes.h"
+#include "ArcGameplayAbilityActorInfo.h"
 #include "ArcGameplayEffectContext.h"
 
 #include "ArcCore/AbilitySystem/ArcCoreAbilitySystemComponent.h"
@@ -153,10 +154,13 @@ FGameplayEffectContextHandle UArcItemGameplayAbility::MakeEffectContext(const FG
 	FGameplayEffectContextHandle ContextHandle = Super::MakeEffectContext(Handle, ActorInfo);
 	if (SourceItemsStore)
 	{
+		const FArcGameplayAbilityActorInfo* ArcActorInfo = static_cast<const FArcGameplayAbilityActorInfo*>(ActorInfo);
+		
 		FArcGameplayEffectContext* Context = static_cast<FArcGameplayEffectContext*>(ContextHandle.Get());
 		Context->AddSourceObject(SourceItemsStore);
 		Context->SetSourceItemHandle(GetSourceItemHandle());
 		Context->SetSourceItemPtr(GetSourceItemEntryPtr());
+		Context->InstigatorEntity = ArcActorInfo->EntityHandle;
 	}
 	return ContextHandle;
 }

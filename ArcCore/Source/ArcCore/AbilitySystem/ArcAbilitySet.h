@@ -26,6 +26,7 @@
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
 #include "Targeting/ArcTargetingTypes.h"
+#include "StructUtils/InstancedStruct.h"
 
 #include "ArcAbilitySet.generated.h"
 
@@ -181,4 +182,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly
 		, Category = "Targeting")
 	TMap<FGameplayTag, FArcCoreGlobalTargetingEntry> GlobalTargetingPresets;
+
+	UPROPERTY(EditDefaultsOnly
+		, Category = "Ability System Data"
+		, meta = (BaseStruct = "/Script/ArcCore.ArcAbilitySystemData", ExcludeBaseStruct))
+	TArray<FInstancedStruct> AbilitySystemData;
 };

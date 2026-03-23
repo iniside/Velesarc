@@ -30,7 +30,7 @@
  * Trait that configures a Mass entity as a crafting station.
  * Add this to a MassEntityConfigAsset to enable entity-backed crafting.
  */
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Craft Station"))
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Craft Station", Category = "Crafting"))
 class ARCCRAFT_API UArcCraftStationTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

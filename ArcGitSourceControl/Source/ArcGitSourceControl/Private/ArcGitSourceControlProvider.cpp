@@ -334,14 +334,22 @@ bool FArcGitSourceControlProvider::AllowsDiffAgainstDepot() const
 	return true;
 }
 
-TOptional<bool> FArcGitSourceControlProvider::IsAtLatestRevision() const
+TOptional<bool> FArcGitSourceControlProvider::HasChangesToSync() const
 {
-	return bCachedIsAtLatest;
+	if (bCachedIsAtLatest.IsSet())
+	{
+		return TOptional<bool>(!bCachedIsAtLatest.GetValue());
+	}
+	return TOptional<bool>();
 }
 
-TOptional<int> FArcGitSourceControlProvider::GetNumLocalChanges() const
+TOptional<bool> FArcGitSourceControlProvider::HasChangesToCheckIn() const
 {
-	return CachedNumLocalChanges;
+	if (CachedNumLocalChanges.IsSet())
+	{
+		return TOptional<bool>(CachedNumLocalChanges.GetValue() > 0);
+	}
+	return TOptional<bool>();
 }
 
 TSharedPtr<IArcGitSourceControlWorker, ESPMode::ThreadSafe> FArcGitSourceControlProvider::CreateWorker(const FName& InOperationName) const

@@ -63,7 +63,7 @@ public:
  * Adds FArcSmartObjectOwnerFragment and FArcSmartObjectDefinitionSharedFragment.
  * SmartObject creation must be handled by an observer or spawning system.
  */
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Smart Object Owner"))
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Smart Object Owner", Category = "SmartObjects"))
 class ARCMASS_API UArcMassSmartObjectOwnerTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

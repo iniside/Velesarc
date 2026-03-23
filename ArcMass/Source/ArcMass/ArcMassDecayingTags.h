@@ -184,7 +184,9 @@ private:
 // Trait — opts entities into the decaying tags system
 // ---------------------------------------------------------------------------
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Decaying Tags"))
+/** Trait that opts a Mass entity into the decaying tags system.
+ *  Allows tags with automatic time-based expiration to be applied to this entity. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Decaying Tags", Category = "Mass"))
 class ARCMASS_API UArcMassDecayingTagTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

@@ -23,7 +23,7 @@ class UStateTree;
  *
  * Requires FTransformFragment.
  */
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Area"))
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Area", Category = "Area"))
 class ARCAREA_API UArcAreaTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

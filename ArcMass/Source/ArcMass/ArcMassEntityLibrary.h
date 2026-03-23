@@ -44,4 +44,8 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "ArcMass", meta = (WorldContext = "WorldContextObject", DefaultToSelf = "WorldContextObject"))
 	static ARCMASS_API void DestroyEntity(const UObject* WorldContextObject, const FMassEntityHandle& InEntity);
+
+	/** Resolve a trace hit to the owning Mass entity, if one was attached via the physics link system. */
+	UFUNCTION(BlueprintCallable, Category = "ArcMass|PhysicsLink", meta = (ExpandEnumAsExecs = "ExecResult"))
+	static ARCMASS_API FMassEntityHandle ResolveHitToEntity(const FHitResult& HitResult, EArcMassResult& ExecResult);
 };

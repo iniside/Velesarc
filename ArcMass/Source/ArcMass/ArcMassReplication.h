@@ -368,7 +368,9 @@ protected:
 // Trait — opts entities into replication
 // ---------------------------------------------------------------------------
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Mass Replication"))
+/** Trait that opts a Mass entity into network replication.
+ *  Adds the replication config fragment so the entity's state is synchronized across clients. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Mass Replication", Category = "Replication"))
 class ARCMASS_API UArcMassReplicationTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

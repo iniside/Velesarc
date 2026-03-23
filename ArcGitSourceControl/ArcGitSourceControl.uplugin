@@ -11,7 +11,7 @@
     "Modules": [
         {
             "Name": "ArcGitSourceControl",
-            "Type": "Developer",
+            "Type": "DeveloperTool",
             "LoadingPhase": "Default"
         }
     ]

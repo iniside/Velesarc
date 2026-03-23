@@ -23,7 +23,7 @@
 UArcVisLifecycleInitObserver::UArcVisLifecycleInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcVisLifecycleTag::StaticStruct();
+	ObservedTypes.Add(FArcVisLifecycleTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = false;
 }

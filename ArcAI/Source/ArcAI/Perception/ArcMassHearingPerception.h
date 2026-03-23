@@ -123,7 +123,9 @@ struct ARCAI_API FArcMassHearingPerceivableTag : public FMassTag
 	GENERATED_BODY()
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Hearing Perceiver"))
+/** Trait that adds hearing perception sensing to a Mass entity.
+ *  Configures the entity to detect sounds with age decay and strength thresholds. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Perception Hearing Perceiver", Category = "Perception"))
 class ARCAI_API UArcPerceptionHearingPerceiverTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -135,7 +137,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Hearing Perceivable"))
+/** Trait that marks a Mass entity as perceivable by hearing.
+ *  Adds the hearing perceivable tag so perceivers can detect sounds from this entity. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Perception Hearing Perceivable", Category = "Perception"))
 class ARCAI_API UArcPerceptionHearingPerceivableTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

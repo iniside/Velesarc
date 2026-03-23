@@ -11,7 +11,7 @@
 // Per-condition fragment, config, and tag definitions.
 //
 // Each condition gets:
-//   FArc{Name}ConditionFragment  — per-entity mutable state (FMassFragment)
+//   FArc{Name}ConditionFragment  — per-entity mutable state (FArcConditionFragment)
 //   FArc{Name}ConditionConfig    — per-archetype tuning (FMassConstSharedFragment)
 //   FArc{Name}ConditionTag       — observer trigger tag (FMassTag)
 //
@@ -19,32 +19,18 @@
 // conditions they can receive via individual traits.
 // ---------------------------------------------------------------------------
 
-// ===== MACRO: Declares a condition fragment + config + tag =================
+/**
+ * Base fragment for all conditions. Holds the shared FArcConditionState.
+ * Named condition fragments inherit from this instead of FMassFragment directly.
+ */
+USTRUCT(BlueprintType)
+struct ARCCONDITIONEFFECTS_API FArcConditionFragment : public FMassFragment
+{
+	GENERATED_BODY()
 
-#define ARC_DECLARE_CONDITION(Name, DefaultGroup, DefaultThreshold, DefaultDecay, DefaultOverload, DefaultBurnoutDur, DefaultBurnoutMult, DefaultBurnoutTarget) \
-	USTRUCT() \
-	struct ARCCONDITIONEFFECTS_API FArc##Name##ConditionFragment : public FMassFragment \
-	{ \
-		GENERATED_BODY() \
-		FArcConditionState State; \
-	}; \
-	\
-	USTRUCT(BlueprintType) \
-	struct ARCCONDITIONEFFECTS_API FArc##Name##ConditionConfig : public FMassConstSharedFragment \
-	{ \
-		GENERATED_BODY() \
-		UPROPERTY(EditAnywhere, Category = "Condition") \
-		FArcConditionConfig Config = { DefaultGroup, DefaultThreshold, DefaultDecay, DefaultOverload, DefaultBurnoutDur, DefaultBurnoutMult, DefaultBurnoutTarget }; \
-	}; \
-	\
-	template<> struct TMassFragmentTraits<FArc##Name##ConditionConfig> final \
-	{ enum { AuthorAcceptsItsNotTriviallyCopyable = true }; }; \
-	\
-	USTRUCT() \
-	struct ARCCONDITIONEFFECTS_API FArc##Name##ConditionTag : public FMassTag \
-	{ \
-		GENERATED_BODY() \
-	};
+	UPROPERTY(BlueprintReadOnly)
+	FArcConditionState State;
+};
 
 // ===========================================================================
 // Group A: Hysteresis conditions
@@ -52,12 +38,9 @@
 
 //                          Name        Group                                  Thresh  Decay  Overload  BurnoutDur  BurnoutMult  BurnoutTarget
 USTRUCT(BlueprintType)
-struct ARCCONDITIONEFFECTS_API FArcBurningConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcBurningConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	
-	UPROPERTY(BlueprintReadOnly)
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -81,10 +64,9 @@ struct ARCCONDITIONEFFECTS_API FArcBurningConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcBleedingConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcBleedingConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -108,10 +90,9 @@ struct ARCCONDITIONEFFECTS_API FArcBleedingConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcChilledConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcChilledConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -135,10 +116,9 @@ struct ARCCONDITIONEFFECTS_API FArcChilledConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcShockedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcShockedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -162,10 +142,9 @@ struct ARCCONDITIONEFFECTS_API FArcShockedConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcPoisonedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcPoisonedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -189,10 +168,9 @@ struct ARCCONDITIONEFFECTS_API FArcPoisonedConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcDiseasedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcDiseasedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -216,10 +194,9 @@ struct ARCCONDITIONEFFECTS_API FArcDiseasedConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcWeakenedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcWeakenedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -247,10 +224,9 @@ struct ARCCONDITIONEFFECTS_API FArcWeakenedConditionTag : public FMassTag
 // ===========================================================================
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcOiledConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcOiledConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -274,10 +250,9 @@ struct ARCCONDITIONEFFECTS_API FArcOiledConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcWetConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcWetConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -301,10 +276,9 @@ struct ARCCONDITIONEFFECTS_API FArcWetConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcCorrodedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcCorrodedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -332,10 +306,9 @@ struct ARCCONDITIONEFFECTS_API FArcCorrodedConditionTag : public FMassTag
 // ===========================================================================
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcBlindedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcBlindedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -359,10 +332,9 @@ struct ARCCONDITIONEFFECTS_API FArcBlindedConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcSuffocatingConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcSuffocatingConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)
@@ -386,10 +358,9 @@ struct ARCCONDITIONEFFECTS_API FArcSuffocatingConditionTag : public FMassTag
 };
 
 USTRUCT()
-struct ARCCONDITIONEFFECTS_API FArcExhaustedConditionFragment : public FMassFragment
+struct ARCCONDITIONEFFECTS_API FArcExhaustedConditionFragment : public FArcConditionFragment
 {
 	GENERATED_BODY()
-	FArcConditionState State;
 };
 
 USTRUCT(BlueprintType)

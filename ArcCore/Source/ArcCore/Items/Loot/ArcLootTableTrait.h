@@ -26,7 +26,9 @@
 #include "Items/Loot/ArcLootFragments.h"
 #include "ArcLootTableTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Loot Table"))
+/** Trait that configures a Mass entity as a loot table.
+ *  Adds loot table config defining what items this entity can drop when looted. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Loot Table", Category = "Items"))
 class ARCCORE_API UArcLootTableTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

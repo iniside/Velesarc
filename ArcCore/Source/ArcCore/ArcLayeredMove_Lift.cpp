@@ -2,7 +2,6 @@
 
 #include "ArcLayeredMove_Lift.h"
 
-#include "ChaosNavWalkingMode.h"
 #include "MoverComponent.h"
 #include "MoverDataModelTypes.h"
 #include "MoverSimulationTypes.h"

@@ -25,7 +25,9 @@
 #include "ArcWorldConditionFragments.h"
 #include "ArcWorldConditionTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Condition Definition"))
+/** Trait that configures a Mass entity as a world condition definition.
+ *  Adds condition config for entities that represent environmental or gameplay conditions. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc World Condition", Category = "Conditions"))
 class ARCCORE_API UArcWorldConditionTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

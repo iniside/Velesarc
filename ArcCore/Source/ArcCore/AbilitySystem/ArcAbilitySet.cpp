@@ -192,4 +192,13 @@ void UArcAbilitySet::GiveToAbilitySystem(UArcCoreAbilitySystemComponent* ArcASC
 			OutGrantedHandles->AddGameplayEffectHandle(GameplayEffectHandle);
 		}
 	}
+
+	// Grant ability system data (permanent, not tracked in handles).
+	for (const FInstancedStruct& DataEntry : AbilitySystemData)
+	{
+		if (DataEntry.IsValid())
+		{
+			ArcASC->AddAbilitySystemData(DataEntry);
+		}
+	}
 }

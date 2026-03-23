@@ -361,7 +361,7 @@ EDataValidationResult FArcCraftModifier::IsDataValid(FDataValidationContext& Con
 EDataValidationResult FArcCraftModifier_Stats::IsDataValid(FDataValidationContext& Context) const
 {
 	EDataValidationResult Result = FArcCraftModifier::IsDataValid(Context);
-	if (!BaseStat.StatTag.IsValid())
+	if (!BaseStat.Attribute.IsValid())
 	{
 		Context.AddError(FText::FromString(TEXT("CraftModifier_Stats: BaseStat.StatTag is not set")));
 		Result = EDataValidationResult::Invalid;

@@ -129,7 +129,7 @@ void UArcMassPersistenceCellTrackingProcessor::Execute(
 UArcMassPersistenceInitObserver::UArcMassPersistenceInitObserver()
 	: EntityQuery{*this}
 {
-	ObservedType = FArcMassPersistenceTag::StaticStruct();
+	ObservedTypes.Add(FArcMassPersistenceTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bAutoRegisterWithProcessingPhases = true;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server);

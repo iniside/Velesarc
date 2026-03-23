@@ -148,7 +148,7 @@ float UArcLifecycleSubsystem::GetEntityPhaseTimeElapsed(const UObject* WorldCont
 UArcLifecycleInitObserver::UArcLifecycleInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcLifecycleTag::StaticStruct();
+	ObservedTypes.Add(FArcLifecycleTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = false;
 }

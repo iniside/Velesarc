@@ -26,6 +26,7 @@
 #include "ArcMacroDefines.h"
 #include "GameplayAbilitySpec.h"
 #include "StructUtils/InstancedStruct.h"
+#include "AbilitySystem/ArcAbilitySystemData.h"
 #include "Types/TargetingSystemTypes.h"
 #include "Targeting/ArcTargetingTypes.h"
 
@@ -248,12 +249,30 @@ public:
 private:
 	TMap<FActiveGameplayEffectHandle, TArray<FInstancedStruct>> ActiveGameplayEffectActions;
 
+	TMap<FObjectKey, FInstancedStruct> AbilitySystemDataMap;
+
 public:
 	void AddActiveGameplayEffectAction(FActiveGameplayEffectHandle Handle, const TArray<FInstancedStruct>& InActions);
 
 	void RemoveActiveGameplayEffectActions(FActiveGameplayEffectHandle Handle);
 
 	TArray<FInstancedStruct>& GetActiveGameplayEffectActions(FActiveGameplayEffectHandle Handle);
+
+	// Ability System Data
+public:
+	void AddAbilitySystemData(const FInstancedStruct& Data);
+
+	template<typename T>
+	const T* FindAbilitySystemData() const
+	{
+		static_assert(TIsDerivedFrom<T, FArcAbilitySystemData>::Value, "T must derive from FArcAbilitySystemData");
+		const FInstancedStruct* Found = AbilitySystemDataMap.Find(FObjectKey(T::StaticStruct()));
+		if (Found)
+		{
+			return Found->GetPtr<T>();
+		}
+		return nullptr;
+	}
 
 	const FGameplayTagCountContainer& GetGameplayTagCountContainer() const
 	{

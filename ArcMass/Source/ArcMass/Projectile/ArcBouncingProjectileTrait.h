@@ -8,7 +8,9 @@
 
 #include "ArcBouncingProjectileTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Trait that configures a Mass entity as a bouncing projectile.
+ *  Adds projectile config and bounce config for ricochet behavior on impact. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Bouncing Projectile", Category = "Projectiles"))
 class ARCMASS_API UArcBouncingProjectileTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

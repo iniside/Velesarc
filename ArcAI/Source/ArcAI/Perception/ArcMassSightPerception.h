@@ -43,7 +43,9 @@ struct TMassFragmentTraits<FArcMassSightPerceptionResult> final
 };
 
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Trait that adds sight perception sensing to a Mass entity.
+ *  Configures the entity as a perceiver that can detect other entities within its sight cone. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Perception Sight Perceiver", Category = "Perception"))
 class ARCAI_API UArcPerceptionSightPerceiverTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -56,7 +58,9 @@ public:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Sight Perceivable"))
+/** Trait that marks a Mass entity as perceivable by sight.
+ *  Adds the sight perceivable tag so perceivers can detect this entity visually. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Perception Sight Perceivable", Category = "Perception"))
 class ARCAI_API UArcPerceptionSightPerceivableTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

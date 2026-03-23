@@ -386,7 +386,7 @@ void FArcGameplayAbilitiesDebugger::DrawAbilitySystemDetails(UAbilitySystemCompo
 					Arcx::GameplayDebugger::Abilities::TableRowBool("Activate Once", AbilitySpec.bActivateOnce);
 
 					// Dynamic Tags
-					Arcx::GameplayDebugger::Abilities::TableRowTags("Dynamic Ability Tags", AbilitySpec.DynamicAbilityTags);
+					Arcx::GameplayDebugger::Abilities::TableRowTags("Dynamic Ability Tags", AbilitySpec.GetDynamicSpecSourceTags());
 
 					// SetByCaller magnitudes
 					if (!AbilitySpec.SetByCallerTagMagnitudes.IsEmpty())
