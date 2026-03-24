@@ -3,7 +3,6 @@
 #include "ArcIWActorActivateProcessor.h"
 
 #include "ArcIWTypes.h"
-#include "ArcIWPartitionActor.h"
 #include "ArcIWMassISMPartitionActor.h"
 #include "ArcIWSettings.h"
 #include "ArcIWActorPoolSubsystem.h"
@@ -74,43 +73,11 @@ void UArcIWActorActivateProcessor::SignalEntities(FMassEntityManager& EntityMana
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
 
-				AArcIWPartitionActor* Partition = Cast<AArcIWPartitionActor>(Instance.PartitionActor.Get());
-
-				// Remove ISM instances
-				bool bHasISM = false;
-				for (int32 Id : Instance.ISMInstanceIds)
-				{
-					if (Id != INDEX_NONE)
-					{
-						bHasISM = true;
-						break;
-					}
-				}
-				if (bHasISM && Partition)
-				{
-					FArcMassPhysicsLinkFragment* LinkFragment =
-						EntityManager.GetFragmentDataPtr<FArcMassPhysicsLinkFragment>(Entity);
-					if (LinkFragment)
-					{
-						AArcIWPartitionActor::DetachPhysicsLinkEntries(*LinkFragment);
-					}
-					Partition->RemoveCompositeISMInstances(
-						Instance.MeshSlotBase,
-						Config.MeshDescriptors,
-						Instance.ISMInstanceIds,
-						EntityManager);
-
-					for (int32& Id : Instance.ISMInstanceIds)
-					{
-						Id = INDEX_NONE;
-					}
-				}
-
 				AArcIWMassISMPartitionActor* MassISMPartition = Cast<AArcIWMassISMPartitionActor>(Instance.PartitionActor.Get());
 				if (MassISMPartition)
 				{
-					// DeactivateEntity removes ISM instances + destroys physics bodies
-					MassISMPartition->DeactivateEntity(Entity, Instance, Config, EntityManager);
+					MassISMPartition->DeactivateMesh(Entity, Instance, Config, EntityManager);
+					MassISMPartition->DeactivatePhysics(Entity, EntityManager);
 				}
 
 				// Acquire actor from pool

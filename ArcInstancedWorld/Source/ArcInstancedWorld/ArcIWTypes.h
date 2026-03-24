@@ -6,8 +6,8 @@
 #include "MassEntityTypes.h"
 #include "ArcIWTypes.generated.h"
 
-class AArcIWPartitionActor;
 class APartitionActor;
+struct FArcMassPhysicsLinkFragment;
 class UStaticMesh;
 class UMaterialInterface;
 class UMassEntityConfigAsset;
@@ -93,11 +93,11 @@ struct ARCINSTANCEDWORLD_API FArcIWInstanceFragment : public FMassFragment
 	/** Visualization grid cell. */
 	FIntVector GridCoords = FIntVector::ZeroValue;
 
-	/** Flat index into AArcIWPartitionActor::SpawnedEntities. Used as the IActorInstanceManagerInterface instance index. */
+	/** Flat index into the partition actor's SpawnedEntities. Used as the IActorInstanceManagerInterface instance index. */
 	int32 InstanceIndex = INDEX_NONE;
 
-	/** Base index into AArcIWPartitionActor::MeshSlots for this entity's class.
-	 *  MeshSlots[MeshSlotBase + MeshIdx] gives direct access to the ISM component and owner tracking. */
+	/** Base index into the partition actor's ISMHolderEntities for this entity's class.
+	 *  ISMHolderEntities[MeshSlotBase + MeshIdx] gives the ISM holder entity for that mesh slot. */
 	int32 MeshSlotBase = INDEX_NONE;
 
 	/** Owning partition actor. Set during entity spawn, used by processors to perform partition operations directly. */
@@ -140,8 +140,20 @@ struct ARCINSTANCEDWORLD_API FArcIWEntityTag : public FMassTag
 
 namespace UE::ArcIW::Signals
 {
-	inline const FName CellActivated = FName(TEXT("ArcIWCellActivated"));
-	inline const FName CellDeactivated = FName(TEXT("ArcIWCellDeactivated"));
 	inline const FName ActorCellActivated = FName(TEXT("ArcIWActorCellActivated"));
 	inline const FName ActorCellDeactivated = FName(TEXT("ArcIWActorCellDeactivated"));
+	inline const FName MeshCellActivated = FName(TEXT("ArcIWMeshCellActivated"));
+	inline const FName MeshCellDeactivated = FName(TEXT("ArcIWMeshCellDeactivated"));
+	inline const FName PhysicsCellActivated = FName(TEXT("ArcIWPhysicsCellActivated"));
+	inline const FName PhysicsCellDeactivated = FName(TEXT("ArcIWPhysicsCellDeactivated"));
+}
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+namespace UE::ArcIW
+{
+	/** Detach all physics link entries (clear Chaos user data binding). */
+	void DetachPhysicsLinkEntries(FArcMassPhysicsLinkFragment& LinkFragment);
 }

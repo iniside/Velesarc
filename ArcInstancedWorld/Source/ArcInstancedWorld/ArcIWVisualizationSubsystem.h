@@ -93,6 +93,20 @@ public:
 	bool IsActorCell(const FIntVector& Cell) const;
 	bool IsWithinDehydrationRadius(const FIntVector& Cell) const;
 
+	float GetMeshAddRadius() const { return MeshAddRadius; }
+	int32 GetMeshAddRadiusCells() const { return MeshAddRadiusCells; }
+	float GetMeshRemoveRadius() const { return MeshRemoveRadius; }
+	int32 GetMeshRemoveRadiusCells() const { return MeshRemoveRadiusCells; }
+	float GetPhysicsAddRadius() const { return PhysicsAddRadius; }
+	int32 GetPhysicsAddRadiusCells() const { return PhysicsAddRadiusCells; }
+	float GetPhysicsRemoveRadius() const { return PhysicsRemoveRadius; }
+	int32 GetPhysicsRemoveRadiusCells() const { return PhysicsRemoveRadiusCells; }
+
+	bool IsMeshCell(const FIntVector& Cell) const;
+	bool IsPhysicsCell(const FIntVector& Cell) const;
+	bool IsWithinMeshRemoveRadius(const FIntVector& Cell) const;
+	bool IsWithinPhysicsRemoveRadius(const FIntVector& Cell) const;
+
 	/** Read-only access to the entity grid for debugging. */
 	const TMap<FIntVector, TArray<FMassEntityHandle>>& GetCellEntities() const { return CellEntities; }
 
@@ -142,7 +156,7 @@ private:
 	{
 		FMassEntityHandle Entity;
 		int32 MeshEntryIndex = INDEX_NONE;
-		/** Stable indices into AArcIWPartitionActor::SpawnedEntities for composite index building. */
+		/** Stable indices into the partition actor's SpawnedEntities for composite index building. */
 		int32 ClassIndex = INDEX_NONE;
 		int32 EntityIndex = INDEX_NONE;
 	};
@@ -194,4 +208,12 @@ private:
 	int32 ActorRadiusCells = 1;
 	float DehydrationRadius = 8000.f;
 	int32 DehydrationRadiusCells = 4;
+	float MeshAddRadius = 0.f;
+	int32 MeshAddRadiusCells = 0;
+	float MeshRemoveRadius = 0.f;
+	int32 MeshRemoveRadiusCells = 0;
+	float PhysicsAddRadius = 0.f;
+	int32 PhysicsAddRadiusCells = 0;
+	float PhysicsRemoveRadius = 0.f;
+	int32 PhysicsRemoveRadiusCells = 0;
 };

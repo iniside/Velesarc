@@ -49,6 +49,22 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM"))
 	bool bDisableActorHydration = false;
 
+	/** MassISM: ISM instances appear at this distance from player. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
+	float MeshAddRadius = 20000.f;
+
+	/** MassISM: ISM instances removed beyond this distance. Must be > MeshAddRadius. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
+	float MeshRemoveRadius = 25000.f;
+
+	/** MassISM: Physics bodies created at this distance from player. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
+	float PhysicsAddRadius = 12000.f;
+
+	/** MassISM: Physics bodies removed beyond this distance. Must be > PhysicsAddRadius. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
+	float PhysicsRemoveRadius = 15000.f;
+
 	/** Visualization grid cell size in world units (cm). */
 	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|Grid", meta = (ClampMin = "100"))
 	float CellSize = 6000.f;

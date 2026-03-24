@@ -3,20 +3,20 @@
 #pragma once
 
 #include "MassSignalProcessorBase.h"
-#include "ArcIWDeactivateProcessor.generated.h"
+#include "ArcIWMeshActivateProcessor.generated.h"
 
 // ---------------------------------------------------------------------------
-// Deactivate Processor
-// Subscribes to CellDeactivated signal -- removes composite ISM instances.
+// Mesh Activate Processor
+// Subscribes to MeshCellActivated signal -- adds ISM instances (mesh-only).
 // ---------------------------------------------------------------------------
 
 UCLASS()
-class ARCINSTANCEDWORLD_API UArcIWDeactivateProcessor : public UMassSignalProcessorBase
+class ARCINSTANCEDWORLD_API UArcIWMeshActivateProcessor : public UMassSignalProcessorBase
 {
 	GENERATED_BODY()
 
 public:
-	UArcIWDeactivateProcessor();
+	UArcIWMeshActivateProcessor();
 
 protected:
 	virtual void InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager) override;

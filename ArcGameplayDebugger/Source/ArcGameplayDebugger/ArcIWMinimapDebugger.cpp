@@ -8,7 +8,6 @@
 #include "Engine/GameViewportClient.h"
 #include "ArcInstancedWorld/ArcIWVisualizationSubsystem.h"
 #include "ArcInstancedWorld/ArcIWTypes.h"
-#include "ArcInstancedWorld/ArcIWPartitionActor.h"
 #include "ArcInstancedWorld/ArcIWSettings.h"
 #include "MassEntitySubsystem.h"
 #include "MassEntityFragments.h"
@@ -152,11 +151,11 @@ void FArcIWMinimapDebugger::Draw()
 	WPCellSize = static_cast<float>(UArcIWSettings::Get()->DefaultGridCellSize);
 	if (DebugWorld)
 	{
-		for (TActorIterator<AArcIWPartitionActor> It(DebugWorld); It; ++It)
-		{
-			WPCellSize = static_cast<float>(AArcIWPartitionActor::GetGridCellSize(DebugWorld, It->GetGridName()));
-			break;
-		}
+		//for (TActorIterator<AArcIWPartitionActor> It(DebugWorld); It; ++It)
+		//{
+		//	WPCellSize = static_cast<float>(AArcIWPartitionActor::GetGridCellSize(DebugWorld, It->GetGridName()));
+		//	break;
+		//}
 	}
 
 	DrawHUD();

@@ -7,7 +7,6 @@
 #include "ArcIWEditorCommands.generated.h"
 
 struct FArcIWMeshEntry;
-class AArcIWPartitionActor;
 class AArcIWMassISMPartitionActor;
 class APartitionActor;
 
@@ -21,18 +20,12 @@ namespace UE::ArcIW::Editor
 
 	/**
 	 * Converts selected actors into partition-based representation.
-	 * Mesh data is captured, actors are added to AArcIWPartitionActor cells, and originals are destroyed.
+	 * Mesh data is captured, actors are added to AArcIWMassISMPartitionActor cells, and originals are destroyed.
 	 */
 	void ConvertActorsToPartition(UWorld* World, const TArray<AActor*>& Actors);
 
 	/**
 	 * Restores actors from a partition actor, spawning one actor per stored transform,
-	 * then destroys the partition actor.
-	 */
-	void ConvertPartitionToActors(UWorld* World, AArcIWPartitionActor* PartitionActor);
-
-	/**
-	 * Restores actors from a MassISM partition actor, spawning one actor per stored transform,
 	 * then destroys the partition actor.
 	 */
 	void ConvertPartitionToActors(UWorld* World, AArcIWMassISMPartitionActor* PartitionActor);
@@ -51,7 +44,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcIW|Editor", meta = (WorldContext = "WorldContextObject"))
 	static void ConvertActorsToPartition(UObject* WorldContextObject, const TArray<AActor*>& Actors);
 
-	/** Restores actors from a partition actor (ISM or MassISM). */
+	/** Restores actors from a partition actor. */
 	UFUNCTION(BlueprintCallable, Category = "ArcIW|Editor", meta = (WorldContext = "WorldContextObject"))
 	static void ConvertPartitionToActors(UObject* WorldContextObject, APartitionActor* PartitionActor);
 };

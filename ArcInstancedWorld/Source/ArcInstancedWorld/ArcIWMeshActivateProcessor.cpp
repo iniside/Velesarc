@@ -1,48 +1,48 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
-#include "ArcIWDeactivateProcessor.h"
+#include "ArcIWMeshActivateProcessor.h"
 
 #include "ArcIWTypes.h"
-#include "ArcIWPartitionActor.h"
 #include "ArcIWMassISMPartitionActor.h"
-#include "ArcMass/ArcMassPhysicsLink.h"
 #include "MassCommonFragments.h"
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(ArcIWDeactivateProcessor)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(ArcIWMeshActivateProcessor)
 
 // ---------------------------------------------------------------------------
-// UArcIWDeactivateProcessor
+// UArcIWMeshActivateProcessor
 // ---------------------------------------------------------------------------
 
-UArcIWDeactivateProcessor::UArcIWDeactivateProcessor()
+UArcIWMeshActivateProcessor::UArcIWMeshActivateProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Client | EProcessorExecutionFlags::Standalone);
 }
 
-void UArcIWDeactivateProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)
+void UArcIWMeshActivateProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)
 {
 	Super::InitializeInternal(Owner, EntityManager);
 
 	UMassSignalSubsystem* SignalSubsystem = UWorld::GetSubsystem<UMassSignalSubsystem>(Owner.GetWorld());
-	SubscribeToSignal(*SignalSubsystem, UE::ArcIW::Signals::CellDeactivated);
+	SubscribeToSignal(*SignalSubsystem, UE::ArcIW::Signals::MeshCellActivated);
 }
 
-void UArcIWDeactivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
+void UArcIWMeshActivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
+	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FArcIWInstanceFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddConstSharedRequirement<FArcIWVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcIWEntityTag>(EMassFragmentPresence::All);
 }
 
-void UArcIWDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
+void UArcIWMeshActivateProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
 {
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager](FMassExecutionContext& Ctx)
 		{
+			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			TArrayView<FArcIWInstanceFragment> InstanceFragments = Ctx.GetMutableFragmentView<FArcIWInstanceFragment>();
 			const FArcIWVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcIWVisConfigFragment>();
 
@@ -55,39 +55,30 @@ void UArcIWDeactivateProcessor::SignalEntities(FMassEntityManager& EntityManager
 					continue;
 				}
 
-				AArcIWPartitionActor* Partition = Cast<AArcIWPartitionActor>(Instance.PartitionActor.Get());
-				if (Partition)
+				// Skip if already has ISM instances (init observer may have added them in the same frame).
+				bool bAlreadyInstanced = false;
+				for (int32 Id : Instance.ISMInstanceIds)
 				{
-					FArcMassPhysicsLinkFragment* LinkFragment =
-						EntityManager.GetFragmentDataPtr<FArcMassPhysicsLinkFragment>(Ctx.GetEntity(EntityIt));
-					if (LinkFragment)
+					if (Id != INDEX_NONE)
 					{
-						AArcIWPartitionActor::DetachPhysicsLinkEntries(*LinkFragment);
+						bAlreadyInstanced = true;
+						break;
 					}
-					Partition->RemoveCompositeISMInstances(
-						Instance.MeshSlotBase,
-						Config.MeshDescriptors,
-						Instance.ISMInstanceIds,
-						EntityManager);
-
-					for (int32& InstanceId : Instance.ISMInstanceIds)
-					{
-						InstanceId = INDEX_NONE;
-					}
+				}
+				if (bAlreadyInstanced)
+				{
 					continue;
 				}
 
 				AArcIWMassISMPartitionActor* MassISMPartition = Cast<AArcIWMassISMPartitionActor>(Instance.PartitionActor.Get());
-				if (MassISMPartition)
+				if (!MassISMPartition)
 				{
-					MassISMPartition->DeactivateEntity(
-						Ctx.GetEntity(EntityIt), Instance, Config, EntityManager);
+					continue;
 				}
 
-				for (int32& InstanceId : Instance.ISMInstanceIds)
-				{
-					InstanceId = INDEX_NONE;
-				}
+				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
+				MassISMPartition->ActivateMesh(
+					Ctx.GetEntity(EntityIt), Instance, Config, EntityTransform, EntityManager, Ctx);
 			}
 		});
 }

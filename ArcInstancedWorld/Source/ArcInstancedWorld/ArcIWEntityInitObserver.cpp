@@ -3,7 +3,6 @@
 #include "ArcIWEntityInitObserver.h"
 
 #include "ArcIWTypes.h"
-#include "ArcIWPartitionActor.h"
 #include "ArcIWMassISMPartitionActor.h"
 #include "ArcIWSettings.h"
 #include "ArcIWVisualizationSubsystem.h"
@@ -97,29 +96,19 @@ void UArcIWEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMassE
 				// Else if cell is within ISM radius, create ISM instances
 				else if (Subsystem->IsCellActive(Instance.GridCoords))
 				{
-					AArcIWPartitionActor* Partition = Cast<AArcIWPartitionActor>(Instance.PartitionActor.Get());
-					if (Partition)
-					{
-						Partition->AddCompositeISMInstances(
-							Instance.MeshSlotBase,
-							EntityTransform,
-							Config.MeshDescriptors,
-							Instance.ISMInstanceIds,
-							Instance.InstanceIndex);
-						FArcMassPhysicsLinkFragment* LinkFragment =
-							EntityManager.GetFragmentDataPtr<FArcMassPhysicsLinkFragment>(Entity);
-						if (LinkFragment)
-						{
-							Partition->PopulatePhysicsLinkEntries(*LinkFragment, Instance.MeshSlotBase, Instance.ISMInstanceIds);
-							PhysicsLinkEntities.Add(Entity);
-						}
-					}
-
 					AArcIWMassISMPartitionActor* MassISMPartition = Cast<AArcIWMassISMPartitionActor>(Instance.PartitionActor.Get());
 					if (MassISMPartition)
 					{
-						MassISMPartition->ActivateEntity(Entity, Instance, Config, EntityTransform, EntityManager);
-						PhysicsLinkEntities.Add(Entity);
+						if (Subsystem->IsMeshCell(Instance.GridCoords))
+						{
+							MassISMPartition->ActivateMesh(Entity, Instance, Config, EntityTransform, EntityManager, Ctx);
+
+							if (Subsystem->IsPhysicsCell(Instance.GridCoords))
+							{
+								MassISMPartition->ActivatePhysics(Entity, Instance, Config, EntityTransform, EntityManager);
+								PhysicsLinkEntities.Add(Entity);
+							}
+						}
 					}
 				}
 			}

@@ -13,6 +13,7 @@
 
 class UMassEntityConfigAsset;
 class UInstancedStaticMeshComponent;
+struct FMassExecutionContext;
 
 /**
  * Partition actor that uses Mass MeshEngine for ISM rendering and standalone
@@ -28,7 +29,7 @@ public:
 	AArcIWMassISMPartitionActor(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	/** Look up grid cell size from the WP runtime hash by grid name.
-	 *  Falls back to UArcIWSettings::DefaultGridCellSize. Uses AArcIWPartitionActor's static helper. */
+	 *  Falls back to UArcIWSettings::DefaultGridCellSize. */
 	static uint32 GetGridCellSize(UWorld* InWorld, FName InGridName);
 
 #if WITH_EDITOR
@@ -67,21 +68,52 @@ public:
 	/** Hydrate a specific entity -- terminate physics bodies, spawn actor via pool. No-op if already hydrated. */
 	void HydrateEntity(FMassEntityHandle EntityHandle);
 
-	/** Activate entity — add ISM instances to holders + create physics bodies (async).
-	 *  Called by UArcIWActivateProcessor when entity enters swap radius. */
+	/** Activate entity — add ISM instances to holders + create physics bodies.
+	 *  Convenience wrapper that calls ActivateMesh then ActivatePhysics. */
 	void ActivateEntity(
+		FMassEntityHandle Entity,
+		FArcIWInstanceFragment& Instance,
+		const FArcIWVisConfigFragment& Config,
+		const FTransform& WorldTransform,
+		FMassEntityManager& EntityManager,
+		FMassExecutionContext& Context);
+
+	/** Deactivate entity — remove ISM instances from holders + destroy physics bodies.
+	 *  Convenience wrapper that calls DeactivateMesh then DeactivatePhysics. */
+	void DeactivateEntity(
+		FMassEntityHandle Entity,
+		FArcIWInstanceFragment& Instance,
+		const FArcIWVisConfigFragment& Config,
+		FMassEntityManager& EntityManager);
+
+	/** Add ISM instances to holder entities. Called when entity enters MeshAddRadius.
+	 *  If the holder entity doesn't exist yet, queues a deferred command to create it. */
+	void ActivateMesh(
+		FMassEntityHandle Entity,
+		FArcIWInstanceFragment& Instance,
+		const FArcIWVisConfigFragment& Config,
+		const FTransform& WorldTransform,
+		FMassEntityManager& EntityManager,
+		FMassExecutionContext& Context);
+
+	/** Remove ISM instances from holder entities. Called when entity exits MeshRemoveRadius. */
+	void DeactivateMesh(
+		FMassEntityHandle Entity,
+		FArcIWInstanceFragment& Instance,
+		const FArcIWVisConfigFragment& Config,
+		FMassEntityManager& EntityManager);
+
+	/** Create standalone physics bodies. Called when entity enters PhysicsAddRadius. */
+	void ActivatePhysics(
 		FMassEntityHandle Entity,
 		FArcIWInstanceFragment& Instance,
 		const FArcIWVisConfigFragment& Config,
 		const FTransform& WorldTransform,
 		FMassEntityManager& EntityManager);
 
-	/** Deactivate entity — remove ISM instances from holders + destroy physics bodies.
-	 *  Called by UArcIWDeactivateProcessor when entity exits swap radius. */
-	void DeactivateEntity(
+	/** Destroy physics bodies. Called when entity exits PhysicsRemoveRadius. */
+	void DeactivatePhysics(
 		FMassEntityHandle Entity,
-		FArcIWInstanceFragment& Instance,
-		const FArcIWVisConfigFragment& Config,
 		FMassEntityManager& EntityManager);
 
 	//~ IActorInstanceManagerInterface
@@ -96,7 +128,7 @@ public:
 private:
 	void SpawnEntities();
 	void DespawnEntities();
-	void CreateISMHolderEntities();
+	void InitializeISMState();
 	void DestroyISMHolderEntities();
 
 	/** World Partition runtime grid name this partition belongs to. */
@@ -115,6 +147,10 @@ private:
 	 *  Layout: [Class0.Mesh0, Class0.Mesh1, ..., Class1.Mesh0, ...].
 	 *  Each holds FMassRenderStateFragment + FMassRenderISMFragment for rendering. */
 	TArray<FMassEntityHandle> ISMHolderEntities;
+
+	/** Cached archetypes for ISM holder entities; created once in InitializeISMState. */
+	FMassArchetypeHandle ISMHolderArchetype;
+	FMassArchetypeHandle ISMHolderArchetypeWithMats;
 
 #if WITH_EDITORONLY_DATA
 	/** Editor-only ISM components for previewing instances. Stripped in PIE/game. */

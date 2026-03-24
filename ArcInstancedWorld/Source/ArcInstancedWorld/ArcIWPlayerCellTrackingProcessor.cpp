@@ -96,72 +96,7 @@ void UArcIWPlayerCellTrackingProcessor::Execute(FMassEntityManager& EntityManage
 			continue;
 		}
 
-		const int32 RadiusCells = Subsystem->GetSwapRadiusCells();
 		const bool bIsFirstUpdate = (OldCell.X == TNumericLimits<int32>::Max());
-
-		TArray<FIntVector> NewActiveCells;
-		Subsystem->GetCellsInRadius(NewCell, RadiusCells, NewActiveCells);
-
-		// On first update, all new cells are activated (no old cells to compare against)
-		TSet<FIntVector> OldCellSet;
-		if (!bIsFirstUpdate)
-		{
-			TArray<FIntVector> OldActiveCells;
-			Subsystem->GetCellsInRadius(OldCell, RadiusCells, OldActiveCells);
-			OldCellSet.Reserve(OldActiveCells.Num());
-			for (const FIntVector& Cell : OldActiveCells)
-			{
-				OldCellSet.Add(Cell);
-			}
-		}
-
-		TSet<FIntVector> NewCellSet;
-		NewCellSet.Reserve(NewActiveCells.Num());
-		for (const FIntVector& Cell : NewActiveCells)
-		{
-			NewCellSet.Add(Cell);
-		}
-
-		// --- ISM activation: all cells entering swap radius ---
-		TArray<FMassEntityHandle> ActivatedEntities;
-		for (const FIntVector& Cell : NewActiveCells)
-		{
-			if (!OldCellSet.Contains(Cell))
-			{
-				const TArray<FMassEntityHandle>* Entities = Subsystem->GetEntitiesInCell(Cell);
-				if (Entities)
-				{
-					ActivatedEntities.Append(*Entities);
-				}
-			}
-		}
-
-		// ISM deactivation: cells leaving swap radius
-		TArray<FMassEntityHandle> DeactivatedEntities;
-		if (!bIsFirstUpdate)
-		{
-			for (const FIntVector& Cell : OldCellSet)
-			{
-				if (!NewCellSet.Contains(Cell))
-				{
-					const TArray<FMassEntityHandle>* Entities = Subsystem->GetEntitiesInCell(Cell);
-					if (Entities)
-					{
-						DeactivatedEntities.Append(*Entities);
-					}
-				}
-			}
-		}
-
-		if (ActivatedEntities.Num() > 0)
-		{
-			SignalSubsystem->SignalEntities(UE::ArcIW::Signals::CellActivated, ActivatedEntities);
-		}
-
-		if (DeactivatedEntities.Num() > 0)
-		{
-			SignalSubsystem->SignalEntities(UE::ArcIW::Signals::CellDeactivated, DeactivatedEntities);
-		}
 
 		// --- Actor hydration: inner radius ---
 		const int32 ActorRadiusCells = Subsystem->GetActorRadiusCells();
@@ -225,6 +160,164 @@ void UArcIWPlayerCellTrackingProcessor::Execute(FMassEntityManager& EntityManage
 		if (ActorDeactivatedEntities.Num() > 0)
 		{
 			SignalSubsystem->SignalEntities(UE::ArcIW::Signals::ActorCellDeactivated, ActorDeactivatedEntities);
+		}
+
+		// --- MassISM Mesh radius (hysteresis) ---
+		{
+			TArray<FIntVector> NewMeshAddCells;
+			Subsystem->GetCellsInRadius(NewCell, Subsystem->GetMeshAddRadiusCells(), NewMeshAddCells);
+
+			TSet<FIntVector> OldMeshAddCellSet;
+			if (!bIsFirstUpdate)
+			{
+				TArray<FIntVector> OldMeshAddCells;
+				Subsystem->GetCellsInRadius(OldCell, Subsystem->GetMeshAddRadiusCells(), OldMeshAddCells);
+				OldMeshAddCellSet.Reserve(OldMeshAddCells.Num());
+				for (const FIntVector& Cell : OldMeshAddCells)
+				{
+					OldMeshAddCellSet.Add(Cell);
+				}
+			}
+
+			TArray<FMassEntityHandle> MeshActivatedEntities;
+			for (const FIntVector& Cell : NewMeshAddCells)
+			{
+				if (!OldMeshAddCellSet.Contains(Cell))
+				{
+					const TArray<FMassEntityHandle>* Entities = Subsystem->GetEntitiesInCell(Cell);
+					if (Entities)
+					{
+						MeshActivatedEntities.Append(*Entities);
+					}
+				}
+			}
+
+			if (MeshActivatedEntities.Num() > 0)
+			{
+				SignalSubsystem->SignalEntities(UE::ArcIW::Signals::MeshCellActivated, MeshActivatedEntities);
+			}
+
+			TArray<FIntVector> NewMeshRemoveCells;
+			Subsystem->GetCellsInRadius(NewCell, Subsystem->GetMeshRemoveRadiusCells(), NewMeshRemoveCells);
+
+			TSet<FIntVector> OldMeshRemoveCellSet;
+			if (!bIsFirstUpdate)
+			{
+				TArray<FIntVector> OldMeshRemoveCells;
+				Subsystem->GetCellsInRadius(OldCell, Subsystem->GetMeshRemoveRadiusCells(), OldMeshRemoveCells);
+				OldMeshRemoveCellSet.Reserve(OldMeshRemoveCells.Num());
+				for (const FIntVector& Cell : OldMeshRemoveCells)
+				{
+					OldMeshRemoveCellSet.Add(Cell);
+				}
+			}
+
+			TSet<FIntVector> NewMeshRemoveCellSet;
+			NewMeshRemoveCellSet.Reserve(NewMeshRemoveCells.Num());
+			for (const FIntVector& Cell : NewMeshRemoveCells)
+			{
+				NewMeshRemoveCellSet.Add(Cell);
+			}
+
+			TArray<FMassEntityHandle> MeshDeactivatedEntities;
+			if (!bIsFirstUpdate)
+			{
+				for (const FIntVector& Cell : OldMeshRemoveCellSet)
+				{
+					if (!NewMeshRemoveCellSet.Contains(Cell))
+					{
+						const TArray<FMassEntityHandle>* Entities = Subsystem->GetEntitiesInCell(Cell);
+						if (Entities)
+						{
+							MeshDeactivatedEntities.Append(*Entities);
+						}
+					}
+				}
+			}
+
+			if (MeshDeactivatedEntities.Num() > 0)
+			{
+				SignalSubsystem->SignalEntities(UE::ArcIW::Signals::MeshCellDeactivated, MeshDeactivatedEntities);
+			}
+		}
+
+		// --- MassISM Physics radius (hysteresis) ---
+		{
+			TArray<FIntVector> NewPhysicsAddCells;
+			Subsystem->GetCellsInRadius(NewCell, Subsystem->GetPhysicsAddRadiusCells(), NewPhysicsAddCells);
+
+			TSet<FIntVector> OldPhysicsAddCellSet;
+			if (!bIsFirstUpdate)
+			{
+				TArray<FIntVector> OldPhysicsAddCells;
+				Subsystem->GetCellsInRadius(OldCell, Subsystem->GetPhysicsAddRadiusCells(), OldPhysicsAddCells);
+				OldPhysicsAddCellSet.Reserve(OldPhysicsAddCells.Num());
+				for (const FIntVector& Cell : OldPhysicsAddCells)
+				{
+					OldPhysicsAddCellSet.Add(Cell);
+				}
+			}
+
+			TArray<FMassEntityHandle> PhysicsActivatedEntities;
+			for (const FIntVector& Cell : NewPhysicsAddCells)
+			{
+				if (!OldPhysicsAddCellSet.Contains(Cell))
+				{
+					const TArray<FMassEntityHandle>* Entities = Subsystem->GetEntitiesInCell(Cell);
+					if (Entities)
+					{
+						PhysicsActivatedEntities.Append(*Entities);
+					}
+				}
+			}
+
+			if (PhysicsActivatedEntities.Num() > 0)
+			{
+				SignalSubsystem->SignalEntities(UE::ArcIW::Signals::PhysicsCellActivated, PhysicsActivatedEntities);
+			}
+
+			TArray<FIntVector> NewPhysicsRemoveCells;
+			Subsystem->GetCellsInRadius(NewCell, Subsystem->GetPhysicsRemoveRadiusCells(), NewPhysicsRemoveCells);
+
+			TSet<FIntVector> OldPhysicsRemoveCellSet;
+			if (!bIsFirstUpdate)
+			{
+				TArray<FIntVector> OldPhysicsRemoveCells;
+				Subsystem->GetCellsInRadius(OldCell, Subsystem->GetPhysicsRemoveRadiusCells(), OldPhysicsRemoveCells);
+				OldPhysicsRemoveCellSet.Reserve(OldPhysicsRemoveCells.Num());
+				for (const FIntVector& Cell : OldPhysicsRemoveCells)
+				{
+					OldPhysicsRemoveCellSet.Add(Cell);
+				}
+			}
+
+			TSet<FIntVector> NewPhysicsRemoveCellSet;
+			NewPhysicsRemoveCellSet.Reserve(NewPhysicsRemoveCells.Num());
+			for (const FIntVector& Cell : NewPhysicsRemoveCells)
+			{
+				NewPhysicsRemoveCellSet.Add(Cell);
+			}
+
+			TArray<FMassEntityHandle> PhysicsDeactivatedEntities;
+			if (!bIsFirstUpdate)
+			{
+				for (const FIntVector& Cell : OldPhysicsRemoveCellSet)
+				{
+					if (!NewPhysicsRemoveCellSet.Contains(Cell))
+					{
+						const TArray<FMassEntityHandle>* Entities = Subsystem->GetEntitiesInCell(Cell);
+						if (Entities)
+						{
+							PhysicsDeactivatedEntities.Append(*Entities);
+						}
+					}
+				}
+			}
+
+			if (PhysicsDeactivatedEntities.Num() > 0)
+			{
+				SignalSubsystem->SignalEntities(UE::ArcIW::Signals::PhysicsCellDeactivated, PhysicsDeactivatedEntities);
+			}
 		}
 
 		Subsystem->UpdatePlayerCell(NewCell);

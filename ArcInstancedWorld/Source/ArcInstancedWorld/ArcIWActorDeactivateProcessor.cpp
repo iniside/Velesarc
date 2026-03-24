@@ -3,7 +3,6 @@
 #include "ArcIWActorDeactivateProcessor.h"
 
 #include "ArcIWTypes.h"
-#include "ArcIWPartitionActor.h"
 #include "ArcIWMassISMPartitionActor.h"
 #include "ArcIWActorPoolSubsystem.h"
 #include "ArcMass/ArcMassPhysicsLink.h"
@@ -72,7 +71,7 @@ void UArcIWActorDeactivateProcessor::SignalEntities(FMassEntityManager& EntityMa
 						EntityManager.GetFragmentDataPtr<FArcMassPhysicsLinkFragment>(Entity);
 					if (LinkFragment)
 					{
-						AArcIWPartitionActor::DetachPhysicsLinkEntries(*LinkFragment);
+						UE::ArcIW::DetachPhysicsLinkEntries(*LinkFragment);
 					}
 				}
 
@@ -93,29 +92,11 @@ void UArcIWActorDeactivateProcessor::SignalEntities(FMassEntityManager& EntityMa
 				Instance.HydratedActor = nullptr;
 				Instance.bIsActorRepresentation = false;
 
-				// Re-add ISM instances
-				AArcIWPartitionActor* Partition = Cast<AArcIWPartitionActor>(Instance.PartitionActor.Get());
-				if (Partition)
-				{
-					Partition->AddCompositeISMInstances(
-						Instance.MeshSlotBase,
-						EntityTransform,
-						Config.MeshDescriptors,
-						Instance.ISMInstanceIds,
-						Instance.InstanceIndex);
-					FArcMassPhysicsLinkFragment* LinkFragment =
-						EntityManager.GetFragmentDataPtr<FArcMassPhysicsLinkFragment>(Entity);
-					if (LinkFragment)
-					{
-						Partition->PopulatePhysicsLinkEntries(*LinkFragment, Instance.MeshSlotBase, Instance.ISMInstanceIds);
-						PhysicsLinkEntities.Add(Entity);
-					}
-				}
-
 				AArcIWMassISMPartitionActor* MassISMPartition = Cast<AArcIWMassISMPartitionActor>(Instance.PartitionActor.Get());
 				if (MassISMPartition)
 				{
-					MassISMPartition->ActivateEntity(Entity, Instance, Config, EntityTransform, EntityManager);
+					MassISMPartition->ActivateMesh(Entity, Instance, Config, EntityTransform, EntityManager, Ctx);
+					MassISMPartition->ActivatePhysics(Entity, Instance, Config, EntityTransform, EntityManager);
 					PhysicsLinkEntities.Add(Entity);
 				}
 			}

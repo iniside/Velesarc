@@ -5,7 +5,6 @@
 #include "ArcIWEditorCommands.h"
 #include "ArcInstancedWorld/ArcIWMassConfigComponent.h"
 #include "ArcInstancedWorld/ArcIWMassISMPartitionActor.h"
-#include "ArcInstancedWorld/ArcIWPartitionActor.h"
 #include "Editor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -26,7 +25,7 @@ static void ConvertAllConfigActorsToPartition()
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		AActor* Actor = *It;
-		if (IsValid(Actor) && !Actor->IsA<AArcIWPartitionActor>() && Actor->FindComponentByClass<UArcIWMassConfigComponent>())
+		if (IsValid(Actor) && !Actor->IsA<AArcIWMassISMPartitionActor>() && Actor->FindComponentByClass<UArcIWMassConfigComponent>())
 		{
 			ActorsToConvert.Add(Actor);
 		}
@@ -50,33 +49,21 @@ static void ConvertAllPartitionsToActors()
 		return;
 	}
 
-	TArray<AArcIWPartitionActor*> PartitionActors;
-	for (TActorIterator<AArcIWPartitionActor> It(World); It; ++It)
+	TArray<AArcIWMassISMPartitionActor*> PartitionActors;
+	for (TActorIterator<AArcIWMassISMPartitionActor> It(World); It; ++It)
 	{
 		PartitionActors.Add(*It);
 	}
 
-	TArray<AArcIWMassISMPartitionActor*> MassISMPartitionActors;
-	for (TActorIterator<AArcIWMassISMPartitionActor> It(World); It; ++It)
-	{
-		MassISMPartitionActors.Add(*It);
-	}
-
-	if (PartitionActors.Num() == 0 && MassISMPartitionActors.Num() == 0)
+	if (PartitionActors.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ArcIW: No ArcIW partition actors found in the level."));
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("ArcIW: Converting %d ISM + %d MassISM partition actors back to actors."),
-		PartitionActors.Num(), MassISMPartitionActors.Num());
+	UE_LOG(LogTemp, Log, TEXT("ArcIW: Converting %d partition actors back to actors."), PartitionActors.Num());
 
-	for (AArcIWPartitionActor* PartitionActor : PartitionActors)
-	{
-		UE::ArcIW::Editor::ConvertPartitionToActors(World, PartitionActor);
-	}
-
-	for (AArcIWMassISMPartitionActor* PartitionActor : MassISMPartitionActors)
+	for (AArcIWMassISMPartitionActor* PartitionActor : PartitionActors)
 	{
 		UE::ArcIW::Editor::ConvertPartitionToActors(World, PartitionActor);
 	}
@@ -175,7 +162,7 @@ TSharedRef<FExtender> FArcInstancedWorldEditorModule::CreateLevelViewportContext
 
 	for (AActor* Actor : InActors)
 	{
-		if (Actor->IsA<AArcIWPartitionActor>() || Actor->IsA<AArcIWMassISMPartitionActor>())
+		if (Actor->IsA<AArcIWMassISMPartitionActor>())
 		{
 			bHasPartitionActors = true;
 		}
@@ -210,7 +197,7 @@ TSharedRef<FExtender> FArcInstancedWorldEditorModule::CreateLevelViewportContext
 						TArray<AActor*> RegularActors;
 						for (AActor* Actor : InActors)
 						{
-							if (IsValid(Actor) && !Actor->IsA<AArcIWPartitionActor>() && !Actor->IsA<AArcIWMassISMPartitionActor>())
+							if (IsValid(Actor) && !Actor->IsA<AArcIWMassISMPartitionActor>())
 							{
 								RegularActors.Add(Actor);
 							}
@@ -237,13 +224,6 @@ TSharedRef<FExtender> FArcInstancedWorldEditorModule::CreateLevelViewportContext
 						}
 						for (AActor* Actor : InActors)
 						{
-							AArcIWPartitionActor* PartitionActor = Cast<AArcIWPartitionActor>(Actor);
-							if (IsValid(PartitionActor))
-							{
-								UE::ArcIW::Editor::ConvertPartitionToActors(World, PartitionActor);
-								continue;
-							}
-
 							AArcIWMassISMPartitionActor* MassISMActor = Cast<AArcIWMassISMPartitionActor>(Actor);
 							if (IsValid(MassISMActor))
 							{

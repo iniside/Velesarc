@@ -3,7 +3,6 @@
 #include "ArcIWMassISMPartitionActor.h"
 
 #include "ArcIWActorPoolSubsystem.h"
-#include "ArcIWPartitionActor.h"
 #include "ArcIWSettings.h"
 #include "MassEntitySubsystem.h"
 #include "MassEntityTemplate.h"
@@ -25,13 +24,46 @@
 #include "MassRenderStateHelper.h"
 #include "MassISMRenderStateHelper.h"
 
+// Deferred commands and execution context
+#include "MassExecutionContext.h"
+#include "MassCommands.h"
+
 // Physics entity link, Chaos user data, and ArcMass physics body fragment
 #include "MassEntityView.h"
 #include "ArcMass/ArcMassPhysicsEntityLink.h"
 #include "ArcMass/ArcMassPhysicsBody.h"
+#include "ArcMass/ArcMassPhysicsLink.h"
 #include "Chaos/ChaosUserEntity.h"
 #include "Engine/World.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
+
+// WorldPartition for GetGridCellSize
+#include "MassSpawnerSubsystem.h"
+#include "WorldPartition/WorldPartition.h"
+#include "WorldPartition/WorldPartitionRuntimeSpatialHash.h"
+#include "WorldPartition/RuntimeHashSet/WorldPartitionRuntimeHashSet.h"
+#include "WorldPartition/RuntimeHashSet/RuntimePartitionLHGrid.h"
+
+// ---------------------------------------------------------------------------
+// Template hack to access private RuntimePartitions on UWorldPartitionRuntimeHashSet.
+// UWorldPartitionRuntimeHashSet doesn't expose a public getter for its partition descriptors.
+// Must live at file scope — the pattern requires the explicit template instantiation to be
+// at the same namespace level as the struct definition.
+// ---------------------------------------------------------------------------
+
+template<typename Tag, typename Tag::type MemberPtr>
+struct FArcIWMassISMPrivateAccessor
+{
+	friend typename Tag::type GetPrivateMember(Tag) { return MemberPtr; }
+};
+
+struct FArcIWMassISMRuntimePartitionsAccess
+{
+	using type = TArray<FRuntimePartitionDesc> UWorldPartitionRuntimeHashSet::*;
+	friend type GetPrivateMember(FArcIWMassISMRuntimePartitionsAccess);
+};
+
+template struct FArcIWMassISMPrivateAccessor<FArcIWMassISMRuntimePartitionsAccess, &UWorldPartitionRuntimeHashSet::RuntimePartitions>;
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -44,7 +76,44 @@ AArcIWMassISMPartitionActor::AArcIWMassISMPartitionActor(const FObjectInitialize
 
 uint32 AArcIWMassISMPartitionActor::GetGridCellSize(UWorld* InWorld, FName InGridName)
 {
-	return AArcIWPartitionActor::GetGridCellSize(InWorld, InGridName);
+	if (InWorld)
+	{
+		UWorldPartition* WorldPartition = InWorld->GetWorldPartition();
+		if (WorldPartition)
+		{
+			// Path 1: UWorldPartitionRuntimeSpatialHash (legacy/simple WP setup)
+			UWorldPartitionRuntimeSpatialHash* SpatialHash = Cast<UWorldPartitionRuntimeSpatialHash>(WorldPartition->RuntimeHash);
+			if (SpatialHash)
+			{
+				const FSpatialHashStreamingGrid* StreamingGrid = SpatialHash->GetStreamingGridByName(InGridName);
+				if (StreamingGrid)
+				{
+					return static_cast<uint32>(StreamingGrid->CellSize);
+				}
+			}
+
+			// Path 2: UWorldPartitionRuntimeHashSet (new WP setup with runtime partitions)
+			UWorldPartitionRuntimeHashSet* HashSet = Cast<UWorldPartitionRuntimeHashSet>(WorldPartition->RuntimeHash);
+			if (HashSet)
+			{
+				const TArray<FRuntimePartitionDesc>& Partitions = HashSet->*GetPrivateMember(FArcIWMassISMRuntimePartitionsAccess{});
+				for (const FRuntimePartitionDesc& Desc : Partitions)
+				{
+					if (Desc.Name == InGridName && Desc.MainLayer)
+					{
+						URuntimePartitionLHGrid* LHGrid = Cast<URuntimePartitionLHGrid>(Desc.MainLayer);
+						if (LHGrid)
+						{
+							return LHGrid->GetCellSize();
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to project settings
+	return UArcIWSettings::Get()->DefaultGridCellSize;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +141,7 @@ void AArcIWMassISMPartitionActor::BeginPlay()
 	DestroyEditorPreviewISMCs();
 #endif
 
-	CreateISMHolderEntities();
+	InitializeISMState();
 	SpawnEntities();
 }
 
@@ -87,134 +156,31 @@ void AArcIWMassISMPartitionActor::EndPlay(const EEndPlayReason::Type EndPlayReas
 // ISM Holder Entity Management (Mass MeshEngine rendering)
 // ---------------------------------------------------------------------------
 
-void AArcIWMassISMPartitionActor::CreateISMHolderEntities()
+void AArcIWMassISMPartitionActor::InitializeISMState()
 {
 	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
+	if (!World) return;
 	UMassEntitySubsystem* EntitySubsystem = World->GetSubsystem<UMassEntitySubsystem>();
-	if (!EntitySubsystem)
-	{
-		return;
-	}
-
+	if (!EntitySubsystem) return;
 	FMassEntityManager& EntityManager = EntitySubsystem->GetMutableEntityManager();
 
-	// Count total mesh slots
 	int32 TotalMeshSlots = 0;
 	for (const FArcIWActorClassData& ClassData : ActorClassEntries)
 	{
 		TotalMeshSlots += ClassData.MeshDescriptors.Num();
 	}
+	ISMHolderEntities.SetNumZeroed(TotalMeshSlots);
 
-	ISMHolderEntities.SetNum(TotalMeshSlots);
+	FMassElementBitSet Composition;
+	Composition.Add<FTransformFragment>();
+	Composition.Add<FMassRenderStateFragment>();
+	Composition.Add<FMassRenderPrimitiveFragment>();
+	Composition.Add<FMassRenderISMFragment>();
+	ISMHolderArchetype = EntityManager.CreateArchetype(Composition, FMassArchetypeCreationParams{TEXT("ArcIWMassISMHolder")});
 
-	// Base element composition for ISM holder entities
-	FMassElementBitSet BaseComposition;
-	BaseComposition.Add<FTransformFragment>();
-	BaseComposition.Add<FMassRenderStateFragment>();
-	BaseComposition.Add<FMassRenderPrimitiveFragment>();
-	BaseComposition.Add<FMassRenderISMFragment>();
-
-	int32 SlotIdx = 0;
-	for (const FArcIWActorClassData& ClassData : ActorClassEntries)
-	{
-		for (const FArcIWMeshEntry& MeshEntry : ClassData.MeshDescriptors)
-		{
-			if (!MeshEntry.Mesh)
-			{
-				ISMHolderEntities[SlotIdx] = FMassEntityHandle();
-				++SlotIdx;
-				continue;
-			}
-
-			// Build shared fragment values for this mesh
-			FMassStaticMeshFragment StaticMeshFrag(MeshEntry.Mesh);
-			FMassVisualizationMeshFragment VisMeshFrag;
-			VisMeshFrag.CastShadow = MeshEntry.bCastShadows;
-
-			FMassArchetypeSharedFragmentValues SharedValues;
-			SharedValues.Add(FConstSharedStruct::Make(StaticMeshFrag));
-			SharedValues.Add(FConstSharedStruct::Make(VisMeshFrag));
-
-			// Add material overrides if present
-			const FMassOverrideMaterialsFragment* OverrideMatsPtr = nullptr;
-			FMassOverrideMaterialsFragment OverrideMats;
-			if (MeshEntry.Materials.Num() > 0)
-			{
-				bool bHasMaterial = false;
-				for (const TObjectPtr<UMaterialInterface>& Mat : MeshEntry.Materials)
-				{
-					if (Mat)
-					{
-						bHasMaterial = true;
-						break;
-					}
-				}
-				if (bHasMaterial)
-				{
-					OverrideMats.OverrideMaterials.Reserve(MeshEntry.Materials.Num());
-					for (const TObjectPtr<UMaterialInterface>& Mat : MeshEntry.Materials)
-					{
-						OverrideMats.OverrideMaterials.Add(Mat);
-					}
-					SharedValues.Add(FConstSharedStruct::Make(OverrideMats));
-					OverrideMatsPtr = &OverrideMats;
-				}
-			}
-
-			// Build archetype -- add material override type if needed
-			FMassElementBitSet Composition = BaseComposition;
-			if (OverrideMatsPtr)
-			{
-				Composition.Add<FMassOverrideMaterialsFragment>();
-			}
-
-			FMassArchetypeHandle Archetype = EntityManager.CreateArchetype(Composition, FMassArchetypeCreationParams{TEXT("ArcIWMassISMHolder")});
-
-			SharedValues.Sort();
-
-			TArray<FMassEntityHandle> CreatedEntities;
-			TSharedRef<FMassObserverManager::FCreationContext> CreationContext = EntityManager.BatchCreateEntities(
-				Archetype, SharedValues, 1, CreatedEntities);
-
-			FMassEntityHandle HolderEntity = CreatedEntities[0];
-			FMassEntityView EntityView(EntityManager, HolderEntity);
-
-			// Set transform to identity (instances are in world space)
-			FTransformFragment& TransformFrag = EntityView.GetFragmentData<FTransformFragment>();
-			TransformFrag.SetTransform(FTransform::Identity);
-
-			// ISM holders are created empty — instances are added per-entity by ActivateEntity().
-			FMassRenderISMFragment& ISMFrag = EntityView.GetFragmentData<FMassRenderISMFragment>();
-
-			// Initialize the scene proxy desc from fragments
-			FMassRenderPrimitiveFragment& PrimFrag = EntityView.GetFragmentData<FMassRenderPrimitiveFragment>();
-			PrimFrag.bIsVisible = true;
-
-			checkf(ISMFrag.InstancedStaticMeshSceneProxyDesc, TEXT("Default FMassRenderISMFragment ctor should create the desc"));
-			UE::MassEngine::Mesh::InitializeInstanceStaticMeshSceneProxyDescFromFragment(
-				StaticMeshFrag, VisMeshFrag, TransformFrag, *ISMFrag.InstancedStaticMeshSceneProxyDesc);
-
-			// Calculate bounds
-			PrimFrag.LocalBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
-				TransformFrag, ISMFrag, UE::MassEngine::Mesh::EBoundsType::LocalBounds);
-			PrimFrag.WorldBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
-				TransformFrag, ISMFrag, UE::MassEngine::Mesh::EBoundsType::WorldBounds);
-
-			// Create the render state helper -- the existing UMassCreateRenderStateProcessor
-			// will pick it up and call CreateRenderState() to create the scene proxy.
-			FMassRenderStateFragment& RenderState = EntityView.GetFragmentData<FMassRenderStateFragment>();
-			RenderState.CreateRenderStateHelper<FMassISMRenderStateHelper>(
-				HolderEntity, &EntityManager, PrimFrag, OverrideMatsPtr, ISMFrag);
-
-			ISMHolderEntities[SlotIdx] = HolderEntity;
-			++SlotIdx;
-		}
-	}
+	FMassElementBitSet CompositionWithMats = Composition;
+	CompositionWithMats.Add<FMassOverrideMaterialsFragment>();
+	ISMHolderArchetypeWithMats = EntityManager.CreateArchetype(CompositionWithMats, FMassArchetypeCreationParams{TEXT("ArcIWMassISMHolderMats")});
 }
 
 void AArcIWMassISMPartitionActor::DestroyISMHolderEntities()
@@ -243,6 +209,8 @@ void AArcIWMassISMPartitionActor::DestroyISMHolderEntities()
 		}
 	}
 	ISMHolderEntities.Empty();
+	ISMHolderArchetype = FMassArchetypeHandle();
+	ISMHolderArchetypeWithMats = FMassArchetypeHandle();
 }
 
 // ---------------------------------------------------------------------------
@@ -265,12 +233,10 @@ void AArcIWMassISMPartitionActor::SpawnEntities()
 
 	FMassEntityManager& EntityManager = EntitySubsystem->GetMutableEntityManager();
 
-	// Count totals
-	int32 TotalMeshSlots = 0;
+	// Count total entities
 	int32 TotalEntities = 0;
 	for (const FArcIWActorClassData& ClassData : ActorClassEntries)
 	{
-		TotalMeshSlots += ClassData.MeshDescriptors.Num();
 		TotalEntities += ClassData.InstanceTransforms.Num();
 	}
 
@@ -322,8 +288,10 @@ void AArcIWMassISMPartitionActor::SpawnEntities()
 		FGuid ClassGuid = FGuid::NewDeterministicGuid(ClassData.ActorClass->GetPathName());
 		FMassEntityTemplateID TemplateID = FMassEntityTemplateIDFactory::Make(ClassGuid);
 
-		TSharedRef<FMassEntityTemplate> FinalTemplate = FMassEntityTemplate::MakeFinalTemplate(
-			EntityManager, MoveTemp(TemplateData), TemplateID);
+		UMassSpawnerSubsystem* SpawnerSubsystem = World->GetSubsystem<UMassSpawnerSubsystem>();
+		check(SpawnerSubsystem);
+		FMassEntityTemplateRegistry& TemplateRegistry = SpawnerSubsystem->GetMutableTemplateRegistryInstance();
+		const TSharedRef<FMassEntityTemplate>& FinalTemplate = TemplateRegistry.FindOrAddTemplate(TemplateID, MoveTemp(TemplateData));
 
 		const FMassArchetypeHandle& Archetype = FinalTemplate->GetArchetype();
 		const FMassArchetypeSharedFragmentValues& SharedValues = FinalTemplate->GetSharedFragmentValues();
@@ -365,7 +333,8 @@ void AArcIWMassISMPartitionActor::DespawnEntities()
 
 	FMassEntityManager& EntityManager = EntitySubsystem->GetMutableEntityManager();
 
-	// Terminate physics bodies before destroying entities
+	TArray<FMassEntityHandle> ValidEntities;
+	ValidEntities.Reserve(SpawnedEntities.Num());
 	for (FMassEntityHandle EntityHandle : SpawnedEntities)
 	{
 		if (EntityManager.IsEntityValid(EntityHandle))
@@ -375,28 +344,264 @@ void AArcIWMassISMPartitionActor::DespawnEntities()
 			{
 				BodyFrag->TerminateBodies();
 			}
-		}
-	}
-
-	TArray<FMassEntityHandle> ValidEntities;
-	ValidEntities.Reserve(SpawnedEntities.Num());
-	for (FMassEntityHandle EntityHandle : SpawnedEntities)
-	{
-		if (EntityManager.IsEntityValid(EntityHandle))
-		{
 			ValidEntities.Add(EntityHandle);
 		}
 	}
-
 	EntityManager.BatchDestroyEntities(MakeArrayView(ValidEntities));
 	SpawnedEntities.Reset();
 }
 
 // ---------------------------------------------------------------------------
-// ActivateEntity / DeactivateEntity
+// ActivateMesh / DeactivateMesh / ActivatePhysics / DeactivatePhysics
 // ---------------------------------------------------------------------------
 
-void AArcIWMassISMPartitionActor::ActivateEntity(
+void AArcIWMassISMPartitionActor::ActivateMesh(
+	FMassEntityHandle Entity,
+	FArcIWInstanceFragment& Instance,
+	const FArcIWVisConfigFragment& Config,
+	const FTransform& WorldTransform,
+	FMassEntityManager& EntityManager,
+	FMassExecutionContext& Context)
+{
+	const int32 MeshCount = Config.MeshDescriptors.Num();
+	Instance.ISMInstanceIds.SetNum(MeshCount);
+
+	for (int32 MeshIdx = 0; MeshIdx < MeshCount; ++MeshIdx)
+	{
+		Instance.ISMInstanceIds[MeshIdx] = INDEX_NONE;
+		const FArcIWMeshEntry& MeshEntry = Config.MeshDescriptors[MeshIdx];
+		if (!MeshEntry.Mesh)
+		{
+			continue;
+		}
+
+		const int32 HolderSlot = Instance.MeshSlotBase + MeshIdx;
+		if (!ISMHolderEntities.IsValidIndex(HolderSlot))
+		{
+			continue;
+		}
+
+		FMassEntityHandle HolderEntity = ISMHolderEntities[HolderSlot];
+
+		if (HolderEntity.IsValid() && EntityManager.IsEntityValid(HolderEntity))
+		{
+			// Holder exists — add instance directly
+			FMassRenderISMFragment* ISMFrag = EntityManager.GetFragmentDataPtr<FMassRenderISMFragment>(HolderEntity);
+			FMassRenderPrimitiveFragment* PrimFrag = EntityManager.GetFragmentDataPtr<FMassRenderPrimitiveFragment>(HolderEntity);
+			FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
+
+			if (ISMFrag && PrimFrag && RenderState)
+			{
+				FTransform FinalTransform = MeshEntry.RelativeTransform * WorldTransform;
+				FInstancedStaticMeshInstanceData InstanceData;
+				InstanceData.Transform = FinalTransform.ToMatrixWithScale();
+				int32 SparseIdx = ISMFrag->PerInstanceSMData.Add(InstanceData);
+				Instance.ISMInstanceIds[MeshIdx] = SparseIdx;
+
+				FTransformFragment* HolderTransform = EntityManager.GetFragmentDataPtr<FTransformFragment>(HolderEntity);
+				if (HolderTransform)
+				{
+					PrimFrag->LocalBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
+						*HolderTransform, *ISMFrag, UE::MassEngine::Mesh::EBoundsType::LocalBounds);
+					PrimFrag->WorldBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
+						*HolderTransform, *ISMFrag, UE::MassEngine::Mesh::EBoundsType::WorldBounds);
+				}
+
+				PrimFrag->bIsVisible = true;
+				RenderState->GetRenderStateHelper().MarkRenderStateDirty();
+			}
+		}
+		else
+		{
+			// Holder doesn't exist — queue deferred creation
+			FTransform FinalTransform = MeshEntry.RelativeTransform * WorldTransform;
+			FArcIWMeshEntry MeshEntryCopy = MeshEntry;
+			FMassEntityHandle SourceEntity = Entity;
+			int32 CapturedMeshIdx = MeshIdx;
+			int32 CapturedSlot = HolderSlot;
+			AArcIWMassISMPartitionActor* Self = this;
+
+			bool bHasOverrideMats = false;
+			for (const TObjectPtr<UMaterialInterface>& Mat : MeshEntryCopy.Materials)
+			{
+				if (Mat)
+				{
+					bHasOverrideMats = true;
+					break;
+				}
+			}
+			FMassArchetypeHandle CachedArchetype = bHasOverrideMats ? Self->ISMHolderArchetypeWithMats : Self->ISMHolderArchetype;
+
+			Context.Defer().PushCommand<FMassDeferredAddCommand>(
+				[Self, CapturedSlot, CapturedMeshIdx, SourceEntity, MeshEntryCopy, FinalTransform, bHasOverrideMats, CachedArchetype]
+				(FMassEntityManager& DeferredEM)
+			{
+				if (!DeferredEM.IsEntityValid(SourceEntity))
+				{
+					return;
+				}
+
+				FMassEntityHandle ExistingHolder = Self->ISMHolderEntities[CapturedSlot];
+				if (ExistingHolder.IsValid() && DeferredEM.IsEntityValid(ExistingHolder))
+				{
+					// Another deferred command already created this holder
+					FMassRenderISMFragment* ISMFrag = DeferredEM.GetFragmentDataPtr<FMassRenderISMFragment>(ExistingHolder);
+					FMassRenderPrimitiveFragment* PrimFrag = DeferredEM.GetFragmentDataPtr<FMassRenderPrimitiveFragment>(ExistingHolder);
+					FMassRenderStateFragment* RenderState = DeferredEM.GetFragmentDataPtr<FMassRenderStateFragment>(ExistingHolder);
+
+					if (ISMFrag && PrimFrag && RenderState)
+					{
+						FInstancedStaticMeshInstanceData InstanceData;
+						InstanceData.Transform = FinalTransform.ToMatrixWithScale();
+						int32 SparseIdx = ISMFrag->PerInstanceSMData.Add(InstanceData);
+
+						FTransformFragment* HolderTransform = DeferredEM.GetFragmentDataPtr<FTransformFragment>(ExistingHolder);
+						if (HolderTransform)
+						{
+							PrimFrag->LocalBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
+								*HolderTransform, *ISMFrag, UE::MassEngine::Mesh::EBoundsType::LocalBounds);
+							PrimFrag->WorldBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
+								*HolderTransform, *ISMFrag, UE::MassEngine::Mesh::EBoundsType::WorldBounds);
+						}
+
+						PrimFrag->bIsVisible = true;
+						RenderState->GetRenderStateHelper().MarkRenderStateDirty();
+
+						FArcIWInstanceFragment* SourceInstance = DeferredEM.GetFragmentDataPtr<FArcIWInstanceFragment>(SourceEntity);
+						if (SourceInstance && SourceInstance->ISMInstanceIds.IsValidIndex(CapturedMeshIdx))
+						{
+							SourceInstance->ISMInstanceIds[CapturedMeshIdx] = SparseIdx;
+						}
+					}
+					return;
+				}
+
+				// Build shared fragments
+				FMassStaticMeshFragment StaticMeshFrag(MeshEntryCopy.Mesh);
+				FMassVisualizationMeshFragment VisMeshFrag;
+				VisMeshFrag.CastShadow = MeshEntryCopy.bCastShadows;
+
+				FMassArchetypeSharedFragmentValues SharedValues;
+				SharedValues.Add(FConstSharedStruct::Make(StaticMeshFrag));
+				SharedValues.Add(FConstSharedStruct::Make(VisMeshFrag));
+
+				FMassOverrideMaterialsFragment OverrideMats;
+				if (bHasOverrideMats)
+				{
+					OverrideMats.OverrideMaterials = MeshEntryCopy.Materials;
+					SharedValues.Add(FConstSharedStruct::Make(OverrideMats));
+				}
+
+				SharedValues.Sort();
+
+				TArray<FMassEntityHandle> CreatedEntities;
+				TSharedRef<FMassObserverManager::FCreationContext> CreationContext = DeferredEM.BatchCreateEntities(
+					CachedArchetype, SharedValues, 1, CreatedEntities);
+
+				FMassEntityHandle HolderEntity = CreatedEntities[0];
+				FMassEntityView EntityView(DeferredEM, HolderEntity);
+
+				// Init transform
+				FTransformFragment& TransformFrag = EntityView.GetFragmentData<FTransformFragment>();
+				TransformFrag.SetTransform(FTransform::Identity);
+
+				// Init ISM fragment + proxy desc
+				FMassRenderISMFragment& ISMFrag = EntityView.GetFragmentData<FMassRenderISMFragment>();
+				FMassRenderPrimitiveFragment& PrimFrag = EntityView.GetFragmentData<FMassRenderPrimitiveFragment>();
+				PrimFrag.bIsVisible = true;
+
+				const FMassOverrideMaterialsFragment* OverrideMatsPtr = bHasOverrideMats ? &OverrideMats : nullptr;
+
+				checkf(ISMFrag.InstancedStaticMeshSceneProxyDesc, TEXT("Default ctor should create desc"));
+				UE::MassEngine::Mesh::InitializeInstanceStaticMeshSceneProxyDescFromFragment(
+					StaticMeshFrag, VisMeshFrag, TransformFrag, *ISMFrag.InstancedStaticMeshSceneProxyDesc);
+
+				// Add first instance
+				FInstancedStaticMeshInstanceData InstanceData;
+				InstanceData.Transform = FinalTransform.ToMatrixWithScale();
+				int32 SparseIdx = ISMFrag.PerInstanceSMData.Add(InstanceData);
+
+				// Calculate bounds so the primitive isn't frustum-culled as a zero-size point
+				PrimFrag.LocalBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
+					TransformFrag, ISMFrag, UE::MassEngine::Mesh::EBoundsType::LocalBounds);
+				PrimFrag.WorldBounds = UE::MassEngine::Mesh::CalculateInstancedStaticMeshBounds(
+					TransformFrag, ISMFrag, UE::MassEngine::Mesh::EBoundsType::WorldBounds);
+
+				// Create render state helper (PerInstanceSMData has 1 entry — safe)
+				FMassRenderStateFragment& RenderState = EntityView.GetFragmentData<FMassRenderStateFragment>();
+				RenderState.CreateRenderStateHelper<FMassISMRenderStateHelper>(
+					HolderEntity, &DeferredEM, PrimFrag, OverrideMatsPtr, ISMFrag);
+
+				// Store holder handle
+				Self->ISMHolderEntities[CapturedSlot] = HolderEntity;
+
+				// Write back sparse index to source entity
+				FArcIWInstanceFragment* SourceInstance = DeferredEM.GetFragmentDataPtr<FArcIWInstanceFragment>(SourceEntity);
+				if (SourceInstance && SourceInstance->ISMInstanceIds.IsValidIndex(CapturedMeshIdx))
+				{
+					SourceInstance->ISMInstanceIds[CapturedMeshIdx] = SparseIdx;
+				}
+			});
+		}
+	}
+}
+
+void AArcIWMassISMPartitionActor::DeactivateMesh(
+	FMassEntityHandle Entity,
+	FArcIWInstanceFragment& Instance,
+	const FArcIWVisConfigFragment& Config,
+	FMassEntityManager& EntityManager)
+{
+	const int32 MeshCount = Config.MeshDescriptors.Num();
+
+	for (int32 MeshIdx = 0; MeshIdx < MeshCount; ++MeshIdx)
+	{
+		const int32 HolderSlot = Instance.MeshSlotBase + MeshIdx;
+		if (!ISMHolderEntities.IsValidIndex(HolderSlot))
+		{
+			if (Instance.ISMInstanceIds.IsValidIndex(MeshIdx))
+			{
+				Instance.ISMInstanceIds[MeshIdx] = INDEX_NONE;
+			}
+			continue;
+		}
+
+		FMassEntityHandle HolderEntity = ISMHolderEntities[HolderSlot];
+		if (!HolderEntity.IsValid() || !EntityManager.IsEntityValid(HolderEntity))
+		{
+			if (Instance.ISMInstanceIds.IsValidIndex(MeshIdx))
+			{
+				Instance.ISMInstanceIds[MeshIdx] = INDEX_NONE;
+			}
+			continue;
+		}
+
+		FMassRenderISMFragment* ISMFrag = EntityManager.GetFragmentDataPtr<FMassRenderISMFragment>(HolderEntity);
+		FMassRenderPrimitiveFragment* PrimFrag = EntityManager.GetFragmentDataPtr<FMassRenderPrimitiveFragment>(HolderEntity);
+		FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
+
+		if (ISMFrag && PrimFrag && RenderState)
+		{
+			const int32 SparseIdx = Instance.ISMInstanceIds.IsValidIndex(MeshIdx) ? Instance.ISMInstanceIds[MeshIdx] : INDEX_NONE;
+			if (SparseIdx != INDEX_NONE && ISMFrag->PerInstanceSMData.IsValidIndex(SparseIdx))
+			{
+				ISMFrag->PerInstanceSMData.RemoveAt(SparseIdx);
+				if (ISMFrag->PerInstanceSMData.Num() == 0)
+				{
+					PrimFrag->bIsVisible = false;
+				}
+				RenderState->GetRenderStateHelper().MarkRenderStateDirty();
+			}
+		}
+
+		if (Instance.ISMInstanceIds.IsValidIndex(MeshIdx))
+		{
+			Instance.ISMInstanceIds[MeshIdx] = INDEX_NONE;
+		}
+	}
+}
+
+void AArcIWMassISMPartitionActor::ActivatePhysics(
 	FMassEntityHandle Entity,
 	FArcIWInstanceFragment& Instance,
 	const FArcIWVisConfigFragment& Config,
@@ -410,73 +615,72 @@ void AArcIWMassISMPartitionActor::ActivateEntity(
 	}
 
 	FPhysScene* PhysScene = World->GetPhysicsScene();
-
-	const int32 MeshCount = Config.MeshDescriptors.Num();
-
-	FArcMassPhysicsBodyFragment* BodyFrag = EntityManager.GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
-	if (BodyFrag)
+	if (!PhysScene)
 	{
-		BodyFrag->Bodies.SetNum(MeshCount);
+		return;
 	}
 
-	Instance.ISMInstanceIds.SetNum(MeshCount);
+	FArcMassPhysicsBodyFragment* BodyFrag = EntityManager.GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+	if (!BodyFrag)
+	{
+		return;
+	}
+
+	const int32 MeshCount = Config.MeshDescriptors.Num();
+	BodyFrag->Bodies.SetNum(MeshCount);
 
 	for (int32 MeshIdx = 0; MeshIdx < MeshCount; ++MeshIdx)
 	{
-		Instance.ISMInstanceIds[MeshIdx] = INDEX_NONE;
-
 		const FArcIWMeshEntry& MeshEntry = Config.MeshDescriptors[MeshIdx];
 		if (!MeshEntry.Mesh)
 		{
-			if (BodyFrag)
-			{
-				BodyFrag->Bodies[MeshIdx] = nullptr;
-			}
+			BodyFrag->Bodies[MeshIdx] = nullptr;
 			continue;
 		}
 
-		// --- ISM instance ---
-		const int32 HolderSlot = Instance.MeshSlotBase + MeshIdx;
-		if (ISMHolderEntities.IsValidIndex(HolderSlot))
+		UBodySetup* BodySetup = MeshEntry.Mesh->GetBodySetup();
+		if (BodySetup)
 		{
-			FMassEntityHandle HolderEntity = ISMHolderEntities[HolderSlot];
-			if (HolderEntity.IsValid() && EntityManager.IsEntityValid(HolderEntity))
-			{
-				FMassRenderISMFragment* ISMFrag = EntityManager.GetFragmentDataPtr<FMassRenderISMFragment>(HolderEntity);
-				FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
-
-				if (ISMFrag && RenderState)
-				{
-					FTransform FinalTransform = MeshEntry.RelativeTransform * WorldTransform;
-					FInstancedStaticMeshInstanceData InstanceData;
-					InstanceData.Transform = FinalTransform.ToMatrixWithScale();
-					const int32 SparseIdx = ISMFrag->PerInstanceSMData.Add(InstanceData);
-					Instance.ISMInstanceIds[MeshIdx] = SparseIdx;
-					RenderState->GetRenderStateHelper().MarkRenderStateDirty();
-				}
-			}
+			FTransform BodyTransform = MeshEntry.RelativeTransform * WorldTransform;
+			FBodyInstance* Body = new FBodyInstance();
+			FInitBodySpawnParams SpawnParams(/*bStaticPhysics=*/true, /*bPhysicsTypeDeterminesSimulation=*/false);
+			Body->InitBody(BodySetup, BodyTransform, nullptr, PhysScene, SpawnParams);
+			BodyFrag->Bodies[MeshIdx] = Body;
+			// NOTE: ArcMassPhysicsEntityLink::Attach() is NOT called here.
+			// Physics attachment is deferred to UArcIWPhysicsAttachProcessor.
 		}
-
-		// --- Physics body ---
-		if (BodyFrag && PhysScene)
+		else
 		{
-			UBodySetup* BodySetup = MeshEntry.Mesh->GetBodySetup();
-			if (BodySetup)
-			{
-				FTransform BodyTransform = MeshEntry.RelativeTransform * WorldTransform;
-				FBodyInstance* Body = new FBodyInstance();
-				FInitBodySpawnParams SpawnParams(/*bStaticPhysics=*/true, /*bPhysicsTypeDeterminesSimulation=*/false);
-				Body->InitBody(BodySetup, BodyTransform, nullptr, PhysScene, SpawnParams);
-				BodyFrag->Bodies[MeshIdx] = Body;
-				// NOTE: ArcMassPhysicsEntityLink::Attach() is NOT called here.
-				// Physics attachment is deferred to UArcIWPhysicsAttachProcessor.
-			}
-			else
-			{
-				BodyFrag->Bodies[MeshIdx] = nullptr;
-			}
+			BodyFrag->Bodies[MeshIdx] = nullptr;
 		}
 	}
+}
+
+void AArcIWMassISMPartitionActor::DeactivatePhysics(
+	FMassEntityHandle Entity,
+	FMassEntityManager& EntityManager)
+{
+	FArcMassPhysicsBodyFragment* BodyFrag = EntityManager.GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+	if (BodyFrag)
+	{
+		BodyFrag->TerminateBodies();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ActivateEntity / DeactivateEntity  (convenience wrappers)
+// ---------------------------------------------------------------------------
+
+void AArcIWMassISMPartitionActor::ActivateEntity(
+	FMassEntityHandle Entity,
+	FArcIWInstanceFragment& Instance,
+	const FArcIWVisConfigFragment& Config,
+	const FTransform& WorldTransform,
+	FMassEntityManager& EntityManager,
+	FMassExecutionContext& Context)
+{
+	ActivateMesh(Entity, Instance, Config, WorldTransform, EntityManager, Context);
+	ActivatePhysics(Entity, Instance, Config, WorldTransform, EntityManager);
 }
 
 void AArcIWMassISMPartitionActor::DeactivateEntity(
@@ -485,44 +689,8 @@ void AArcIWMassISMPartitionActor::DeactivateEntity(
 	const FArcIWVisConfigFragment& Config,
 	FMassEntityManager& EntityManager)
 {
-	const int32 MeshCount = Config.MeshDescriptors.Num();
-
-	for (int32 MeshIdx = 0; MeshIdx < MeshCount; ++MeshIdx)
-	{
-		// --- Remove ISM instance ---
-		const int32 HolderSlot = Instance.MeshSlotBase + MeshIdx;
-		if (ISMHolderEntities.IsValidIndex(HolderSlot))
-		{
-			FMassEntityHandle HolderEntity = ISMHolderEntities[HolderSlot];
-			if (HolderEntity.IsValid() && EntityManager.IsEntityValid(HolderEntity))
-			{
-				FMassRenderISMFragment* ISMFrag = EntityManager.GetFragmentDataPtr<FMassRenderISMFragment>(HolderEntity);
-				FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
-
-				if (ISMFrag && RenderState)
-				{
-					const int32 SparseIdx = Instance.ISMInstanceIds.IsValidIndex(MeshIdx) ? Instance.ISMInstanceIds[MeshIdx] : INDEX_NONE;
-					if (SparseIdx != INDEX_NONE && ISMFrag->PerInstanceSMData.IsValidIndex(SparseIdx))
-					{
-						ISMFrag->PerInstanceSMData.RemoveAt(SparseIdx);
-						RenderState->GetRenderStateHelper().MarkRenderStateDirty();
-					}
-				}
-			}
-		}
-
-		if (Instance.ISMInstanceIds.IsValidIndex(MeshIdx))
-		{
-			Instance.ISMInstanceIds[MeshIdx] = INDEX_NONE;
-		}
-	}
-
-	// --- Destroy physics bodies ---
-	FArcMassPhysicsBodyFragment* BodyFrag = EntityManager.GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
-	if (BodyFrag)
-	{
-		BodyFrag->TerminateBodies();
-	}
+	DeactivateMesh(Entity, Instance, Config, EntityManager);
+	DeactivatePhysics(Entity, EntityManager);
 }
 
 // ---------------------------------------------------------------------------
@@ -573,9 +741,10 @@ void AArcIWMassISMPartitionActor::HydrateEntity(FMassEntityHandle EntityHandle)
 		return;
 	}
 
-	// Deactivate — remove ISM instances and terminate physics bodies.
+	// Remove ISM instances and terminate physics bodies independently.
 	// The hydrated actor will manage its own physics from this point.
-	DeactivateEntity(EntityHandle, *Instance, *Config, EntityManager);
+	DeactivateMesh(EntityHandle, *Instance, *Config, EntityManager);
+	DeactivatePhysics(EntityHandle, EntityManager);
 
 	// Acquire actor from pool
 	UArcIWActorPoolSubsystem* Pool = World->GetSubsystem<UArcIWActorPoolSubsystem>();
@@ -871,3 +1040,47 @@ void AArcIWMassISMPartitionActor::DestroyEditorPreviewISMCs()
 	EditorPreviewISMCs.Empty();
 }
 #endif
+
+// ---------------------------------------------------------------------------
+// UE::ArcIW Utilities
+// ---------------------------------------------------------------------------
+
+void UE::ArcIW::DetachPhysicsLinkEntries(FArcMassPhysicsLinkFragment& LinkFragment)
+{
+	for (FArcMassPhysicsLinkEntry& Entry : LinkFragment.Entries)
+	{
+		if (!Entry.Append)
+		{
+			continue;
+		}
+
+		UPrimitiveComponent* Comp = Entry.Component.Get();
+		FBodyInstance* Body = nullptr;
+
+		if (Comp)
+		{
+			if (Entry.BodyIndex != INDEX_NONE)
+			{
+				Body = Comp->GetBodyInstance(NAME_None, false, Entry.BodyIndex);
+			}
+			else
+			{
+				Body = Comp->GetBodyInstance();
+			}
+		}
+
+		if (Body)
+		{
+			ArcMassPhysicsEntityLink::Detach(*Body, Entry.Append);
+		}
+		else
+		{
+			delete Entry.Append->UserDefinedEntity;
+			Entry.Append->UserDefinedEntity = nullptr;
+			delete Entry.Append;
+		}
+		Entry.Append = nullptr;
+	}
+
+	LinkFragment.Entries.Empty();
+}

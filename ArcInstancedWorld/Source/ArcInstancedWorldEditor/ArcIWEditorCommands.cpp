@@ -4,7 +4,6 @@
 
 #include "ArcInstancedWorld/ArcIWMassConfigComponent.h"
 #include "ArcInstancedWorld/ArcIWMassISMPartitionActor.h"
-#include "ArcInstancedWorld/ArcIWPartitionActor.h"
 #include "ArcInstancedWorld/ArcIWSettings.h"
 #include "ArcInstancedWorld/ArcIWTypes.h"
 #include "ActorPartition/ActorPartitionSubsystem.h"
@@ -102,10 +101,7 @@ void ConvertActorsToPartition(UWorld* World, const TArray<AActor*>& Actors)
 
 	const bool bIsPartitionedWorld = World->IsPartitionedWorld();
 
-	const bool bUseMassISM = UArcIWSettings::Get()->bUseMassISM;
-	UClass* PartitionClass = bUseMassISM
-		? AArcIWMassISMPartitionActor::StaticClass()
-		: AArcIWPartitionActor::StaticClass();
+	UClass* PartitionClass = AArcIWMassISMPartitionActor::StaticClass();
 
 	TSet<APartitionActor*> ModifiedPartitionActors;
 
@@ -130,18 +126,8 @@ void ConvertActorsToPartition(UWorld* World, const TArray<AActor*>& Actors)
 			RuntimeGridName = ConfigComp->RuntimeGridName;
 		}
 
-		// Query cell size using the appropriate CDO
-		uint32 GridSize = 0;
-		if (bUseMassISM)
-		{
-			GridSize = AArcIWMassISMPartitionActor::GetGridCellSize(World, RuntimeGridName);
-		}
-		else
-		{
-			AArcIWPartitionActor* TempCDO = GetMutableDefault<AArcIWPartitionActor>();
-			TempCDO->SetGridName(RuntimeGridName);
-			GridSize = TempCDO->GetDefaultGridSize(World);
-		}
+		// Query cell size using the CDO
+		const uint32 GridSize = AArcIWMassISMPartitionActor::GetGridCellSize(World, RuntimeGridName);
 
 		// Generate a stable GUID from the grid name
 		FArchiveMD5 ArMD5;
@@ -170,18 +156,10 @@ void ConvertActorsToPartition(UWorld* World, const TArray<AActor*>& Actors)
 			/*InGuid=*/ManagerGuid,
 			/*InGridSize=*/GridSize,
 			/*bInBoundsSearch=*/true,
-			/*InActorCreated=*/[bIsPartitionedWorld, bUseMassISM, &CellCenter, RuntimeGridName](APartitionActor* NewPartitionActor)
+			/*InActorCreated=*/[bIsPartitionedWorld, &CellCenter, RuntimeGridName](APartitionActor* NewPartitionActor)
 			{
-				if (bUseMassISM)
-				{
-					AArcIWMassISMPartitionActor* MassISMActor = CastChecked<AArcIWMassISMPartitionActor>(NewPartitionActor);
-					MassISMActor->SetGridName(RuntimeGridName);
-				}
-				else
-				{
-					AArcIWPartitionActor* IWPartitionActor = CastChecked<AArcIWPartitionActor>(NewPartitionActor);
-					IWPartitionActor->SetGridName(RuntimeGridName);
-				}
+				AArcIWMassISMPartitionActor* MassISMActor = CastChecked<AArcIWMassISMPartitionActor>(NewPartitionActor);
+				MassISMActor->SetGridName(RuntimeGridName);
 				if (bIsPartitionedWorld)
 				{
 					NewPartitionActor->SetRuntimeGrid(RuntimeGridName);
@@ -190,24 +168,12 @@ void ConvertActorsToPartition(UWorld* World, const TArray<AActor*>& Actors)
 			});
 
 		// Add actor instance to partition
-		if (bUseMassISM)
-		{
-			AArcIWMassISMPartitionActor* MassISMActor = CastChecked<AArcIWMassISMPartitionActor>(RawPartitionActor);
-			MassISMActor->AddActorInstance(
-				Actor->GetClass(),
-				Actor->GetActorTransform(),
-				MeshEntries,
-				AdditionalConfig);
-		}
-		else
-		{
-			AArcIWPartitionActor* PartitionActor = CastChecked<AArcIWPartitionActor>(RawPartitionActor);
-			PartitionActor->AddActorInstance(
-				Actor->GetClass(),
-				Actor->GetActorTransform(),
-				MeshEntries,
-				AdditionalConfig);
-		}
+		AArcIWMassISMPartitionActor* MassISMActor = CastChecked<AArcIWMassISMPartitionActor>(RawPartitionActor);
+		MassISMActor->AddActorInstance(
+			Actor->GetClass(),
+			Actor->GetActorTransform(),
+			MeshEntries,
+			AdditionalConfig);
 
 		ModifiedPartitionActors.Add(RawPartitionActor);
 
@@ -218,50 +184,10 @@ void ConvertActorsToPartition(UWorld* World, const TArray<AActor*>& Actors)
 	// Build editor preview and mark dirty
 	for (APartitionActor* RawActor : ModifiedPartitionActors)
 	{
-		if (bUseMassISM)
-		{
-			AArcIWMassISMPartitionActor* MassISMActor = CastChecked<AArcIWMassISMPartitionActor>(RawActor);
-			MassISMActor->RebuildEditorPreviewISMCs();
-		}
-		else
-		{
-			AArcIWPartitionActor* PartitionActor = CastChecked<AArcIWPartitionActor>(RawActor);
-			PartitionActor->RebuildEditorPreviewISMCs();
-		}
+		AArcIWMassISMPartitionActor* MassISMActor = CastChecked<AArcIWMassISMPartitionActor>(RawActor);
+		MassISMActor->RebuildEditorPreviewISMCs();
 		RawActor->Modify();
 	}
-}
-
-void ConvertPartitionToActors(UWorld* World, AArcIWPartitionActor* PartitionActor)
-{
-	if (!World || !IsValid(PartitionActor))
-	{
-		return;
-	}
-
-	const TArray<FArcIWActorClassData>& ClassEntries = PartitionActor->GetActorClassEntries();
-
-	for (const FArcIWActorClassData& ClassData : ClassEntries)
-	{
-		if (!ClassData.ActorClass)
-		{
-			continue;
-		}
-
-		for (const FTransform& Transform : ClassData.InstanceTransforms)
-		{
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-			AActor* SpawnedActor = World->SpawnActor(ClassData.ActorClass, &Transform, SpawnParams);
-			if (SpawnedActor)
-			{
-				SpawnedActor->Modify();
-			}
-		}
-	}
-
-	PartitionActor->Destroy();
 }
 
 void ConvertPartitionToActors(UWorld* World, AArcIWMassISMPartitionActor* PartitionActor)
@@ -316,13 +242,6 @@ void UArcIWEditorCommandLibrary::ConvertPartitionToActors(UObject* WorldContextO
 	if (MassISMActor)
 	{
 		UE::ArcIW::Editor::ConvertPartitionToActors(World, MassISMActor);
-		return;
-	}
-
-	AArcIWPartitionActor* ISMActor = Cast<AArcIWPartitionActor>(PartitionActor);
-	if (ISMActor)
-	{
-		UE::ArcIW::Editor::ConvertPartitionToActors(World, ISMActor);
 	}
 }
 

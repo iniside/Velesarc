@@ -34,6 +34,16 @@ void UArcIWVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 	DehydrationRadius = 8000.f;
 	DehydrationRadiusCells = FMath::CeilToInt(DehydrationRadius / CellSize);
 	LastPlayerCell = FIntVector(TNumericLimits<int32>::Max());
+
+	const UArcIWSettings* Settings = UArcIWSettings::Get();
+	MeshAddRadius = Settings->MeshAddRadius;
+	MeshAddRadiusCells = FMath::CeilToInt32(MeshAddRadius / CellSize);
+	MeshRemoveRadius = Settings->MeshRemoveRadius;
+	MeshRemoveRadiusCells = FMath::CeilToInt32(MeshRemoveRadius / CellSize);
+	PhysicsAddRadius = Settings->PhysicsAddRadius;
+	PhysicsAddRadiusCells = FMath::CeilToInt32(PhysicsAddRadius / CellSize);
+	PhysicsRemoveRadius = Settings->PhysicsRemoveRadius;
+	PhysicsRemoveRadiusCells = FMath::CeilToInt32(PhysicsRemoveRadius / CellSize);
 }
 
 void UArcIWVisualizationSubsystem::Deinitialize()
@@ -325,6 +335,34 @@ bool UArcIWVisualizationSubsystem::IsWithinDehydrationRadius(const FIntVector& C
 	return FMath::Abs(Cell.X - LastPlayerCell.X) <= DehydrationRadiusCells
 		&& FMath::Abs(Cell.Y - LastPlayerCell.Y) <= DehydrationRadiusCells
 		&& FMath::Abs(Cell.Z - LastPlayerCell.Z) <= DehydrationRadiusCells;
+}
+
+bool UArcIWVisualizationSubsystem::IsMeshCell(const FIntVector& Cell) const
+{
+	FIntVector Delta = Cell - LastPlayerCell;
+	int32 MaxDist = FMath::Max3(FMath::Abs(Delta.X), FMath::Abs(Delta.Y), FMath::Abs(Delta.Z));
+	return MaxDist <= MeshAddRadiusCells;
+}
+
+bool UArcIWVisualizationSubsystem::IsPhysicsCell(const FIntVector& Cell) const
+{
+	FIntVector Delta = Cell - LastPlayerCell;
+	int32 MaxDist = FMath::Max3(FMath::Abs(Delta.X), FMath::Abs(Delta.Y), FMath::Abs(Delta.Z));
+	return MaxDist <= PhysicsAddRadiusCells;
+}
+
+bool UArcIWVisualizationSubsystem::IsWithinMeshRemoveRadius(const FIntVector& Cell) const
+{
+	FIntVector Delta = Cell - LastPlayerCell;
+	int32 MaxDist = FMath::Max3(FMath::Abs(Delta.X), FMath::Abs(Delta.Y), FMath::Abs(Delta.Z));
+	return MaxDist <= MeshRemoveRadiusCells;
+}
+
+bool UArcIWVisualizationSubsystem::IsWithinPhysicsRemoveRadius(const FIntVector& Cell) const
+{
+	FIntVector Delta = Cell - LastPlayerCell;
+	int32 MaxDist = FMath::Max3(FMath::Abs(Delta.X), FMath::Abs(Delta.Y), FMath::Abs(Delta.Z));
+	return MaxDist <= PhysicsRemoveRadiusCells;
 }
 
 void UArcIWVisualizationSubsystem::GetActiveCells(TArray<FIntVector>& OutCells) const

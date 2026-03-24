@@ -3,7 +3,6 @@
 #include "ArcIWEntityDeinitObserver.h"
 
 #include "ArcIWTypes.h"
-#include "ArcIWPartitionActor.h"
 #include "ArcIWMassISMPartitionActor.h"
 #include "ArcIWVisualizationSubsystem.h"
 #include "ArcIWActorPoolSubsystem.h"
@@ -73,20 +72,7 @@ void UArcIWEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMas
 						EntityManager.GetFragmentDataPtr<FArcMassPhysicsLinkFragment>(Entity);
 					if (LinkFragment)
 					{
-						AArcIWPartitionActor::DetachPhysicsLinkEntries(*LinkFragment);
-					}
-				}
-
-				if (bHasValidInstances)
-				{
-					AArcIWPartitionActor* Partition = Cast<AArcIWPartitionActor>(Instance.PartitionActor.Get());
-					if (Partition)
-					{
-						Partition->RemoveCompositeISMInstances(
-							Instance.MeshSlotBase,
-							Config.MeshDescriptors,
-							Instance.ISMInstanceIds,
-							EntityManager);
+						UE::ArcIW::DetachPhysicsLinkEntries(*LinkFragment);
 					}
 				}
 
@@ -94,8 +80,8 @@ void UArcIWEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMas
 					AArcIWMassISMPartitionActor* MassISMPartition = Cast<AArcIWMassISMPartitionActor>(Instance.PartitionActor.Get());
 					if (MassISMPartition)
 					{
-						// DeactivateEntity handles ISM instance removal + physics body cleanup
-						MassISMPartition->DeactivateEntity(Entity, Instance, Config, EntityManager);
+						MassISMPartition->DeactivateMesh(Entity, Instance, Config, EntityManager);
+						MassISMPartition->DeactivatePhysics(Entity, EntityManager);
 					}
 				}
 

@@ -19,7 +19,7 @@ struct ARCMASS_API FArcMassPhysicsBodyFragment : public FMassFragment
     TArray<FBodyInstance*> Bodies;
 
     /** Terminate and delete all physics bodies. Safe to call multiple times. */
-    ARCMASS_API void TerminateBodies();
+    void TerminateBodies();
 };
 
 template<>
