@@ -8,6 +8,7 @@
 #include "Serialization/ArcSaveArchive.h"
 #include "Serialization/ArcLoadArchive.h"
 #include "Serialization/ArcSerializerRegistry.h"
+#include "Serialization/ArcReflectionSerializer.h"
 
 void FArcMassFragmentSerializer::SaveEntityFragments(
 	FMassEntityManager& EntityManager,
@@ -20,6 +21,8 @@ void FArcMassFragmentSerializer::SaveEntityFragments(
 	{
 		return;
 	}
+
+	const bool bForceAllProperties = Config.AllowedFragments.Num() > 0;
 
 	// Get fragment types from archetype composition
 	const FMassArchetypeHandle Archetype = EntityManager.GetArchetypeForEntity(Entity);
@@ -55,7 +58,7 @@ void FArcMassFragmentSerializer::SaveEntityFragments(
 			{
 				HookInfo->PreSaveFunc(FragmentData.GetMemory(), *World);
 			}
-			SaveFragment(FragmentType, FragmentData.GetMemory(), Ar);
+			SaveFragment(FragmentType, FragmentData.GetMemory(), Ar, bForceAllProperties);
 			Ar.EndArrayElement();
 		}
 	}
@@ -120,13 +123,39 @@ void FArcMassFragmentSerializer::LoadEntityFragments(
 void FArcMassFragmentSerializer::SaveFragment(
 	const UScriptStruct* FragmentType,
 	const void* Data,
-	FArcSaveArchive& Ar)
+	FArcSaveArchive& Ar,
+	bool bForceAllProperties)
 {
-	const FArcPersistenceSerializerInfo* Info =
-		FArcSerializerRegistry::Get().FindOrDefault(FragmentType);
+	// Write force-all flag so LoadFragment knows which mode to use
+	if (bForceAllProperties)
+	{
+		Ar.WriteProperty(FName("_forceAll"), true);
+	}
 
-	Ar.WriteProperty(FName("_version"), Info->Version);
-	Info->SaveFunc(Data, Ar);
+	const FArcPersistenceSerializerInfo* CustomInfo =
+		FArcSerializerRegistry::Get().Find(FragmentType);
+
+	if (CustomInfo)
+	{
+		// Custom serializer — use as-is (it controls its own property selection)
+		Ar.WriteProperty(FName("_version"), CustomInfo->Version);
+		CustomInfo->SaveFunc(Data, Ar);
+	}
+	else if (bForceAllProperties)
+	{
+		// Force-all reflection: hash ALL properties for version, serialize ALL
+		uint32 Version = FArcReflectionSerializer::ComputeSchemaVersionAll(FragmentType);
+		Ar.WriteProperty(FName("_version"), Version);
+		FArcReflectionSerializer::SaveAll(FragmentType, Data, Ar);
+	}
+	else
+	{
+		// Default reflection: SaveGame properties only
+		const FArcPersistenceSerializerInfo* FallbackInfo =
+			FArcSerializerRegistry::Get().FindOrDefault(FragmentType);
+		Ar.WriteProperty(FName("_version"), FallbackInfo->Version);
+		FallbackInfo->SaveFunc(Data, Ar);
+	}
 }
 
 void FArcMassFragmentSerializer::LoadFragment(
@@ -134,6 +163,10 @@ void FArcMassFragmentSerializer::LoadFragment(
 	void* Data,
 	FArcLoadArchive& Ar)
 {
+	// Check if this fragment was saved with force-all mode
+	bool bForceAll = false;
+	Ar.ReadProperty(FName("_forceAll"), bForceAll);
+
 	// Read the per-fragment version stored in the fragment's array element scope
 	uint32 SavedVersion = 0;
 	if (!Ar.ReadProperty(FName("_version"), SavedVersion))
@@ -144,18 +177,48 @@ void FArcMassFragmentSerializer::LoadFragment(
 		return;
 	}
 
-	const FArcPersistenceSerializerInfo* Info =
-		FArcSerializerRegistry::Get().FindOrDefault(FragmentType);
+	const FArcPersistenceSerializerInfo* CustomInfo =
+		FArcSerializerRegistry::Get().Find(FragmentType);
 
-	if (SavedVersion != Info->Version)
+	if (CustomInfo)
 	{
-		UE_LOG(LogTemp, Log,
-			TEXT("ArcMassPersistence: Version mismatch for %s — discarding"),
-			*FragmentType->GetName());
-		return;
+		// Custom serializer — version check against custom version
+		if (SavedVersion != CustomInfo->Version)
+		{
+			UE_LOG(LogTemp, Log,
+				TEXT("ArcMassPersistence: Version mismatch for %s (saved=%u, current=%u) — discarding"),
+				*FragmentType->GetName(), SavedVersion, CustomInfo->Version);
+			return;
+		}
+		CustomInfo->LoadFunc(Data, Ar);
 	}
-
-	Info->LoadFunc(Data, Ar);
+	else if (bForceAll)
+	{
+		// Force-all reflection: compute version from ALL properties
+		uint32 CurrentVersion = FArcReflectionSerializer::ComputeSchemaVersionAll(FragmentType);
+		if (SavedVersion != CurrentVersion)
+		{
+			UE_LOG(LogTemp, Log,
+				TEXT("ArcMassPersistence: Version mismatch for %s (saved=%u, current=%u) — discarding"),
+				*FragmentType->GetName(), SavedVersion, CurrentVersion);
+			return;
+		}
+		FArcReflectionSerializer::LoadAll(FragmentType, Data, Ar);
+	}
+	else
+	{
+		// Default reflection: SaveGame properties only
+		const FArcPersistenceSerializerInfo* FallbackInfo =
+			FArcSerializerRegistry::Get().FindOrDefault(FragmentType);
+		if (SavedVersion != FallbackInfo->Version)
+		{
+			UE_LOG(LogTemp, Log,
+				TEXT("ArcMassPersistence: Version mismatch for %s (saved=%u, current=%u) — discarding"),
+				*FragmentType->GetName(), SavedVersion, FallbackInfo->Version);
+			return;
+		}
+		FallbackInfo->LoadFunc(Data, Ar);
+	}
 }
 
 bool FArcMassFragmentSerializer::ShouldSerializeFragment(

@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "ArcMass/ArcVisEntityComponent.h"
+#include "ArcMass/Visualization/ArcVisEntityComponent.h"
 
 #include "ArcCraftVisEntityComponent.generated.h"
 

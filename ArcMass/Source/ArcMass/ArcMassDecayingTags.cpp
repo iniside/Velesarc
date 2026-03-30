@@ -2,7 +2,7 @@
 
 #include "ArcMassDecayingTags.h"
 
-#include "ArcMassInfluenceMapping.h"
+#include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 #include "DrawDebugHelpers.h"
 #include "MassCommonFragments.h"
 #include "MassCommonTypes.h"
@@ -241,6 +241,8 @@ void UArcMassDecayingTagSignalProcessor::SignalEntities(FMassEntityManager& Enti
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassDecayingTagSignal);
+
 	// Drain pending requests
 	TArray<FArcMassDecayingTagRequest> Requests = MoveTemp(Subsystem->GetPendingRequests());
 	Subsystem->GetPendingRequests().Reset();
@@ -329,6 +331,8 @@ void UArcMassDecayingTagDecayProcessor::Execute(FMassEntityManager& EntityManage
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassDecayingTagDecay);
 
 	// Phase 1: Tick decay on all entities with the fragment
 	EntityQuery.ForEachEntityChunk(Context, [DeltaTime](FMassExecutionContext& Ctx)

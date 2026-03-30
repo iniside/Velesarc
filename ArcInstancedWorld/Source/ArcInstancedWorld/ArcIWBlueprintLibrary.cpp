@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcIWBlueprintLibrary.h"
-#include "ArcIWVisualizationSubsystem.h"
+#include "ArcInstancedWorld/Visualization/ArcIWVisualizationSubsystem.h"
 #include "Engine/Engine.h"
 
 FMassEntityHandle UArcIWBlueprintLibrary::ResolveHitToEntity(UObject* WorldContextObject, const FHitResult& HitResult)

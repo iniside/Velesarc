@@ -3,16 +3,20 @@
 #include "ArcVisEntityDebugger.h"
 
 #include "imgui.h"
-#include "ArcMass/ArcMassEntityVisualization.h"
-#include "ArcMass/ArcVisLifecycle.h"
-#include "ArcMass/ArcMassLifecycle.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
+#include "ArcMass/Visualization/ArcVisLifecycle.h"
+#include "ArcMass/Lifecycle/ArcMassLifecycle.h"
 #include "DrawDebugHelpers.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassDebugger.h"
 #include "MassEntitySubsystem.h"
+#include "Mesh/MassEngineMeshFragments.h"
+#include "ArcMass/Visualization/ArcMassVisualizationConfigFragments.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/StaticMesh.h"
 
 namespace Arcx::GameplayDebugger::VisEntity
 {
@@ -40,56 +44,56 @@ namespace Arcx::GameplayDebugger::VisEntity
 		return &MassSub->GetMutableEntityManager();
 	}
 
-	const char* GetVisStateString(bool bIsActor, int32 ISMInstanceId)
+	const char* GetVisStateString(bool bIsActor, bool bHasMeshRendering, bool bHasPhysicsBody)
 	{
 		if (bIsActor)
 		{
 			return "Full Actor";
 		}
-		if (ISMInstanceId != INDEX_NONE)
+		if (bHasMeshRendering && bHasPhysicsBody)
 		{
-			return "ISM Mesh";
+			return "Mesh + Physics";
+		}
+		if (bHasMeshRendering)
+		{
+			return "Mesh Only";
 		}
 		return "No Visualization";
 	}
 
-	ImVec4 GetVisStateColor(bool bIsActor, int32 ISMInstanceId)
+	ImVec4 GetVisStateColor(bool bIsActor, bool bHasMeshRendering)
 	{
 		if (bIsActor)
 		{
 			return ImVec4(0.3f, 1.0f, 0.3f, 1.0f);    // Green
 		}
-		if (ISMInstanceId != INDEX_NONE)
+		if (bHasMeshRendering)
 		{
 			return ImVec4(0.4f, 0.7f, 1.0f, 1.0f);     // Blue
 		}
 		return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);         // Gray
 	}
 
-	const char* GetLifecyclePhaseString(EArcLifecyclePhase Phase)
+	const char* GetLifecyclePhaseString(uint8 Phase)
 	{
-		switch (Phase)
-		{
-		case EArcLifecyclePhase::Start:   return "Start";
-		case EArcLifecyclePhase::Growing: return "Growing";
-		case EArcLifecyclePhase::Grown:   return "Grown";
-		case EArcLifecyclePhase::Dying:   return "Dying";
-		case EArcLifecyclePhase::Dead:    return "Dead";
-		default: return "Unknown";
-		}
+		static char Buf[16];
+		FCStringAnsi::Snprintf(Buf, sizeof(Buf), "Phase %d", Phase);
+		return Buf;
 	}
 
-	ImVec4 GetLifecyclePhaseColor(EArcLifecyclePhase Phase)
+	ImVec4 GetLifecyclePhaseColor(uint8 Phase)
 	{
-		switch (Phase)
-		{
-		case EArcLifecyclePhase::Start:   return ImVec4(0.8f, 0.8f, 0.3f, 1.0f);  // Yellow
-		case EArcLifecyclePhase::Growing: return ImVec4(0.3f, 1.0f, 0.3f, 1.0f);  // Green
-		case EArcLifecyclePhase::Grown:   return ImVec4(0.3f, 0.8f, 1.0f, 1.0f);  // Cyan
-		case EArcLifecyclePhase::Dying:   return ImVec4(1.0f, 0.6f, 0.3f, 1.0f);  // Orange
-		case EArcLifecyclePhase::Dead:    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);  // Red
-		default: return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-		}
+		static const ImVec4 Palette[] = {
+			ImVec4(0.71f, 0.71f, 0.71f, 1.0f), // grey
+			ImVec4(0.39f, 0.78f, 0.39f, 1.0f), // green
+			ImVec4(0.39f, 0.78f, 0.39f, 1.0f), // green
+			ImVec4(0.86f, 0.78f, 0.20f, 1.0f), // yellow
+			ImVec4(0.86f, 0.31f, 0.31f, 1.0f), // red
+			ImVec4(0.59f, 0.59f, 1.00f, 1.0f), // blue
+			ImVec4(0.78f, 0.59f, 1.00f, 1.0f), // purple
+		};
+		static const int32 PaletteSize = UE_ARRAY_COUNT(Palette);
+		return Palette[Phase % PaletteSize];
 	}
 }
 
@@ -165,7 +169,7 @@ void FArcVisEntityDebugger::RefreshEntityList()
 			}
 			else
 			{
-				const char* State = Rep ? (Rep->bIsActorRepresentation ? "ACT" : "ISM") : "???";
+				const char* State = Rep ? (Rep->bIsActorRepresentation ? "ACT" : (Rep->bHasMeshRendering ? "MESH" : "---")) : "???";
 				Entry.Label = FString::Printf(TEXT("E%d (%hs)"), Entity.Index, State);
 			}
 		}
@@ -346,25 +350,14 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 		const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 		if (Rep)
 		{
-			const char* StateStr = Arcx::GameplayDebugger::VisEntity::GetVisStateString(Rep->bIsActorRepresentation, Rep->ISMInstanceId);
-			ImVec4 StateColor = Arcx::GameplayDebugger::VisEntity::GetVisStateColor(Rep->bIsActorRepresentation, Rep->ISMInstanceId);
+			const char* StateStr = Arcx::GameplayDebugger::VisEntity::GetVisStateString(Rep->bIsActorRepresentation, Rep->bHasMeshRendering, Rep->bHasPhysicsBody);
+			ImVec4 StateColor = Arcx::GameplayDebugger::VisEntity::GetVisStateColor(Rep->bIsActorRepresentation, Rep->bHasMeshRendering);
 			ImGui::TextColored(StateColor, "State: %s", StateStr);
 
-			ImGui::Text("Grid Coords: (%d, %d, %d)", Rep->GridCoords.X, Rep->GridCoords.Y, Rep->GridCoords.Z);
-
-			if (!Rep->bIsActorRepresentation)
-			{
-				ImGui::Text("ISM Instance ID: %d", Rep->ISMInstanceId);
-				ImGui::Text("Partition Slot: %d", Rep->PartitionSlotIndex);
-				if (Rep->CurrentISMMesh)
-				{
-					ImGui::Text("ISM Mesh: %s", TCHAR_TO_ANSI(*Rep->CurrentISMMesh->GetName()));
-				}
-				else
-				{
-					ImGui::TextDisabled("ISM Mesh: (base config)");
-				}
-			}
+			ImGui::Text("Mesh Grid: (%d, %d, %d)", Rep->MeshGridCoords.X, Rep->MeshGridCoords.Y, Rep->MeshGridCoords.Z);
+			ImGui::Text("Physics Grid: (%d, %d, %d)", Rep->PhysicsGridCoords.X, Rep->PhysicsGridCoords.Y, Rep->PhysicsGridCoords.Z);
+			ImGui::Text("Mesh Rendering: %s", Rep->bHasMeshRendering ? "Active" : "Inactive");
+			ImGui::Text("Physics Body: %s", Rep->bHasPhysicsBody ? "Attached" : "None");
 		}
 		else
 		{
@@ -377,15 +370,21 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 		{
 			ImGui::Spacing();
 			ImGui::TextDisabled("Config:");
-			if (Config->StaticMesh)
+			const FArcMassStaticMeshConfigFragment* MeshFrag = Manager->GetConstSharedFragmentDataPtr<FArcMassStaticMeshConfigFragment>(Entity);
+			if (MeshFrag && MeshFrag->Mesh.IsValid())
 			{
-				ImGui::Text("  Base Mesh: %s", TCHAR_TO_ANSI(*Config->StaticMesh->GetName()));
+				ImGui::Text("  Base Mesh: %s", TCHAR_TO_ANSI(*MeshFrag->Mesh->GetName()));
 			}
 			if (Config->ActorClass)
 			{
 				ImGui::Text("  Actor Class: %s", TCHAR_TO_ANSI(*Config->ActorClass->GetName()));
 			}
 			ImGui::Text("  Cast Shadows: %s", Config->bCastShadows ? "true" : "false");
+			ImGui::Text("  Physics Body: %s", Config->bEnablePhysicsBody ? "true" : "false");
+			if (Config->bEnablePhysicsBody)
+			{
+				ImGui::Text("  Body Type: %s", Config->PhysicsBodyType == EArcMassPhysicsBodyType::Dynamic ? "Dynamic" : "Static");
+			}
 		}
 	}
 
@@ -415,7 +414,6 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 					ImGui::TextDisabled("  Duration: indefinite");
 				}
 
-				ImGui::TextDisabled("Auto Tick: %s", LCConfig->bDisableAutoTick ? "disabled" : "enabled");
 			}
 		}
 	}
@@ -486,7 +484,7 @@ void FArcVisEntityDebugger::DrawSelectedEntityInWorld()
 	FString Label = FString::Printf(TEXT("E%d"), Entity.Index);
 	if (Rep)
 	{
-		Label += Rep->bIsActorRepresentation ? TEXT(" [ACT]") : TEXT(" [ISM]");
+		Label += Rep->bIsActorRepresentation ? TEXT(" [ACT]") : (Rep->bHasMeshRendering ? TEXT(" [MESH]") : TEXT(" [---]"));
 	}
 	DrawDebugString(World, Location + FVector(0, 0, 320.f), Label, nullptr, FColor::White, -1.f, true, 1.2f);
 #endif
@@ -513,13 +511,30 @@ void FArcVisEntityDebugger::DrawGridVisualization()
 		return;
 	}
 
-	const FArcVisualizationGrid& Grid = Subsystem->GetGrid();
+	// Draw mesh grid (green/cyan boundaries)
+	DrawSingleGrid(World, Subsystem->GetMeshGrid(), Subsystem->GetLastMeshPlayerCell(),
+		Subsystem->GetMeshActivationRadiusCells(), Subsystem->GetMeshDeactivationRadiusCells(),
+		FColor::Green, FColor::Orange, Manager, true);
+
+	// Draw physics grid (yellow/red boundaries, offset slightly to avoid z-fighting)
+	DrawSingleGrid(World, Subsystem->GetPhysicsGrid(), Subsystem->GetLastPhysicsPlayerCell(),
+		Subsystem->GetPhysicsActivationRadiusCells(), Subsystem->GetPhysicsDeactivationRadiusCells(),
+		FColor::Yellow, FColor::Red, Manager, false);
+#endif
+}
+
+void FArcVisEntityDebugger::DrawSingleGrid(UWorld* World, const FArcVisualizationGrid& Grid, const FIntVector& PlayerCell,
+	int32 ActivationCells, int32 DeactivationCells, FColor InActiveColor, FColor BoundaryColor,
+	FMassEntityManager* Manager, bool bIsMeshGrid)
+{
+#if WITH_MASSENTITY_DEBUG
 	const float CellSize = Grid.CellSize;
 	const float HalfCell = CellSize * 0.5f;
-	const FIntVector PlayerCell = Subsystem->GetLastPlayerCell();
+	// Offset physics grid drawing slightly to avoid overlap with mesh grid
+	const float ZOffset = bIsMeshGrid ? 0.f : 50.f;
 
 	// Draw all cells that contain entities
-	for (const auto& CellPair : Grid.CellEntities)
+	for (const TPair<FIntVector, TArray<FMassEntityHandle>>& CellPair : Grid.CellEntities)
 	{
 		const FIntVector& CellCoord = CellPair.Key;
 		const TArray<FMassEntityHandle>& Entities = CellPair.Value;
@@ -527,11 +542,12 @@ void FArcVisEntityDebugger::DrawGridVisualization()
 		const FVector CellCenter(
 			CellCoord.X * CellSize + HalfCell,
 			CellCoord.Y * CellSize + HalfCell,
-			CellCoord.Z * CellSize + HalfCell
+			CellCoord.Z * CellSize + HalfCell + ZOffset
 		);
 
 		// Determine cell state from first valid entity
-		bool bIsActorCell = false;
+		bool bHasMesh = false;
+		bool bHasActor = false;
 		for (const FMassEntityHandle& Entity : Entities)
 		{
 			if (Manager->IsEntityValid(Entity))
@@ -539,19 +555,29 @@ void FArcVisEntityDebugger::DrawGridVisualization()
 				const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 				if (Rep)
 				{
-					bIsActorCell = Rep->bIsActorRepresentation;
+					bHasActor = Rep->bIsActorRepresentation;
+					bHasMesh = Rep->bHasMeshRendering;
 					break;
 				}
 			}
 		}
 
-		const FColor DrawColor = bIsActorCell ? FColor::Green : FColor::Blue;
+		// Determine if cell is in activation or hysteresis zone
+		const int32 DXPlayer = FMath::Abs(CellCoord.X - PlayerCell.X);
+		const int32 DYPlayer = FMath::Abs(CellCoord.Y - PlayerCell.Y);
+		const int32 DZPlayer = FMath::Abs(CellCoord.Z - PlayerCell.Z);
+		const int32 MaxDist = FMath::Max3(DXPlayer, DYPlayer, DZPlayer);
+		const bool bIsActive = MaxDist <= ActivationCells;
+		const bool bIsInHysteresis = !bIsActive && MaxDist <= DeactivationCells;
+		FColor DrawColor = bIsActive ? FColor::Green : (bIsInHysteresis ? FColor::Cyan : FColor::Blue);
 		DrawDebugBox(World, CellCenter, FVector(HalfCell * 0.9f), DrawColor, false, -1.f, 0, 2.f);
 
 		// Entity count label
-		const FString CountLabel = FString::Printf(TEXT("%d %s"), Entities.Num(), bIsActorCell ? TEXT("ACT") : TEXT("ISM"));
+		const TCHAR* GridPrefix = bIsMeshGrid ? TEXT("M") : TEXT("P");
+		const TCHAR* StateStr = bHasActor ? TEXT("ACT") : (bHasMesh ? TEXT("MESH") : TEXT("---"));
+		const FString CountLabel = FString::Printf(TEXT("[%s] %d %s"), GridPrefix, Entities.Num(), StateStr);
 		DrawDebugString(World, CellCenter + FVector(0, 0, HalfCell * 0.7f), CountLabel, nullptr,
-			bIsActorCell ? FColor::Green : FColor::Cyan, -1.f, true, 1.f);
+			DrawColor, -1.f, true, 1.f);
 	}
 
 	// Draw player cell highlight
@@ -560,28 +586,47 @@ void FArcVisEntityDebugger::DrawGridVisualization()
 		const FVector PlayerCellCenter(
 			PlayerCell.X * CellSize + HalfCell,
 			PlayerCell.Y * CellSize + HalfCell,
-			PlayerCell.Z * CellSize + HalfCell
+			PlayerCell.Z * CellSize + HalfCell + ZOffset
 		);
 		DrawDebugBox(World, PlayerCellCenter, FVector(HalfCell * 0.95f), FColor::White, false, -1.f, 0, 3.f);
 
-		// Draw swap radius boundary
-		const int32 RadiusCells = Subsystem->GetSwapRadiusCells();
+		// Draw activation radius boundary
 		TArray<FIntVector> ActiveCells;
-		Grid.GetCellsInRadius(PlayerCell, RadiusCells, ActiveCells);
+		Grid.GetCellsInRadius(PlayerCell, ActivationCells, ActiveCells);
 
 		for (const FIntVector& Cell : ActiveCells)
 		{
 			const int32 DX = FMath::Abs(Cell.X - PlayerCell.X);
 			const int32 DY = FMath::Abs(Cell.Y - PlayerCell.Y);
 			const int32 DZ = FMath::Abs(Cell.Z - PlayerCell.Z);
-			if (DX == RadiusCells || DY == RadiusCells || DZ == RadiusCells)
+			if (DX == ActivationCells || DY == ActivationCells || DZ == ActivationCells)
 			{
 				const FVector EdgeCellCenter(
 					Cell.X * CellSize + HalfCell,
 					Cell.Y * CellSize + HalfCell,
-					Cell.Z * CellSize + HalfCell
+					Cell.Z * CellSize + HalfCell + ZOffset
 				);
-				DrawDebugBox(World, EdgeCellCenter, FVector(HalfCell), FColor::Orange, false, -1.f, 0, 1.f);
+				DrawDebugBox(World, EdgeCellCenter, FVector(HalfCell), InActiveColor, false, -1.f, 0, 1.f);
+			}
+		}
+
+		// Draw deactivation radius boundary (hysteresis edge)
+		TArray<FIntVector> DeactivationBoundaryCells;
+		Grid.GetCellsInRadius(PlayerCell, DeactivationCells, DeactivationBoundaryCells);
+
+		for (const FIntVector& Cell : DeactivationBoundaryCells)
+		{
+			const int32 DX = FMath::Abs(Cell.X - PlayerCell.X);
+			const int32 DY = FMath::Abs(Cell.Y - PlayerCell.Y);
+			const int32 DZ = FMath::Abs(Cell.Z - PlayerCell.Z);
+			if (DX == DeactivationCells || DY == DeactivationCells || DZ == DeactivationCells)
+			{
+				const FVector EdgeCellCenter(
+					Cell.X * CellSize + HalfCell,
+					Cell.Y * CellSize + HalfCell,
+					Cell.Z * CellSize + HalfCell + ZOffset
+				);
+				DrawDebugBox(World, EdgeCellCenter, FVector(HalfCell), BoundaryColor, false, -1.f, 0, 1.f);
 			}
 		}
 	}

@@ -15,7 +15,7 @@ public class ArcMCP : ModuleRules
 			"Engine",
 			"Json",
 			"JsonUtilities",
-			"ECABridge"
+			"ToolsetRegistry"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

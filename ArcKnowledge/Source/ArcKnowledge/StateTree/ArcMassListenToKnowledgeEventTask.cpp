@@ -7,7 +7,7 @@
 #include "AsyncMessageSystemBase.h"
 #include "MassStateTreeDependency.h"
 #include "StateTreeAsyncExecutionContext.h"
-#include "ArcMass/ArcMassAsyncMessageEndpointFragment.h"
+#include "ArcMass/Messaging/ArcMassAsyncMessageEndpointFragment.h"
 #include "StateTreeLinker.h"
 
 FArcMassListenToKnowledgeEventTask::FArcMassListenToKnowledgeEventTask()

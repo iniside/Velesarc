@@ -3,8 +3,8 @@
 #include "ArcInstancedWorldEditorModule.h"
 
 #include "ArcIWEditorCommands.h"
-#include "ArcInstancedWorld/ArcIWMassConfigComponent.h"
-#include "ArcInstancedWorld/ArcIWMassISMPartitionActor.h"
+#include "ArcInstancedWorld/Components/ArcIWMassConfigComponent.h"
+#include "ArcInstancedWorld/Visualization/ArcIWMassISMPartitionActor.h"
 #include "Editor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"

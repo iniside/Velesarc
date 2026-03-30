@@ -17,11 +17,11 @@ class AActor;
  * Gameplay Debugger category for ArcMass entity visualization.
  *
  * Draws:
- * - Visualization grid cells with color-coded states (active/inactive/empty)
- * - Per-entity markers with representation type (actor vs ISM)
+ * - Visualization grid cells with color-coded states (active/hysteresis/inactive/empty)
+ * - Per-entity markers with representation type (actor/mesh/none) and physics state
  * - Lifecycle phase labels
  * - Distance information from player
- * - Floor-level shading to indicate cell activation state
+ * - Activation and deactivation radius rings (hysteresis boundary)
  */
 class FGameplayDebuggerCategory_ArcMass : public FGameplayDebuggerCategory
 {

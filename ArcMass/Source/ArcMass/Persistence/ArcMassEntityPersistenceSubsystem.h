@@ -106,6 +106,9 @@ public:
 	/** Cells with pending async loads (prevents double-loads). */
 	TSet<FIntVector> PendingCellLoads;
 
+	/** Cells awaiting load completion before save can execute. */
+	TSet<FIntVector> PendingSaveCells;
+
 private:
 	FGuid WorldId;
 	float CellSize = 10000.f;

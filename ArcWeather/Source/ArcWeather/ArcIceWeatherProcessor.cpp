@@ -9,7 +9,7 @@
 #include "MassEntityTemplateRegistry.h"
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
-#include "ArcMass/ArcMassHealthSignalProcessor.h"
+#include "ArcMass/Lifecycle/ArcMassHealthSignalProcessor.h"
 
 UArcIceWeatherProcessor::UArcIceWeatherProcessor()
 	: EntityQuery(*this)
@@ -36,6 +36,8 @@ void UArcIceWeatherProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcIceWeather);
 
 	const float DeltaTime = Context.GetDeltaTimeSeconds();
 	CurrentSignalTime += DeltaTime;

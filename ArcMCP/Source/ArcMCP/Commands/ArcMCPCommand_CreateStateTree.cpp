@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPCommand_CreateStateTree.h"
@@ -58,3 +60,5 @@ FECACommandResult FArcMCPCommand_CreateStateTree::Execute(const TSharedPtr<FJson
 
 	return FECACommandResult::Success(Result);
 }
+
+#endif

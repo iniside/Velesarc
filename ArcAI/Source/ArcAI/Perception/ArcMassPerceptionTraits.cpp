@@ -3,7 +3,7 @@
 #include "ArcMassPerceptionTraits.h"
 
 #include "MassEntityTemplateRegistry.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 
 void UArcPerceptionCombinedPerceiverTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {

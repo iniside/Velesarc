@@ -3,7 +3,7 @@
 #include "ArcKnowledgeScorer.h"
 #include "ArcKnowledgeEntry.h"
 #include "ArcKnowledgeQuery.h"
-#include "ArcMass/ArcMassInfluenceMapping.h"
+#include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 #include "Engine/World.h"
 
 float FArcKnowledgeScorer_Distance::Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const

@@ -3,7 +3,7 @@
 #include "ArcBuildingDefinition.h"
 
 #include "MassEntityConfigAsset.h"
-#include "ArcMass/ArcMassEntityVisualizationTrait.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualizationTrait.h"
 #include "MassVisualizationTrait.h"
 
 #if WITH_EDITOR

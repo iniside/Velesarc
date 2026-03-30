@@ -19,6 +19,7 @@
 #include "ArcPlanFeasibilityDebugger.h"
 #include "ArcPerceptionDebugger.h"
 #include "ArcMassEntityDebugger.h"
+#include "ArcMassPhysicsDebugger.h"
 #include "ArcPathDebugger.h"
 #include "ArcVisEntityDebugger.h"
 #include "ArcKnowledgeDebugger.h"
@@ -31,6 +32,8 @@
 #include "ArcNeedsDebugger.h"
 #include "ArcWeatherMinimapDebugger.h"
 #include "ArcIWMinimapDebugger.h"
+#include "ArcInteractionDebugger.h"
+#include "ArcWorldPersistenceDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -67,6 +70,8 @@ private:
 
 	FArcMassEntityDebugger MassEntityDebugger;
 
+	FArcMassPhysicsDebugger PhysicsDebugger;
+
 	FArcAIDebugger AIDebugger;
 
 	FArcPlanFeasibilityDebugger PlanFeasibilityDebugger;
@@ -96,6 +101,10 @@ private:
 	FArcWeatherMinimapDebugger WeatherMinimapDebugger;
 
 	FArcIWMinimapDebugger IWMinimapDebugger;
+
+	FArcInteractionDebugger InteractionDebugger;
+
+	FArcWorldPersistenceDebugger WorldPersistenceDebugger;
 
 	void Toggle();
 	

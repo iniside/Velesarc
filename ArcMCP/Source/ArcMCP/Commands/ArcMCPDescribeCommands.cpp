@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPDescribeCommands.h"
@@ -92,3 +94,5 @@ FECACommandResult FArcMCPCommand_DescribeFragments::Execute(const TSharedPtr<FJs
 
 	return FECACommandResult::Success(Result);
 }
+
+#endif

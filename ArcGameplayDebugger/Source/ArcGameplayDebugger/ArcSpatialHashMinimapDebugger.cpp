@@ -5,7 +5,7 @@
 #include "imgui.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 #include "MassActorSubsystem.h"
 #include "MassEntitySubsystem.h"
 #include "GameFramework/Pawn.h"

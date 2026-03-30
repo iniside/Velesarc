@@ -6,6 +6,8 @@
 #include "Engine/DeveloperSettings.h"
 #include "ArcIWSettings.generated.h"
 
+class UTransformProviderData;
+
 /**
  * Project-wide settings for ArcInstancedWorld.
  * Accessible in editor via Project Settings > Game > ArcInstancedWorld.
@@ -49,6 +51,11 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM"))
 	bool bDisableActorHydration = false;
 
+	/** Default transform provider for skinned meshes that don't have one set explicitly.
+	 *  Used as the final fallback in the override chain. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|SkinnedMesh")
+	TSoftObjectPtr<UTransformProviderData> DefaultSkinnedMeshTransformProvider;
+
 	/** MassISM: ISM instances appear at this distance from player. */
 	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
 	float MeshAddRadius = 20000.f;
@@ -65,21 +72,25 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
 	float PhysicsRemoveRadius = 15000.f;
 
-	/** Visualization grid cell size in world units (cm). */
-	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|Grid", meta = (ClampMin = "100"))
-	float CellSize = 6000.f;
+	/** MassISM: Spatial hash cell size for ISM mesh instance grid (cm). */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "100"))
+	float MeshCellSize = 10000.f;
 
-	/** ISM swap radius — entities within this distance get ISM representation. */
-	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|Grid", meta = (ClampMin = "0"))
-	float SwapRadius = 12000.f;
+	/** MassISM: Spatial hash cell size for physics body grid (cm). */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "100"))
+	float PhysicsCellSize = 8000.f;
 
-	/** Actor hydration radius — entities within this distance get full actor representation. */
-	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|Grid", meta = (ClampMin = "0"))
-	float ActorRadius = 3000.f;
+	/** MassISM: Spatial hash cell size for actor hydration grid (cm). */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "100"))
+	float ActorCellSize = 5000.f;
 
-	/** Dehydration radius — hydrated actors beyond this distance return to ISM.
-	 *  Should be >= ActorRadius to prevent hydrate/dehydrate thrashing. */
-	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|Grid", meta = (ClampMin = "0"))
-	float DehydrationRadius = 8000.f;
+	/** MassISM: Entities within this distance get full actor representation. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
+	float ActorHydrationRadius = 3000.f;
+
+	/** MassISM: Hydrated actors beyond this distance return to ISM.
+	 *  Should be >= ActorHydrationRadius to prevent thrashing. */
+	UPROPERTY(EditAnywhere, config, Category = "ArcInstancedWorld|MassISM", meta = (EditCondition = "bUseMassISM", ClampMin = "0"))
+	float ActorDehydrationRadius = 8000.f;
 
 };

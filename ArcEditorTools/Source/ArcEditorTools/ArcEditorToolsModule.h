@@ -27,6 +27,9 @@
 #include "IPropertyAccessEditor.h"
 #include "ArcPropertyBindingWidgetArgs.h"
 
+class SDockTab;
+class FSpawnTabArgs;
+
 class ARCEDITORTOOLS_API IArcEditorTools : public IModuleInterface
 {
 
@@ -75,4 +78,7 @@ public:
 	 */
 	virtual TSharedRef<SWidget> MakePropertyBindingWidget(const TArray<FBindingContextStruct>& InBindingContextStructs, const FArcPropertyBindingWidgetArgs& InArgs = FArcPropertyBindingWidgetArgs()) const override;
 
+private:
+	TSharedRef<SDockTab> SpawnMinimapTab(const FSpawnTabArgs& Args);
+	static const FName MinimapTabId;
 };

@@ -68,6 +68,8 @@ void UArcNeedsFatigueInteropProcessor::Execute(FMassEntityManager& EntityManager
 	}
 	AccumulatedTime = 0.f;
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNeedsFatigueInterop);
+
 	FatigueQuery.ForEachEntityChunk(Context,
 		[](FMassExecutionContext& Ctx)
 		{

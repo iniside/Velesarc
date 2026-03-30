@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSGenerator_SpatialHash.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 #include "Engine/World.h"
 
 void FArcTQSGenerator_SpatialHash::GenerateItems(

@@ -20,7 +20,7 @@
 #include "StateTreeExecutionContext.h"
 #include "AsyncGameplayMessageSystem.h"
 #include "AsyncMessageWorldSubsystem.h"
-#include "ArcMass/ArcMassAsyncMessageEndpointFragment.h"
+#include "ArcMass/Messaging/ArcMassAsyncMessageEndpointFragment.h"
 #include "Perception/ArcAISense_GameplayAbility.h"
 #include "ArcImGuiReflectionWidget.h"
 #include "SmartObjectPlanner/Tasks/ArcMassUseSmartObjectTask.h"

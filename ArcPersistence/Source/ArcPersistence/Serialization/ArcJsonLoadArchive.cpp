@@ -234,6 +234,11 @@ bool FArcJsonLoadArchive::ReadProperty(FName Key, FGameplayTag& OutValue)
 		return false;
 	}
 	const std::string Str = (*Current())[KeyStr].get<std::string>();
+	if (Str.empty() || Str == "None")
+	{
+		OutValue = FGameplayTag::EmptyTag;
+		return true;
+	}
 	OutValue = FGameplayTag::RequestGameplayTag(FName(UTF8_TO_TCHAR(Str.c_str())));
 	return true;
 }

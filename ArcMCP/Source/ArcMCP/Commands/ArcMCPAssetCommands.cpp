@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPAssetCommands.h"
@@ -55,3 +57,5 @@ FECACommandResult FArcMCPCommand_CreateDataAsset::Execute(const TSharedPtr<FJson
 
 	return FECACommandResult::Success(Result);
 }
+
+#endif

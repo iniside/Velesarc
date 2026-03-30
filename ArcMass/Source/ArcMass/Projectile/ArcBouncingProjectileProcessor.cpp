@@ -71,6 +71,8 @@ void UArcBouncingProjectileProcessor::Execute(FMassEntityManager& EntityManager,
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcBouncingProjectile);
+
 	FChaosSQAccelerator SQAccelerator(*SpatialAcceleration);
 
 	const float WorldGravityZ = World->GetGravityZ();

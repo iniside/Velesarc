@@ -46,6 +46,15 @@ public:
 	/** Compute a schema version hash from SaveGame property names and types. */
 	static uint32 ComputeSchemaVersion(const UStruct* Type);
 
+	/** Serialize ALL properties of a UStruct instance (no SaveGame filter). */
+	static void SaveAll(const UStruct* Type, const void* Data, FArcSaveArchive& Ar);
+
+	/** Deserialize ALL properties of a UStruct instance (no SaveGame filter). */
+	static void LoadAll(const UStruct* Type, void* Data, FArcLoadArchive& Ar);
+
+	/** Compute a schema version hash from ALL property names and types. */
+	static uint32 ComputeSchemaVersionAll(const UStruct* Type);
+
 private:
 	static void SaveProperty(FProperty* Prop, const void* ContainerData, FArcSaveArchive& Ar);
 	static void LoadProperty(FProperty* Prop, void* ContainerData, FArcLoadArchive& Ar);

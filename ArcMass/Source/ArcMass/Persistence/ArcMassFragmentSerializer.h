@@ -48,7 +48,8 @@ public:
 	static void SaveFragment(
 		const UScriptStruct* FragmentType,
 		const void* Data,
-		FArcSaveArchive& Ar);
+		FArcSaveArchive& Ar,
+		bool bForceAllProperties = false);
 
 	/** Deserialize a single UScriptStruct fragment. */
 	static void LoadFragment(

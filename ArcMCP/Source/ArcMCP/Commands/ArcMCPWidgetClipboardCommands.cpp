@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPWidgetClipboardCommands.h"
@@ -369,3 +371,5 @@ FECACommandResult FArcMCPCommand_ImportWidgetFromText::Execute(const TSharedPtr<
 	}
 	return FECACommandResult::Success(Result);
 }
+
+#endif

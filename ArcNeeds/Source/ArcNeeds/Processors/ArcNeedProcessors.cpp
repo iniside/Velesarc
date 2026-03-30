@@ -43,6 +43,8 @@ void UArcHungerNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManag
 
 void UArcHungerNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcHungerNeed);
+
 	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
 	{
 		const float DeltaTime = Context.GetDeltaTimeSeconds();
@@ -75,6 +77,8 @@ void UArcThirstNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManag
 
 void UArcThirstNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcThirstNeed);
+
 	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
 	{
 		const float DeltaTime = Context.GetDeltaTimeSeconds();
@@ -108,6 +112,8 @@ void UArcFatigueNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityMana
 
 void UArcFatigueNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcFatigueNeed);
+
 	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
 	{
 		const float DeltaTime = Context.GetDeltaTimeSeconds();

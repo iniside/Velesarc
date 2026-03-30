@@ -29,10 +29,10 @@ struct ARCCORE_API FArcItemStoreSerializer
 	/** Deserialize an array of item copy helpers from the archive. */
 	static void Load(TArray<FArcItemCopyContainerHelper>& Target, FArcLoadArchive& Ar);
 
-private:
 	static void SaveItemSpec(const FArcItemSpec& Spec, const FGameplayTag& SlotId, FArcSaveArchive& Ar);
 	static void LoadItemSpec(FArcItemSpec& OutSpec, FGameplayTag& OutSlotId, FArcLoadArchive& Ar);
 
+private:
 	static void SavePersistentInstances(const FArcItemSpec& Spec, FArcSaveArchive& Ar);
 	static void LoadPersistentInstances(FArcItemSpec& Spec, FArcLoadArchive& Ar);
 

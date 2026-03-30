@@ -42,6 +42,8 @@ void UArcProjectileActorInitObserver::Execute(FMassEntityManager& EntityManager,
 
 	UArcProjectileActorPoolSubsystem* Pool = World->GetSubsystem<UArcProjectileActorPoolSubsystem>();
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcProjectileActorInit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[Pool](FMassExecutionContext& Ctx)
 	{
@@ -95,6 +97,8 @@ void UArcProjectileActorDeinitObserver::Execute(FMassEntityManager& EntityManage
 {
 	UWorld* World = EntityManager.GetWorld();
 	UArcProjectileActorPoolSubsystem* Pool = World ? World->GetSubsystem<UArcProjectileActorPoolSubsystem>() : nullptr;
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcProjectileActorDeinit);
 
 	ObserverQuery.ForEachEntityChunk(Context,
 		[Pool](FMassExecutionContext& Ctx)

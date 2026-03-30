@@ -26,7 +26,7 @@
 #include "ArcBuildSnappingMethod.h"
 #include "ArcBuildResourceConsumption.h"
 #include "ArcBuildRequirement.h"
-#include "ArcMass/ArcMassEntityVisualization.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
 
 #include "Engine/AssetManager.h"
 #include "GameFramework/PlayerState.h"

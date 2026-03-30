@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "ArcMassEntityHandleWrapper.h"
+#include "Engine/HitResult.h"
 #include "ArcMassEntityLibrary.generated.h"
 
 class UMassAgentComponent;
@@ -48,4 +49,7 @@ public:
 	/** Resolve a trace hit to the owning Mass entity, if one was attached via the physics link system. */
 	UFUNCTION(BlueprintCallable, Category = "ArcMass|PhysicsLink", meta = (ExpandEnumAsExecs = "ExecResult"))
 	static ARCMASS_API FMassEntityHandle ResolveHitToEntity(const FHitResult& HitResult, EArcMassResult& ExecResult);
+	
+	UFUNCTION(BlueprintCallable, Category = "ArcMass|Utils")
+	static ARCMASS_API FString ToString(const FMassEntityHandle& InHandle);
 };

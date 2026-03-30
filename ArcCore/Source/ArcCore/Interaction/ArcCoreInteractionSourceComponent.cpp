@@ -12,6 +12,11 @@
 #include "GameFramework/Pawn.h"
 #include "Components/PrimitiveComponent.h"
 #include "InteractableTargetInterface.h"
+#include "ArcMass/ArcMassEntityLibrary.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
+#include "ArcInteractionDisplayData.h"
+#include "MassEntitySubsystem.h"
+#include "SmartObjectDefinition.h"
 
 UArcCoreInteractionSourceComponent::UArcCoreInteractionSourceComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -58,9 +63,12 @@ void UArcCoreInteractionSourceComponent::OnPawnDataReady(APawn* Pawn)
 void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequestHandle InTargetingRequestHandle)
 {
 	FTargetingDefaultResultsSet& TargetingResults = FTargetingDefaultResultsSet::FindOrAdd(InTargetingRequestHandle);
+	CachedTargetingResults = TargetingResults;
 
 	// Extract the best target (first result after filtering + sorting)
 	TScriptInterface<IInteractionTarget> NewTarget;
+	FMassEntityHandle NewEntityTarget;
+
 	if (TargetingResults.TargetResults.Num() > 0)
 	{
 		const FTargetingDefaultResultData& BestResult = TargetingResults.TargetResults[0];
@@ -87,10 +95,21 @@ void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequ
 				}
 			}
 		}
+
+		// Fallback: resolve entity target if no IInteractionTarget found
+		if (!NewTarget)
+		{
+			EArcMassResult MassResult = EArcMassResult::NotValid;
+			FMassEntityHandle EntityHandle = UArcMassEntityLibrary::ResolveHitToEntity(BestResult.HitResult, MassResult);
+			if (MassResult == EArcMassResult::Valid && EntityHandle.IsValid())
+			{
+				NewEntityTarget = EntityHandle;
+			}
+		}
 	}
 
 	// No change — early out
-	if (NewTarget == CurrentTarget)
+	if (NewTarget == CurrentTarget && NewEntityTarget == CurrentEntityTarget)
 	{
 		return;
 	}
@@ -98,7 +117,7 @@ void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequ
 	TSharedPtr<FAsyncGameplayMessageSystem> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem<FAsyncGameplayMessageSystem>(GetWorld());
 
 	// Invalidate old target
-	if (CurrentTarget)
+	if (CurrentTarget || CurrentEntityTarget.IsValid())
 	{
 		PreviousQueryResults = MoveTemp(CurrentQueryResults);
 
@@ -115,9 +134,10 @@ void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequ
 
 	// Set new target
 	CurrentTarget = NewTarget;
+	CurrentEntityTarget = NewEntityTarget;
 	CurrentQueryResults.Reset();
 
-	// Acquire new target
+	// Acquire new actor target
 	if (CurrentTarget)
 	{
 		FInteractionContext Context;
@@ -128,6 +148,38 @@ void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequ
 		{
 			FArcInteractionAcquiredMessage AcquiredMsg;
 			AcquiredMsg.Target = CurrentTarget;
+			AcquiredMsg.QueryResults = CurrentQueryResults;
+
+			FAsyncMessageId MessageId(Arcx::InteractionMessages::Interaction_Acquired);
+			MessageSystem->QueueMessageForBroadcast(MessageId, FConstStructView::Make(AcquiredMsg));
+		}
+	}
+	// Acquire new entity target — build query results from SO definition
+	else if (CurrentEntityTarget.IsValid())
+	{
+		UMassEntitySubsystem* EntitySubsystem = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+		if (EntitySubsystem)
+		{
+			const FMassEntityManager& EM = EntitySubsystem->GetEntityManager();
+			const FArcSmartObjectDefinitionSharedFragment* SODefFragment = EM.GetConstSharedFragmentDataPtr<FArcSmartObjectDefinitionSharedFragment>(CurrentEntityTarget);
+			if (SODefFragment && SODefFragment->SmartObjectDefinition)
+			{
+				for (const FSmartObjectSlotDefinition& Slot : SODefFragment->SmartObjectDefinition->GetSlots())
+				{
+					const FArcInteractionDisplayData* DisplayData = Slot.GetDefinitionDataPtr<FArcInteractionDisplayData>();
+					if (DisplayData)
+					{
+						FInteractionTargetConfiguration Config;
+						Config.DisplayName = DisplayData->DisplayName;
+						CurrentQueryResults.AvailableInteractions.Add(FInstancedStruct::Make(Config));
+					}
+				}
+			}
+		}
+
+		if (MessageSystem.IsValid())
+		{
+			FArcInteractionAcquiredMessage AcquiredMsg;
 			AcquiredMsg.QueryResults = CurrentQueryResults;
 
 			FAsyncMessageId MessageId(Arcx::InteractionMessages::Interaction_Acquired);

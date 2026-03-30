@@ -60,7 +60,11 @@ public class ArcGameplayDebugger : ModuleRules
 				"ArcGameplayInteraction",
 				"ArcConditionEffects",
 				"ArcNeeds",
-				"ArcWeather"
+				"ArcWeather",
+				"MassEngine",
+				"InteractableInterface",
+				"InstancedActors",
+				"PhysicsCore"
 
 				// ... add other public dependencies that you statically link with here ...
 			}

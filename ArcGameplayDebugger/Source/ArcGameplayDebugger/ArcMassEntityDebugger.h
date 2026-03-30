@@ -20,6 +20,8 @@ private:
 	void DrawEntityListPanel();
 	void DrawEntityDetailPanel();
 	void DrawFragmentProperties(const UScriptStruct* FragmentType, const void* FragmentData);
+	void DrawPropertyRows(const FProperty* Prop, const void* ContainerPtr, int32 IndentLevel);
+	void DrawLeafValue(const FProperty* Prop, const void* ContainerPtr);
 
 	void RefreshEntityList();
 

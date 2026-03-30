@@ -87,7 +87,29 @@ namespace Arcx::GameplayDebugger::MassEntity
 		return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 	}
 
-	void DrawPropertyValue(const FProperty* Prop, const void* ContainerPtr)
+	constexpr float IndentSpacing = 12.0f;
+
+	// Returns true if this property type can be displayed as a single-line value
+	bool IsLeafProperty(const FProperty* Prop)
+	{
+		if (const FStructProperty* StructProp = CastField<FStructProperty>(Prop))
+		{
+			const UScriptStruct* Struct = StructProp->Struct;
+			return Struct == TBaseStructure<FVector>::Get()
+				|| Struct == TBaseStructure<FRotator>::Get()
+				|| Struct == TBaseStructure<FTransform>::Get()
+				|| Struct == TBaseStructure<FQuat>::Get()
+				|| Struct == TBaseStructure<FLinearColor>::Get()
+				|| Struct == TBaseStructure<FColor>::Get();
+		}
+		if (CastField<FArrayProperty>(Prop))
+		{
+			return false;
+		}
+		return true;
+	}
+
+	void DrawLeafValue(const FProperty* Prop, const void* ContainerPtr)
 	{
 		const void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(ContainerPtr);
 
@@ -167,7 +189,6 @@ namespace Arcx::GameplayDebugger::MassEntity
 		}
 		else if (const FStructProperty* StructProp = CastField<FStructProperty>(Prop))
 		{
-			// For known types show inline, for others show as sub-tree
 			if (StructProp->Struct == TBaseStructure<FVector>::Get())
 			{
 				const FVector& V = *static_cast<const FVector*>(ValuePtr);
@@ -208,34 +229,6 @@ namespace Arcx::GameplayDebugger::MassEntity
 				ImVec4 Col(C.R / 255.f, C.G / 255.f, C.B / 255.f, C.A / 255.f);
 				ImGui::ColorButton("##color", Col, ImGuiColorEditFlags_NoTooltip, ImVec2(14, 14));
 			}
-			else
-			{
-				// Recurse into sub-struct
-				FString NodeId = FString::Printf(TEXT("##%s_%p"), *Prop->GetName(), ValuePtr);
-				if (ImGui::TreeNode(TCHAR_TO_ANSI(*NodeId), "%s", TCHAR_TO_ANSI(*StructProp->Struct->GetName())))
-				{
-					for (TFieldIterator<FProperty> SubIt(StructProp->Struct); SubIt; ++SubIt)
-					{
-						FProperty* SubProp = *SubIt;
-						ImGui::PushID(TCHAR_TO_ANSI(*SubProp->GetName()));
-
-						if (ImGui::BeginTable("##subprop", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoBordersInBody))
-						{
-							ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-							ImGui::TableNextRow();
-							ImGui::TableSetColumnIndex(0);
-							ImGui::TextDisabled("%s", TCHAR_TO_ANSI(*SubProp->GetName()));
-							ImGui::TableSetColumnIndex(1);
-							DrawPropertyValue(SubProp, ValuePtr);
-							ImGui::EndTable();
-						}
-
-						ImGui::PopID();
-					}
-					ImGui::TreePop();
-				}
-			}
 		}
 		else if (const FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(Prop))
 		{
@@ -247,37 +240,6 @@ namespace Arcx::GameplayDebugger::MassEntity
 			else
 			{
 				ImGui::TextDisabled("None");
-			}
-		}
-		else if (const FArrayProperty* ArrayProp = CastField<FArrayProperty>(Prop))
-		{
-			FScriptArrayHelper ArrayHelper(ArrayProp, ValuePtr);
-			if (ArrayHelper.Num() == 0)
-			{
-				ImGui::TextDisabled("Empty [0]");
-			}
-			else
-			{
-				FString ArrayLabel = FString::Printf(TEXT("[%d] elements"), ArrayHelper.Num());
-				FString ArrayId = FString::Printf(TEXT("##arr_%s_%p"), *Prop->GetName(), ValuePtr);
-				if (ImGui::TreeNode(TCHAR_TO_ANSI(*ArrayId), "%s", TCHAR_TO_ANSI(*ArrayLabel)))
-				{
-					const int32 MaxDisplay = FMath::Min(ArrayHelper.Num(), 64);
-					for (int32 i = 0; i < MaxDisplay; ++i)
-					{
-						ImGui::PushID(i);
-						FString ElemLabel = FString::Printf(TEXT("[%d]"), i);
-						ImGui::Text("%s", TCHAR_TO_ANSI(*ElemLabel));
-						ImGui::SameLine();
-						DrawPropertyValue(ArrayProp->Inner, ArrayHelper.GetElementPtr(i));
-						ImGui::PopID();
-					}
-					if (ArrayHelper.Num() > MaxDisplay)
-					{
-						ImGui::TextDisabled("... %d more", ArrayHelper.Num() - MaxDisplay);
-					}
-					ImGui::TreePop();
-				}
 			}
 		}
 		else if (const FMapProperty* MapProp = CastField<FMapProperty>(Prop))
@@ -292,7 +254,6 @@ namespace Arcx::GameplayDebugger::MassEntity
 		}
 		else
 		{
-			// Fallback: use ExportText
 			FString ExportedVal;
 			Prop->ExportText_Direct(ExportedVal, ValuePtr, ValuePtr, nullptr, 0);
 			if (ExportedVal.Len() > 128)
@@ -597,6 +558,163 @@ void FArcMassEntityDebugger::DrawEntityDetailPanel()
 #endif
 }
 
+void FArcMassEntityDebugger::DrawPropertyRows(const FProperty* Prop, const void* ContainerPtr, int32 IndentLevel)
+{
+	using namespace Arcx::GameplayDebugger::MassEntity;
+
+	const void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(ContainerPtr);
+
+	if (const FStructProperty* StructProp = CastField<FStructProperty>(Prop))
+	{
+		if (!IsLeafProperty(Prop))
+		{
+			// Collapsible struct row
+			ImGuiID ToggleId = ImGui::GetID("##toggle");
+			ImGuiStorage* Storage = ImGui::GetStateStorage();
+			bool bOpen = Storage->GetBool(ToggleId, false);
+
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Indent(IndentLevel * IndentSpacing);
+			if (ImGui::SmallButton(bOpen ? "v" : ">"))
+			{
+				bOpen = !bOpen;
+				Storage->SetBool(ToggleId, bOpen);
+			}
+			ImGui::SameLine();
+			ImGui::TextDisabled("%s", TCHAR_TO_ANSI(*Prop->GetName()));
+			ImGui::Unindent(IndentLevel * IndentSpacing);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::TextDisabled("(%s)", TCHAR_TO_ANSI(*StructProp->Struct->GetName()));
+
+			if (bOpen)
+			{
+				for (TFieldIterator<FProperty> SubIt(StructProp->Struct); SubIt; ++SubIt)
+				{
+					FProperty* SubProp = *SubIt;
+					ImGui::PushID(TCHAR_TO_ANSI(*SubProp->GetName()));
+					DrawPropertyRows(SubProp, ValuePtr, IndentLevel + 1);
+					ImGui::PopID();
+				}
+			}
+			return;
+		}
+	}
+
+	if (const FArrayProperty* ArrayProp = CastField<FArrayProperty>(Prop))
+	{
+		FScriptArrayHelper ArrayHelper(ArrayProp, ValuePtr);
+		if (ArrayHelper.Num() == 0)
+		{
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Indent(IndentLevel * IndentSpacing);
+			ImGui::Text("%s", TCHAR_TO_ANSI(*Prop->GetName()));
+			ImGui::Unindent(IndentLevel * IndentSpacing);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::TextDisabled("Empty [0]");
+		}
+		else
+		{
+			// Collapsible array header row
+			ImGuiID ToggleId = ImGui::GetID("##arrtoggle");
+			ImGuiStorage* Storage = ImGui::GetStateStorage();
+			bool bOpen = Storage->GetBool(ToggleId, false);
+
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Indent(IndentLevel * IndentSpacing);
+			if (ImGui::SmallButton(bOpen ? "v" : ">"))
+			{
+				bOpen = !bOpen;
+				Storage->SetBool(ToggleId, bOpen);
+			}
+			ImGui::SameLine();
+			ImGui::Text("%s", TCHAR_TO_ANSI(*Prop->GetName()));
+			ImGui::Unindent(IndentLevel * IndentSpacing);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::TextDisabled("[%d]", ArrayHelper.Num());
+
+			if (bOpen)
+			{
+				const int32 MaxDisplay = FMath::Min(ArrayHelper.Num(), 64);
+				const bool bInnerIsStruct = CastField<FStructProperty>(ArrayProp->Inner) && !IsLeafProperty(ArrayProp->Inner);
+				for (int32 i = 0; i < MaxDisplay; ++i)
+				{
+					ImGui::PushID(i);
+					if (bInnerIsStruct)
+					{
+						const FStructProperty* InnerStructProp = CastField<FStructProperty>(ArrayProp->Inner);
+						const void* ElemPtr = ArrayHelper.GetElementPtr(i);
+
+						// Collapsible array element
+						ImGuiID ElemToggleId = ImGui::GetID("##elemtoggle");
+						bool bElemOpen = Storage->GetBool(ElemToggleId, false);
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0);
+						ImGui::Indent((IndentLevel + 1) * IndentSpacing);
+						if (ImGui::SmallButton(bElemOpen ? "v" : ">"))
+						{
+							bElemOpen = !bElemOpen;
+							Storage->SetBool(ElemToggleId, bElemOpen);
+						}
+						ImGui::SameLine();
+						ImGui::TextDisabled("[%d]", i);
+						ImGui::Unindent((IndentLevel + 1) * IndentSpacing);
+						ImGui::TableSetColumnIndex(1);
+						ImGui::TextDisabled("(%s)", TCHAR_TO_ANSI(*InnerStructProp->Struct->GetName()));
+
+						if (bElemOpen)
+						{
+							for (TFieldIterator<FProperty> SubIt(InnerStructProp->Struct); SubIt; ++SubIt)
+							{
+								FProperty* SubProp = *SubIt;
+								ImGui::PushID(TCHAR_TO_ANSI(*SubProp->GetName()));
+								DrawPropertyRows(SubProp, ElemPtr, IndentLevel + 2);
+								ImGui::PopID();
+							}
+						}
+					}
+					else
+					{
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0);
+						ImGui::Indent((IndentLevel + 1) * IndentSpacing);
+						ImGui::TextDisabled("[%d]", i);
+						ImGui::Unindent((IndentLevel + 1) * IndentSpacing);
+						ImGui::TableSetColumnIndex(1);
+						DrawLeafValue(ArrayProp->Inner, ArrayHelper.GetElementPtr(i));
+					}
+					ImGui::PopID();
+				}
+				if (ArrayHelper.Num() > MaxDisplay)
+				{
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					ImGui::TableSetColumnIndex(1);
+					ImGui::TextDisabled("... %d more", ArrayHelper.Num() - MaxDisplay);
+				}
+			}
+		}
+		return;
+	}
+
+	// Leaf property: single row with name + value
+	ImGui::TableNextRow();
+	ImGui::TableSetColumnIndex(0);
+	ImGui::Indent(IndentLevel * IndentSpacing);
+	ImGui::Text("%s", TCHAR_TO_ANSI(*Prop->GetName()));
+	ImGui::Unindent(IndentLevel * IndentSpacing);
+	ImGui::TableSetColumnIndex(1);
+	DrawLeafValue(Prop, ContainerPtr);
+}
+
+void FArcMassEntityDebugger::DrawLeafValue(const FProperty* Prop, const void* ContainerPtr)
+{
+	Arcx::GameplayDebugger::MassEntity::DrawLeafValue(Prop, ContainerPtr);
+}
+
 void FArcMassEntityDebugger::DrawFragmentProperties(const UScriptStruct* FragmentType, const void* FragmentData)
 {
 	if (!FragmentType || !FragmentData)
@@ -605,10 +723,10 @@ void FArcMassEntityDebugger::DrawFragmentProperties(const UScriptStruct* Fragmen
 	}
 
 	ImVec4 Color = Arcx::GameplayDebugger::MassEntity::GetElementColor(FragmentType);
-	FString TreeId = FString::Printf(TEXT("%s##%p"), *FragmentType->GetName(), FragmentData);
+	FString HeaderId = FString::Printf(TEXT("%s##%p"), *FragmentType->GetName(), FragmentData);
 
 	ImGui::PushStyleColor(ImGuiCol_Text, Color);
-	bool bOpen = ImGui::TreeNodeEx(TCHAR_TO_ANSI(*TreeId), ImGuiTreeNodeFlags_None, "%s", TCHAR_TO_ANSI(*FragmentType->GetName()));
+	bool bOpen = ImGui::CollapsingHeader(TCHAR_TO_ANSI(*HeaderId), ImGuiTreeNodeFlags_None);
 	ImGui::PopStyleColor();
 
 	if (!bOpen)
@@ -626,7 +744,6 @@ void FArcMassEntityDebugger::DrawFragmentProperties(const UScriptStruct* Fragmen
 	if (PropCount == 0)
 	{
 		ImGui::TextDisabled("No reflected properties");
-		ImGui::TreePop();
 		return;
 	}
 
@@ -639,15 +756,9 @@ void FArcMassEntityDebugger::DrawFragmentProperties(const UScriptStruct* Fragmen
 		{
 			FProperty* Prop = *It;
 			ImGui::PushID(TCHAR_TO_ANSI(*Prop->GetName()));
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::Text("%s", TCHAR_TO_ANSI(*Prop->GetName()));
-			ImGui::TableSetColumnIndex(1);
-			Arcx::GameplayDebugger::MassEntity::DrawPropertyValue(Prop, FragmentData);
+			DrawPropertyRows(Prop, FragmentData, 0);
 			ImGui::PopID();
 		}
 		ImGui::EndTable();
 	}
-
-	ImGui::TreePop();
 }

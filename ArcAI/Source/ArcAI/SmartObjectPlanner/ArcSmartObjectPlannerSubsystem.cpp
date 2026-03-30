@@ -5,7 +5,7 @@
 #include "ArcMassGoalPlanInfoSharedFragment.h"
 #include "ArcSmartObjectPlanConditionEvaluator.h"
 #include "ArcSmartObjectPlanResponse.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 #include "GameplayDebuggerCategoryReplicator.h"
 #include "GameplayTagContainer.h"
 #include "HAL/PlatformTime.h"

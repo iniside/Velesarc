@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "ArcMCP",
-	"Description": "Game-side MCP commands for ECABridge server.",
+	"Description": "Game-side MCP tools via ToolsetRegistry for ModelContextProtocol server.",
 	"Category": "ArcX",
 	"CanContainContent": false,
 	"Modules": [
@@ -15,7 +15,7 @@
 	],
 	"Plugins": [
 		{
-			"Name": "ECABridge",
+			"Name": "ToolsetRegistry",
 			"Enabled": true
 		}
 	]

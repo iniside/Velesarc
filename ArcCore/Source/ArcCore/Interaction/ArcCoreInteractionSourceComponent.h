@@ -5,9 +5,11 @@
 #include "CoreMinimal.h"
 #include "Player/ArcCorePlayerState.h"
 #include "Types/TargetingSystemTypes.h"
+#include "MassEntityTypes.h"
 
 #include "InteractableTargetInterface.h"
 #include "InteractionTypes.h"
+#include "MassEntityHandle.h"
 
 #include "ArcCoreInteractionSourceComponent.generated.h"
 
@@ -28,6 +30,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Interactions")
 	TScriptInterface<IInteractionTarget> CurrentTarget;
 
+	/** The current entity target when no IInteractionTarget actor is found. Mutually exclusive with CurrentTarget. */
+	UPROPERTY(BlueprintReadOnly, Category = "Interactions")
+	FMassEntityHandle CurrentEntityTarget;
+
 	/** Query results (available configurations) from the current best target. */
 	UPROPERTY(BlueprintReadOnly, Category = "Interactions")
 	FInteractionQueryResults CurrentQueryResults;
@@ -36,6 +42,9 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Interactions")
 	FInteractionQueryResults PreviousQueryResults;
 
+	/** Full targeting results from the last completed targeting request. */
+	FTargetingDefaultResultsSet CachedTargetingResults;
+
 public:
 	UArcCoreInteractionSourceComponent(const FObjectInitializer& ObjectInitializer);
 
@@ -43,7 +52,12 @@ public:
 	TScriptInterface<IInteractionTarget> GetCurrentTarget() const { return CurrentTarget; }
 
 	UFUNCTION(BlueprintPure, Category = "Interactions")
+	FMassEntityHandle GetCurrentEntityTarget() const { return CurrentEntityTarget; }
+
+	UFUNCTION(BlueprintPure, Category = "Interactions")
 	const FInteractionQueryResults& GetCurrentQueryResults() const { return CurrentQueryResults; }
+
+	const FTargetingDefaultResultsSet& GetCachedTargetingResults() const { return CachedTargetingResults; }
 
 protected:
 	virtual void BeginPlay() override;

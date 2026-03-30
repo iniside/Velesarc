@@ -4,10 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "imgui.h"
+#include "MassEntityQuery.h"
 
 class UArcEntityVisualizationSubsystem;
 class UArcMobileVisSubsystem;
 struct FMassEntityManager;
+struct FMassExecutionContext;
 
 class FArcVisualizationMinimapDebugger
 {
@@ -26,7 +28,10 @@ private:
 
 	// --- Canvas drawing ---
 	void DrawGrid();
+	void DrawGridLines(float CellSize, ImU32 LineColor);
 	void DrawEntities();
+	void DrawSourceEntities();
+	void DrawRadiusCircles();
 	void DrawHUD();
 	void HandleInput();
 
@@ -51,17 +56,27 @@ private:
 	FVector2D PanStartOffset = FVector2D::ZeroVector;
 
 	// --- Display toggles ---
-	bool bShowStaticGrid = true;
+	bool bShowMeshGrid = true;
+	bool bShowPhysicsGrid = true;
 	bool bShowMobileGrid = true;
 	bool bShowActiveCells = true;
 
 	// --- Stats ---
-	int32 StaticEntityCount = 0;
-	int32 StaticCellCount = 0;
+	int32 MeshGridEntityCount = 0;
+	int32 MeshGridCellCount = 0;
+	int32 PhysicsGridEntityCount = 0;
+	int32 PhysicsGridCellCount = 0;
 	int32 MobileEntityCount = 0;
 	int32 MobileCellCount = 0;
-	float StaticCellSize = 0.0f;
+	int32 PhysicsEntityCount = 0;
+	int32 MeshEntityCount = 0;
+	int32 SourceEntityCount = 0;
+	float MeshGridCellSize = 0.0f;
+	float PhysicsGridCellSize = 0.0f;
 	float MobileCellSize = 0.0f;
+
+	// --- Source entity positions (collected each frame for radius drawing) ---
+	TArray<FVector> SourceEntityPositions;
 
 	// --- Hovered entity ---
 	bool bHasHoveredEntity = false;

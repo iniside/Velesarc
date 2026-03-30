@@ -12,16 +12,22 @@
 #include "Storage/ArcPersistenceBackend.h"
 #include "Storage/ArcPersistenceResult.h"
 #include "Storage/ArcPersistenceKeyConvention.h"
+#include "ArcMass/Persistence/ArcMassPersistenceSettings.h"
 #include "Async/Async.h"
 #include "MassEntityManager.h"
 #include "MassEntityView.h"
 #include "MassCommandBuffer.h"
+#include "MassEntityConfigAsset.h"
+#include "MassSpawnerSubsystem.h"
+#include "MassEntityTemplateRegistry.h"
+#include "AssetRegistry/IAssetRegistry.h"
 
 namespace
 {
 	struct FCellEntityRecord
 	{
 		FGuid Guid;
+		FGuid ConfigGuid;
 		TArray<FInstancedStruct> Fragments;
 	};
 
@@ -58,6 +64,9 @@ namespace
 				LoadAr.EndArrayElement();
 				continue;
 			}
+
+			// Optional — old saves won't have this field
+			LoadAr.ReadProperty(FName("_configGuid"), Record.ConfigGuid);
 
 			// Parse fragment data (mirrors LoadEntityFragments but into
 			// standalone FInstancedStruct instead of live entity memory)
@@ -110,6 +119,75 @@ namespace
 		return Records;
 	}
 
+	UMassEntityConfigAsset* ResolveConfigAsset(const FGuid& ConfigGuid)
+	{
+		if (!ConfigGuid.IsValid())
+		{
+			return nullptr;
+		}
+
+		IAssetRegistry& AssetRegistry = IAssetRegistry::GetChecked();
+		TMultiMap<FName, FString> TagValues;
+		TagValues.Add(FName("MassEntityConfigGuid"), ConfigGuid.ToString());
+
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByTagValues(TagValues, Assets);
+
+		if (Assets.IsEmpty())
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("ArcMassPersistence: No UMassEntityConfigAsset found for ConfigGuid %s"),
+				*ConfigGuid.ToString());
+			return nullptr;
+		}
+
+		return Cast<UMassEntityConfigAsset>(Assets[0].GetAsset());
+	}
+
+	// Overlay saved fragment data and set persistence tracking on a batch of
+	// entity handles.  Shared between template and legacy paths.
+	void ApplyRecordsToEntities(
+		UArcMassEntityPersistenceSubsystem* Sub,
+		FMassEntityManager& EM,
+		const FIntVector& Cell,
+		TArray<FCellEntityRecord>& Records,
+		TConstArrayView<int32> RecordIndices,
+		TConstArrayView<FMassEntityHandle> Handles)
+	{
+		for (int32 j = 0; j < RecordIndices.Num(); ++j)
+		{
+			FCellEntityRecord& Record = Records[RecordIndices[j]];
+			const FMassEntityHandle Handle = Handles[j];
+
+			// Copy parsed fragment data onto the entity
+			FMassEntityView View(EM, Handle);
+			for (const FInstancedStruct& Frag : Record.Fragments)
+			{
+				const UScriptStruct* Type = Frag.GetScriptStruct();
+				FStructView Target = View.GetFragmentDataStruct(Type);
+				if (Target.IsValid())
+				{
+					Type->CopyScriptStruct(
+						Target.GetMemory(), Frag.GetMemory());
+				}
+			}
+
+			// Set persistence tracking (StorageCell/CurrentCell
+			// are not UPROPERTY so they're not in saved data)
+			FArcMassPersistenceFragment* PFrag =
+				EM.GetFragmentDataPtr<FArcMassPersistenceFragment>(Handle);
+			if (PFrag)
+			{
+				PFrag->PersistenceGuid = Record.Guid;
+				PFrag->StorageCell = Cell;
+				PFrag->CurrentCell = Cell;
+			}
+
+			Sub->ActiveEntities.Add(Record.Guid, Handle);
+			Sub->CellEntityMap.FindOrAdd(Cell).Add(Record.Guid);
+		}
+	}
+
 	// Batch-create entities from parsed records.  Runs during EM command flush.
 	void SpawnParsedEntities(
 		UArcMassEntityPersistenceSubsystem* Sub,
@@ -118,14 +196,21 @@ namespace
 	{
 		FMassEntityManager& EM = Sub->GetEntityManager();
 
-		// Group records by archetype (identical set of fragment types)
-		struct FArchetypeGroup
+		// Separate records into template-based (valid ConfigGuid) and legacy groups
+		struct FTemplateGroup
+		{
+			FGuid ConfigGuid;
+			TArray<int32> RecordIndices;
+		};
+
+		struct FLegacyGroup
 		{
 			TArray<const UScriptStruct*> FragmentTypes;
 			TArray<int32> RecordIndices;
 		};
 
-		TArray<FArchetypeGroup> Groups;
+		TArray<FTemplateGroup> TemplateGroups;
+		TArray<FLegacyGroup> LegacyGroups;
 
 		for (int32 i = 0; i < Records.Num(); ++i)
 		{
@@ -134,30 +219,98 @@ namespace
 				continue;
 			}
 
-			TArray<const UScriptStruct*> Types;
-			for (const FInstancedStruct& Frag : Records[i].Fragments)
+			if (Records[i].ConfigGuid.IsValid())
 			{
-				Types.AddUnique(Frag.GetScriptStruct());
-			}
-			// Ensure persistence fragment is always present
-			Types.AddUnique(FArcMassPersistenceFragment::StaticStruct());
-			Types.Sort();
+				// Group by ConfigGuid
+				int32 GroupIdx = TemplateGroups.IndexOfByPredicate(
+					[&Records, i](const FTemplateGroup& G)
+					{
+						return G.ConfigGuid == Records[i].ConfigGuid;
+					});
 
-			int32 GroupIdx = Groups.IndexOfByPredicate(
-				[&Types](const FArchetypeGroup& G)
+				if (GroupIdx == INDEX_NONE)
 				{
-					return G.FragmentTypes == Types;
-				});
-
-			if (GroupIdx == INDEX_NONE)
-			{
-				GroupIdx = Groups.Num();
-				Groups.Add({Types, {}});
+					GroupIdx = TemplateGroups.Num();
+					TemplateGroups.Add({Records[i].ConfigGuid, {}});
+				}
+				TemplateGroups[GroupIdx].RecordIndices.Add(i);
 			}
-			Groups[GroupIdx].RecordIndices.Add(i);
+			else
+			{
+				// Legacy path: group by fragment types
+				TArray<const UScriptStruct*> Types;
+				for (const FInstancedStruct& Frag : Records[i].Fragments)
+				{
+					Types.AddUnique(Frag.GetScriptStruct());
+				}
+				Types.AddUnique(FArcMassPersistenceFragment::StaticStruct());
+				Types.Sort();
+
+				int32 GroupIdx = LegacyGroups.IndexOfByPredicate(
+					[&Types](const FLegacyGroup& G)
+					{
+						return G.FragmentTypes == Types;
+					});
+
+				if (GroupIdx == INDEX_NONE)
+				{
+					GroupIdx = LegacyGroups.Num();
+					LegacyGroups.Add({Types, {}});
+				}
+				LegacyGroups[GroupIdx].RecordIndices.Add(i);
+			}
 		}
 
-		for (const FArchetypeGroup& Group : Groups)
+		// ── Template path: resolve config asset → spawn via template ────
+		UWorld* World = Sub->GetWorld();
+		UMassSpawnerSubsystem* SpawnerSub = World
+			? World->GetSubsystem<UMassSpawnerSubsystem>()
+			: nullptr;
+
+		for (const FTemplateGroup& Group : TemplateGroups)
+		{
+			UMassEntityConfigAsset* ConfigAsset =
+				ResolveConfigAsset(Group.ConfigGuid);
+			if (!ConfigAsset || !SpawnerSub)
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("ArcMassPersistence: Falling back to legacy spawn for ConfigGuid %s"),
+					*Group.ConfigGuid.ToString());
+
+				// Fall back to legacy for these records
+				FLegacyGroup Fallback;
+				for (int32 Idx : Group.RecordIndices)
+				{
+					for (const FInstancedStruct& Frag : Records[Idx].Fragments)
+					{
+						Fallback.FragmentTypes.AddUnique(Frag.GetScriptStruct());
+					}
+				}
+				Fallback.FragmentTypes.AddUnique(FArcMassPersistenceFragment::StaticStruct());
+				Fallback.FragmentTypes.Sort();
+				Fallback.RecordIndices = Group.RecordIndices;
+				LegacyGroups.Add(MoveTemp(Fallback));
+				continue;
+			}
+
+			const FMassEntityTemplate& Template =
+				ConfigAsset->GetOrCreateEntityTemplate(*World);
+
+			TArray<FMassEntityHandle> Handles;
+			{
+				TSharedPtr<FMassEntityManager::FEntityCreationContext> Context =
+					SpawnerSub->SpawnEntities(
+						Template,
+						static_cast<uint32>(Group.RecordIndices.Num()),
+						Handles);
+
+				ApplyRecordsToEntities(
+					Sub, EM, Cell, Records, Group.RecordIndices, Handles);
+			} // Context released → observer notification
+		}
+
+		// ── Legacy path: archetype from fragment types, BatchCreateEntities ──
+		for (const FLegacyGroup& Group : LegacyGroups)
 		{
 			FMassElementBitSet Elements;
 			for (const UScriptStruct* Type : Group.FragmentTypes)
@@ -171,42 +324,12 @@ namespace
 
 			TArray<FMassEntityHandle> Handles;
 			{
-				auto Context = EM.BatchCreateEntities(
-					Archetype, Group.RecordIndices.Num(), Handles);
+				TSharedRef<FMassEntityManager::FEntityCreationContext> Context =
+					EM.BatchCreateEntities(
+						Archetype, Group.RecordIndices.Num(), Handles);
 
-				for (int32 j = 0; j < Group.RecordIndices.Num(); ++j)
-				{
-					FCellEntityRecord& Record =
-						Records[Group.RecordIndices[j]];
-					const FMassEntityHandle Handle = Handles[j];
-
-					// Copy parsed fragment data onto the entity
-					FMassEntityView View(EM, Handle);
-					for (const FInstancedStruct& Frag : Record.Fragments)
-					{
-						const UScriptStruct* Type = Frag.GetScriptStruct();
-						FStructView Target =
-							View.GetFragmentDataStruct(Type);
-						if (Target.IsValid())
-						{
-							Type->CopyScriptStruct(
-								Target.GetMemory(), Frag.GetMemory());
-						}
-					}
-
-					// Set persistence tracking (StorageCell/CurrentCell
-					// are not UPROPERTY so they're not in saved data)
-					if (auto* PFrag = EM.GetFragmentDataPtr<
-							FArcMassPersistenceFragment>(Handle))
-					{
-						PFrag->PersistenceGuid = Record.Guid;
-						PFrag->StorageCell = Cell;
-						PFrag->CurrentCell = Cell;
-					}
-
-					Sub->ActiveEntities.Add(Record.Guid, Handle);
-					Sub->CellEntityMap.FindOrAdd(Cell).Add(Record.Guid);
-				}
+				ApplyRecordsToEntities(
+					Sub, EM, Cell, Records, Group.RecordIndices, Handles);
 			} // Context released → observer notification
 		}
 	}
@@ -216,7 +339,7 @@ bool UArcMassEntityPersistenceSubsystem::ShouldCreateSubsystem(
 	UObject* Outer) const
 {
 	const UWorld* World = Cast<UWorld>(Outer);
-	return World && World->WorldType == EWorldType::Game;
+	return World && (World->WorldType == EWorldType::Game || World->WorldType == EWorldType::PIE);
 }
 
 void UArcMassEntityPersistenceSubsystem::Initialize(
@@ -224,6 +347,13 @@ void UArcMassEntityPersistenceSubsystem::Initialize(
 {
 	Collection.InitializeDependency<UMassEntitySubsystem>();
 	Super::Initialize(Collection);
+
+	// Auto-configure from developer settings so the subsystem works without
+	// an explicit Configure() call (which only tests were doing).
+	const UArcMassPersistenceSettings* Settings = GetDefault<UArcMassPersistenceSettings>();
+	const FGuid AutoWorldId = FGuid::NewDeterministicGuid(
+		GetWorld()->GetFName().ToString());
+	Configure(Settings->CellSize, Settings->LoadRadius, AutoWorldId);
 }
 
 void UArcMassEntityPersistenceSubsystem::Deinitialize()
@@ -242,6 +372,7 @@ void UArcMassEntityPersistenceSubsystem::Deinitialize()
 	CellEntityMap.Empty();
 	LoadedCells.Empty();
 	PendingCellLoads.Empty();
+	PendingSaveCells.Empty();
 	CachedEntityManager = nullptr;
 	FlushBackend();
 	Super::Deinitialize();
@@ -350,6 +481,13 @@ void UArcMassEntityPersistenceSubsystem::LoadCell(const FIntVector& Cell)
 				SpawnParsedEntities(Sub, Cell, Records);
 				Sub->LoadedCells.Add(Cell);
 
+				// Flush any queued saves now that the cell is loaded
+				if (Sub->PendingSaveCells.Contains(Cell))
+				{
+					Sub->PendingSaveCells.Remove(Cell);
+					Sub->SaveCell(Cell);
+				}
+
 				UE_LOG(LogTemp, Log,
 					TEXT("ArcMassPersistence: Loaded cell [%d,%d] (%d entities)"),
 					Cell.X, Cell.Y, Records.Num());
@@ -360,28 +498,40 @@ void UArcMassEntityPersistenceSubsystem::LoadCell(const FIntVector& Cell)
 
 void UArcMassEntityPersistenceSubsystem::SaveCell(const FIntVector& Cell)
 {
-	if (!LoadedCells.Contains(Cell) || !CachedEntityManager)
+	if (!CachedEntityManager)
 	{
 		return;
 	}
 
-	const UGameInstance* GI = GetWorld()->GetGameInstance();
-	if (!GI)
+	// Cell is loaded — serialize and save immediately
+	if (LoadedCells.Contains(Cell))
 	{
-		return;
-	}
-	UArcPersistenceSubsystem* PersistSub = GI->GetSubsystem<UArcPersistenceSubsystem>();
-	IArcPersistenceBackend* Backend = PersistSub ? PersistSub->GetBackend() : nullptr;
-	if (!Backend)
-	{
+		const UGameInstance* GI = GetWorld()->GetGameInstance();
+		if (!GI)
+		{
+			return;
+		}
+		UArcPersistenceSubsystem* PersistSub = GI->GetSubsystem<UArcPersistenceSubsystem>();
+		IArcPersistenceBackend* Backend = PersistSub ? PersistSub->GetBackend() : nullptr;
+		if (!Backend)
+		{
+			return;
+		}
+
+		TArray<uint8> Data = SerializeCell(Cell);
+		Backend->SaveEntry(MakeCellStorageKey(Cell), MoveTemp(Data));
 		return;
 	}
 
-	// Serialize on game thread (needs entity access), I/O is fire-and-forget.
-	// Data is captured by value into the backend task queue, so entities
-	// can safely be destroyed after this call returns.
-	TArray<uint8> Data = SerializeCell(Cell);
-	Backend->SaveEntry(MakeCellStorageKey(Cell), MoveTemp(Data));
+	// Cell has entities but isn't loaded — queue save and trigger load
+	if (CellEntityMap.Contains(Cell))
+	{
+		PendingSaveCells.Add(Cell);
+		if (!IsCellLoadingOrLoaded(Cell))
+		{
+			LoadCell(Cell);
+		}
+	}
 }
 
 void UArcMassEntityPersistenceSubsystem::UnloadCell(const FIntVector& Cell)
@@ -428,7 +578,7 @@ void UArcMassEntityPersistenceSubsystem::UnloadCell(const FIntVector& Cell)
 			}
 		}
 
-		// Step 3: Destroy entities currently in this cell
+		// Step 3: Destroy entities currently in this cell via deferred commands
 		TArray<FGuid> ToDestroy;
 		if (const TSet<FGuid>* CellGuids = CellEntityMap.Find(Cell))
 		{
@@ -438,19 +588,26 @@ void UArcMassEntityPersistenceSubsystem::UnloadCell(const FIntVector& Cell)
 			}
 		}
 
+		TArray<FMassEntityHandle> HandlesToDestroy;
+		HandlesToDestroy.Reserve(ToDestroy.Num());
+
 		for (const FGuid& Guid : ToDestroy)
 		{
 			if (FMassEntityHandle* Handle = ActiveEntities.Find(Guid))
 			{
 				if (EM.IsEntityValid(*Handle))
 				{
-					EM.DestroyEntity(*Handle);
+					HandlesToDestroy.Add(*Handle);
 				}
 				ActiveEntities.Remove(Guid);
 			}
 		}
 
-		DestroyedCount = ToDestroy.Num();
+		DestroyedCount = HandlesToDestroy.Num();
+		if (HandlesToDestroy.Num() > 0)
+		{
+			EM.Defer().DestroyEntities(MoveTemp(HandlesToDestroy));
+		}
 	}
 
 	CellEntityMap.Remove(Cell);
@@ -568,6 +725,10 @@ void UArcMassEntityPersistenceSubsystem::OnEntityCellChanged(
 	if (TSet<FGuid>* OldSet = CellEntityMap.Find(OldCell))
 	{
 		OldSet->Remove(Guid);
+		if (OldSet->IsEmpty())
+		{
+			CellEntityMap.Remove(OldCell);
+		}
 	}
 
 	CellEntityMap.FindOrAdd(NewCell).Add(Guid);
@@ -615,6 +776,11 @@ TArray<uint8> UArcMassEntityPersistenceSubsystem::SerializeCell(
 			const FArcMassPersistenceConfigFragment* Config =
 				EM.GetConstSharedFragmentDataPtr<
 					FArcMassPersistenceConfigFragment>(*Handle);
+
+			if (Config && Config->ConfigGuid.IsValid())
+			{
+				SaveAr.WriteProperty(FName("_configGuid"), Config->ConfigGuid);
+			}
 
 			FArcMassPersistenceConfigFragment DefaultConfig;
 			FArcMassFragmentSerializer::SaveEntityFragments(

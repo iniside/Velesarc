@@ -44,6 +44,7 @@ public class ArcMassEditor : ModuleRules
                 , "StructUtils"
                 , "StructUtilsEditor"
                 , "StructViewer"
+                , "PhysicsCore"
             }
         );
     }

@@ -5,7 +5,7 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
 #include "ArcMass/ArcMassFragments.h"
-#include "ArcMass/ArcMassHealthSignalProcessor.h"
+#include "ArcMass/Lifecycle/ArcMassHealthSignalProcessor.h"
 
 FArcMassModifyTargetHealthTask::FArcMassModifyTargetHealthTask()
 {

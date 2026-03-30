@@ -5,16 +5,23 @@
 #include "CoreMinimal.h"
 #include "imgui.h"
 
+class AArcIWMassISMPartitionActor;
 class UArcIWVisualizationSubsystem;
 struct FMassEntityManager;
 
 /**
  * ImGui minimap debugger for the ArcInstancedWorld plugin.
  *
- * Three grid overlay modes:
+ * Six grid overlay modes:
  *   - World Partition cells (large cells where partition actors live)
- *   - ISM active radius (visualization grid cells where ISM instances are created)
- *   - Actor active radius (future: cells where actors are hydrated)
+ *   - Mesh-add radius (visualization grid cells where mesh instances are created)
+ *   - Mesh-remove radius (hysteresis band for mesh instance removal)
+ *   - Physics-add radius (cells where physics bodies are attached)
+ *   - Physics-remove radius (hysteresis band for physics body removal)
+ *   - Dehydration radius (cells beyond which entities are dehydrated)
+ *
+ * Nine entity states: Game (0), Mesh (1), MeshPhysics (2), Actor (3), ActorKeepHydrated (4),
+ * SimpleMesh (5), SkinnedMesh (6), SkinnedMeshPhysics (7), SimpleSkinnedMesh (8).
  *
  * Also supports drawing entity positions in the 3D viewport.
  */
@@ -63,29 +70,40 @@ private:
 
 	// --- Display toggles ---
 	bool bShowWPCells = true;
-	bool bShowISMGrid = true;
-	bool bShowISMActive = true;
+	bool bShowMeshAddGrid = true;
+	bool bShowMeshRemoveGrid = false;
 	bool bShowActorGrid = true;
+	bool bShowPhysicsAddGrid = true;
+	bool bShowPhysicsRemoveGrid = false;
 	bool bShowDehydrationGrid = false;
 	bool bShowEntities = true;
+	bool bShowVisEntities = false;
 	bool bDrawInViewport = false;
+	bool bShowStaticMeshEntities = true;
+	bool bShowSkinnedMeshEntities = true;
+	bool bShowSourceEntities = true;
 
 	// --- Config (updated from subsystem each frame) ---
 	float WPCellSize = 12800.0f;
-	float ISMCellSize = 2000.0f;
 
 	// --- Stats ---
 	int32 EntityCount = 0;
-	int32 ISMEntityCount = 0;
+	int32 GameEntityCount = 0;
+	int32 MeshEntityCount = 0;
+	int32 PhysicsEntityCount = 0;
 	int32 ActorEntityCount = 0;
-	int32 InactiveEntityCount = 0;
+	int32 KeepHydratedCount = 0;
+	int32 SimpleMeshEntityCount = 0;
+	int32 SkinnedMeshEntityCount = 0;
+	int32 SkinnedPhysicsEntityCount = 0;
+	int32 SimpleSkinnedMeshEntityCount = 0;
+	int32 VisHolderCount = 0;
 	int32 OccupiedCellCount = 0;
+	int32 SourceEntityCount = 0;
 
 	// --- Hovered entity ---
 	bool bHasHoveredEntity = false;
 	FVector HoveredEntityPos = FVector::ZeroVector;
 	int32 HoveredEntityIndex = INDEX_NONE;
-	bool bHoveredHasISM = false;
-	bool bHoveredIsActor = false;
-	bool bHoveredKeepHydrated = false;
+	int32 HoveredEntityState = 0; // 0=Game, 1=Mesh, 2=MeshPhysics, 3=Actor, 4=ActorKeepHydrated, 5=SimpleMesh, 6=SkinnedMesh, 7=SkinnedMeshPhysics, 8=SimpleSkinnedMesh
 };

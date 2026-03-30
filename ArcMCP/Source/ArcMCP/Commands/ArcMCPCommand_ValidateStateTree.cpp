@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPCommand_ValidateStateTree.h"
@@ -65,3 +67,5 @@ FECACommandResult FArcMCPCommand_ValidateStateTree::Execute(const TSharedPtr<FJs
 
 	return FECACommandResult::Success(Result);
 }
+
+#endif

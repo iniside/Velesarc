@@ -146,7 +146,9 @@ void UArcMassCooldownTaskProcessor::Execute(FMassEntityManager& EntityManager, F
 	{
 		return;
 	}
-	
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassCooldownTask);
+
 	EntityQuery_Conditional.ForEachEntityChunk(Context, [this](FMassExecutionContext& MyContext)
 	{
 		const TArrayView<FArcMassCooldownTaskFragment> CooldownList = MyContext.GetMutableFragmentView<FArcMassCooldownTaskFragment>();

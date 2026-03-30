@@ -2,8 +2,13 @@
 
 #include "ArcMass.h"
 
-#include "ArcMassReplication.h"
+#include "ArcMass/Replication/ArcMassReplication.h"
 #include "Iris/ReplicationSystem/NetObjectFactoryRegistry.h"
+
+#if WITH_EDITOR
+#include "MassEntityConfigAsset.h"
+#include "UObject/AssetRegistryTagsContext.h"
+#endif
 
 #if WITH_GAMEPLAY_DEBUGGER
 #include "GameplayDebugger.h"
@@ -12,6 +17,30 @@
 
 #define LOCTEXT_NAMESPACE "FArcMassModule"
 
+#if WITH_EDITOR
+namespace UE::ArcMass::Persistence
+{
+	void OnGetMassEntityConfigTags(FAssetRegistryTagsContext Context)
+	{
+		const UMassEntityConfigAsset* ConfigAsset =
+			Cast<UMassEntityConfigAsset>(Context.GetObject());
+		if (!ConfigAsset)
+		{
+			return;
+		}
+
+		const FGuid& ConfigGuid = ConfigAsset->GetConfig().GetGuid();
+		if (ConfigGuid.IsValid())
+		{
+			Context.AddTag(UObject::FAssetRegistryTag(
+				FName("MassEntityConfigGuid"),
+				ConfigGuid.ToString(),
+				UObject::FAssetRegistryTag::TT_Hidden));
+		}
+	}
+}
+#endif
+
 void FArcMassModule::StartupModule()
 {
 	// Register our custom Iris factory for replication proxies.
@@ -19,6 +48,11 @@ void FArcMassModule::StartupModule()
 	UE::Net::FNetObjectFactoryRegistry::RegisterFactory(
 		UArcMassReplicationProxyFactory::StaticClass(),
 		UArcMassReplicationProxyFactory::GetFactoryName());
+
+#if WITH_EDITOR
+	UObject::FAssetRegistryTag::OnGetExtraObjectTagsWithContext.AddStatic(
+		&UE::ArcMass::Persistence::OnGetMassEntityConfigTags);
+#endif
 
 #if WITH_GAMEPLAY_DEBUGGER
 	IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();

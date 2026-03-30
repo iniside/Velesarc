@@ -35,6 +35,7 @@ public class ArcMass : ModuleRules
 				, "MassSpawner"
 				, "MassRepresentation"
 				, "MassSignals"
+				, "MassEngine"
 				, "MassLOD"
 				, "GameplayTags"
 				, "StructUtils"
@@ -66,7 +67,8 @@ public class ArcMass : ModuleRules
 				"NetCore",
 				"IrisCore",
 				"PhysicsCore",
-				"Chaos"
+				"Chaos",
+				"AssetRegistry"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
@@ -78,6 +80,15 @@ public class ArcMass : ModuleRules
 				// ... add any modules that your module loads dynamically here ...
 			}
 			);
+
+		// Access MassEngine Private headers for FMassRenderStateFragment, FMassStaticMeshRenderStateHelper
+		string MassEnginePrivateMeshPath = System.IO.Path.Combine(EngineDirectory, "Source", "Runtime", "Mass", "MassEngine", "Private", "Mesh");
+		PrivateIncludePaths.Add(MassEnginePrivateMeshPath);
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 
 		SetupGameplayDebuggerSupport(Target);
 	}

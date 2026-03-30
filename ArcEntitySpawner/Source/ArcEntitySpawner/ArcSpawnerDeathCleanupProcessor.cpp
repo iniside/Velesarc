@@ -4,7 +4,7 @@
 
 #include "ArcEntitySpawnerSubsystem.h"
 #include "ArcEntitySpawnerTypes.h"
-#include "ArcMass/ArcMassLifecycle.h"
+#include "ArcMass/Lifecycle/ArcMassLifecycle.h"
 #include "ArcMass/Persistence/ArcMassPersistence.h"
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
@@ -45,6 +45,8 @@ void UArcSpawnerDeathCleanupProcessor::SignalEntities(
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcSpawnerDeathCleanup);
 
 	EntityQuery.ForEachEntityChunk(Context,
 		[SpawnerSub](FMassExecutionContext& Ctx)

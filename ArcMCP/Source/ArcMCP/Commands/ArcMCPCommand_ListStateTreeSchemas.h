@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #pragma once
@@ -16,3 +18,5 @@ public:
 	virtual TArray<FECACommandParam> GetParameters() const override { return {}; }
 	virtual FECACommandResult Execute(const TSharedPtr<FJsonObject>& Params) override;
 };
+
+#endif

@@ -7,6 +7,8 @@
 #include "MassCommonFragments.h"
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
+#include "Mesh/MassEngineMeshFragments.h"
+#include "ArcMass/Visualization/ArcMassVisualizationConfigFragments.h"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,6 +74,8 @@ void UArcMobileVisSourceTrackingProcessor::Execute(FMassEntityManager& EntityMan
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisSourceTracking);
 
 	const float CellSize = Subsystem->GetCellSize();
 	constexpr int32 SearchRadiusCells = 30;
@@ -185,6 +189,8 @@ void UArcMobileVisEntityCellUpdateProcessor::Execute(FMassEntityManager& EntityM
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityCellUpdate);
+
 	const float CellSize = Subsystem->GetCellSize();
 	const float HalfCellSizeSq = (CellSize * 0.5f) * (CellSize * 0.5f);
 
@@ -289,6 +295,8 @@ void UArcMobileVisEntityCellChangedProcessor::SignalEntities(FMassEntityManager&
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityCellChanged);
+
 	const float CellSize = Subsystem->GetCellSize();
 
 	TArray<FMassEntityHandle> UpgradeToActorEntities;
@@ -391,6 +399,7 @@ void UArcMobileVisUpgradeToActorProcessor::ConfigureQueries(const TSharedRef<FMa
 	EntityQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -408,6 +417,8 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisUpgradeToActor);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem, World](FMassExecutionContext& Ctx)
 		{
@@ -415,6 +426,8 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -430,7 +443,7 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
 				// Remove ISM instance if has one
-				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
+				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
 				if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
 				{
 					Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
@@ -479,6 +492,7 @@ void UArcMobileVisDowngradeToISMProcessor::ConfigureQueries(const TSharedRef<FMa
 	EntityQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -496,6 +510,8 @@ void UArcMobileVisDowngradeToISMProcessor::SignalEntities(FMassEntityManager& En
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisDowngradeToISM);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[Subsystem, World](FMassExecutionContext& Ctx)
 		{
@@ -503,6 +519,8 @@ void UArcMobileVisDowngradeToISMProcessor::SignalEntities(FMassEntityManager& En
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -528,7 +546,7 @@ void UArcMobileVisDowngradeToISMProcessor::SignalEntities(FMassEntityManager& En
 				const FIntVector RegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
 
 				// Add ISM instance
-				UStaticMesh* MeshToUse = Config.StaticMesh;
+				UStaticMesh* MeshToUse = BaseMesh;
 				if (MeshToUse)
 				{
 					Rep.ISMInstanceId = Subsystem->AddISMInstance(
@@ -571,6 +589,7 @@ void UArcMobileVisUpgradeToISMProcessor::ConfigureQueries(const TSharedRef<FMass
 	EntityQuery.AddRequirement<FArcMobileVisRepFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -588,12 +607,16 @@ void UArcMobileVisUpgradeToISMProcessor::SignalEntities(FMassEntityManager& Enti
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisUpgradeToISM);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[Subsystem](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -608,7 +631,7 @@ void UArcMobileVisUpgradeToISMProcessor::SignalEntities(FMassEntityManager& Enti
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 				const FIntVector RegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
 
-				UStaticMesh* MeshToUse = Config.StaticMesh;
+				UStaticMesh* MeshToUse = BaseMesh;
 				if (MeshToUse)
 				{
 					Rep.ISMInstanceId = Subsystem->AddISMInstance(
@@ -650,6 +673,7 @@ void UArcMobileVisDowngradeToNoneProcessor::ConfigureQueries(const TSharedRef<FM
 {
 	EntityQuery.AddRequirement<FArcMobileVisRepFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -667,18 +691,22 @@ void UArcMobileVisDowngradeToNoneProcessor::SignalEntities(FMassEntityManager& E
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisDowngradeToNone);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcMobileVisRepFragment& Rep = RepFragments[EntityIt];
 
 				// Remove ISM if has one
-				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
+				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
 				if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
 				{
 					Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
@@ -710,6 +738,7 @@ void UArcMobileVisISMTransformUpdateProcessor::ConfigureQueries(const TSharedRef
 	EntityQuery.AddRequirement<FArcMobileVisLODFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -727,6 +756,8 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisISMTransformUpdate);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
 		{
@@ -734,6 +765,8 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 			const TConstArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetFragmentView<FArcMobileVisLODFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -750,7 +783,7 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 				}
 
 				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
-				UStaticMesh* MeshToUse = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
+				UStaticMesh* MeshToUse = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
 
 				// Check if entity crossed a region boundary
 				const FIntVector NewRegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
@@ -813,6 +846,7 @@ void UArcMobileVisEntityInitObserver::ConfigureQueries(const TSharedRef<FMassEnt
 	ObserverQuery.AddRequirement<FArcMobileVisLODFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	ObserverQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddConstSharedRequirement<FArcMobileVisDistanceConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
@@ -831,6 +865,8 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityInit);
+
 	const float CellSize = Subsystem->GetCellSize();
 
 	ObserverQuery.ForEachEntityChunk(Context,
@@ -841,6 +877,8 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 			TArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetMutableFragmentView<FArcMobileVisLODFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 			const FArcMobileVisDistanceConfigFragment& DistConfig = Ctx.GetConstSharedFragment<FArcMobileVisDistanceConfigFragment>();
 
 			const FMobileVisRadii Radii = ComputeRadii(DistConfig, CellSize);
@@ -894,7 +932,7 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 				{
 					const FIntVector RegionCoord = Subsystem->CellToRegion(GridCoords);
 
-					UStaticMesh* MeshToUse = Config.StaticMesh;
+					UStaticMesh* MeshToUse = BaseMesh;
 					if (MeshToUse)
 					{
 						Rep.ISMInstanceId = Subsystem->AddISMInstance(
@@ -940,6 +978,7 @@ void UArcMobileVisEntityDeinitObserver::ConfigureQueries(const TSharedRef<FMassE
 	ObserverQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	ObserverQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -957,6 +996,8 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityDeinit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
 		{
@@ -965,6 +1006,8 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
+			UStaticMesh* BaseMesh = const_cast<UStaticMesh*>(StaticMeshConfigFrag.Mesh.Get());
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -984,7 +1027,7 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 				else
 				{
 					// Remove ISM instance
-					UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
+					UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
 					if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
 					{
 						Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
@@ -1028,6 +1071,8 @@ void UArcMobileVisSourceDeinitObserver::Execute(FMassEntityManager& EntityManage
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisSourceDeinit);
 
 	ObserverQuery.ForEachEntityChunk(Context,
 		[Subsystem](FMassExecutionContext& Ctx)

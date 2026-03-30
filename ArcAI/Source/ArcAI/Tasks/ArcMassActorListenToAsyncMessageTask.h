@@ -7,7 +7,7 @@
 #include "MassActorSubsystem.h"
 #include "MassStateTreeTypes.h"
 #include "StateTreeDelegate.h"
-#include "ArcMass/ArcMassAsyncMessageEndpointFragment.h"
+#include "ArcMass/Messaging/ArcMassAsyncMessageEndpointFragment.h"
 #include "Engine/TimerHandle.h"
 #include "Perception/ArcAISense_GameplayAbility.h"
 

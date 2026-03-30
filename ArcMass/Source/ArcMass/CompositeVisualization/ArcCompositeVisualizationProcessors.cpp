@@ -3,7 +3,7 @@
 #include "ArcCompositeVisualizationProcessors.h"
 
 #include "ArcCompositeVisualization.h"
-#include "ArcMass/ArcMassEntityVisualization.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassExecutionContext.h"
@@ -44,6 +44,8 @@ void UArcCompositeVisEntityInitObserver::Execute(FMassEntityManager& EntityManag
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcCompositeVisEntityInit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem, World](FMassExecutionContext& Ctx)
 		{
@@ -60,11 +62,11 @@ void UArcCompositeVisEntityInitObserver::Execute(FMassEntityManager& EntityManag
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
 				const FVector Position = EntityTransform.GetLocation();
-				Rep.GridCoords = Subsystem->GetGrid().WorldToCell(Position);
+				Rep.GridCoords = Subsystem->GetMeshGrid().WorldToCell(Position);
 
-				Subsystem->RegisterEntity(Entity, Position);
+				Subsystem->RegisterMeshEntity(Entity, Position);
 
-				if (Subsystem->IsActiveCellCoord(Rep.GridCoords))
+				if (Subsystem->IsMeshActiveCellCoord(Rep.GridCoords))
 				{
 					if (!Config.ActorClass)
 					{
@@ -112,7 +114,7 @@ void UArcCompositeVisActivateProcessor::InitializeInternal(UObject& Owner, const
 	Super::InitializeInternal(Owner, EntityManager);
 
 	UMassSignalSubsystem* SignalSubsystem = UWorld::GetSubsystem<UMassSignalSubsystem>(Owner.GetWorld());
-	SubscribeToSignal(*SignalSubsystem, UE::ArcMass::Signals::VisualizationCellActivated);
+	SubscribeToSignal(*SignalSubsystem, UE::ArcMass::Signals::VisMeshActivated);
 }
 
 void UArcCompositeVisActivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
@@ -143,6 +145,8 @@ void UArcCompositeVisActivateProcessor::SignalEntities(FMassEntityManager& Entit
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcCompositeVisActivate);
 
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, VisSubsystem, CompositeSubsystem, World](FMassExecutionContext& Ctx)
@@ -224,7 +228,7 @@ void UArcCompositeVisDeactivateProcessor::InitializeInternal(UObject& Owner, con
 	Super::InitializeInternal(Owner, EntityManager);
 
 	UMassSignalSubsystem* SignalSubsystem = UWorld::GetSubsystem<UMassSignalSubsystem>(Owner.GetWorld());
-	SubscribeToSignal(*SignalSubsystem, UE::ArcMass::Signals::VisualizationCellDeactivated);
+	SubscribeToSignal(*SignalSubsystem, UE::ArcMass::Signals::VisMeshDeactivated);
 }
 
 void UArcCompositeVisDeactivateProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
@@ -255,6 +259,8 @@ void UArcCompositeVisDeactivateProcessor::SignalEntities(FMassEntityManager& Ent
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcCompositeVisDeactivate);
 
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, VisSubsystem, CompositeSubsystem](FMassExecutionContext& Ctx)
@@ -355,6 +361,8 @@ void UArcCompositeVisEntityDeinitObserver::Execute(FMassEntityManager& EntityMan
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcCompositeVisEntityDeinit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[&EntityManager, VisSubsystem, CompositeSubsystem](FMassExecutionContext& Ctx)
 		{
@@ -394,7 +402,7 @@ void UArcCompositeVisEntityDeinitObserver::Execute(FMassEntityManager& EntityMan
 					}
 				}
 
-				VisSubsystem->UnregisterEntity(Entity, Rep.GridCoords);
+				VisSubsystem->UnregisterMeshEntity(Entity, Rep.GridCoords);
 			}
 		});
 }

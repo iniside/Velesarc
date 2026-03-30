@@ -57,6 +57,8 @@ void UArcMassPlayerPersistenceObserver::Execute(
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassPlayerPersistence);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, World, PlayerPersistence](FMassExecutionContext& Ctx)
 		{

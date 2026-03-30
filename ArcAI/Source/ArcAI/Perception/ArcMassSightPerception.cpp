@@ -2,7 +2,7 @@
 
 #include "MassEntityTemplateRegistry.h"
 #include "MassExecutionContext.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 
 #include "MassEntitySubsystem.h"
 
@@ -107,6 +107,8 @@ void UArcMassSightPerceptionProcessor::Execute(FMassEntityManager& EntityManager
     {
         return;
     }
+
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassSightPerception);
 
     const float DeltaTime = Context.GetDeltaTimeSeconds();
 
@@ -301,6 +303,8 @@ void UArcMassSightPerceptionObserver::Execute(FMassEntityManager& EntityManager,
     {
         return;
     }
+
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassSightPerception);
 
     TArray<FMassEntityHandle> DestroyedEntities;
 

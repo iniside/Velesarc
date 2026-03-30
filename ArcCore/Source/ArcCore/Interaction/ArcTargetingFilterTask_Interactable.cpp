@@ -4,6 +4,12 @@
 
 #include "InteractableTargetInterface.h"
 #include "Components/PrimitiveComponent.h"
+#include "ArcMass/ArcMassEntityLibrary.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
+#include "ArcInteractionDisplayData.h"
+#include "MassEntitySubsystem.h"
+#include "SmartObjectDefinition.h"
+#include "Engine/Engine.h"
 
 bool UArcTargetingFilterTask_Interactable::ShouldFilterTarget(const FTargetingRequestHandle& TargetingHandle, const FTargetingDefaultResultData& TargetData) const
 {
@@ -28,6 +34,35 @@ bool UArcTargetingFilterTask_Interactable::ShouldFilterTarget(const FTargetingRe
 			if (Comp && Comp->Implements<UInteractionTarget>())
 			{
 				return false;
+			}
+		}
+	}
+
+	// Fallback: check if the hit resolves to a Mass entity with a SmartObject definition
+	EArcMassResult MassResult = EArcMassResult::NotValid;
+	FMassEntityHandle EntityHandle = UArcMassEntityLibrary::ResolveHitToEntity(TargetData.HitResult, MassResult);
+	if (MassResult == EArcMassResult::Valid && EntityHandle.IsValid())
+	{
+		UWorld* World = GEngine->GetCurrentPlayWorld();
+		if (World)
+		{
+			UMassEntitySubsystem* EntitySubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+			if (EntitySubsystem)
+			{
+				const FMassEntityManager& EM = EntitySubsystem->GetEntityManager();
+				const FArcSmartObjectDefinitionSharedFragment* SODefFragment = EM.GetConstSharedFragmentDataPtr<FArcSmartObjectDefinitionSharedFragment>(EntityHandle);
+				if (SODefFragment && SODefFragment->SmartObjectDefinition)
+				{
+					return false;
+					// Check that at least one slot has interaction display data
+					//for (const FSmartObjectSlotDefinition& Slot : SODefFragment->SmartObjectDefinition->GetSlots())
+					//{
+					//	if (Slot.GetDefinitionDataPtr<FArcInteractionDisplayData>() != nullptr)
+					//	{
+					//		return false;
+					//	}
+					//}
+				}
 			}
 		}
 	}

@@ -3,8 +3,8 @@
 #include "ArcAreaObservers.h"
 #include "ArcAreaFragments.h"
 #include "ArcAreaSubsystem.h"
-#include "ArcMass/ArcMassSmartObjectFragments.h"
-#include "ArcMass/ArcMassSmartObjectObservers.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectObservers.h"
 #include "MassEntityFragments.h"
 #include "MassExecutionContext.h"
 
@@ -36,6 +36,8 @@ void UArcAreaAddObserver::Execute(FMassEntityManager& EntityManager, FMassExecut
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcAreaAdd);
 
 	ObserverQuery.ForEachEntityChunk(Context, [AreaSubsystem, &EntityManager](FMassExecutionContext& Ctx)
 	{
@@ -91,6 +93,8 @@ void UArcAreaRemoveObserver::ConfigureQueries(const TSharedRef<FMassEntityManage
 
 void UArcAreaRemoveObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcAreaRemove);
+
 	UArcAreaSubsystem* AreaSubsystem = Context.GetWorld()->GetSubsystem<UArcAreaSubsystem>();
 
 	ObserverQuery.ForEachEntityChunk(Context, [AreaSubsystem](FMassExecutionContext& Ctx)

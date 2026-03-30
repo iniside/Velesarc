@@ -98,7 +98,10 @@ public class ArcEditorTools : ModuleRules
 				, "ContentBrowser"
 				, "ContentBrowserData"
 				, "AssetManagerEditor"
-				// ... add private dependencies that you statically link with here ...	
+				, "ArcInstancedWorld"
+				, "MassEntity"
+				, "WorkspaceMenuStructure"
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
 		

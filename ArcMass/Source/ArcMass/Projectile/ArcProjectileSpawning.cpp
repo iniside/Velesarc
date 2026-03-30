@@ -38,6 +38,8 @@ void UArcProjectileSpawnProcessor::Execute(FMassEntityManager& EntityManager, FM
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcProjectileSpawn);
+
 	FArcProjectileSpawnData& SpawnData = Context.GetMutableAuxData().GetMutable<FArcProjectileSpawnData>();
 
 	const int32 NumTransforms = SpawnData.Transforms.Num();

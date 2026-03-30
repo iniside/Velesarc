@@ -49,6 +49,8 @@ void UArcCraftTickProcessor::ConfigureQueries(const TSharedRef<FMassEntityManage
 
 void UArcCraftTickProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcCraftTick);
+
 	const float DeltaTime = Context.GetDeltaTimeSeconds();
 
 	EntityQuery.ForEachEntityChunk(Context,

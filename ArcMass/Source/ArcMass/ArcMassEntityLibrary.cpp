@@ -2,7 +2,7 @@
 
 #include "ArcMassEntityLibrary.h"
 
-#include "ArcMassPhysicsEntityLink.h"
+#include "ArcMass/Physics/ArcMassPhysicsEntityLink.h"
 #include "MassAgentComponent.h"
 #include "Engine/World.h"
 
@@ -143,6 +143,11 @@ FMassEntityHandle UArcMassEntityLibrary::ResolveHitToEntity(const FHitResult& Hi
 	Handle = ArcMassPhysicsEntityLink::ResolveHit(HitResult);
 	ExecResult = Handle.IsValid() ? EArcMassResult::Valid : EArcMassResult::NotValid;
 	return Handle;
+}
+
+FString UArcMassEntityLibrary::ToString(const FMassEntityHandle& InHandle)
+{
+	return InHandle.DebugGetDescription();
 }
 
 #undef LOCTEXT_NAMESPACE

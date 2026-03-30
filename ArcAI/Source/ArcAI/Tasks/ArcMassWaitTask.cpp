@@ -105,6 +105,8 @@ void UArcMassWaitTaskProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassWaitTask);
+
 	TArray<FMassEntityHandle> EntitiesToSignalPathDone;
 
 	EntityQuery_Conditional.ForEachEntityChunk(Context, [this, &EntitiesToSignalPathDone](FMassExecutionContext& MyContext)

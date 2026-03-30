@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcIWActorPoolSubsystem.h"
-#include "ArcIWEntityComponent.h"
+#include "ArcInstancedWorld/Components/ArcIWEntityComponent.h"
 #include "Engine/World.h"
 
 AActor* UArcIWActorPoolSubsystem::AcquireActor(TSubclassOf<AActor> ActorClass, const FTransform& Transform, FMassEntityHandle EntityHandle)

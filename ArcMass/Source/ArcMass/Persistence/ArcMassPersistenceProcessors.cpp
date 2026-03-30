@@ -39,6 +39,8 @@ void UArcMassPersistenceSourceTrackingProcessor::Execute(
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassPersistenceSourceTracking);
+
 	TArray<FVector> SourcePositions;
 
 	SourceQuery.ForEachEntityChunk(Context,
@@ -95,6 +97,8 @@ void UArcMassPersistenceCellTrackingProcessor::Execute(
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassPersistenceCellTracking);
+
 	const float CellSize = Subsystem->GetCellSize();
 
 	EntityQuery.ForEachEntityChunk(Context,
@@ -131,8 +135,7 @@ UArcMassPersistenceInitObserver::UArcMassPersistenceInitObserver()
 {
 	ObservedTypes.Add(FArcMassPersistenceTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
-	bAutoRegisterWithProcessingPhases = true;
-	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server);
+	bRequiresGameThreadExecution = true;
 }
 
 void UArcMassPersistenceInitObserver::ConfigureQueries(
@@ -155,6 +158,8 @@ void UArcMassPersistenceInitObserver::Execute(
 			UArcMassEntityPersistenceSubsystem>();
 
 	const float CellSize = Subsystem ? Subsystem->GetCellSize() : 10000.f;
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassPersistenceInit);
 
 	EntityQuery.ForEachEntityChunk(Context,
 		[Subsystem, CellSize](FMassExecutionContext& Ctx)
@@ -193,6 +198,79 @@ void UArcMassPersistenceInitObserver::Execute(
 						PFrag.PersistenceGuid,
 						FIntVector(MAX_int32, MAX_int32, MAX_int32),
 						PFrag.CurrentCell);
+
+					// Register handle for serialization (loaded entities
+					// already registered in SpawnParsedEntities — guard
+					// prevents overwriting their handle)
+					if (!Subsystem->ActiveEntities.Contains(
+							PFrag.PersistenceGuid))
+					{
+						Subsystem->ActiveEntities.Add(
+							PFrag.PersistenceGuid,
+							Ctx.GetEntity(i));
+					}
+				}
+			}
+		});
+}
+
+// ── Deinit Observer ─────────────────────────────────────────────────────
+
+UArcMassPersistenceDeinitObserver::UArcMassPersistenceDeinitObserver()
+	: EntityQuery{*this}
+{
+	ObservedTypes.Add(FArcMassPersistenceTag::StaticStruct());
+	ObservedOperations = EMassObservedOperationFlags::Remove;
+	bRequiresGameThreadExecution = true;
+}
+
+void UArcMassPersistenceDeinitObserver::ConfigureQueries(
+	const TSharedRef<FMassEntityManager>& EntityManager)
+{
+	EntityQuery.AddRequirement<FArcMassPersistenceFragment>(
+		EMassFragmentAccess::ReadOnly);
+}
+
+void UArcMassPersistenceDeinitObserver::Execute(
+	FMassEntityManager& EntityManager,
+	FMassExecutionContext& Context)
+{
+	UArcMassEntityPersistenceSubsystem* Subsystem =
+		EntityManager.GetWorld()->GetSubsystem<
+			UArcMassEntityPersistenceSubsystem>();
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassPersistenceDeinit);
+
+	EntityQuery.ForEachEntityChunk(Context,
+		[Subsystem](FMassExecutionContext& Ctx)
+		{
+			const TConstArrayView<FArcMassPersistenceFragment> PersistFragments =
+				Ctx.GetFragmentView<FArcMassPersistenceFragment>();
+
+			for (int32 i = 0; i < Ctx.GetNumEntities(); ++i)
+			{
+				const FArcMassPersistenceFragment& PFrag = PersistFragments[i];
+				const FGuid& Guid = PFrag.PersistenceGuid;
+
+				if (!Guid.IsValid())
+				{
+					continue;
+				}
+
+				Subsystem->ActiveEntities.Remove(Guid);
+
+				if (TSet<FGuid>* CellSet =
+						Subsystem->CellEntityMap.Find(PFrag.CurrentCell))
+				{
+					CellSet->Remove(Guid);
+					if (CellSet->IsEmpty())
+					{
+						Subsystem->CellEntityMap.Remove(PFrag.CurrentCell);
+					}
 				}
 			}
 		});

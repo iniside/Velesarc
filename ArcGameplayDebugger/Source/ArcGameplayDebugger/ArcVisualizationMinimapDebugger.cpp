@@ -5,11 +5,13 @@
 #include "imgui.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
-#include "ArcMass/ArcMassEntityVisualization.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
 #include "ArcMass/MobileVisualization/ArcMobileVisualization.h"
 #include "MassActorSubsystem.h"
 #include "MassEntitySubsystem.h"
 #include "MassEntityFragments.h"
+#include "MassEntityQuery.h"
+#include "MassExecutionContext.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 
@@ -19,33 +21,48 @@
 
 namespace Arcx::GameplayDebugger::VisEntity::Minimap
 {
-	// Static visualization
-	static const ImU32 StaticCellFillColor = IM_COL32(40, 120, 60, 80);
-	static const ImU32 StaticCellBorderColor = IM_COL32(80, 80, 80, 120);
-	static const ImU32 StaticEntityColor = IM_COL32(220, 200, 50, 255);
-	static const ImU32 StaticEntityHoveredColor = IM_COL32(255, 255, 100, 255);
+	// Mesh grid
+	static const ImU32 MeshGridCellFillColor = IM_COL32(30, 45, 100, 60);
+	static const ImU32 MeshGridCellBorderColor = IM_COL32(45, 45, 85, 90);
+	static const ImU32 MeshGridLineColor = IM_COL32(40, 40, 70, 70);
+	static const ImU32 MeshActivationRadiusColor = IM_COL32(80, 160, 220, 180);
+	static const ImU32 MeshDeactivationRadiusColor = IM_COL32(80, 160, 220, 100);
+
+	// Physics grid
+	static const ImU32 PhysicsGridCellFillColor = IM_COL32(30, 80, 45, 60);
+	static const ImU32 PhysicsGridCellBorderColor = IM_COL32(55, 55, 55, 90);
+	static const ImU32 PhysicsGridLineColor = IM_COL32(50, 50, 50, 70);
+	static const ImU32 PhysicsActivationRadiusColor = IM_COL32(100, 200, 120, 180);
+	static const ImU32 PhysicsDeactivationRadiusColor = IM_COL32(100, 200, 120, 100);
 
 	// Mobile visualization
-	static const ImU32 MobileCellFillColor = IM_COL32(40, 60, 140, 80);
-	static const ImU32 MobileCellBorderColor = IM_COL32(60, 60, 120, 120);
-	static const ImU32 MobileEntityColor = IM_COL32(100, 180, 255, 255);
-	static const ImU32 MobileEntityHoveredColor = IM_COL32(140, 210, 255, 255);
+	static const ImU32 MobileCellFillColor = IM_COL32(30, 45, 100, 60);
+	static const ImU32 MobileCellBorderColor = IM_COL32(45, 45, 85, 90);
+	static const ImU32 MobileGridLineColor = IM_COL32(40, 40, 70, 70);
+
+	// Entity dots
+	static const ImU32 StaticEntityColor = IM_COL32(150, 140, 40, 180);
+	static const ImU32 StaticEntityHoveredColor = IM_COL32(200, 195, 80, 255);
+	static const ImU32 MobileEntityColor = IM_COL32(70, 130, 190, 180);
+	static const ImU32 MobileEntityHoveredColor = IM_COL32(110, 175, 230, 255);
+	static const ImU32 PhysicsEntityColor = IM_COL32(100, 200, 120, 180);
+	static const ImU32 MeshEntityColor = IM_COL32(80, 160, 220, 180);
 
 	// Active cell highlight
-	static const ImU32 ActiveCellColor = IM_COL32(60, 200, 100, 60);
+	static const ImU32 ActiveCellColor = IM_COL32(45, 140, 70, 40);
+	static const ImU32 PlayerCellColor = IM_COL32(200, 60, 60, 40);
 
 	// Player entities
-	static const ImU32 PlayerColor = IM_COL32(255, 80, 80, 255);
-	static const ImU32 PlayerHoveredColor = IM_COL32(255, 140, 140, 255);
+	static const ImU32 PlayerColor = IM_COL32(200, 60, 60, 220);
+	static const ImU32 PlayerHoveredColor = IM_COL32(240, 120, 120, 255);
 
-	// Source entities (mobile vis observers)
-	static const ImU32 SourceColor = IM_COL32(255, 160, 40, 255);
+	// Source entities
+	static const ImU32 SourceColor = IM_COL32(190, 120, 30, 200);
 
 	// General
-	static const ImU32 BackgroundColor = IM_COL32(20, 20, 25, 240);
-	static const ImU32 OriginColor = IM_COL32(255, 60, 60, 180);
-	static const ImU32 HUDTextColor = IM_COL32(200, 200, 200, 255);
-	static const ImU32 PlayerCellColor = IM_COL32(255, 80, 80, 60);
+	static const ImU32 BackgroundColor = IM_COL32(15, 15, 20, 240);
+	static const ImU32 OriginColor = IM_COL32(180, 45, 45, 120);
+	static const ImU32 HUDTextColor = IM_COL32(160, 160, 160, 220);
 
 	ImU32 CellColorByCount(int32 Count, ImU32 BaseColor)
 	{
@@ -54,6 +71,8 @@ namespace Arcx::GameplayDebugger::VisEntity::Minimap
 		return (BaseColor & 0x00FFFFFF) | (static_cast<ImU32>(A) << 24);
 	}
 }
+
+namespace VisColors = Arcx::GameplayDebugger::VisEntity::Minimap;
 
 // ====================================================================
 // Lifecycle
@@ -65,10 +84,16 @@ void FArcVisualizationMinimapDebugger::Initialize()
 	Zoom = 0.05f;
 	bIsPanning = false;
 	bHasHoveredEntity = false;
-	StaticEntityCount = 0;
-	StaticCellCount = 0;
+	MeshGridEntityCount = 0;
+	MeshGridCellCount = 0;
+	PhysicsGridEntityCount = 0;
+	PhysicsGridCellCount = 0;
 	MobileEntityCount = 0;
 	MobileCellCount = 0;
+	PhysicsEntityCount = 0;
+	MeshEntityCount = 0;
+	SourceEntityCount = 0;
+	SourceEntityPositions.Reset();
 }
 
 void FArcVisualizationMinimapDebugger::Uninitialize()
@@ -143,7 +168,6 @@ void FArcVisualizationMinimapDebugger::Draw()
 	DrawHUD();
 	ImGui::Separator();
 
-	// Canvas area = remaining window space
 	CanvasPos = ImGui::GetCursorScreenPos();
 	CanvasSize = ImGui::GetContentRegionAvail();
 
@@ -166,22 +190,21 @@ void FArcVisualizationMinimapDebugger::Draw()
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 	DrawList->PushClipRect(CanvasPos, ImVec2(CanvasPos.x + CanvasSize.x, CanvasPos.y + CanvasSize.y), true);
 
-	// Background
-	DrawList->AddRectFilled(CanvasPos, ImVec2(CanvasPos.x + CanvasSize.x, CanvasPos.y + CanvasSize.y), Arcx::GameplayDebugger::VisEntity::Minimap::BackgroundColor);
+	DrawList->AddRectFilled(CanvasPos, ImVec2(CanvasPos.x + CanvasSize.x, CanvasPos.y + CanvasSize.y), VisColors::BackgroundColor);
 
-	// Origin crosshair
 	{
 		const ImVec2 Origin = WorldToScreen(0.0f, 0.0f);
-		DrawList->AddLine(ImVec2(CanvasPos.x, Origin.y), ImVec2(CanvasPos.x + CanvasSize.x, Origin.y), Arcx::GameplayDebugger::VisEntity::Minimap::OriginColor, 1.0f);
-		DrawList->AddLine(ImVec2(Origin.x, CanvasPos.y), ImVec2(Origin.x, CanvasPos.y + CanvasSize.y), Arcx::GameplayDebugger::VisEntity::Minimap::OriginColor, 1.0f);
+		DrawList->AddLine(ImVec2(CanvasPos.x, Origin.y), ImVec2(CanvasPos.x + CanvasSize.x, Origin.y), VisColors::OriginColor, 1.0f);
+		DrawList->AddLine(ImVec2(Origin.x, CanvasPos.y), ImVec2(Origin.x, CanvasPos.y + CanvasSize.y), VisColors::OriginColor, 1.0f);
 	}
 
 	DrawGrid();
+	DrawSourceEntities();
+	DrawRadiusCircles();
 	DrawEntities();
 
 	DrawList->PopClipRect();
 
-	// Tooltip for hovered entity
 	if (bHasHoveredEntity && bCanvasHovered)
 	{
 		ImGui::BeginTooltip();
@@ -189,6 +212,24 @@ void FArcVisualizationMinimapDebugger::Draw()
 			bHoveredIsPlayer ? " [Player]" : "",
 			bHoveredIsMobile ? " (Mobile)" : " (Static)");
 		ImGui::Text("Position: (%.0f, %.0f, %.0f)", HoveredEntityPos.X, HoveredEntityPos.Y, HoveredEntityPos.Z);
+
+		FMassEntityManager* EM = GetEntityManager();
+		if (EM)
+		{
+			FMassEntityHandle HoveredHandle;
+			HoveredHandle.Index = HoveredEntityIndex;
+			if (EM->IsEntityValid(HoveredHandle))
+			{
+				const FArcVisRepresentationFragment* VisRep = EM->GetFragmentDataPtr<FArcVisRepresentationFragment>(HoveredHandle);
+				if (VisRep)
+				{
+					ImGui::Text("Physics: %s | Mesh: %s",
+						VisRep->bHasPhysicsBody ? "Yes" : "No",
+						VisRep->bHasMeshRendering ? "Yes" : "No");
+				}
+			}
+		}
+
 		ImGui::EndTooltip();
 	}
 
@@ -249,6 +290,78 @@ void FArcVisualizationMinimapDebugger::HandleInput()
 }
 
 // ====================================================================
+// Grid Lines
+// ====================================================================
+
+void FArcVisualizationMinimapDebugger::DrawGridLines(float CellSize, ImU32 LineColor)
+{
+	if (CellSize <= 0.0f)
+	{
+		return;
+	}
+
+	// Skip if cells would be too small on screen to be useful
+	const float CellScreenSize = CellSize * Zoom;
+	if (CellScreenSize < 4.0f)
+	{
+		return;
+	}
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
+	// Visible world bounds from canvas corners
+	const FVector2D WorldTopLeft = ScreenToWorld(CanvasPos);
+	const FVector2D WorldBottomRight = ScreenToWorld(ImVec2(CanvasPos.x + CanvasSize.x, CanvasPos.y + CanvasSize.y));
+
+	const float WorldMinX = FMath::Min(WorldTopLeft.X, WorldBottomRight.X);
+	const float WorldMaxX = FMath::Max(WorldTopLeft.X, WorldBottomRight.X);
+	const float WorldMinY = FMath::Min(WorldTopLeft.Y, WorldBottomRight.Y);
+	const float WorldMaxY = FMath::Max(WorldTopLeft.Y, WorldBottomRight.Y);
+
+	// Snap to cell boundaries (one cell beyond visible for clean edges)
+	const int32 CellMinX = FMath::FloorToInt32(WorldMinX / CellSize) - 1;
+	const int32 CellMaxX = FMath::CeilToInt32(WorldMaxX / CellSize) + 1;
+	const int32 CellMinY = FMath::FloorToInt32(WorldMinY / CellSize) - 1;
+	const int32 CellMaxY = FMath::CeilToInt32(WorldMaxY / CellSize) + 1;
+
+	// Cap line count to avoid perf issues at extreme zoom-out
+	const int32 MaxLines = 200;
+	if ((CellMaxX - CellMinX) + (CellMaxY - CellMinY) > MaxLines)
+	{
+		return;
+	}
+
+	const float CanvasLeft = CanvasPos.x;
+	const float CanvasRight = CanvasPos.x + CanvasSize.x;
+	const float CanvasTop = CanvasPos.y;
+	const float CanvasBottom = CanvasPos.y + CanvasSize.y;
+
+	// Vertical lines
+	for (int32 X = CellMinX; X <= CellMaxX; ++X)
+	{
+		const float WorldX = X * CellSize;
+		const ImVec2 ScreenTop = WorldToScreen(WorldX, WorldMaxY);
+		const float SX = ScreenTop.x;
+		if (SX >= CanvasLeft && SX <= CanvasRight)
+		{
+			DrawList->AddLine(ImVec2(SX, CanvasTop), ImVec2(SX, CanvasBottom), LineColor, 1.0f);
+		}
+	}
+
+	// Horizontal lines
+	for (int32 Y = CellMinY; Y <= CellMaxY; ++Y)
+	{
+		const float WorldY = Y * CellSize;
+		const ImVec2 ScreenLeft = WorldToScreen(WorldMinX, WorldY);
+		const float SY = ScreenLeft.y;
+		if (SY >= CanvasTop && SY <= CanvasBottom)
+		{
+			DrawList->AddLine(ImVec2(CanvasLeft, SY), ImVec2(CanvasRight, SY), LineColor, 1.0f);
+		}
+	}
+}
+
+// ====================================================================
 // Grid Drawing
 // ====================================================================
 
@@ -256,104 +369,148 @@ void FArcVisualizationMinimapDebugger::DrawGrid()
 {
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 
-	StaticEntityCount = 0;
-	StaticCellCount = 0;
-	MobileEntityCount = 0;
-	MobileCellCount = 0;
+	MeshGridEntityCount = 0;
+	MeshGridCellCount = 0;
+	PhysicsGridEntityCount = 0;
+	PhysicsGridCellCount = 0;
 
-	// --- Static visualization grid ---
-	if (bShowStaticGrid)
+	UArcEntityVisualizationSubsystem* VisSub = GetStaticVisSubsystem();
+
+	// --- Mesh grid ---
+	if (bShowMeshGrid && VisSub)
 	{
-		UArcEntityVisualizationSubsystem* StaticSub = GetStaticVisSubsystem();
-		if (StaticSub)
+		const FArcVisualizationGrid& Grid = VisSub->GetMeshGrid();
+		MeshGridCellSize = Grid.CellSize;
+		MeshGridCellCount = Grid.CellEntities.Num();
+
+		if (bShowActiveCells)
 		{
-			const FArcVisualizationGrid& Grid = StaticSub->GetGrid();
-			StaticCellSize = Grid.CellSize;
-			StaticCellCount = Grid.CellEntities.Num();
-
-			// Draw active cells highlight
-			if (bShowActiveCells)
+			const FIntVector MeshPlayerCell = VisSub->GetLastMeshPlayerCell();
+			if (MeshPlayerCell.X != TNumericLimits<int32>::Max())
 			{
-				TArray<FIntVector> ActiveCells;
-				StaticSub->GetActiveCells(ActiveCells);
-				for (const FIntVector& Cell : ActiveCells)
-				{
-					const float WorldMinX = Cell.X * StaticCellSize;
-					const float WorldMinY = Cell.Y * StaticCellSize;
-					const float WorldMaxX = WorldMinX + StaticCellSize;
-					const float WorldMaxY = WorldMinY + StaticCellSize;
-
-					const ImVec2 ScreenMin = WorldToScreen(WorldMinX, WorldMaxY);
-					const ImVec2 ScreenMax = WorldToScreen(WorldMaxX, WorldMinY);
-
-					if (ScreenMax.x < CanvasPos.x || ScreenMin.x > CanvasPos.x + CanvasSize.x ||
-						ScreenMax.y < CanvasPos.y || ScreenMin.y > CanvasPos.y + CanvasSize.y)
-					{
-						continue;
-					}
-
-					DrawList->AddRectFilled(ScreenMin, ScreenMax, Arcx::GameplayDebugger::VisEntity::Minimap::ActiveCellColor);
-				}
-
-				// Draw player cell
-				const FIntVector PlayerCell = StaticSub->GetLastPlayerCell();
-				if (PlayerCell.X != TNumericLimits<int32>::Max())
-				{
-					const float WorldMinX = PlayerCell.X * StaticCellSize;
-					const float WorldMinY = PlayerCell.Y * StaticCellSize;
-					const float WorldMaxX = WorldMinX + StaticCellSize;
-					const float WorldMaxY = WorldMinY + StaticCellSize;
-
-					const ImVec2 ScreenMin = WorldToScreen(WorldMinX, WorldMaxY);
-					const ImVec2 ScreenMax = WorldToScreen(WorldMaxX, WorldMinY);
-
-					DrawList->AddRectFilled(ScreenMin, ScreenMax, Arcx::GameplayDebugger::VisEntity::Minimap::PlayerCellColor);
-					DrawList->AddRect(ScreenMin, ScreenMax, IM_COL32(255, 80, 80, 200), 0.0f, 0, 2.0f);
-				}
-			}
-
-			for (const auto& Pair : Grid.CellEntities)
-			{
-				const FIntVector& Coords = Pair.Key;
-				const int32 EntityCount = Pair.Value.Num();
-				StaticEntityCount += EntityCount;
-
-				const float WorldMinX = Coords.X * StaticCellSize;
-				const float WorldMinY = Coords.Y * StaticCellSize;
-				const float WorldMaxX = WorldMinX + StaticCellSize;
-				const float WorldMaxY = WorldMinY + StaticCellSize;
+				const float WorldMinX = MeshPlayerCell.X * MeshGridCellSize;
+				const float WorldMinY = MeshPlayerCell.Y * MeshGridCellSize;
+				const float WorldMaxX = WorldMinX + MeshGridCellSize;
+				const float WorldMaxY = WorldMinY + MeshGridCellSize;
 
 				const ImVec2 ScreenMin = WorldToScreen(WorldMinX, WorldMaxY);
 				const ImVec2 ScreenMax = WorldToScreen(WorldMaxX, WorldMinY);
 
-				if (ScreenMax.x < CanvasPos.x || ScreenMin.x > CanvasPos.x + CanvasSize.x ||
-					ScreenMax.y < CanvasPos.y || ScreenMin.y > CanvasPos.y + CanvasSize.y)
-				{
-					continue;
-				}
-
-				DrawList->AddRectFilled(ScreenMin, ScreenMax, Arcx::GameplayDebugger::VisEntity::Minimap::CellColorByCount(EntityCount, Arcx::GameplayDebugger::VisEntity::Minimap::StaticCellFillColor));
-				DrawList->AddRect(ScreenMin, ScreenMax, Arcx::GameplayDebugger::VisEntity::Minimap::StaticCellBorderColor, 0.0f, 0, 1.0f);
-
-				const float CellScreenSize = (ScreenMax.x - ScreenMin.x);
-				if (CellScreenSize > 24.0f)
-				{
-					char CountBuf[16];
-					FCStringAnsi::Snprintf(CountBuf, sizeof(CountBuf), "%d", EntityCount);
-					const ImVec2 TextSize = ImGui::CalcTextSize(CountBuf);
-					DrawList->AddText(
-						ImVec2(
-							(ScreenMin.x + ScreenMax.x - TextSize.x) * 0.5f,
-							(ScreenMin.y + ScreenMax.y - TextSize.y) * 0.5f
-						),
-						Arcx::GameplayDebugger::VisEntity::Minimap::HUDTextColor, CountBuf
-					);
-				}
+				DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::PlayerCellColor);
+				DrawList->AddRect(ScreenMin, ScreenMax, IM_COL32(80, 160, 220, 200), 0.0f, 0, 2.0f);
 			}
 		}
+
+		for (const TPair<FIntVector, TArray<FMassEntityHandle>>& Pair : Grid.CellEntities)
+		{
+			const FIntVector& Coords = Pair.Key;
+			const int32 EntityCount = Pair.Value.Num();
+			MeshGridEntityCount += EntityCount;
+
+			const float WorldMinX = Coords.X * MeshGridCellSize;
+			const float WorldMinY = Coords.Y * MeshGridCellSize;
+			const float WorldMaxX = WorldMinX + MeshGridCellSize;
+			const float WorldMaxY = WorldMinY + MeshGridCellSize;
+
+			const ImVec2 ScreenMin = WorldToScreen(WorldMinX, WorldMaxY);
+			const ImVec2 ScreenMax = WorldToScreen(WorldMaxX, WorldMinY);
+
+			if (ScreenMax.x < CanvasPos.x || ScreenMin.x > CanvasPos.x + CanvasSize.x ||
+				ScreenMax.y < CanvasPos.y || ScreenMin.y > CanvasPos.y + CanvasSize.y)
+			{
+				continue;
+			}
+
+			DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::CellColorByCount(EntityCount, VisColors::MeshGridCellFillColor));
+			DrawList->AddRect(ScreenMin, ScreenMax, VisColors::MeshGridCellBorderColor, 0.0f, 0, 1.0f);
+
+			const float CellScreenSize = (ScreenMax.x - ScreenMin.x);
+			if (CellScreenSize > 24.0f)
+			{
+				char CountBuf[16];
+				FCStringAnsi::Snprintf(CountBuf, sizeof(CountBuf), "%d", EntityCount);
+				const ImVec2 TextSize = ImGui::CalcTextSize(CountBuf);
+				DrawList->AddText(
+					ImVec2(
+						(ScreenMin.x + ScreenMax.x - TextSize.x) * 0.5f,
+						(ScreenMin.y + ScreenMax.y - TextSize.y) * 0.5f
+					),
+					VisColors::HUDTextColor, CountBuf
+				);
+			}
+		}
+
+		DrawGridLines(MeshGridCellSize, VisColors::MeshGridLineColor);
 	}
 
-	// --- Mobile visualization grid ---
+	// --- Physics grid ---
+	if (bShowPhysicsGrid && VisSub)
+	{
+		const FArcVisualizationGrid& Grid = VisSub->GetPhysicsGrid();
+		PhysicsGridCellSize = Grid.CellSize;
+		PhysicsGridCellCount = Grid.CellEntities.Num();
+
+		if (bShowActiveCells)
+		{
+			const FIntVector PhysicsPlayerCell = VisSub->GetLastPhysicsPlayerCell();
+			if (PhysicsPlayerCell.X != TNumericLimits<int32>::Max())
+			{
+				const float WorldMinX = PhysicsPlayerCell.X * PhysicsGridCellSize;
+				const float WorldMinY = PhysicsPlayerCell.Y * PhysicsGridCellSize;
+				const float WorldMaxX = WorldMinX + PhysicsGridCellSize;
+				const float WorldMaxY = WorldMinY + PhysicsGridCellSize;
+
+				const ImVec2 ScreenMin = WorldToScreen(WorldMinX, WorldMaxY);
+				const ImVec2 ScreenMax = WorldToScreen(WorldMaxX, WorldMinY);
+
+				DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::PlayerCellColor);
+				DrawList->AddRect(ScreenMin, ScreenMax, IM_COL32(100, 200, 120, 200), 0.0f, 0, 2.0f);
+			}
+		}
+
+		for (const TPair<FIntVector, TArray<FMassEntityHandle>>& Pair : Grid.CellEntities)
+		{
+			const FIntVector& Coords = Pair.Key;
+			const int32 EntityCount = Pair.Value.Num();
+			PhysicsGridEntityCount += EntityCount;
+
+			const float WorldMinX = Coords.X * PhysicsGridCellSize;
+			const float WorldMinY = Coords.Y * PhysicsGridCellSize;
+			const float WorldMaxX = WorldMinX + PhysicsGridCellSize;
+			const float WorldMaxY = WorldMinY + PhysicsGridCellSize;
+
+			const ImVec2 ScreenMin = WorldToScreen(WorldMinX, WorldMaxY);
+			const ImVec2 ScreenMax = WorldToScreen(WorldMaxX, WorldMinY);
+
+			if (ScreenMax.x < CanvasPos.x || ScreenMin.x > CanvasPos.x + CanvasSize.x ||
+				ScreenMax.y < CanvasPos.y || ScreenMin.y > CanvasPos.y + CanvasSize.y)
+			{
+				continue;
+			}
+
+			DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::CellColorByCount(EntityCount, VisColors::PhysicsGridCellFillColor));
+			DrawList->AddRect(ScreenMin, ScreenMax, VisColors::PhysicsGridCellBorderColor, 0.0f, 0, 1.0f);
+
+			const float CellScreenSize = (ScreenMax.x - ScreenMin.x);
+			if (CellScreenSize > 24.0f)
+			{
+				char CountBuf[16];
+				FCStringAnsi::Snprintf(CountBuf, sizeof(CountBuf), "%d", EntityCount);
+				const ImVec2 TextSize = ImGui::CalcTextSize(CountBuf);
+				DrawList->AddText(
+					ImVec2(
+						(ScreenMin.x + ScreenMax.x - TextSize.x) * 0.5f,
+						(ScreenMin.y + ScreenMax.y - TextSize.y) * 0.5f
+					),
+					VisColors::HUDTextColor, CountBuf
+				);
+			}
+		}
+
+		DrawGridLines(PhysicsGridCellSize, VisColors::PhysicsGridLineColor);
+	}
+
+	// --- Mobile visualization grid (unchanged) ---
 	if (bShowMobileGrid)
 	{
 		UArcMobileVisSubsystem* MobileSub = GetMobileVisSubsystem();
@@ -361,9 +518,6 @@ void FArcVisualizationMinimapDebugger::DrawGrid()
 		{
 			MobileCellSize = MobileSub->GetCellSize();
 
-			// Mobile subsystem doesn't expose its EntityCells map directly,
-			// so we iterate through cells by querying entity positions.
-			// For grid visualization, we draw source entity cells instead.
 			const auto& SourcePositions = MobileSub->GetSourcePositions();
 			for (const auto& Pair : SourcePositions)
 			{
@@ -382,9 +536,11 @@ void FArcVisualizationMinimapDebugger::DrawGrid()
 					continue;
 				}
 
-				DrawList->AddRectFilled(ScreenMin, ScreenMax, Arcx::GameplayDebugger::VisEntity::Minimap::SourceColor & 0x40FFFFFF);
-				DrawList->AddRect(ScreenMin, ScreenMax, Arcx::GameplayDebugger::VisEntity::Minimap::SourceColor, 0.0f, 0, 2.0f);
+				DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::SourceColor & 0x40FFFFFF);
+				DrawList->AddRect(ScreenMin, ScreenMax, VisColors::SourceColor, 0.0f, 0, 2.0f);
 			}
+
+			DrawGridLines(MobileCellSize, VisColors::MobileGridLineColor);
 		}
 	}
 }
@@ -400,6 +556,8 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 	const ImGuiIO& IO = ImGui::GetIO();
 
 	bHasHoveredEntity = false;
+	PhysicsEntityCount = 0;
+	MeshEntityCount = 0;
 	float BestHoverDistSq = 64.0f;
 
 	const float EntityRadius = FMath::Clamp(Zoom * 50.0f, 2.0f, 6.0f);
@@ -415,7 +573,6 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 			return;
 		}
 
-		// Player detection
 		bool bIsPlayer = false;
 		if (EntityManager && EntityManager->IsEntityValid(Entity))
 		{
@@ -431,8 +588,43 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 			}
 		}
 
-		ImU32 Color = bIsPlayer ? Arcx::GameplayDebugger::VisEntity::Minimap::PlayerColor : BaseColor;
-		ImU32 HColor = bIsPlayer ? Arcx::GameplayDebugger::VisEntity::Minimap::PlayerHoveredColor : HoveredColor;
+		bool bHasPhysics = false;
+		bool bHasMesh = false;
+		if (EntityManager && EntityManager->IsEntityValid(Entity))
+		{
+			const FArcVisRepresentationFragment* VisRep = EntityManager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
+			if (VisRep)
+			{
+				bHasPhysics = VisRep->bHasPhysicsBody;
+				bHasMesh = VisRep->bHasMeshRendering;
+				if (bHasPhysics)
+				{
+					PhysicsEntityCount++;
+				}
+				if (bHasMesh)
+				{
+					MeshEntityCount++;
+				}
+			}
+		}
+
+		ImU32 Color = BaseColor;
+		ImU32 HColor = HoveredColor;
+		if (bIsPlayer)
+		{
+			Color = VisColors::PlayerColor;
+			HColor = VisColors::PlayerHoveredColor;
+		}
+		else if (bHasPhysics)
+		{
+			Color = VisColors::PhysicsEntityColor;
+			HColor = VisColors::StaticEntityHoveredColor;
+		}
+		else if (bHasMesh)
+		{
+			Color = VisColors::MeshEntityColor;
+			HColor = VisColors::StaticEntityHoveredColor;
+		}
 
 		const float DX = IO.MousePos.x - ScreenPos.x;
 		const float DY = IO.MousePos.y - ScreenPos.y;
@@ -453,14 +645,14 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 		DrawList->AddCircleFilled(ScreenPos, Radius, Color);
 	};
 
-	// --- Static entities ---
-	if (bShowStaticGrid)
+	// --- Mesh grid entities ---
+	if (bShowMeshGrid)
 	{
-		UArcEntityVisualizationSubsystem* StaticSub = GetStaticVisSubsystem();
-		if (StaticSub && EntityManager)
+		UArcEntityVisualizationSubsystem* VisSub = GetStaticVisSubsystem();
+		if (VisSub && EntityManager)
 		{
-			const FArcVisualizationGrid& Grid = StaticSub->GetGrid();
-			for (const auto& Pair : Grid.CellEntities)
+			const FArcVisualizationGrid& Grid = VisSub->GetMeshGrid();
+			for (const TPair<FIntVector, TArray<FMassEntityHandle>>& Pair : Grid.CellEntities)
 			{
 				for (const FMassEntityHandle& Entity : Pair.Value)
 				{
@@ -476,24 +668,20 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 					}
 
 					const FVector& Position = TransformFrag->GetTransform().GetLocation();
-					DrawEntityDot(Entity, Position, false, Arcx::GameplayDebugger::VisEntity::Minimap::StaticEntityColor, Arcx::GameplayDebugger::VisEntity::Minimap::StaticEntityHoveredColor);
+					DrawEntityDot(Entity, Position, false, VisColors::StaticEntityColor, VisColors::StaticEntityHoveredColor);
 				}
 			}
 		}
 	}
 
-	// --- Mobile entities ---
+	// --- Mobile entities (unchanged) ---
 	if (bShowMobileGrid)
 	{
 		UArcMobileVisSubsystem* MobileSub = GetMobileVisSubsystem();
 		if (MobileSub && EntityManager)
 		{
-			// Iterate all entities that have FArcMobileVisRepFragment to get their positions
-			// We can get cell data from the subsystem
-			const auto& SourcePositions = MobileSub->GetSourcePositions();
-
-			// Draw source entities (observers/cameras) as diamonds
-			for (const auto& Pair : SourcePositions)
+			const TMap<FMassEntityHandle, FIntVector>& SourcePositions = MobileSub->GetSourcePositions();
+			for (const TPair<FMassEntityHandle, FIntVector>& Pair : SourcePositions)
 			{
 				const FMassEntityHandle& Entity = Pair.Key;
 				if (!EntityManager->IsEntityValid(Entity))
@@ -513,14 +701,13 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 				if (ScreenPos.x >= CanvasPos.x - 8.0f && ScreenPos.x <= CanvasPos.x + CanvasSize.x + 8.0f &&
 					ScreenPos.y >= CanvasPos.y - 8.0f && ScreenPos.y <= CanvasPos.y + CanvasSize.y + 8.0f)
 				{
-					// Draw diamond shape for source entities
 					const float S = EntityRadius * 2.0f;
 					DrawList->AddQuadFilled(
 						ImVec2(ScreenPos.x, ScreenPos.y - S),
 						ImVec2(ScreenPos.x + S, ScreenPos.y),
 						ImVec2(ScreenPos.x, ScreenPos.y + S),
 						ImVec2(ScreenPos.x - S, ScreenPos.y),
-						Arcx::GameplayDebugger::VisEntity::Minimap::SourceColor
+						VisColors::SourceColor
 					);
 				}
 
@@ -531,12 +718,120 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 }
 
 // ====================================================================
+// Source Entity Drawing
+// ====================================================================
+
+void FArcVisualizationMinimapDebugger::DrawSourceEntities()
+{
+	using namespace VisColors;
+
+	FMassEntityManager* EntityManager = GetEntityManager();
+	if (!EntityManager)
+	{
+		return;
+	}
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+	const float EntityRadius = FMath::Clamp(Zoom * 50.0f, 2.0f, 6.0f);
+
+	SourceEntityCount = 0;
+	SourceEntityPositions.Reset();
+
+	FMassEntityQuery SourceQuery(EntityManager->AsShared());
+	SourceQuery.AddTagRequirement<FArcVisSourceEntityTag>(EMassFragmentPresence::All);
+	SourceQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+
+	FMassExecutionContext QueryContext(*EntityManager, 0.f);
+	SourceQuery.ForEachEntityChunk(QueryContext,
+		[this, DrawList, EntityRadius](FMassExecutionContext& Ctx)
+		{
+			TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
+			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+			{
+				const FVector& Pos = Transforms[EntityIt].GetTransform().GetLocation();
+				const ImVec2 SP = WorldToScreen(Pos.X, Pos.Y);
+
+				if (SP.x >= CanvasPos.x - 12.0f && SP.x <= CanvasPos.x + CanvasSize.x + 12.0f &&
+					SP.y >= CanvasPos.y - 12.0f && SP.y <= CanvasPos.y + CanvasSize.y + 12.0f)
+				{
+					const float S = EntityRadius * 2.5f;
+					DrawList->AddQuadFilled(
+						ImVec2(SP.x, SP.y - S),
+						ImVec2(SP.x + S, SP.y),
+						ImVec2(SP.x, SP.y + S),
+						ImVec2(SP.x - S, SP.y),
+						VisColors::SourceColor
+					);
+					DrawList->AddQuad(
+						ImVec2(SP.x, SP.y - S - 1.0f),
+						ImVec2(SP.x + S + 1.0f, SP.y),
+						ImVec2(SP.x, SP.y + S + 1.0f),
+						ImVec2(SP.x - S - 1.0f, SP.y),
+						IM_COL32(255, 255, 255, 120), 1.5f
+					);
+				}
+
+				SourceEntityPositions.Add(Pos);
+				++SourceEntityCount;
+			}
+		});
+}
+
+// ====================================================================
+// Radius Circle Drawing
+// ====================================================================
+
+void FArcVisualizationMinimapDebugger::DrawRadiusCircles()
+{
+	if (SourceEntityPositions.IsEmpty())
+	{
+		return;
+	}
+
+	UArcEntityVisualizationSubsystem* VisSub = GetStaticVisSubsystem();
+	if (!VisSub)
+	{
+		return;
+	}
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
+	const float MeshActRadius = VisSub->GetMeshActivationRadius();
+	const float MeshDeactRadius = VisSub->GetMeshDeactivationRadius();
+	const float PhysActRadius = VisSub->GetPhysicsActivationRadius();
+	const float PhysDeactRadius = VisSub->GetPhysicsDeactivationRadius();
+
+	for (const FVector& Pos : SourceEntityPositions)
+	{
+		const ImVec2 Center = WorldToScreen(Pos.X, Pos.Y);
+
+		if (bShowMeshGrid)
+		{
+			const float MeshActScreenR = MeshActRadius * Zoom;
+			const float MeshDeactScreenR = MeshDeactRadius * Zoom;
+			DrawList->AddCircle(Center, MeshActScreenR, VisColors::MeshActivationRadiusColor, 0, 2.0f);
+			DrawList->AddCircle(Center, MeshDeactScreenR, VisColors::MeshDeactivationRadiusColor, 0, 1.0f);
+		}
+
+		if (bShowPhysicsGrid)
+		{
+			const float PhysActScreenR = PhysActRadius * Zoom;
+			const float PhysDeactScreenR = PhysDeactRadius * Zoom;
+			DrawList->AddCircle(Center, PhysActScreenR, VisColors::PhysicsActivationRadiusColor, 0, 2.0f);
+			DrawList->AddCircle(Center, PhysDeactScreenR, VisColors::PhysicsDeactivationRadiusColor, 0, 1.0f);
+		}
+	}
+}
+
+// ====================================================================
 // HUD
 // ====================================================================
 
 void FArcVisualizationMinimapDebugger::DrawHUD()
 {
-	ImGui::Checkbox("Static", &bShowStaticGrid);
+	ImGui::Checkbox("Mesh Grid", &bShowMeshGrid);
+	ImGui::SameLine();
+	ImGui::Checkbox("Physics Grid", &bShowPhysicsGrid);
 	ImGui::SameLine();
 	ImGui::Checkbox("Mobile", &bShowMobileGrid);
 	ImGui::SameLine();
@@ -550,19 +845,38 @@ void FArcVisualizationMinimapDebugger::DrawHUD()
 		Zoom = 0.05f;
 	}
 
-	// Stats row
-	if (bShowStaticGrid)
+	if (bShowMeshGrid)
 	{
-		ImGui::TextColored(ImVec4(0.86f, 0.78f, 0.2f, 1.0f), "Static: %d entities, %d cells (%.0f)", StaticEntityCount, StaticCellCount, StaticCellSize);
+		ImGui::TextColored(ImVec4(0.31f, 0.63f, 0.86f, 0.9f), "Mesh: %d entities, %d cells (%.0f)", MeshGridEntityCount, MeshGridCellCount, MeshGridCellSize);
+	}
+	if (bShowPhysicsGrid)
+	{
+		if (bShowMeshGrid)
+		{
+			ImGui::SameLine();
+			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
+			ImGui::SameLine();
+		}
+		ImGui::TextColored(ImVec4(0.39f, 0.78f, 0.47f, 0.9f), "Physics: %d entities, %d cells (%.0f)", PhysicsGridEntityCount, PhysicsGridCellCount, PhysicsGridCellSize);
 	}
 	if (bShowMobileGrid)
 	{
-		if (bShowStaticGrid)
+		if (bShowMeshGrid || bShowPhysicsGrid)
 		{
 			ImGui::SameLine();
-			ImGui::Text("|");
+			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
 			ImGui::SameLine();
 		}
-		ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Mobile: %d sources (%.0f)", MobileEntityCount, MobileCellSize);
+		ImGui::TextColored(ImVec4(0.27f, 0.51f, 0.75f, 0.9f), "Mobile: %d sources (%.0f)", MobileEntityCount, MobileCellSize);
 	}
+
+	ImGui::TextColored(ImVec4(0.31f, 0.63f, 0.86f, 0.9f), "Mesh Active: %d", MeshEntityCount);
+	ImGui::SameLine();
+	ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
+	ImGui::SameLine();
+	ImGui::TextColored(ImVec4(0.39f, 0.78f, 0.47f, 0.9f), "Physics Active: %d", PhysicsEntityCount);
+	ImGui::SameLine();
+	ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
+	ImGui::SameLine();
+	ImGui::TextColored(ImVec4(0.75f, 0.47f, 0.12f, 0.9f), "Sources: %d", SourceEntityCount);
 }

@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPTemplateCommands.h"
@@ -258,3 +260,5 @@ FECACommandResult FArcMCPCommand_UpdateItemsFromTemplate::Execute(const TSharedP
 
 	return FECACommandResult::Success(Result);
 }
+
+#endif

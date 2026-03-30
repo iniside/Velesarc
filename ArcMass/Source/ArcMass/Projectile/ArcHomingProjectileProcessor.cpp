@@ -72,6 +72,8 @@ void UArcHomingProjectileProcessor::Execute(FMassEntityManager& EntityManager, F
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcHomingProjectile);
+
 	FChaosSQAccelerator SQAccelerator(*SpatialAcceleration);
 
 	const float WorldGravityZ = World->GetGravityZ();

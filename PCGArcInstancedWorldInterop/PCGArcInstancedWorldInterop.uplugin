@@ -1,0 +1,29 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "PCG ArcInstancedWorld Interop",
+	"Description": "PCG element for spawning ArcInstancedWorld entities from point data.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"EditorCustomVirtualPath": "Arcx",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Modules": [
+		{
+			"Name": "PCGArcInstancedWorldInterop",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "PCG",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcInstancedWorld",
+			"Enabled": true
+		}
+	]
+}

@@ -54,6 +54,8 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 	UArcConditionEffectsSubsystem* Subsystem = Context.GetWorld()->GetSubsystem<UArcConditionEffectsSubsystem>();
 	if (!Subsystem) { return; }
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcEnvironmentalCondition);
+
 	// Grab environmental requests
 	TArray<FArcConditionApplicationRequest> EnvRequests;
 	TArray<FArcConditionApplicationRequest>& AllRequests = Subsystem->GetPendingRequests();

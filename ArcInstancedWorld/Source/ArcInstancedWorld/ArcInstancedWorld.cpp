@@ -2,6 +2,8 @@
 
 #include "ArcInstancedWorld.h"
 
+DEFINE_LOG_CATEGORY(LogArcIW);
+
 #define LOCTEXT_NAMESPACE "FArcInstancedWorldModule"
 
 void FArcInstancedWorldModule::StartupModule()

@@ -310,6 +310,8 @@ void UArcThermalConditionProcessor::SignalEntities(FMassEntityManager& EntityMan
 	UArcConditionEffectsSubsystem* Subsystem = Context.GetWorld()->GetSubsystem<UArcConditionEffectsSubsystem>();
 	if (!Subsystem) { return; }
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcThermalCondition);
+
 	// Grab only thermal requests
 	TArray<FArcConditionApplicationRequest> ThermalRequests;
 	TArray<FArcConditionApplicationRequest>& AllRequests = Subsystem->GetPendingRequests();

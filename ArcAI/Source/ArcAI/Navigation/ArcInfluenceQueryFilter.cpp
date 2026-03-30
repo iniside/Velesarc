@@ -7,7 +7,7 @@
 #endif
 
 #include "NavigationData.h"
-#include "ArcMass/ArcMassInfluenceMapping.h"
+#include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcInfluenceQueryFilter)
 

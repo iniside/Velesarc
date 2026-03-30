@@ -36,7 +36,7 @@ struct ARCCORE_API FArcMassItemSpecArrayFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere)
 	TArray<FArcItemSpec> Items;
 };
 

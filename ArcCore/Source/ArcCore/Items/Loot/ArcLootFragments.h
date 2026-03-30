@@ -33,6 +33,7 @@ struct ARCCORE_API FArcLootContainerFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
+	UPROPERTY(VisibleAnywhere, Category = "Loot")
 	TArray<FArcItemSpec> Items;
 };
 

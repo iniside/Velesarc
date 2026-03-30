@@ -22,8 +22,16 @@
 #include "ArcEditorToolsModule.h"
 
 #include "SArcPropertyBinding.h"
+#include "SArcIWMinimapTab.h"
+
+#include "Widgets/Docking/SDockTab.h"
+#include "Framework/Docking/TabManager.h"
+#include "WorkspaceMenuStructure.h"
+#include "WorkspaceMenuStructureModule.h"
 
 #define LOCTEXT_NAMESPACE "FArcEditorToolsModule"
+
+const FName FArcEditorToolsModule::MinimapTabId = FName(TEXT("ArcIWMinimap"));
 
 IArcEditorTools& IArcEditorTools::Get()
 {
@@ -32,13 +40,24 @@ IArcEditorTools& IArcEditorTools::Get()
 
 void FArcEditorToolsModule::StartupModule()
 {
-	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(MinimapTabId,
+		FOnSpawnTab::CreateRaw(this, &FArcEditorToolsModule::SpawnMinimapTab))
+		.SetDisplayName(LOCTEXT("ArcIWMinimapTabTitle", "ArcIW Minimap"))
+		.SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory());
 }
 
 void FArcEditorToolsModule::ShutdownModule()
 {
-	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
-	// we call this function before unloading the module.
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MinimapTabId);
+}
+
+TSharedRef<SDockTab> FArcEditorToolsModule::SpawnMinimapTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(NomadTab)
+		[
+			SNew(SArcIWMinimapTab)
+		];
 }
 
 TSharedRef<SWidget> FArcEditorToolsModule::MakePropertyBindingWidget(UBlueprint* InBlueprint

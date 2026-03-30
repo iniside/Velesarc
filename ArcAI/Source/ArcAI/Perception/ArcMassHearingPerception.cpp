@@ -8,7 +8,7 @@
 
 #include "MassEntitySubsystem.h"
 
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 
 //----------------------------------------------------------------------
 // Traits
@@ -117,6 +117,8 @@ void UArcMassHearingPerceptionProcessor::Execute(FMassEntityManager& EntityManag
     {
         return;
     }
+
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassHearingPerception);
 
     const float DeltaTime = Context.GetDeltaTimeSeconds();
 
@@ -368,6 +370,8 @@ void UArcMassHearingPerceptionObserver::Execute(FMassEntityManager& EntityManage
     {
         return;
     }
+
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassHearingPerception);
 
     TArray<FMassEntityHandle> DestroyedEntities;
 

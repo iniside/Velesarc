@@ -138,6 +138,8 @@ void UArcBiologicalConditionProcessor::SignalEntities(FMassEntityManager& Entity
 	UArcConditionEffectsSubsystem* Subsystem = Context.GetWorld()->GetSubsystem<UArcConditionEffectsSubsystem>();
 	if (!Subsystem) { return; }
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcBiologicalCondition);
+
 	// Grab biological requests
 	TArray<FArcConditionApplicationRequest> BioRequests;
 	TArray<FArcConditionApplicationRequest>& AllRequests = Subsystem->GetPendingRequests();

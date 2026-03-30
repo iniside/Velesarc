@@ -29,6 +29,7 @@
 #include "UObject/SoftObjectPtr.h"
 #include "GameplayTagContainer.h"
 #include "UObject/PrimaryAssetId.h"
+#include "Serialization/ArcSerializerRegistry.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcReflectionSerializer, Log, All);
 
@@ -213,6 +214,17 @@ void FArcReflectionSerializer::SaveValueDirect(FProperty* Prop, FName Key, const
 		{
 			const FPrimaryAssetId& Id = *static_cast<const FPrimaryAssetId*>(ValuePtr);
 			Ar.WriteProperty(Key, Id.ToString());
+			return;
+		}
+
+		// Check registry for custom serializer before generic recursion
+		const FArcPersistenceSerializerInfo* RegisteredInfo =
+			FArcSerializerRegistry::Get().Find(Struct);
+		if (RegisteredInfo)
+		{
+			Ar.BeginStruct(Key);
+			RegisteredInfo->SaveFunc(ValuePtr, Ar);
+			Ar.EndStruct();
 			return;
 		}
 
@@ -530,6 +542,19 @@ void FArcReflectionSerializer::LoadValueDirect(FProperty* Prop, FName Key, void*
 			return;
 		}
 
+		// Check registry for custom serializer before generic recursion
+		const FArcPersistenceSerializerInfo* RegisteredInfo =
+			FArcSerializerRegistry::Get().Find(Struct);
+		if (RegisteredInfo)
+		{
+			if (Ar.BeginStruct(Key))
+			{
+				RegisteredInfo->LoadFunc(ValuePtr, Ar);
+				Ar.EndStruct();
+			}
+			return;
+		}
+
 		// Generic struct — recurse
 		if (Ar.BeginStruct(Key))
 		{
@@ -702,6 +727,45 @@ uint32 FArcReflectionSerializer::ComputeSchemaVersion(const UStruct* Type)
 			Hash = HashCombine(Hash, GetTypeHash((*It)->GetFName()));
 			Hash = HashCombine(Hash, GetTypeHash(FName((*It)->GetCPPType())));
 		}
+	}
+	return Hash;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SaveAll — serialize all properties (no SaveGame filter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void FArcReflectionSerializer::SaveAll(const UStruct* Type, const void* Data, FArcSaveArchive& Ar)
+{
+	for (TFieldIterator<FProperty> It(Type); It; ++It)
+	{
+		SaveProperty(*It, Data, Ar);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LoadAll — deserialize all properties (no SaveGame filter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void FArcReflectionSerializer::LoadAll(const UStruct* Type, void* Data, FArcLoadArchive& Ar)
+{
+	for (TFieldIterator<FProperty> It(Type); It; ++It)
+	{
+		LoadProperty(*It, Data, Ar);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ComputeSchemaVersionAll — hash all properties (no SaveGame filter)
+// ─────────────────────────────────────────────────────────────────────────────
+
+uint32 FArcReflectionSerializer::ComputeSchemaVersionAll(const UStruct* Type)
+{
+	uint32 Hash = 0;
+	for (TFieldIterator<FProperty> It(Type); It; ++It)
+	{
+		Hash = HashCombine(Hash, GetTypeHash((*It)->GetFName()));
+		Hash = HashCombine(Hash, GetTypeHash(FName((*It)->GetCPPType())));
 	}
 	return Hash;
 }

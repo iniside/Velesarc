@@ -54,6 +54,8 @@ void UArcNiagaraBatchVisProcessor::Execute(FMassEntityManager& EntityManager, FM
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraBatchVis);
+
 	// -----------------------------------------------------------------------
 	// Phase 1: Clear all position buffers (Reset keeps allocation)
 	// -----------------------------------------------------------------------

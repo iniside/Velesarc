@@ -102,6 +102,8 @@ void UArcConditionReactionProcessor::SignalEntities(FMassEntityManager& EntityMa
 {
 	EnsureTagContainersBuilt();
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcConditionReaction);
+
 	UArcConditionEffectsSubsystem* Subsystem = UWorld::GetSubsystem<UArcConditionEffectsSubsystem>(EntityManager.GetWorld());
 
 	EntityQuery.ForEachEntityChunk(Context,

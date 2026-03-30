@@ -36,6 +36,8 @@ void UArcKnowledgeMemberAddObserver::Execute(FMassEntityManager& EntityManager, 
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcKnowledgeMemberAdd);
+
 	ObserverQuery.ForEachEntityChunk(Context, [Subsystem, &EntityManager](FMassExecutionContext& Ctx)
 	{
 		TArrayView<FArcKnowledgeMemberFragment> MemberFragments = Ctx.GetMutableFragmentView<FArcKnowledgeMemberFragment>();
@@ -108,6 +110,8 @@ void UArcKnowledgeMemberRemoveObserver::Execute(FMassEntityManager& EntityManage
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcKnowledgeMemberRemove);
 
 	ObserverQuery.ForEachEntityChunk(Context, [Subsystem](FMassExecutionContext& Ctx)
 	{

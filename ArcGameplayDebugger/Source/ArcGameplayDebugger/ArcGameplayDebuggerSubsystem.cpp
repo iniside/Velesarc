@@ -182,6 +182,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ToggleDebuggerMenuItem("Loot Tables", LootTableDebugger);
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Character Persistence", CharacterPersistenceDebugger);
+					ToggleDebuggerMenuItem("World Persistence", WorldPersistenceDebugger);
 					ImGui::EndMenu();
 				}
 
@@ -211,6 +212,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ToggleDebuggerMenuItem("Knowledge", KnowledgeDebugger);
 					ToggleDebuggerMenuItem("Area", AreaDebugger);
 					ToggleDebuggerMenuItem("Needs", NeedsDebugger);
+					ToggleDebuggerMenuItem("Interactions", InteractionDebugger);
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Gameplay Tag Tree", GameplayTagTreeWidget);
 					ImGui::EndMenu();
@@ -239,6 +241,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				{
 					ToggleDebuggerMenuItem("Entity Debugger", MassEntityDebugger);
 					ToggleDebuggerMenuItem("Entity Visualization", VisEntityDebugger);
+					ToggleDebuggerMenuItem("Physics Debugger", PhysicsDebugger);
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Spatial Hash Minimap", SpatialHashMinimapDebugger);
 					ToggleDebuggerMenuItem("Visualization Minimap", VisualizationMinimapDebugger);
@@ -269,6 +272,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				DrawIfVisible(PlanFeasibilityDebugger);
 				DrawIfVisible(PathDebugger);
 				DrawIfVisible(VisEntityDebugger);
+				DrawIfVisible(PhysicsDebugger);
 				DrawIfVisible(KnowledgeDebugger);
 				DrawIfVisible(AreaDebugger);
 				DrawIfVisible(SpatialHashMinimapDebugger);
@@ -277,6 +281,8 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				DrawIfVisible(NeedsDebugger);
 				DrawIfVisible(WeatherMinimapDebugger);
 				DrawIfVisible(IWMinimapDebugger);
+				DrawIfVisible(InteractionDebugger);
+				DrawIfVisible(WorldPersistenceDebugger);
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();

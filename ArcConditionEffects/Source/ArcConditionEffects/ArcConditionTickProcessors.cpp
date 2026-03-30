@@ -33,6 +33,8 @@
 		const float DeltaTime = Context.GetDeltaTimeSeconds(); \
 		if (DeltaTime <= 0.f) { return; } \
 		\
+		TRACE_CPUPROFILER_EVENT_SCOPE(Arc##Name##ConditionTick); \
+		\
 		TArray<FMassEntityHandle> StateChangedEntities; \
 		TArray<FMassEntityHandle> OverloadChangedEntities; \
 		\

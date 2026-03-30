@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcCompositeVisualization.h"
-#include "ArcMass/ArcMassEntityVisualization.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
 
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -114,7 +114,7 @@ UArcCompositeVisSubsystem::FCellManager& UArcCompositeVisSubsystem::GetOrCreateC
 		UArcEntityVisualizationSubsystem* VisSubsystem = World->GetSubsystem<UArcEntityVisualizationSubsystem>();
 		if (VisSubsystem)
 		{
-			CellSize = VisSubsystem->GetGrid().CellSize;
+			CellSize = VisSubsystem->GetMeshGrid().CellSize;
 		}
 
 		const FVector CellCenter(

@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPCommand_ListStateTreeNodes.h"
@@ -115,3 +117,5 @@ FECACommandResult FArcMCPCommand_ListStateTreeNodes::Execute(const TSharedPtr<FJ
 
 	return FECACommandResult::Success(Result);
 }
+
+#endif

@@ -18,7 +18,9 @@ public class ArcInstancedWorld : ModuleRules
 				"MassActors",
 				"MassSignals",
 				"StructUtils",
-				"DeveloperSettings"
+				"DeveloperSettings",
+				"PCG",
+				"ArcMass"
 			}
 		);
 
@@ -27,7 +29,7 @@ public class ArcInstancedWorld : ModuleRules
 			{
 				"Slate",
 				"SlateCore",
-				"ArcMass",
+				"ArcPersistence",
 				"MassEngine",
 				"PhysicsCore",
 				"Chaos"

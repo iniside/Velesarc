@@ -35,6 +35,8 @@ void UArcWeatherWetProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcWeatherWet);
+
 	const float DeltaTime = Context.GetDeltaTimeSeconds();
 
 	EntityQuery.ForEachEntityChunk(Context, [WeatherSubsystem, ConditionSubsystem, DeltaTime](FMassExecutionContext& Ctx)

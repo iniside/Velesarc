@@ -35,9 +35,14 @@ struct ARCMASS_API FArcMassPersistenceConfigFragment : public FMassConstSharedFr
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false", MetaStruct = "/Script/MassEntity.MassFragment"))
 	TArray<TObjectPtr<UScriptStruct>> AllowedFragments;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false", MetaStruct = "/Script/MassEntity.MassFragment"))
 	TArray<TObjectPtr<UScriptStruct>> DisallowedFragments;
+
+	/** ConfigGuid from the UMassEntityConfigAsset that defines this entity's template.
+	 *  Used at load time to recreate the full entity composition. */
+	UPROPERTY(VisibleAnywhere)
+	FGuid ConfigGuid;
 };

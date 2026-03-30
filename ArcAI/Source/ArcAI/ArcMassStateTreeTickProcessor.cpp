@@ -39,7 +39,9 @@ void UArcMassStateTreeTickProcessor::Execute(FMassEntityManager& EntityManager, 
 	{
 		return;
 	}
-	
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassStateTreeTick);
+
 	EntityQuery_Conditional.ForEachEntityChunk(Context, [this](FMassExecutionContext& MyContext)
 	{
 		const TArrayView<FMassStateTreeInstanceFragment> StateTreeInstanceList = MyContext.GetMutableFragmentView<FMassStateTreeInstanceFragment>();

@@ -4,6 +4,10 @@
 
 #include "MassEntityHandle.h"
 
+class UWorld;
+struct FMassEntityManager;
+struct FArcVisualizationGrid;
+
 class FArcVisEntityDebugger
 {
 public:
@@ -18,6 +22,9 @@ private:
 	void DrawEntityDetailPanel();
 	void DrawSelectedEntityInWorld();
 	void DrawGridVisualization();
+	void DrawSingleGrid(UWorld* World, const FArcVisualizationGrid& Grid, const FIntVector& PlayerCell,
+		int32 ActivationCells, int32 DeactivationCells, FColor InActiveColor, FColor BoundaryColor,
+		FMassEntityManager* Manager, bool bIsMeshGrid);
 
 	void RefreshEntityList();
 

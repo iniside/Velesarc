@@ -181,11 +181,11 @@ public:
 	UArcLootTable();
 
 	/** Loot entries (polymorphic, base struct = FArcLootTableEntry). */
-	UPROPERTY(EditAnywhere, Category = "Loot", meta = (BaseStruct = "/Script/ArcCore.FArcLootTableEntry", ExcludeBaseStruct))
+	UPROPERTY(EditAnywhere, Category = "Loot", meta = (BaseStruct = "/Script/ArcCore.ArcLootTableEntry", ExcludeBaseStruct))
 	TArray<FInstancedStruct> Entries;
 
 	/** Roll strategy determining how entries are evaluated. */
-	UPROPERTY(EditAnywhere, Category = "Loot", meta = (BaseStruct = "/Script/ArcCore.FArcLootRollStrategy", ExcludeBaseStruct))
+	UPROPERTY(EditAnywhere, Category = "Loot", meta = (BaseStruct = "/Script/ArcCore.ArcLootRollStrategy", ExcludeBaseStruct))
 	FInstancedStruct RollStrategy;
 
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
@@ -194,7 +194,7 @@ public:
 
 #if WITH_EDITORONLY_DATA
 	/** Debug context for testing rolls in editor. */
-	UPROPERTY(EditAnywhere, Category = "Debug", meta = (BaseStruct = "/Script/ArcCore.FArcLootContext"))
+	UPROPERTY(EditAnywhere, Category = "Debug", meta = (BaseStruct = "/Script/ArcCore.ArcLootContext"))
 	FInstancedStruct DebugContext;
 
 	UPROPERTY(EditAnywhere, Category = "Debug", meta = (ClampMin = "1"))

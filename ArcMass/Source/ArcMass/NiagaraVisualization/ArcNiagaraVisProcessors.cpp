@@ -36,6 +36,8 @@ void UArcNiagaraVisInitObserver::Execute(FMassEntityManager& EntityManager, FMas
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraVisInit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[&EntityManager, World](FMassExecutionContext& Ctx)
 		{
@@ -92,6 +94,8 @@ void UArcNiagaraVisDeinitObserver::ConfigureQueries(const TSharedRef<FMassEntity
 
 void UArcNiagaraVisDeinitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraVisDeinit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[](FMassExecutionContext& Ctx)
 		{
@@ -135,6 +139,8 @@ void UArcNiagaraVisDynamicDataProcessor::ConfigureQueries(const TSharedRef<FMass
 
 void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraVisDynamicData);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[](FMassExecutionContext& Ctx)
 		{

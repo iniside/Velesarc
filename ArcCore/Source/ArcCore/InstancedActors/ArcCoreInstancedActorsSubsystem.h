@@ -7,7 +7,7 @@
 #include "InstancedActorsComponent.h"
 #include "InstancedActorsData.h"
 #include "InstancedActorsSubsystem.h"
-#include "ArcMass/ArcMassSmartObjectFragments.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
 #include "Engine/DeveloperSettings.h"
 #include "ArcCoreInstancedActorsSubsystem.generated.h"
 

@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMCP/Commands/ArcMCPItemCommands.h"
@@ -94,3 +96,5 @@ FECACommandResult FArcMCPCommand_ImportItemFromJson::Execute(const TSharedPtr<FJ
 	Result->SetObjectField(TEXT("item_json"), FArcItemJsonSerializer::ExportToJson(ItemDef));
 	return FECACommandResult::Success(Result);
 }
+
+#endif
