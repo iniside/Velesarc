@@ -7,7 +7,7 @@
 #include "Engine/StreamableManager.h"
 #include "MassAgentComponent.h"
 #include "MassEntityConfigAsset.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "MassSimulationSubsystem.h"

@@ -30,7 +30,7 @@ UArcIndicatorManagerComponent::UArcIndicatorManagerComponent(const FObjectInitia
 	bAutoActivate = true;
 }
 
-/*static*/ UArcIndicatorManagerComponent* UArcIndicatorManagerComponent::GetComponent(AController* Controller)
+/*static*/ UArcIndicatorManagerComponent* UArcIndicatorManagerComponent::GetIndicatorComponent(AController* Controller)
 {
 	if (Controller)
 	{
@@ -80,6 +80,37 @@ FArcIndicatorHandle UArcIndicatorManagerComponent::AddIndicatorFromActor(AActor*
 		NewDescriptor->LocationInterfaceActor = TargetActor;
 	}
 	
+	NewDescriptor->SetIndicatorClass(InWidgetClass);
+
+	AddIndicator(NewDescriptor.ToSharedRef());
+
+	FArcIndicatorHandle NewHandle;
+	NewHandle.WeakPtr = NewDescriptor;
+	return NewHandle;
+}
+
+FArcIndicatorHandle UArcIndicatorManagerComponent::AddIndicatorFromTransform(FVector WorldLocation
+	, TSoftClassPtr<UUserWidget> InWidgetClass)
+{
+	TSharedPtr<FIndicatorDescriptor> NewDescriptor = MakeShareable(new FIndicatorDescriptor(WorldLocation));
+	NewDescriptor->SetIndicatorClass(InWidgetClass);
+
+	AddIndicator(NewDescriptor.ToSharedRef());
+
+	FArcIndicatorHandle NewHandle;
+	NewHandle.WeakPtr = NewDescriptor;
+	return NewHandle;
+}
+
+FArcIndicatorHandle UArcIndicatorManagerComponent::AddIndicatorFromMassEntity(FMassEntityHandle Entity
+	, TSoftClassPtr<UUserWidget> InWidgetClass)
+{
+	if (!Entity.IsValid())
+	{
+		return FArcIndicatorHandle();
+	}
+
+	TSharedPtr<FIndicatorDescriptor> NewDescriptor = MakeShareable(new FIndicatorDescriptor(Entity));
 	NewDescriptor->SetIndicatorClass(InWidgetClass);
 
 	AddIndicator(NewDescriptor.ToSharedRef());

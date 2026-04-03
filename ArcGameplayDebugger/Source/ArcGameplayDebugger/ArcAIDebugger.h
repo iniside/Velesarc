@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "GameplayTagContainer.h"
 
@@ -41,7 +41,8 @@ private:
 	// Selected state in the tree
 	int32 SelectedStateFrameIdx = INDEX_NONE;
 	uint16 SelectedStateIdx = MAX_uint16;
-	bool bSelectedNested = false;
+	enum class ENestedTreeType : uint8 { None, SmartObject, Advertisement };
+	ENestedTreeType SelectedNestedType = ENestedTreeType::None;
 	int32 NestedTaskStorageIdx = INDEX_NONE;
 
 	// Send Async Message state

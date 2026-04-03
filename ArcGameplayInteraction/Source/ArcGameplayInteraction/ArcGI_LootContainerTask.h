@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayInteractionsTypes.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "Items/ArcItemsStoreComponent.h"
 

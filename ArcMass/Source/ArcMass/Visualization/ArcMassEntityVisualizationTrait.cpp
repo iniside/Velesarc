@@ -10,6 +10,7 @@
 #include "MassEntityTemplateRegistry.h"
 #include "Mesh/MassEngineMeshFragments.h"
 #include "ArcMassVisualizationConfigFragments.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
 #include "ArcMass/Physics/ArcMassPhysicsBodyConfig.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Engine/StaticMesh.h"
@@ -38,12 +39,20 @@ void UArcEntityVisualizationTrait::BuildTemplate(FMassEntityTemplateBuildContext
 	const FConstSharedStruct ConfigFragment = EntityManager.GetOrCreateConstSharedFragment(VisualizationConfig);
 	BuildContext.AddConstSharedFragment(ConfigFragment);
 
+	// Actor config (const shared, optional)
+	if (ActorClass)
+	{
+		FArcVisActorConfigFragment ActorConfig;
+		ActorConfig.ActorClass = ActorClass;
+		BuildContext.AddConstSharedFragment(EntityManager.GetOrCreateConstSharedFragment(ActorConfig));
+	}
+
 	if (!bExtractionValid)
 	{
-		if (VisualizationConfig.ActorClass)
+		if (ActorClass)
 		{
 			UE_LOG(LogMass, Warning, TEXT("UArcEntityVisualizationTrait: ActorClass set but no extracted data — re-save the entity config asset. (%s)"),
-				*VisualizationConfig.ActorClass->GetName());
+				*ActorClass->GetName());
 		}
 		return;
 	}
@@ -77,13 +86,15 @@ void UArcEntityVisualizationTrait::BuildTemplate(FMassEntityTemplateBuildContext
 	}
 
 	// Physics body config (const shared, optional)
-	if (ExtractedBodySetup && VisualizationConfig.bEnablePhysicsBody)
+	if (ExtractedBodySetup)
 	{
 		FArcMassPhysicsBodyConfigFragment PhysicsConfig;
 		PhysicsConfig.BodySetup = ExtractedBodySetup;
 		PhysicsConfig.BodyTemplate = ExtractedBodyTemplate;
-		PhysicsConfig.BodyType = VisualizationConfig.PhysicsBodyType;
+		PhysicsConfig.BodyType = EArcMassPhysicsBodyType::Static;
 		BuildContext.AddConstSharedFragment(EntityManager.GetOrCreateConstSharedFragment(PhysicsConfig));
+
+		BuildContext.AddFragment<FArcMassPhysicsBodyFragment>();
 	}
 }
 
@@ -107,11 +118,12 @@ void UArcEntityVisualizationTrait::PostEditChangeProperty(FPropertyChangedEvent&
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	static const FName VisConfigName = GET_MEMBER_NAME_CHECKED(UArcEntityVisualizationTrait, VisualizationConfig);
+	static const FName ActorClassName = GET_MEMBER_NAME_CHECKED(UArcEntityVisualizationTrait, ActorClass);
 
 	if (PropertyChangedEvent.MemberProperty)
 	{
 		const FName PropName = PropertyChangedEvent.MemberProperty->GetFName();
-		if (PropName == VisConfigName)
+		if (PropName == VisConfigName || PropName == ActorClassName)
 		{
 			ExtractFromActorClass();
 		}
@@ -135,7 +147,7 @@ void UArcEntityVisualizationTrait::ExtractFromActorClass()
 	ExtractedBodyTemplate = FBodyInstance();
 	bExtractionValid = false;
 
-	if (!VisualizationConfig.ActorClass)
+	if (!ActorClass)
 	{
 		return;
 	}
@@ -150,12 +162,12 @@ void UArcEntityVisualizationTrait::ExtractFromActorClass()
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	SpawnParams.bNoFail = true;
 	SpawnParams.ObjectFlags |= RF_Transient;
-	AActor* Exemplar = EditorWorld->SpawnActor<AActor>(VisualizationConfig.ActorClass, FTransform::Identity, SpawnParams);
+	AActor* Exemplar = EditorWorld->SpawnActor<AActor>(ActorClass, FTransform::Identity, SpawnParams);
 
 	if (!Exemplar)
 	{
 		UE_LOG(LogMass, Error, TEXT("UArcEntityVisualizationTrait: Failed to spawn exemplar for %s"),
-			*VisualizationConfig.ActorClass->GetName());
+			*ActorClass->GetName());
 		return;
 	}
 
@@ -179,11 +191,10 @@ void UArcEntityVisualizationTrait::ExtractFromActorClass()
 	else
 	{
 		UE_LOG(LogMass, Warning, TEXT("UArcEntityVisualizationTrait: No UStaticMeshComponent with mesh found on exemplar %s"),
-			*VisualizationConfig.ActorClass->GetName());
+			*ActorClass->GetName());
 	}
 
 	// --- Collision extraction ---
-	if (VisualizationConfig.bEnablePhysicsBody)
 	{
 		UBodySetup* MergedSetup = NewObject<UBodySetup>(this, NAME_None, RF_NoFlags);
 		MergedSetup->CollisionTraceFlag = CTF_UseSimpleAsComplex;
@@ -251,9 +262,7 @@ void UArcEntityVisualizationTrait::ExtractFromActorClass()
 			UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(Exemplar->GetRootComponent());
 			if (RootPrim)
 			{
-				ExtractedBodyTemplate = RootPrim->BodyInstance;
-				ExtractedBodyTemplate.OwnerComponent = nullptr;
-				ExtractedBodyTemplate.BodySetup = nullptr;
+				UE::ArcMass::Physics::CopyBodyInstanceConfig(ExtractedBodyTemplate, RootPrim->BodyInstance);
 			}
 
 			ExtractedBodySetup = MergedSetup;
@@ -268,7 +277,7 @@ void UArcEntityVisualizationTrait::ExtractFromActorClass()
 		UE_LOG(LogMass, Log, TEXT("UArcEntityVisualizationTrait: Extracted mesh '%s' and %s collision from %s"),
 			*ExtractedMesh->GetName(),
 			ExtractedBodySetup ? TEXT("with") : TEXT("no"),
-			*VisualizationConfig.ActorClass->GetName());
+			*ActorClass->GetName());
 	}
 }
 

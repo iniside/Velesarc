@@ -40,11 +40,18 @@ public class ArcMassEditor : ModuleRules
                 , "ToolMenus"
                 , "ArcMass"
                 , "MassEntity"
+                , "MassCore"
                 , "MassSpawner"
                 , "StructUtils"
                 , "StructUtilsEditor"
                 , "StructViewer"
                 , "PhysicsCore"
+                , "AdvancedPreviewScene"
+                , "Niagara"
+                , "EditorFramework"
+                , "LevelEditor"
+                , "InteractiveToolsFramework"
+                , "EditorInteractiveToolsFramework"
             }
         );
     }

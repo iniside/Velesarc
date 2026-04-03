@@ -18,6 +18,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization")
 	FArcNiagaraVisConfigFragment NiagaraConfig;
 
+	const FTransform& GetComponentTransform() const { return NiagaraConfig.ComponentTransform; }
+	void SetComponentTransform(const FTransform& InTransform) { NiagaraConfig.ComponentTransform = InTransform; }
+	const FArcNiagaraVisConfigFragment& GetNiagaraConfig() const { return NiagaraConfig; }
+	bool IsValid() const { return !NiagaraConfig.NiagaraSystem.IsNull(); }
+
 protected:
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };

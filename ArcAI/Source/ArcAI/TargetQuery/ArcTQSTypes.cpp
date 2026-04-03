@@ -2,7 +2,7 @@
 
 #include "ArcTQSTypes.h"
 #include "MassActorSubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityManager.h"
 #include "GameFramework/Actor.h"
 

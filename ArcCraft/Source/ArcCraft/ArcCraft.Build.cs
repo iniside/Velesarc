@@ -53,6 +53,7 @@ public class ArcCraft : ModuleRules
 				"ArcJson",
 				"SlateIM",
 				"MassEntity",
+				"MassCore",
 				"MassCommon",
 				"ArcMass",
 				"MassSpawner"

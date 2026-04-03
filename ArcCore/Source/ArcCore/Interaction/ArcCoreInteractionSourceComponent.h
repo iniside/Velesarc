@@ -9,7 +9,7 @@
 
 #include "InteractableTargetInterface.h"
 #include "InteractionTypes.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 
 #include "ArcCoreInteractionSourceComponent.generated.h"
 

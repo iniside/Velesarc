@@ -4,8 +4,22 @@
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Physics/PhysicsInterfaceCore.h"
+#include "UObject/UnrealType.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcMassPhysicsBodyConfig)
+
+void UE::ArcMass::Physics::CopyBodyInstanceConfig(FBodyInstance& Dest, const FBodyInstance& Source)
+{
+	const UScriptStruct* Struct = FBodyInstance::StaticStruct();
+	for (FProperty* Prop = Struct->PropertyLink; Prop; Prop = Prop->PropertyLinkNext)
+	{
+		if (Prop->HasAnyPropertyFlags(CPF_Transient))
+		{
+			continue;
+		}
+		Prop->CopyCompleteValue_InContainer(&Dest, &Source);
+	}
+}
 
 void UE::ArcMass::Physics::InitBodiesFromConfig(
 	const FArcMassPhysicsBodyConfigFragment& Config,
@@ -28,9 +42,7 @@ void UE::ArcMass::Physics::InitBodiesFromConfig(
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
 		FBodyInstance* Body = new FBodyInstance();
-		*Body = Config.BodyTemplate;
-		Body->OwnerComponent = nullptr;
-		Body->BodySetup = nullptr;
+		CopyBodyInstanceConfig(*Body, Config.BodyTemplate);
 		OutBodies[Index] = Body;
 		Bodies.Add(Body);
 		TransformArray.Add(Transforms[Index]);

@@ -6,7 +6,7 @@
 #include "ArcMass/Lifecycle/ArcMassLifecycle.h"
 #include "ArcMassEntityVisualization.h"
 #include "ArcMassVisualizationConfigFragments.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 
@@ -97,7 +97,7 @@ struct ARCMASS_API FArcVisLifecycleConfigFragment : public FMassConstSharedFragm
 	const TArray<TObjectPtr<UMaterialInterface>>& ResolveMaterials(uint8 Phase, const FArcVisConfigFragment& BaseConfig) const;
 
 	/** Resolve actor class for a phase, falling back to base config actor class. */
-	TSubclassOf<AActor> ResolveActorClass(uint8 Phase, const FArcVisConfigFragment& BaseConfig) const;
+	TSubclassOf<AActor> ResolveActorClass(uint8 Phase, const FArcVisActorConfigFragment& BaseActorConfig) const;
 };
 
 template<>

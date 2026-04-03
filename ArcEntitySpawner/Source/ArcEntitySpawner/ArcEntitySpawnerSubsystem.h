@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassEntityTypes.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcEntitySpawnerSubsystem.generated.h"
 

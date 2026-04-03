@@ -100,6 +100,7 @@ public class ArcEditorTools : ModuleRules
 				, "AssetManagerEditor"
 				, "ArcInstancedWorld"
 				, "MassEntity"
+				, "MassCore"
 				, "WorkspaceMenuStructure"
 				// ... add private dependencies that you statically link with here ...
 			}

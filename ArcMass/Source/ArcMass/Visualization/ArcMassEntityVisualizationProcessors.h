@@ -73,46 +73,6 @@ protected:
 };
 
 // ---------------------------------------------------------------------------
-// Physics Activate Processor
-// Subscribes to VisPhysicsActivated — creates physics bodies for entities
-// entering the physics activation range.
-// ---------------------------------------------------------------------------
-
-UCLASS()
-class ARCMASS_API UArcVisPhysicsActivateProcessor : public UMassSignalProcessorBase
-{
-	GENERATED_BODY()
-
-public:
-	UArcVisPhysicsActivateProcessor();
-
-protected:
-	virtual void InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager) override;
-	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-	virtual void SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals) override;
-};
-
-// ---------------------------------------------------------------------------
-// Physics Deactivate Processor
-// Subscribes to VisPhysicsDeactivated — destroys physics bodies for entities
-// leaving the physics deactivation range.
-// ---------------------------------------------------------------------------
-
-UCLASS()
-class ARCMASS_API UArcVisPhysicsDeactivateProcessor : public UMassSignalProcessorBase
-{
-	GENERATED_BODY()
-
-public:
-	UArcVisPhysicsDeactivateProcessor();
-
-protected:
-	virtual void InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager) override;
-	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-	virtual void SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals) override;
-};
-
-// ---------------------------------------------------------------------------
 // Entity Init Observer
 // Observes FArcVisEntityTag Add — registers entity in grid, handles
 // pre-placed actors, and signals VisMeshActivated if in an active cell.

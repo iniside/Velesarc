@@ -27,6 +27,7 @@ public class ArcPersistenceTest : ModuleRules
 				"StructUtils",
 				"ArcMass",
 				"MassEntity",
+				"MassCore",
 				"SQLiteCore",
 			}
 		);

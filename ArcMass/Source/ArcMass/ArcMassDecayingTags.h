@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTraitBase.h"
 #include "MassEntityTypes.h"
 #include "MassEntityConcepts.h"

@@ -4,14 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "MassArchetypeTypes.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "MassSubsystemBase.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Mesh/MassEngineMeshFragments.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcMassVisualizationConfigFragments.h"
-#include "ArcMass/Physics/ArcMassPhysicsBodyConfig.h"
 #include "ArcMassEntityVisualization.generated.h"
 
 class UStaticMesh;
@@ -31,8 +30,6 @@ namespace UE::ArcMass::Signals
 {
 	const FName VisMeshActivated = FName(TEXT("VisMeshActivated"));
 	const FName VisMeshDeactivated = FName(TEXT("VisMeshDeactivated"));
-	const FName VisPhysicsActivated = FName(TEXT("VisPhysicsActivated"));
-	const FName VisPhysicsDeactivated = FName(TEXT("VisPhysicsDeactivated"));
 }
 
 // ---------------------------------------------------------------------------
@@ -57,11 +54,9 @@ struct ARCMASS_API FArcVisRepresentationFragment : public FMassFragment
 	/** Whether MassEngine mesh rendering is active (visible). */
 	bool bHasMeshRendering = false;
 
-	/** Whether a physics body is currently attached. */
-	bool bHasPhysicsBody = false;
 };
 
-/** Shared config per entity type — mesh, materials, actor class. */
+/** Shared config per entity type — mesh, materials, physics. */
 USTRUCT(BlueprintType)
 struct ARCMASS_API FArcVisConfigFragment : public FMassConstSharedFragment
 {
@@ -71,22 +66,31 @@ struct ARCMASS_API FArcVisConfigFragment : public FMassConstSharedFragment
 	TArray<TObjectPtr<UMaterialInterface>> MaterialOverrides;
 
 	UPROPERTY(EditAnywhere, Category = "Visualization")
-	TSubclassOf<AActor> ActorClass;
-
-	UPROPERTY(EditAnywhere, Category = "Visualization")
 	bool bCastShadows = false;
 
-	/** If false, no physics body is created for this entity type. */
-	UPROPERTY(EditAnywhere, Category = "Visualization")
-	bool bEnablePhysicsBody = true;
-
-	/** Controls how the physics body is created. Static = trace-only, Dynamic = can respond to forces. */
-	UPROPERTY(EditAnywhere, Category = "Visualization", meta = (EditCondition = "bEnablePhysicsBody"))
-	EArcMassPhysicsBodyType PhysicsBodyType = EArcMassPhysicsBodyType::Static;
 };
 
 template<>
 struct TMassFragmentTraits<FArcVisConfigFragment> final
+{
+	enum
+	{
+		AuthorAcceptsItsNotTriviallyCopyable = true
+	};
+};
+
+/** Actor class for visualization — entities with this fragment support actor swapping. */
+USTRUCT(BlueprintType)
+struct ARCMASS_API FArcVisActorConfigFragment : public FMassConstSharedFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Visualization")
+	TSubclassOf<AActor> ActorClass;
+};
+
+template<>
+struct TMassFragmentTraits<FArcVisActorConfigFragment> final
 {
 	enum
 	{

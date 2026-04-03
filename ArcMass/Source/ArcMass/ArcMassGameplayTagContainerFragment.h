@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include "GameplayTagContainer.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
 #include "MassEntityConcepts.h"
 
 #include "ArcMassGameplayTagContainerFragment.generated.h"

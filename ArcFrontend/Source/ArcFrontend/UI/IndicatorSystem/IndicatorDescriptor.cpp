@@ -21,69 +21,115 @@
 
 #include "IndicatorDescriptor.h"
 #include "Engine/LocalPlayer.h"
+#include "MassEntityManager.h"
+#include "Mass/EntityFragments.h"
 
-bool FActorCanvasProjection::Project(FIndicatorDescriptor& CanvasEntry, const FSceneViewProjectionData& InProjectionData, const FVector2f& ScreenSize, FVector& OutScreenPositionWithDepth)
+bool FActorCanvasProjection::Project(FIndicatorDescriptor& CanvasEntry, const FSceneViewProjectionData& InProjectionData, const FVector2f& ScreenSize, FVector& OutScreenPositionWithDepth, const FMassEntityManager* EntityManager)
 {
-	if (USceneComponent* Component = CanvasEntry.Component.Get())
+	TOptional<FVector> WorldLocation;
+
+	switch (CanvasEntry.LocationMode)
 	{
-		TOptional<FVector> WorldLocation;
-		if (CanvasEntry.ComponentSocketName != NAME_None)
+		case EIndicatorLocationMode::Component:
 		{
-			WorldLocation = Component->GetSocketTransform(CanvasEntry.ComponentSocketName).GetLocation();
-		}
-		else
-		{
-			WorldLocation = Component->GetComponentLocation();
-		}
-
-		if (CanvasEntry.LocationInterfaceActor.IsValid())
-		{
-			WorldLocation = IArcIndicatorLocationInterface::Execute_GetIndicatorLocation(CanvasEntry.LocationInterfaceActor.Get());
-		}
-		
-		FVector ProjectWorldLocation = WorldLocation.GetValue() + CanvasEntry.GetWorldPositionOffset();
-
-		switch (CanvasEntry.GetProjectionMode())
-		{
-			case EActorCanvasProjectionMode::Point:
+			USceneComponent* Component = CanvasEntry.Component.Get();
+			if (!Component)
 			{
-				if (WorldLocation.IsSet())
-				{
-					FVector2D OutScreenSpacePosition;
-					if (ULocalPlayer::GetPixelPoint(InProjectionData, ProjectWorldLocation, OutScreenSpacePosition, &ScreenSize))
-					{
-						OutScreenSpacePosition += CanvasEntry.GetScreenSpaceOffset();
-
-						OutScreenPositionWithDepth = FVector(OutScreenSpacePosition.X, OutScreenSpacePosition.Y, FVector::Dist(InProjectionData.ViewOrigin, ProjectWorldLocation));
-						return true;
-					}
-				}
-
 				return false;
 			}
-			case EActorCanvasProjectionMode::BoundingBox:
+
+			if (CanvasEntry.ComponentSocketName != NAME_None)
 			{
-				FBox IndicatorBox;
-				if (Component == Component->GetOwner()->GetRootComponent())
-				{
-					IndicatorBox = Component->GetOwner()->GetComponentsBoundingBox();
-				}
-				else
-				{
-					IndicatorBox = Component->Bounds.GetBox();
-				}
+				WorldLocation = Component->GetSocketTransform(CanvasEntry.ComponentSocketName).GetLocation();
+			}
+			else
+			{
+				WorldLocation = Component->GetComponentLocation();
+			}
 
-				FVector2D LL, UR;
-				if (ULocalPlayer::GetPixelBoundingBox(InProjectionData, IndicatorBox, LL, UR, &ScreenSize))
-				{
-					OutScreenPositionWithDepth.X = FMath::Lerp(LL.X, UR.X, CanvasEntry.GetBoundingBoxAnchor().X) + CanvasEntry.GetScreenSpaceOffset().X;
-					OutScreenPositionWithDepth.Y = FMath::Lerp(LL.Y, UR.Y, CanvasEntry.GetBoundingBoxAnchor().Y) + CanvasEntry.GetScreenSpaceOffset().Y;
-					OutScreenPositionWithDepth.Z = FVector::Dist(InProjectionData.ViewOrigin, ProjectWorldLocation);
-					return true;
-				}
-
+			if (CanvasEntry.LocationInterfaceActor.IsValid())
+			{
+				WorldLocation = IArcIndicatorLocationInterface::Execute_GetIndicatorLocation(CanvasEntry.LocationInterfaceActor.Get());
+			}
+			break;
+		}
+		case EIndicatorLocationMode::MassEntity:
+		{
+			if (!EntityManager)
+			{
 				return false;
 			}
+			if (!EntityManager->IsEntityValid(CanvasEntry.MassEntity))
+			{
+				return false;
+			}
+			const FTransformFragment* TransformFragment = EntityManager->GetFragmentDataPtr<FTransformFragment>(CanvasEntry.MassEntity);
+			if (!TransformFragment)
+			{
+				return false;
+			}
+			WorldLocation = TransformFragment->GetTransform().GetLocation();
+			break;
+		}
+		case EIndicatorLocationMode::ManualTransform:
+		{
+			WorldLocation = CanvasEntry.ManualWorldLocation;
+			break;
+		}
+	}
+
+	if (!WorldLocation.IsSet())
+	{
+		return false;
+	}
+
+	FVector ProjectWorldLocation = WorldLocation.GetValue() + CanvasEntry.GetWorldPositionOffset();
+
+	switch (CanvasEntry.GetProjectionMode())
+	{
+		case EActorCanvasProjectionMode::Point:
+		{
+			FVector2D OutScreenSpacePosition;
+			if (ULocalPlayer::GetPixelPoint(InProjectionData, ProjectWorldLocation, OutScreenSpacePosition, &ScreenSize))
+			{
+				OutScreenSpacePosition += CanvasEntry.GetScreenSpaceOffset();
+
+				OutScreenPositionWithDepth = FVector(OutScreenSpacePosition.X, OutScreenSpacePosition.Y, FVector::Dist(InProjectionData.ViewOrigin, ProjectWorldLocation));
+				return true;
+			}
+			return false;
+		}
+		case EActorCanvasProjectionMode::BoundingBox:
+		{
+			if (CanvasEntry.LocationMode != EIndicatorLocationMode::Component)
+			{
+				return false;
+			}
+			USceneComponent* Component = CanvasEntry.Component.Get();
+			if (!Component)
+			{
+				return false;
+			}
+
+			FBox IndicatorBox;
+			if (Component == Component->GetOwner()->GetRootComponent())
+			{
+				IndicatorBox = Component->GetOwner()->GetComponentsBoundingBox();
+			}
+			else
+			{
+				IndicatorBox = Component->Bounds.GetBox();
+			}
+
+			FVector2D LL, UR;
+			if (ULocalPlayer::GetPixelBoundingBox(InProjectionData, IndicatorBox, LL, UR, &ScreenSize))
+			{
+				OutScreenPositionWithDepth.X = FMath::Lerp(LL.X, UR.X, CanvasEntry.GetBoundingBoxAnchor().X) + CanvasEntry.GetScreenSpaceOffset().X;
+				OutScreenPositionWithDepth.Y = FMath::Lerp(LL.Y, UR.Y, CanvasEntry.GetBoundingBoxAnchor().Y) + CanvasEntry.GetScreenSpaceOffset().Y;
+				OutScreenPositionWithDepth.Z = FVector::Dist(InProjectionData.ViewOrigin, ProjectWorldLocation);
+				return true;
+			}
+			return false;
 		}
 	}
 

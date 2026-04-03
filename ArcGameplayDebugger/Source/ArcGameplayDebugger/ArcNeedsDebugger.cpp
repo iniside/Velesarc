@@ -6,7 +6,7 @@
 #include "imgui.h"
 #include "MassActorSubsystem.h"
 #include "MassDebugger.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
 #include "MassEntitySubsystem.h"
 #include "AbilitySystemComponent.h"
 #include "Attributes/ArcNeedsSurvivalAttributeSet.h"

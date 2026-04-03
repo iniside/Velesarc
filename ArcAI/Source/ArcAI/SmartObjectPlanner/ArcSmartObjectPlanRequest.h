@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "ArcSmartObjectPlanRequestHandle.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "StructUtils/StructView.h"
 
 #include "ArcSmartObjectPlanRequest.generated.h"

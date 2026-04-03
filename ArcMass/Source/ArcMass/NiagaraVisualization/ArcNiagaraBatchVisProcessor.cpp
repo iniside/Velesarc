@@ -3,7 +3,7 @@
 #include "ArcNiagaraBatchVisProcessor.h"
 
 #include "ArcNiagaraBatchVisFragments.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassExecutionContext.h"
 #include "NiagaraComponent.h"
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"

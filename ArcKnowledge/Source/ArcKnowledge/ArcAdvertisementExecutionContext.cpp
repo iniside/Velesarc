@@ -235,6 +235,8 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::ExecutingEntityHandle, FStateTreeDataView(FStructView::Make(ExecutingEntity)));
 	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::SourceEntityHandle, FStateTreeDataView(FStructView::Make(SourceEntity)));
 	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::AdvertisementHandle, FStateTreeDataView(FStructView::Make(AdvertisementHandle)));
+	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::KnowledgeLocation, FStateTreeDataView(FStructView::Make(KnowledgeLocation)));
+	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::SourceEntityLocation, FStateTreeDataView(FStructView::Make(SourceEntityLocation)));
 
 	checkf(Owner != nullptr, TEXT("Should never reach this point with an invalid Owner since IsValid() is checked before."));
 	const UWorld* World = Owner->GetWorld();

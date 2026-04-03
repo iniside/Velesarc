@@ -12,7 +12,7 @@
 #include "ArcInstancedWorld/Visualization/ArcIWMassISMPartitionActor.h"
 #include "ArcMass/Physics/ArcMassPhysicsBody.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityView.h"
 #include "MassEntityQuery.h"
 #include "MassExecutionContext.h"

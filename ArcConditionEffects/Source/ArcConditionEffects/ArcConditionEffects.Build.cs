@@ -13,6 +13,7 @@ public class ArcConditionEffects : ModuleRules
 			{
 				"Core"
 				, "MassEntity"
+				, "MassCore"
 				, "MassCommon"
 				, "MassSignals"
 				, "MassSimulation"

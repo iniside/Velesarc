@@ -8,7 +8,7 @@
 #include "ArcInstancedWorld/Visualization/ArcIWMassISMPartitionActor.h"
 
 #include "MassEntitySubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 
 #include "Editor.h"
 #include "EngineUtils.h"

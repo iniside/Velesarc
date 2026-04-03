@@ -4,7 +4,7 @@
 
 #include "ArcNiagaraVisFragments.h"
 #include "ArcNiagaraRenderStateHelper.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassExecutionContext.h"
 #include "NiagaraSystem.h"
 
@@ -134,6 +134,7 @@ void UArcNiagaraVisDynamicDataProcessor::ConfigureQueries(const TSharedRef<FMass
 	EntityQuery.AddRequirement<FArcNiagaraVisFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FArcNiagaraVisParamsFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
+	EntityQuery.AddConstSharedRequirement<FArcNiagaraVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcNiagaraVisTag>(EMassFragmentPresence::All);
 }
 
@@ -148,6 +149,8 @@ void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManag
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			TArrayView<FArcNiagaraVisParamsFragment> ParamsFragments = Ctx.GetMutableFragmentView<FArcNiagaraVisParamsFragment>();
 			const bool bHasParams = ParamsFragments.Num() > 0;
+			const FArcNiagaraVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcNiagaraVisConfigFragment>();
+			const FTransform& ComponentTransform = Config.ComponentTransform;
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -171,8 +174,9 @@ void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManag
 					}
 				}
 
-				Helper->UpdateTransform(Transform.GetTransform());
-				Helper->SendDynamicRenderData(Transform.GetTransform());
+				FTransform FinalTransform = ComponentTransform * Transform.GetTransform();
+				Helper->UpdateTransform(FinalTransform);
+				Helper->SendDynamicRenderData(FinalTransform);
 			}
 		});
 

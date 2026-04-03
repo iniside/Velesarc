@@ -476,7 +476,7 @@ UArcMassSpatialHashUpdateProcessor::UArcMassSpatialHashUpdateProcessor()
 	: EntityQuery{*this}
 {
 	//bAutoRegisterWithProcessingPhases = true;
-    ProcessingPhase = EMassProcessingPhase::PrePhysics;
+    ProcessingPhase = EMassProcessingPhase::PostPhysics;
     ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 	//bRequiresGameThreadExecution = true;
 	

@@ -15,6 +15,9 @@
 #include "MassExecutionContext.h"
 #include "SmartObjectSubsystem.h"
 #include "SmartObjectRequestTypes.h"
+#include "ArcKnowledgeSubsystem.h"
+#include "ArcKnowledgeEntry.h"
+#include "Mass/ArcKnowledgeFragments.h"
 
 // ====================================================================
 // Helpers
@@ -37,6 +40,9 @@ namespace
 	static const ImVec4 ImDisabledColor(0.6f, 0.2f, 0.2f, 1.0f);
 	static const ImVec4 ImDimColor(0.5f, 0.5f, 0.5f, 1.0f);
 	static const ImVec4 ImTagColor(0.5f, 0.8f, 1.0f, 1.0f);
+	static const ImVec4 ImKnowledgeColor(0.8f, 0.8f, 0.8f, 1.0f);
+	static const ImVec4 ImAdUnclaimedColor(0.8f, 0.6f, 0.2f, 1.0f);
+	static const ImVec4 ImAdClaimedColor(0.2f, 0.6f, 1.0f, 1.0f);
 
 	const FString SlotStateToString(EArcAreaSlotState State)
 	{
@@ -148,6 +154,16 @@ UArcAreaSubsystem* FArcAreaDebugger::GetAreaSubsystem() const
 	return World->GetSubsystem<UArcAreaSubsystem>();
 }
 
+UArcKnowledgeSubsystem* FArcAreaDebugger::GetKnowledgeSubsystem() const
+{
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	return World->GetSubsystem<UArcKnowledgeSubsystem>();
+}
+
 // ====================================================================
 // Lifecycle
 // ====================================================================
@@ -166,6 +182,13 @@ void FArcAreaDebugger::Initialize()
 	bDrawLabels = true;
 	bShowAssignPopup = false;
 	AssignTargetSlotIndex = INDEX_NONE;
+	CachedKnowledgeEntries.Reset();
+	CachedClaimableEntities.Reset();
+	SelectedKnowledgeIndex = INDEX_NONE;
+	KnowledgeOwnerEntity = FMassEntityHandle();
+	bShowClaimPopup = false;
+	ClaimTargetHandle = FArcKnowledgeHandle();
+	ClaimEntityFilterBuf[0] = '\0';
 	RefreshAreaList();
 }
 
@@ -174,6 +197,10 @@ void FArcAreaDebugger::Uninitialize()
 	CachedAreas.Reset();
 	CachedAssignableEntities.Reset();
 	SelectedAreaIndex = INDEX_NONE;
+	CachedKnowledgeEntries.Reset();
+	CachedClaimableEntities.Reset();
+	SelectedKnowledgeIndex = INDEX_NONE;
+	KnowledgeOwnerEntity = FMassEntityHandle();
 }
 
 // ====================================================================
@@ -293,6 +320,117 @@ void FArcAreaDebugger::RefreshAssignableEntities()
 		});
 }
 
+void FArcAreaDebugger::RefreshKnowledgeEntries()
+{
+	// Preserve selection across refresh
+	FArcKnowledgeHandle PreviousSelectedHandle;
+	if (SelectedKnowledgeIndex != INDEX_NONE && CachedKnowledgeEntries.IsValidIndex(SelectedKnowledgeIndex))
+	{
+		PreviousSelectedHandle = CachedKnowledgeEntries[SelectedKnowledgeIndex].Handle;
+	}
+
+	CachedKnowledgeEntries.Reset();
+	SelectedKnowledgeIndex = INDEX_NONE;
+
+	if (!KnowledgeOwnerEntity.IsValid())
+	{
+		return;
+	}
+
+	UArcKnowledgeSubsystem* KnowledgeSub = GetKnowledgeSubsystem();
+	if (!KnowledgeSub)
+	{
+		return;
+	}
+
+	TArray<FArcKnowledgeHandle> Handles;
+	KnowledgeSub->GetKnowledgeBySource(KnowledgeOwnerEntity, Handles);
+
+	for (const FArcKnowledgeHandle& Handle : Handles)
+	{
+		const FArcKnowledgeEntry* Entry = KnowledgeSub->GetKnowledgeEntry(Handle);
+		if (!Entry)
+		{
+			continue;
+		}
+
+		FKnowledgeEntryCache& Cached = CachedKnowledgeEntries.AddDefaulted_GetRef();
+		Cached.Handle = Entry->Handle;
+		Cached.Tags = Entry->Tags;
+		Cached.Location = Entry->Location;
+		Cached.Relevance = Entry->Relevance;
+		Cached.Timestamp = Entry->Timestamp;
+		Cached.Lifetime = Entry->Lifetime;
+		Cached.bIsAdvertisement = Entry->Instruction.IsValid();
+		Cached.bClaimed = Entry->bClaimed;
+		Cached.ClaimedBy = Entry->ClaimedBy;
+		Cached.PayloadTypeName = Entry->Payload.IsValid()
+			? Entry->Payload.GetScriptStruct()->GetName()
+			: FString();
+	}
+
+	// Restore selection by handle
+	if (PreviousSelectedHandle.IsValid())
+	{
+		for (int32 i = 0; i < CachedKnowledgeEntries.Num(); ++i)
+		{
+			if (CachedKnowledgeEntries[i].Handle == PreviousSelectedHandle)
+			{
+				SelectedKnowledgeIndex = i;
+				break;
+			}
+		}
+	}
+}
+
+void FArcAreaDebugger::RefreshClaimableEntities()
+{
+	CachedClaimableEntities.Reset();
+
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!MassSubsystem)
+	{
+		return;
+	}
+
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+
+	FMassExecutionContext ExecContext(EntityManager);
+	FMassEntityQuery Query(EntityManager.AsShared());
+	Query.AddRequirement<FArcKnowledgeMemberFragment>(EMassFragmentAccess::ReadOnly);
+	Query.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	Query.AddTagRequirement<FArcKnowledgeMemberTag>(EMassFragmentPresence::All);
+
+	Query.ForEachEntityChunk(ExecContext,
+		[this](FMassExecutionContext& Context)
+		{
+			const int32 NumEntities = Context.GetNumEntities();
+			const TArrayView<const FArcKnowledgeMemberFragment> MemberList = Context.GetFragmentView<FArcKnowledgeMemberFragment>();
+			const TArrayView<const FTransformFragment> TransformList = Context.GetFragmentView<FTransformFragment>();
+
+			for (int32 i = 0; i < NumEntities; ++i)
+			{
+				const FMassEntityHandle Entity = Context.GetEntity(i);
+				const FArcKnowledgeMemberFragment& Member = MemberList[i];
+				const FTransformFragment& Transform = TransformList[i];
+
+				FClaimableEntityEntry& CEntry = CachedClaimableEntities.AddDefaulted_GetRef();
+				CEntry.Entity = Entity;
+				CEntry.Location = Transform.GetTransform().GetLocation();
+				CEntry.Role = Member.Role;
+
+				FString RoleStr = Member.Role.IsValid() ? Member.Role.ToString() : TEXT("(none)");
+				CEntry.Label = FString::Printf(TEXT("E%d [%s]"), Entity.Index, *RoleStr);
+			}
+		});
+}
+
 // ====================================================================
 // Main Draw
 // ====================================================================
@@ -327,6 +465,7 @@ void FArcAreaDebugger::Draw()
 			{
 				LastRefreshTime = CurrentTime;
 				RefreshAreaList();
+				RefreshKnowledgeEntries();
 			}
 		}
 	}
@@ -360,6 +499,7 @@ void FArcAreaDebugger::Draw()
 
 	// Popups
 	DrawAssignEntityPopup();
+	DrawClaimEntityPopup();
 }
 
 // ====================================================================
@@ -485,6 +625,13 @@ void FArcAreaDebugger::DrawAreaDetailPanel()
 		return;
 	}
 
+	// Track knowledge owner — refresh if the owner entity changed
+	if (AreaData->OwnerEntity != KnowledgeOwnerEntity)
+	{
+		KnowledgeOwnerEntity = AreaData->OwnerEntity;
+		RefreshKnowledgeEntries();
+	}
+
 	// Header
 	ImGui::TextColored(ImSelectedColor, "Area H%u", AreaData->Handle.GetValue());
 	ImGui::SameLine();
@@ -578,6 +725,12 @@ void FArcAreaDebugger::DrawAreaDetailPanel()
 	{
 		DrawSlotTable(AreaData->Handle);
 	}
+
+	ImGui::Spacing();
+	ImGui::Separator();
+
+	// Knowledge
+	DrawKnowledgeSection(AreaData->OwnerEntity);
 
 	ImGui::Spacing();
 	ImGui::Separator();
@@ -1109,6 +1262,359 @@ void FArcAreaDebugger::DrawAssignEntityPopup()
 		if (ImGui::Button("Cancel", ImVec2(120, 0)))
 		{
 			bShowAssignPopup = false;
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+// ====================================================================
+// Knowledge Section
+// ====================================================================
+
+void FArcAreaDebugger::DrawKnowledgeSection(const FMassEntityHandle& OwnerEntity)
+{
+	if (!OwnerEntity.IsValid())
+	{
+		return;
+	}
+
+	FString HeaderLabel = FString::Printf(TEXT("Knowledge (%d)"), CachedKnowledgeEntries.Num());
+	if (!ImGui::CollapsingHeader(TCHAR_TO_ANSI(*HeaderLabel)))
+	{
+		return;
+	}
+
+	if (CachedKnowledgeEntries.Num() == 0)
+	{
+		ImGui::TextDisabled("No knowledge entries for this entity");
+		return;
+	}
+
+	// Summary bar
+	int32 TotalAds = 0;
+	int32 UnclaimedAds = 0;
+	int32 ClaimedAds = 0;
+	for (const FKnowledgeEntryCache& Entry : CachedKnowledgeEntries)
+	{
+		if (Entry.bIsAdvertisement)
+		{
+			TotalAds++;
+			if (Entry.bClaimed)
+			{
+				ClaimedAds++;
+			}
+			else
+			{
+				UnclaimedAds++;
+			}
+		}
+	}
+
+	ImGui::Text("%d entries | %d ads (", CachedKnowledgeEntries.Num(), TotalAds);
+	ImGui::SameLine(0, 0);
+	ImGui::TextColored(ImAdUnclaimedColor, "%d unclaimed", UnclaimedAds);
+	ImGui::SameLine(0, 0);
+	ImGui::Text(", ");
+	ImGui::SameLine(0, 0);
+	ImGui::TextColored(ImAdClaimedColor, "%d claimed", ClaimedAds);
+	ImGui::SameLine(0, 0);
+	ImGui::Text(")");
+
+	ImGui::Spacing();
+
+	// Side-by-side layout: table on left, detail on right
+	float KnowledgePanelWidth = ImGui::GetContentRegionAvail().x;
+	float KnowledgeTableWidth = KnowledgePanelWidth * 0.60f;
+
+	// Left: knowledge entries table
+	if (ImGui::BeginChild("KnowledgeTablePanel", ImVec2(KnowledgeTableWidth, 250), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+	{
+		if (ImGui::BeginTable("KnowledgeTable", 6,
+			ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+			ImVec2(0, 0)))
+		{
+			ImGui::TableSetupColumn("Handle",    ImGuiTableColumnFlags_WidthFixed,   60.0f);
+			ImGui::TableSetupColumn("Tags",      ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Relevance", ImGuiTableColumnFlags_WidthFixed,   70.0f);
+			ImGui::TableSetupColumn("Age",       ImGuiTableColumnFlags_WidthFixed,   60.0f);
+			ImGui::TableSetupColumn("Type",      ImGuiTableColumnFlags_WidthFixed,  100.0f);
+			ImGui::TableSetupColumn("Status",    ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableHeadersRow();
+
+			UWorld* World = GetDebugWorld();
+			double CurrentTime = World ? static_cast<double>(World->GetTimeSeconds()) : 0.0;
+
+			for (int32 i = 0; i < CachedKnowledgeEntries.Num(); ++i)
+			{
+				const FKnowledgeEntryCache& Entry = CachedKnowledgeEntries[i];
+
+				ImVec4 RowColor;
+				if (!Entry.bIsAdvertisement)
+				{
+					RowColor = ImKnowledgeColor;
+				}
+				else if (Entry.bClaimed)
+				{
+					RowColor = ImAdClaimedColor;
+				}
+				else
+				{
+					RowColor = ImAdUnclaimedColor;
+				}
+
+				ImGui::PushID(i);
+				ImGui::TableNextRow();
+				ImGui::PushStyleColor(ImGuiCol_Text, RowColor);
+
+				// Handle column — selectable spanning all columns
+				ImGui::TableSetColumnIndex(0);
+				FString HandleStr = FString::Printf(TEXT("H%u"), Entry.Handle.GetValue());
+				bool bSelected = (SelectedKnowledgeIndex == i);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*HandleStr), bSelected,
+					ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+				{
+					SelectedKnowledgeIndex = (SelectedKnowledgeIndex == i) ? INDEX_NONE : i;
+				}
+
+				// Tags
+				ImGui::TableSetColumnIndex(1);
+				FString TagsStr = Entry.Tags.ToStringSimple();
+				if (TagsStr.Len() > 40)
+				{
+					TagsStr = TagsStr.Left(37) + TEXT("...");
+				}
+				ImGui::TextUnformatted(TCHAR_TO_ANSI(*TagsStr));
+
+				// Relevance
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("%.2f", Entry.Relevance);
+
+				// Age
+				ImGui::TableSetColumnIndex(3);
+				double AgeSecs = CurrentTime - Entry.Timestamp;
+				if (AgeSecs < 60.0)
+				{
+					ImGui::Text("%.1fs", static_cast<float>(AgeSecs));
+				}
+				else
+				{
+					ImGui::Text("%.1fm", static_cast<float>(AgeSecs / 60.0));
+				}
+
+				// Type
+				ImGui::TableSetColumnIndex(4);
+				ImGui::TextUnformatted(Entry.bIsAdvertisement ? "Advertisement" : "Knowledge");
+
+				// Status
+				ImGui::TableSetColumnIndex(5);
+				if (Entry.bIsAdvertisement)
+				{
+					if (Entry.bClaimed)
+					{
+						ImGui::Text("Claimed E%d", Entry.ClaimedBy.Index);
+					}
+					else
+					{
+						ImGui::TextUnformatted("Unclaimed");
+					}
+				}
+				else
+				{
+					ImGui::TextUnformatted("-");
+				}
+
+				ImGui::PopStyleColor();
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+	}
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	// Right: selected entry detail
+	if (ImGui::BeginChild("KnowledgeDetailPanel", ImVec2(0, 250), ImGuiChildFlags_Borders))
+	{
+		if (SelectedKnowledgeIndex != INDEX_NONE && CachedKnowledgeEntries.IsValidIndex(SelectedKnowledgeIndex))
+		{
+			const FKnowledgeEntryCache& Sel = CachedKnowledgeEntries[SelectedKnowledgeIndex];
+
+			FString DetailHeader = FString::Printf(TEXT("Entry H%u"), Sel.Handle.GetValue());
+			ImGui::TextColored(ImSelectedColor, "%s", TCHAR_TO_ANSI(*DetailHeader));
+			ImGui::Separator();
+
+			// Full tags
+			ImGui::Text("Tags:");
+			for (const FGameplayTag& Tag : Sel.Tags)
+			{
+				ImGui::BulletText("%s", TCHAR_TO_ANSI(*Tag.ToString()));
+			}
+			if (Sel.Tags.IsEmpty())
+			{
+				ImGui::BulletText("(none)");
+			}
+
+			ImGui::Spacing();
+
+			// Location
+			ImGui::Text("Location: (%.1f, %.1f, %.1f)", Sel.Location.X, Sel.Location.Y, Sel.Location.Z);
+
+			// Relevance
+			ImGui::Text("Relevance: %.2f", Sel.Relevance);
+
+			// Payload type
+			if (!Sel.PayloadTypeName.IsEmpty())
+			{
+				ImGui::Text("Payload: %s", TCHAR_TO_ANSI(*Sel.PayloadTypeName));
+			}
+			else
+			{
+				ImGui::TextDisabled("Payload: (none)");
+			}
+
+			// Lifetime remaining
+			if (Sel.Lifetime > 0.0f)
+			{
+				UWorld* World = GetDebugWorld();
+				double CurrentTime = World ? static_cast<double>(World->GetTimeSeconds()) : 0.0;
+				double Elapsed = CurrentTime - Sel.Timestamp;
+				float Remaining = Sel.Lifetime - static_cast<float>(Elapsed);
+				ImGui::Text("Lifetime: %.1fs remaining", Remaining);
+			}
+			else
+			{
+				ImGui::TextDisabled("Lifetime: Unlimited");
+			}
+
+			// Type
+			ImGui::Spacing();
+			if (Sel.bIsAdvertisement)
+			{
+				if (Sel.bClaimed)
+				{
+					ImGui::TextColored(ImAdClaimedColor, "Claimed by E%d", Sel.ClaimedBy.Index);
+				}
+				else
+				{
+					ImGui::TextColored(ImAdUnclaimedColor, "Unclaimed Advertisement");
+				}
+			}
+
+			// Assign entity button for unclaimed ads
+			if (Sel.bIsAdvertisement && !Sel.bClaimed)
+			{
+				ImGui::Spacing();
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.6f, 0.1f, 1.0f));
+				if (ImGui::Button("Assign Entity"))
+				{
+					ClaimTargetHandle = Sel.Handle;
+					bShowClaimPopup = true;
+					ClaimEntityFilterBuf[0] = '\0';
+					RefreshClaimableEntities();
+				}
+				ImGui::PopStyleColor();
+			}
+		}
+		else
+		{
+			ImGui::TextDisabled("Select an entry to view details");
+		}
+	}
+	ImGui::EndChild();
+}
+
+// ====================================================================
+// Claim Entity Popup
+// ====================================================================
+
+void FArcAreaDebugger::DrawClaimEntityPopup()
+{
+	if (!bShowClaimPopup)
+	{
+		return;
+	}
+
+	if (!ClaimTargetHandle.IsValid())
+	{
+		bShowClaimPopup = false;
+		return;
+	}
+
+	ImGui::OpenPopup("Claim Advertisement");
+
+	if (ImGui::BeginPopupModal("Claim Advertisement", &bShowClaimPopup, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		UArcKnowledgeSubsystem* KnowledgeSub = GetKnowledgeSubsystem();
+
+		ImGui::Text("Advertisement: H%u", ClaimTargetHandle.GetValue());
+		ImGui::Separator();
+
+		ImGui::InputText("Search Entities", ClaimEntityFilterBuf, IM_ARRAYSIZE(ClaimEntityFilterBuf));
+
+		if (ImGui::SmallButton("Refresh Entities"))
+		{
+			RefreshClaimableEntities();
+		}
+
+		ImGui::Spacing();
+		ImGui::Text("Claimable Entities (%d):", CachedClaimableEntities.Num());
+
+		FString EntFilter = FString(ANSI_TO_TCHAR(ClaimEntityFilterBuf)).ToLower();
+
+		if (ImGui::BeginChild("ClaimEntityList", ImVec2(500, 300), ImGuiChildFlags_Borders))
+		{
+			for (int32 i = 0; i < CachedClaimableEntities.Num(); ++i)
+			{
+				const FClaimableEntityEntry& EntEntry = CachedClaimableEntities[i];
+
+				if (!EntFilter.IsEmpty() && !EntEntry.Label.ToLower().Contains(EntFilter))
+				{
+					continue;
+				}
+
+				ImGui::PushID(i);
+
+				ImGui::PushStyleColor(ImGuiCol_Text, ImKnowledgeColor);
+				ImGui::Text("%s", TCHAR_TO_ANSI(*EntEntry.Label));
+				ImGui::PopStyleColor();
+
+				// Tooltip
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::BeginTooltip();
+					ImGui::Text("Entity: E%d (SN:%d)", EntEntry.Entity.Index, EntEntry.Entity.SerialNumber);
+					ImGui::Text("Location: (%.0f, %.0f, %.0f)", EntEntry.Location.X, EntEntry.Location.Y, EntEntry.Location.Z);
+					ImGui::Text("Role: %s", EntEntry.Role.IsValid() ? TCHAR_TO_ANSI(*EntEntry.Role.ToString()) : "(none)");
+					ImGui::EndTooltip();
+				}
+
+				ImGui::SameLine(420);
+				if (ImGui::SmallButton("Claim"))
+				{
+					if (KnowledgeSub)
+					{
+						bool bSuccess = KnowledgeSub->ClaimAdvertisement(ClaimTargetHandle, EntEntry.Entity);
+						if (bSuccess)
+						{
+							bShowClaimPopup = false;
+							RefreshKnowledgeEntries();
+						}
+					}
+				}
+
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+
+		ImGui::Spacing();
+		if (ImGui::Button("Cancel", ImVec2(120, 0)))
+		{
+			bShowClaimPopup = false;
 		}
 
 		ImGui::EndPopup();

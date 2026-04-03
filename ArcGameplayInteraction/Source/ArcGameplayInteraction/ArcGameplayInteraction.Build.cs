@@ -50,6 +50,7 @@ public class ArcGameplayInteraction : ModuleRules
 				, "Engine"
 				, "AIModule"
 				, "MassCommon"
+				, "MassCore"
 				, "MassEntity"
 				, "MassSpawner"
 				, "MassSignals"

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcKnowledgeTypes.h"
 #include "StructUtils/InstancedStruct.h"
 #include "StateTreeInstanceData.h"
@@ -40,9 +40,18 @@ public:
 	void SetContextActor(AActor* InActor) { ContextActor = InActor; }
 	void SetAdvertisementHandle(const FArcKnowledgeHandle& InHandle) { AdvertisementHandle = InHandle; }
 	void SetAdvertisementPayload(const FInstancedStruct& InPayload) { AdvertisementPayload = InPayload; }
+	void SetKnowledgeLocation(const FVector& InLocation) { KnowledgeLocation = InLocation; }
+	void SetSourceEntityLocation(const FVector& InLocation) { SourceEntityLocation = InLocation; }
 
 	bool IsValid() const { return Owner != nullptr; }
 	EStateTreeRunStatus GetLastRunStatus() const { return LastRunStatus; }
+
+	// --- Debug Accessors ---
+	const FStateTreeInstanceData& GetStateTreeInstanceData() const { return StateTreeInstanceData; }
+	FArcKnowledgeHandle GetAdvertisementHandle() const { return AdvertisementHandle; }
+	FMassEntityHandle GetSourceEntity() const { return SourceEntity; }
+	FMassEntityHandle GetExecutingEntity() const { return ExecutingEntity; }
+	const FInstancedStruct& GetAdvertisementPayload() const { return AdvertisementPayload; }
 
 	// --- Lifecycle ---
 
@@ -97,6 +106,12 @@ protected:
 
 	UPROPERTY()
 	FInstancedStruct AdvertisementPayload;
+
+	UPROPERTY()
+	FVector KnowledgeLocation = FVector::ZeroVector;
+
+	UPROPERTY()
+	FVector SourceEntityLocation = FVector::ZeroVector;
 
 	EStateTreeRunStatus LastRunStatus = EStateTreeRunStatus::Unset;
 

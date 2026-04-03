@@ -6,7 +6,7 @@
 #include "ArcAreaTypes.h"
 #include "ArcAreaSlotDefinition.h"
 #include "MassSpawnerSubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityConfigAsset.h"
 #include "MassCommands.h"
 #include "TargetQuery/ArcTQSQuerySubsystem.h"

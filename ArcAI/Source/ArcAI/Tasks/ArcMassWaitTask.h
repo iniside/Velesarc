@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
 #include "MassProcessor.h"
 #include "MassStateTreeTypes.h"
 

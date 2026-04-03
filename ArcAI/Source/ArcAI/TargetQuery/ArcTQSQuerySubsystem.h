@@ -46,6 +46,10 @@ struct FArcTQSDebugQueryData
 
 	// Timestamp for auto-expiry
 	double Timestamp = 0.0;
+
+#if !UE_BUILD_SHIPPING
+	TArray<FArcTQSDebugStepData> StepBreakdown;
+#endif
 };
 
 /**

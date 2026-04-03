@@ -50,9 +50,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Knowledge")
 	void UpdateKnowledge(FArcKnowledgeHandle Handle, const FArcKnowledgeEntry& Updated);
 
-	/** Remove a knowledge entry. */
+	/** Remove a knowledge entry. No-op if the entry is marked bPersistent.
+	  * Use ForceRemoveKnowledge for entity death cleanup. */
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Knowledge")
 	void RemoveKnowledge(FArcKnowledgeHandle Handle);
+
+	/** Force-remove a knowledge entry, bypassing bPersistent. Use for entity death cleanup. */
+	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Knowledge")
+	void ForceRemoveKnowledge(FArcKnowledgeHandle Handle);
 
 	/** Register multiple entries at once. */
 	void RegisterKnowledgeBatch(TArray<FArcKnowledgeEntry>& Entries, TArray<FArcKnowledgeHandle>& OutHandles);
@@ -141,9 +146,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Advertisements")
 	void CompleteAdvertisement(FArcKnowledgeHandle Handle);
 
-	/** Cancel a claim, making the advertisement available again. */
+	/** Cancel a claim, making the advertisement available again. Returns true if successfully unclaimed. */
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Advertisements")
-	void CancelAdvertisement(FArcKnowledgeHandle Handle);
+	bool CancelAdvertisement(FArcKnowledgeHandle Handle);
 
 	// ====================================================================
 	// Events
@@ -189,6 +194,9 @@ private:
 
 	// Fire a knowledge event through the broadcaster
 	void BroadcastKnowledgeEvent(EArcKnowledgeEventType Type, const FArcKnowledgeEntry& Entry);
+
+	// Internal removal — unconditional, no persistence check.
+	void RemoveKnowledgeInternal(FArcKnowledgeHandle Handle);
 
 	// ---------- Storage ----------
 

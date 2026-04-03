@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "SlateIMWidgetBase.h"
 
 class ArcAIDebugger

@@ -31,6 +31,15 @@ private:
 		float BoundingRadius = 0.f; // Only set if definition provides it
 	};
 
+	// --- Cached entity entry for claim assignment ---
+	struct FClaimableEntityEntry
+	{
+		FMassEntityHandle Entity;
+		FString Label;
+		FVector Location = FVector::ZeroVector;
+		FGameplayTag Role;
+	};
+
 	// --- World helpers ---
 	static UWorld* GetDebugWorld();
 	UArcKnowledgeSubsystem* GetKnowledgeSubsystem() const;
@@ -48,6 +57,7 @@ private:
 	void DrawTagsSection(const FArcKnowledgeEntry& Entry, FArcKnowledgeHandle Handle);
 	void DrawPayloadSection(const FArcKnowledgeEntry& Entry);
 	void DrawAdvertisementSection(const FArcKnowledgeEntry& Entry, FArcKnowledgeHandle Handle);
+	void DrawInstructionSection(const FArcKnowledgeEntry& Entry);
 	void DrawMetadataSection(const FArcKnowledgeEntry& Entry);
 
 	// --- Payload property rendering ---
@@ -57,6 +67,10 @@ private:
 	void DrawAddEntryPopup();
 	void DrawAddTagPopup(FArcKnowledgeHandle Handle);
 	void DrawRemoveTagPopup(FArcKnowledgeHandle Handle, const FGameplayTagContainer& CurrentTags);
+
+	// --- Claim assignment ---
+	void RefreshClaimableEntities();
+	void DrawClaimEntityPopup();
 
 	// --- State ---
 	TArray<FKnowledgeListEntry> CachedEntries;
@@ -69,6 +83,8 @@ private:
 	bool bDrawSelectedRadius = true;
 	bool bDrawLabels = true;
 	bool bAutoRefresh = true;
+	bool bUseSearchRadius = false;
+	float SearchRadius = 50000.f;
 
 	// Add entry state
 	bool bShowAddEntryPopup = false;
@@ -80,4 +96,9 @@ private:
 	bool bShowAddTagPopup = false;
 	bool bShowRemoveTagPopup = false;
 	char AddTagBuf[256] = {};
+
+	// Claim assignment state
+	bool bShowClaimPopup = false;
+	TArray<FClaimableEntityEntry> CachedClaimableEntities;
+	char ClaimEntityFilterBuf[256] = {};
 };

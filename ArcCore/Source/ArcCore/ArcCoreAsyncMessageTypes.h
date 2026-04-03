@@ -8,6 +8,7 @@
 #include "UObject/Object.h"
 #include "InteractableTargetInterface.h"
 #include "InteractionTypes.h"
+#include "Mass/EntityHandle.h"
 #include "ArcCoreAsyncMessageTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -27,6 +28,12 @@ struct ARCCORE_API FArcInteractionAcquiredMessage
 	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
 	TScriptInterface<IInteractionTarget> Target;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
+	FMassEntityHandle EntityHandle;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
+	FVector Location;
+	
 	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
 	FInteractionQueryResults QueryResults;
 };

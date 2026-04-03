@@ -37,6 +37,10 @@ struct TMassFragmentTraits<FArcMassPhysicsBodyConfigFragment> final
 
 namespace UE::ArcMass::Physics
 {
+	/** Copy only serialized (UPROPERTY, non-transient) properties from Source to Dest.
+	 *  Skips runtime state: ActorHandle, OwnerComponent, WeldParent, DOFConstraint, etc. */
+	ARCMASS_API void CopyBodyInstanceConfig(FBodyInstance& Dest, const FBodyInstance& Source);
+
 	ARCMASS_API void InitBodiesFromConfig(
 		const FArcMassPhysicsBodyConfigFragment& Config,
 		TConstArrayView<FTransform> Transforms,

@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassEntityTypes.h"
 #include "UObject/Interface.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcProjectileFragments.generated.h"
 
 // ---------------------------------------------------------------------------

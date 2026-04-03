@@ -10,7 +10,7 @@
 #include "ArcIWMassISMPartitionActor.h"
 #include "MassEntitySubsystem.h"
 #include "MassSignalSubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassSpawnerSubsystem.h"
 #include "MassEntityTemplateRegistry.h"
 #include "MassEntityConfigAsset.h"

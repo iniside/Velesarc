@@ -28,10 +28,18 @@ void UArcAreaAutoVacancyListener::Deinitialize()
 		AreaSub->RemoveOnSlotStateChanged(DelegateHandle);
 	}
 
-	// Clean up all posted vacancies
+	// Clean up all posted and claimed vacancies
 	if (UArcKnowledgeSubsystem* KnowledgeSub = GetWorld()->GetSubsystem<UArcKnowledgeSubsystem>())
 	{
-		for (const auto& Pair : PostedVacancies)
+		for (const TTuple<FArcAreaSlotHandle, FArcKnowledgeHandle>& Pair : PostedVacancies)
+		{
+			if (Pair.Value.IsValid())
+			{
+				KnowledgeSub->RemoveKnowledge(Pair.Value);
+			}
+		}
+
+		for (const TTuple<FMassEntityHandle, FArcKnowledgeHandle>& Pair : ClaimedVacancies)
 		{
 			if (Pair.Value.IsValid())
 			{
@@ -41,7 +49,50 @@ void UArcAreaAutoVacancyListener::Deinitialize()
 	}
 
 	PostedVacancies.Empty();
+	ClaimedVacancies.Empty();
 	Super::Deinitialize();
+}
+
+FArcKnowledgeHandle UArcAreaAutoVacancyListener::FindVacancyHandle(const FArcAreaSlotHandle& SlotHandle) const
+{
+	const FArcKnowledgeHandle* Handle = PostedVacancies.Find(SlotHandle);
+	return Handle ? *Handle : FArcKnowledgeHandle();
+}
+
+FArcKnowledgeHandle UArcAreaAutoVacancyListener::ClaimVacancy(const FArcAreaSlotHandle& SlotHandle, FMassEntityHandle Entity)
+{
+	FArcKnowledgeHandle Handle;
+	if (!PostedVacancies.RemoveAndCopyValue(SlotHandle, Handle))
+	{
+		return FArcKnowledgeHandle();
+	}
+
+	if (!Handle.IsValid())
+	{
+		return FArcKnowledgeHandle();
+	}
+
+	ClaimedVacancies.Add(Entity, Handle);
+	return Handle;
+}
+
+void UArcAreaAutoVacancyListener::ReleaseClaimedVacancy(FMassEntityHandle Entity)
+{
+	FArcKnowledgeHandle Handle;
+	if (!ClaimedVacancies.RemoveAndCopyValue(Entity, Handle))
+	{
+		return;
+	}
+
+	if (!Handle.IsValid())
+	{
+		return;
+	}
+
+	if (UArcKnowledgeSubsystem* KnowledgeSub = GetWorld()->GetSubsystem<UArcKnowledgeSubsystem>())
+	{
+		KnowledgeSub->RemoveKnowledge(Handle);
+	}
 }
 
 void UArcAreaAutoVacancyListener::OnSlotStateChanged(const FArcAreaSlotHandle& SlotHandle, EArcAreaSlotState NewState)
@@ -50,8 +101,35 @@ void UArcAreaAutoVacancyListener::OnSlotStateChanged(const FArcAreaSlotHandle& S
 	{
 		PostVacancy(SlotHandle);
 	}
+	else if (NewState == EArcAreaSlotState::Assigned)
+	{
+		// Look up which entity was assigned so we can key the claimed map
+		const UArcAreaSubsystem* AreaSub = GetWorld()->GetSubsystem<UArcAreaSubsystem>();
+		if (!AreaSub)
+		{
+			RemoveVacancy(SlotHandle);
+			return;
+		}
+
+		const FArcAreaData* Data = AreaSub->GetAreaData(SlotHandle.AreaHandle);
+		if (!Data || !Data->Slots.IsValidIndex(SlotHandle.SlotIndex))
+		{
+			RemoveVacancy(SlotHandle);
+			return;
+		}
+
+		const FMassEntityHandle AssignedEntity = Data->Slots[SlotHandle.SlotIndex].AssignedEntity;
+		if (!AssignedEntity.IsValid())
+		{
+			RemoveVacancy(SlotHandle);
+			return;
+		}
+
+		ClaimVacancy(SlotHandle, AssignedEntity);
+	}
 	else
 	{
+		// Disabled or any other state — remove the posted vacancy and clean up knowledge
 		RemoveVacancy(SlotHandle);
 	}
 }

@@ -7,6 +7,7 @@
 #include "ArcInstancedWorld/ArcIWSettings.h"
 #include "ArcInstancedWorld/ArcIWTypes.h"
 #include "ArcMass/Physics/ArcMassPhysicsBody.h"
+#include "ArcMass/Physics/ArcMassPhysicsBodyConfig.h"
 #include "ActorPartition/ActorPartitionSubsystem.h"
 #include "MassEntityConfigAsset.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -177,9 +178,7 @@ void CaptureActorCollisionData(
 		CollisionSources.Add(Source);
 
 		OutCollisionProfile = RootPrimitive->GetCollisionProfileName();
-		OutBodyTemplate = RootPrimitive->BodyInstance;
-		OutBodyTemplate.OwnerComponent = nullptr;
-		OutBodyTemplate.BodySetup = nullptr;
+		UE::ArcMass::Physics::CopyBodyInstanceConfig(OutBodyTemplate, RootPrimitive->BodyInstance);
 		bProfileTaken = true;
 	}
 
@@ -314,9 +313,7 @@ void CaptureActorCollisionData(
 		CollisionSources.Add(Source);
 
 		OutCollisionProfile = RootPrimitive->GetCollisionProfileName();
-		OutBodyTemplate = RootPrimitive->BodyInstance;
-		OutBodyTemplate.OwnerComponent = nullptr;
-		OutBodyTemplate.BodySetup = nullptr;
+		UE::ArcMass::Physics::CopyBodyInstanceConfig(OutBodyTemplate, RootPrimitive->BodyInstance);
 		bProfileTaken = true;
 	}
 

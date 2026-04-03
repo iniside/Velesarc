@@ -34,6 +34,7 @@
 #include "ArcIWMinimapDebugger.h"
 #include "ArcInteractionDebugger.h"
 #include "ArcWorldPersistenceDebugger.h"
+#include "ArcTQSDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -79,6 +80,8 @@ private:
 	FArcPerceptionDebugger PerceptionDebugger;
 
 	FArcPathDebugger PathDebugger;
+
+	FArcTQSDebugger TQSDebugger;
 
 	FArcVisEntityDebugger VisEntityDebugger;
 

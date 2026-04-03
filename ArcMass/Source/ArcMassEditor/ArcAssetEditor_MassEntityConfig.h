@@ -11,12 +11,14 @@ class IStructureDetailsView;
 class SDockTab;
 class SWidgetSwitcher;
 class UMassEntityConfigAsset;
+class SArcMassEntityConfigPreviewViewport;
 
 class ARCMASSEDITOR_API FArcAssetEditor_MassEntityConfig : public FSimpleAssetEditor
 {
 public:
 	static const FName TraitListTabId;
 	static const FName DetailsTabId;
+	static const FName PreviewTabId;
 	static const FName ToolkitFName;
 	static const FName AppIdentifier;
 
@@ -44,6 +46,7 @@ private:
 	// Tab spawners
 	TSharedRef<SDockTab> SpawnTab_TraitList(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_Details(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnTab_Preview(const FSpawnTabArgs& Args);
 
 	// Trait selection from the left panel
 	void OnTraitSelected(TSharedPtr<FArcMassTraitListItem> SelectedItem);
@@ -67,6 +70,7 @@ private:
 	TSharedPtr<IDetailsView> ConfigDetailsView;
 	TSharedPtr<SWidgetSwitcher> DetailsSwitcher;
 	TSharedPtr<SScrollBox> AssortedFragmentsScrollBox;
+	TSharedPtr<SArcMassEntityConfigPreviewViewport> PreviewViewport;
 
 	// Keep struct data alive while displayed
 	TArray<TSharedPtr<FStructOnScope>> ActiveStructScopes;

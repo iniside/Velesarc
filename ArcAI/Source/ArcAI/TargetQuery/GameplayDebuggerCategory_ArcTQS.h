@@ -7,7 +7,7 @@
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include "GameplayDebuggerCategory.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 
 class UArcTQSQuerySubsystem;

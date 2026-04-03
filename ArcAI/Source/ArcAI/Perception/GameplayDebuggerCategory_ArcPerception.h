@@ -7,7 +7,7 @@
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include "GameplayDebuggerCategory.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityManager.h"
 
 class FGameplayDebuggerCategory_ArcPerception : public FGameplayDebuggerCategory

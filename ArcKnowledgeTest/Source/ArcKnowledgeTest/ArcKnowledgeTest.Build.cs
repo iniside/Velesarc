@@ -24,6 +24,7 @@ public class ArcKnowledgeTest : ModuleRules
 				"GameplayTags",
 				"StructUtils",
 				"MassEntity",
+				"MassCore",
 				"CQTest"
 			}
 		);

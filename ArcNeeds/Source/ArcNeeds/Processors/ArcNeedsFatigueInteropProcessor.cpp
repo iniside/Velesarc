@@ -38,7 +38,7 @@ UArcNeedsFatigueInteropProcessor::UArcNeedsFatigueInteropProcessor()
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::AllNetModes);
-	ProcessingPhase = EMassProcessingPhase::PostPhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 }
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ UArcMassPhysicsBodyActivateProcessor::UArcMassPhysicsBodyActivateProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
-	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Client | EProcessorExecutionFlags::Standalone);
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::AllNetModes);
 }
 
 void UArcMassPhysicsBodyActivateProcessor::InitializeInternal(
@@ -134,7 +134,7 @@ void UArcMassPhysicsBodyActivateProcessor::SignalEntities(
 					continue;
 				}
 
-				ArcMassPhysicsEntityLink::Attach(*BodyFrag.Body, Ctx.GetEntity(EntityIt), nullptr);
+				ArcMassPhysicsEntityLink::Attach(*BodyFrag.Body, Ctx.GetEntity(EntityIt));
 			}
 		});
 

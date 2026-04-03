@@ -7,9 +7,19 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "ArcKnowledgeSubsystem.h"
+#include "ArcKnowledgeQuery.h"
 #include "ArcKnowledgeEntryDefinition.h"
 #include "StructUtils/InstancedStruct.h"
 #include "UObject/UnrealType.h"
+#include "MassEntitySubsystem.h"
+#include "MassEntityQuery.h"
+#include "MassExecutionContext.h"
+#include "MassCommonFragments.h"
+#include "Mass/ArcKnowledgeFragments.h"
+#include "GameFramework/Pawn.h"
+#include "ArcAdvertisementInstruction_StateTree.h"
+#include "StateTreeReference.h"
+#include "StateTree.h"
 
 // ====================================================================
 // Helpers
@@ -199,6 +209,8 @@ void FArcKnowledgeDebugger::Initialize()
 	bDrawSelectedRadius = true;
 	bDrawLabels = true;
 	bAutoRefresh = true;
+	bUseSearchRadius = false;
+	SearchRadius = 50000.f;
 	bShowAddEntryPopup = false;
 	bShowAddTagPopup = false;
 	bShowRemoveTagPopup = false;
@@ -207,10 +219,14 @@ void FArcKnowledgeDebugger::Initialize()
 	AddEntryRelevance = 1.0f;
 	AddEntryLocation[0] = AddEntryLocation[1] = AddEntryLocation[2] = 0.f;
 	RefreshEntryList();
+	bShowClaimPopup = false;
+	ClaimEntityFilterBuf[0] = '\0';
+	CachedClaimableEntities.Reset();
 }
 
 void FArcKnowledgeDebugger::Uninitialize()
 {
+	CachedClaimableEntities.Reset();
 	CachedEntries.Reset();
 	SelectedEntryIndex = INDEX_NONE;
 }
@@ -229,40 +245,92 @@ void FArcKnowledgeDebugger::RefreshEntryList()
 		return;
 	}
 
-	// Query all entries in a large radius from origin — but actually we want ALL entries.
-	// The subsystem stores them in Entries TMap. We'll use a large sphere query as an approximation,
-	// but the most reliable approach is spatial hash with huge radius.
-	// Better: iterate the subsystem's internal Entries map. Since it's private, we use QueryKnowledgeInRadius
-	// with a huge radius and no tag filter.
-	TArray<FArcKnowledgeHandle> AllHandles;
-	FGameplayTagQuery EmptyFilter;
-	Sub->QueryKnowledgeInRadius(FVector::ZeroVector, 10000, AllHandles, EmptyFilter);
+	UWorld* World = GetDebugWorld();
 
-	for (const FArcKnowledgeHandle& Handle : AllHandles)
+	// If radius filtering is enabled, use spatial query from player pawn location
+	if (bUseSearchRadius && World)
 	{
-		const FArcKnowledgeEntry* Entry = Sub->GetKnowledgeEntry(Handle);
-		if (!Entry)
+		FVector QueryOrigin = FVector::ZeroVector;
+		if (APlayerController* PC = World->GetFirstPlayerController())
 		{
-			continue;
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				QueryOrigin = Pawn->GetActorLocation();
+			}
 		}
 
+		TArray<FArcKnowledgeHandle> AllHandles;
+		FGameplayTagQuery EmptyFilter;
+		Sub->QueryKnowledgeInRadius(QueryOrigin, SearchRadius, AllHandles, EmptyFilter);
+
+		for (const FArcKnowledgeHandle& Handle : AllHandles)
+		{
+			const FArcKnowledgeEntry* EntryPtr = Sub->GetKnowledgeEntry(Handle);
+			if (!EntryPtr)
+			{
+				continue;
+			}
+			const FArcKnowledgeEntry& Entry = *EntryPtr;
+
+			FKnowledgeListEntry& ListEntry = CachedEntries.AddDefaulted_GetRef();
+			ListEntry.Handle = Entry.Handle;
+			ListEntry.Location = Entry.Location;
+			ListEntry.Tags = Entry.Tags;
+			ListEntry.Relevance = Entry.Relevance;
+			ListEntry.bClaimed = Entry.bClaimed;
+			ListEntry.bHasPayload = Entry.Payload.IsValid();
+			ListEntry.BoundingRadius = Entry.SpatialBroadcastRadius;
+
+			FString TagSummary;
+			if (Entry.Tags.Num() > 0)
+			{
+				TagSummary = Entry.Tags.First().ToString();
+				if (Entry.Tags.Num() > 1)
+				{
+					TagSummary += FString::Printf(TEXT(" +%d"), Entry.Tags.Num() - 1);
+				}
+			}
+			else
+			{
+				TagSummary = TEXT("(no tags)");
+			}
+			ListEntry.Label = FString::Printf(TEXT("H%u [%s]"), Entry.Handle.GetValue(), *TagSummary);
+		}
+		return;
+	}
+
+	// No radius filter — return all entries
+	FArcKnowledgeQuery AllQuery;
+	AllQuery.MaxResults = 500;
+
+	FArcKnowledgeQueryContext QueryContext;
+	QueryContext.World = World;
+	QueryContext.CurrentTime = World ? World->GetTimeSeconds() : 0.0;
+
+	TArray<FArcKnowledgeQueryResult> AllResults;
+	Sub->QueryKnowledge(AllQuery, QueryContext, AllResults);
+
+	for (const FArcKnowledgeQueryResult& Result : AllResults)
+	{
+		const FArcKnowledgeEntry& Entry = Result.Entry;
+
 		FKnowledgeListEntry& ListEntry = CachedEntries.AddDefaulted_GetRef();
-		ListEntry.Handle = Handle;
-		ListEntry.Location = Entry->Location;
-		ListEntry.Tags = Entry->Tags;
-		ListEntry.Relevance = Entry->Relevance;
-		ListEntry.bClaimed = Entry->bClaimed;
-		ListEntry.bHasPayload = Entry->Payload.IsValid();
-		ListEntry.BoundingRadius = Entry->SpatialBroadcastRadius;
+		ListEntry.Handle = Entry.Handle;
+		ListEntry.Location = Entry.Location;
+		ListEntry.Tags = Entry.Tags;
+		ListEntry.Relevance = Entry.Relevance;
+		ListEntry.bClaimed = Entry.bClaimed;
+		ListEntry.bHasPayload = Entry.Payload.IsValid();
+		ListEntry.BoundingRadius = Entry.SpatialBroadcastRadius;
 
 		// Build label
 		FString TagSummary;
-		if (Entry->Tags.Num() > 0)
+		if (Entry.Tags.Num() > 0)
 		{
-			TagSummary = Entry->Tags.First().ToString();
-			if (Entry->Tags.Num() > 1)
+			TagSummary = Entry.Tags.First().ToString();
+			if (Entry.Tags.Num() > 1)
 			{
-				TagSummary += FString::Printf(TEXT(" +%d"), Entry->Tags.Num() - 1);
+				TagSummary += FString::Printf(TEXT(" +%d"), Entry.Tags.Num() - 1);
 			}
 		}
 		else
@@ -270,8 +338,56 @@ void FArcKnowledgeDebugger::RefreshEntryList()
 			TagSummary = TEXT("(no tags)");
 		}
 
-		ListEntry.Label = FString::Printf(TEXT("H%u [%s]"), Handle.GetValue(), *TagSummary);
+		ListEntry.Label = FString::Printf(TEXT("H%u [%s]"), Entry.Handle.GetValue(), *TagSummary);
 	}
+}
+
+void FArcKnowledgeDebugger::RefreshClaimableEntities()
+{
+	CachedClaimableEntities.Reset();
+
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!MassSubsystem)
+	{
+		return;
+	}
+
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+
+	FMassExecutionContext ExecContext(EntityManager);
+	FMassEntityQuery Query(EntityManager.AsShared());
+	Query.AddRequirement<FArcKnowledgeMemberFragment>(EMassFragmentAccess::ReadOnly);
+	Query.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	Query.AddTagRequirement<FArcKnowledgeMemberTag>(EMassFragmentPresence::All);
+
+	Query.ForEachEntityChunk(ExecContext,
+		[this](FMassExecutionContext& Context)
+		{
+			TConstArrayView<FArcKnowledgeMemberFragment> MemberList = Context.GetFragmentView<FArcKnowledgeMemberFragment>();
+			TConstArrayView<FTransformFragment> TransformList = Context.GetFragmentView<FTransformFragment>();
+
+			const int32 NumEntities = Context.GetNumEntities();
+			for (int32 i = 0; i < NumEntities; ++i)
+			{
+				const FMassEntityHandle Entity = Context.GetEntity(i);
+				const FArcKnowledgeMemberFragment& Member = MemberList[i];
+				const FTransformFragment& Transform = TransformList[i];
+
+				FClaimableEntityEntry& Entry = CachedClaimableEntities.AddDefaulted_GetRef();
+				Entry.Entity = Entity;
+				Entry.Location = Transform.GetTransform().GetLocation();
+				Entry.Role = Member.Role;
+
+				FString RoleStr = Member.Role.IsValid() ? Member.Role.ToString() : TEXT("(no role)");
+				Entry.Label = FString::Printf(TEXT("E%d [%s]"), Entity.Index, *RoleStr);
+			}
+		});
 }
 
 // ====================================================================
@@ -351,6 +467,7 @@ void FArcKnowledgeDebugger::Draw()
 			DrawRemoveTagPopup(Handle, Entry->Tags);
 		}
 	}
+	DrawClaimEntityPopup();
 }
 
 // ====================================================================
@@ -375,6 +492,15 @@ void FArcKnowledgeDebugger::DrawToolbar()
 	ImGui::Checkbox("Draw Radius", &bDrawSelectedRadius);
 	ImGui::SameLine();
 	ImGui::Checkbox("Labels", &bDrawLabels);
+
+	ImGui::SameLine();
+	ImGui::Checkbox("Radius Filter", &bUseSearchRadius);
+	if (bUseSearchRadius)
+	{
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(120.f);
+		ImGui::DragFloat("##SearchRadius", &SearchRadius, 500.f, 1000.f, 500000.f, "%.0f");
+	}
 
 	// Add entry button
 	ImGui::SameLine();
@@ -557,6 +683,12 @@ void FArcKnowledgeDebugger::DrawEntryDetailPanel()
 	ImGui::Spacing();
 	ImGui::Separator();
 
+	// Instruction
+	DrawInstructionSection(*Entry);
+
+	ImGui::Spacing();
+	ImGui::Separator();
+
 	// Danger zone
 	if (ImGui::CollapsingHeader("Actions"))
 	{
@@ -715,6 +847,50 @@ void FArcKnowledgeDebugger::DrawAdvertisementSection(const FArcKnowledgeEntry& E
 		else
 		{
 			ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Available (unclaimed)");
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Claim -> Entity"))
+			{
+				bShowClaimPopup = true;
+				ClaimEntityFilterBuf[0] = '\0';
+				RefreshClaimableEntities();
+			}
+		}
+	}
+}
+
+// ====================================================================
+// Instruction Section
+// ====================================================================
+
+void FArcKnowledgeDebugger::DrawInstructionSection(const FArcKnowledgeEntry& Entry)
+{
+	if (ImGui::CollapsingHeader("Instruction", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		if (!Entry.Instruction.IsValid())
+		{
+			ImGui::TextDisabled("No instruction");
+			return;
+		}
+
+		const UScriptStruct* InstructionType = Entry.Instruction.GetScriptStruct();
+		ImGui::Text("Type: %s", TCHAR_TO_ANSI(*InstructionType->GetName()));
+
+		if (const FArcAdvertisementInstruction_StateTree* STInstruction = Entry.Instruction.GetPtr<FArcAdvertisementInstruction_StateTree>())
+		{
+			const UStateTree* StateTree = STInstruction->StateTreeReference.GetStateTree();
+			if (StateTree)
+			{
+				ImGui::Text("StateTree: %s", TCHAR_TO_ANSI(*StateTree->GetName()));
+			}
+			else
+			{
+				ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "StateTree: None (not set)");
+			}
+		}
+		else
+		{
+			// Generic instruction — render properties
+			DrawPayloadProperties(InstructionType, Entry.Instruction.GetMemory());
 		}
 	}
 }
@@ -975,6 +1151,99 @@ void FArcKnowledgeDebugger::DrawRemoveTagPopup(FArcKnowledgeHandle Handle, const
 			{
 				bShowRemoveTagPopup = false;
 			}
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+// ====================================================================
+// Claim Entity Popup
+// ====================================================================
+
+void FArcKnowledgeDebugger::DrawClaimEntityPopup()
+{
+	if (!bShowClaimPopup)
+	{
+		return;
+	}
+
+	if (SelectedEntryIndex == INDEX_NONE || !CachedEntries.IsValidIndex(SelectedEntryIndex))
+	{
+		bShowClaimPopup = false;
+		return;
+	}
+
+	ImGui::OpenPopup("Claim Advertisement");
+
+	if (ImGui::BeginPopupModal("Claim Advertisement", &bShowClaimPopup, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		UArcKnowledgeSubsystem* Sub = GetKnowledgeSubsystem();
+		const FKnowledgeListEntry& ListEntry = CachedEntries[SelectedEntryIndex];
+
+		ImGui::Text("Entry: H%u", ListEntry.Handle.GetValue());
+		ImGui::Text("Tags: %s", TCHAR_TO_ANSI(*ListEntry.Tags.ToStringSimple()));
+		ImGui::Separator();
+
+		ImGui::InputText("Search Entities", ClaimEntityFilterBuf, IM_ARRAYSIZE(ClaimEntityFilterBuf));
+
+		if (ImGui::SmallButton("Refresh Entities"))
+		{
+			RefreshClaimableEntities();
+		}
+
+		ImGui::Spacing();
+		ImGui::Text("Knowledge Members (%d):", CachedClaimableEntities.Num());
+
+		FString EntFilter = FString(ANSI_TO_TCHAR(ClaimEntityFilterBuf)).ToLower();
+
+		if (ImGui::BeginChild("ClaimEntityList", ImVec2(500, 300), ImGuiChildFlags_Borders))
+		{
+			for (int32 i = 0; i < CachedClaimableEntities.Num(); ++i)
+			{
+				const FClaimableEntityEntry& EntEntry = CachedClaimableEntities[i];
+
+				if (!EntFilter.IsEmpty() && !EntEntry.Label.ToLower().Contains(EntFilter))
+				{
+					continue;
+				}
+
+				ImGui::PushID(i);
+
+				ImGui::Text("%s", TCHAR_TO_ANSI(*EntEntry.Label));
+
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::BeginTooltip();
+					ImGui::Text("Entity: E%d (SN:%d)", EntEntry.Entity.Index, EntEntry.Entity.SerialNumber);
+					ImGui::Text("Location: (%.0f, %.0f, %.0f)", EntEntry.Location.X, EntEntry.Location.Y, EntEntry.Location.Z);
+					if (EntEntry.Role.IsValid())
+					{
+						ImGui::Text("Role: %s", TCHAR_TO_ANSI(*EntEntry.Role.ToString()));
+					}
+					ImGui::EndTooltip();
+				}
+
+				ImGui::SameLine(420);
+				if (ImGui::SmallButton("Claim"))
+				{
+					if (Sub)
+					{
+						Sub->ClaimAdvertisement(ListEntry.Handle, EntEntry.Entity);
+						RefreshEntryList();
+					}
+					bShowClaimPopup = false;
+				}
+
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+
+		ImGui::Spacing();
+		if (ImGui::Button("Cancel", ImVec2(120, 0)))
+		{
+			bShowClaimPopup = false;
 		}
 
 		ImGui::EndPopup();

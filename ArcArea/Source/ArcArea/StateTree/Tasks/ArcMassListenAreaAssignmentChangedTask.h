@@ -5,6 +5,10 @@
 #include "CoreMinimal.h"
 #include "MassStateTreeTypes.h"
 #include "StateTreeDelegate.h"
+#include "ArcAreaTypes.h"
+#include "ArcKnowledgeTypes.h"
+#include "MassSmartObjectRequest.h"
+#include "ArcMass/ArcMassEntityHandleWrapper.h"
 #include "ArcMassListenAreaAssignmentChangedTask.generated.h"
 
 USTRUCT()
@@ -20,6 +24,21 @@ struct FArcMassListenAreaAssignmentChangedTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FStateTreeDelegateDispatcher OnAreaUnassigned;
 
+	/** The slot handle involved in the most recent assignment change. */
+	UPROPERTY(EditAnywhere, Category = Output)
+	FArcAreaSlotHandle SlotHandle;
+
+	/** The Mass entity handle of the area involved in the assignment change. */
+	UPROPERTY(EditAnywhere, Category = Output)
+	FArcMassEntityHandleWrapper AreaEntity;
+
+	/** The vacancy advertisement handle for the slot (valid on assignment, looked up from auto-vacancy listener). */
+	UPROPERTY(EditAnywhere, Category = Output)
+	FArcKnowledgeHandle AdvertisementHandle;
+
+	UPROPERTY(EditAnywhere, Category = Output)
+	FMassSmartObjectCandidateSlots CandidateSlots;
+	
 	/** Internal delegate handles for cleanup. */
 	FDelegateHandle AssignedHandle;
 	FDelegateHandle UnassignedHandle;
@@ -32,6 +51,25 @@ struct FArcMassListenAreaAssignmentChangedTaskInstanceData
  * dispatchers when the entity's area assignment changes. Returns Running and stays alive as a listener.
  *
  * Follows the established WeakExecutionContext + BroadcastDelegate + SignalEntities pattern.
+ *
+ * Typical StateTree composition for area-driven Smart Object usage:
+ *
+ * Root (outputs: SlotHandle, AreaEntity, AdvertisementHandle, CandidateSlots)
+ * |
+ * |-- State: Listen [ListenAreaAssignmentChangedTask]
+ * |     Latent — stays Running, fires OnAreaAssigned / OnAreaUnassigned delegates
+ * |     Populates SlotHandle, AreaEntity, AdvertisementHandle, CandidateSlots on assignment
+ * |     -> OnAreaAssigned: go to Bound Task
+ * |
+ * '-- State: Bound Task (can be empty or do pre-work)
+ *       -> Succeeded: go to Use Slot
+ *       |
+ *       '-- State: Use Slot
+ *             Claim the smart object, then use it
+ *             Task: [ClaimSmartObjectTask] bind CandidateSlots from listener output
+ *             Task: [ArcMassUseSmartObjectTask] bind ClaimHandle from claim output,
+ *                    SmartObjectEntityHandle from AreaEntity output
+ *             -> Completed: return to Listen
  */
 USTRUCT(meta = (DisplayName = "Listen Area Assignment Changed", Category = "Arc|Area|NPC"))
 struct ARCAREA_API FArcMassListenAreaAssignmentChangedTask : public FMassStateTreeTaskBase

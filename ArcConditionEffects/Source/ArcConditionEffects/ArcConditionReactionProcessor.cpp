@@ -21,7 +21,7 @@ UArcConditionReactionProcessor::UArcConditionReactionProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PostPhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
@@ -61,6 +61,8 @@ void UArcConditionReactionProcessor::ConfigureQueries(const TSharedRef<FMassEnti
 	EntityQuery.AddRequirement<FArcBlindedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	EntityQuery.AddRequirement<FArcSuffocatingConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	EntityQuery.AddRequirement<FArcExhaustedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
+	
+	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
 // ---------------------------------------------------------------------------

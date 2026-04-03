@@ -537,7 +537,7 @@ void UArcInfluenceMappingTraitBase::BuildTemplate(FMassEntityTemplateBuildContex
 UArcInfluenceMappingProcessor::UArcInfluenceMappingProcessor()
 	: EntityQuery{*this}
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 	bAutoRegisterWithProcessingPhases = false;
 	

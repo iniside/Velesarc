@@ -31,7 +31,7 @@
 UArcHungerNeedProcessor::UArcHungerNeedProcessor()
 	: NeedsQuery(*this)
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 }
 
 void UArcHungerNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
@@ -45,7 +45,7 @@ void UArcHungerNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(ArcHungerNeed);
 
-	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
+	NeedsQuery.ForEachEntityChunk(Context, [](FMassExecutionContext& Context)
 	{
 		const float DeltaTime = Context.GetDeltaTimeSeconds();
 		const TArrayView<FArcHungerNeedFragment> Needs = Context.GetMutableFragmentView<FArcHungerNeedFragment>();
@@ -65,7 +65,7 @@ void UArcHungerNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 UArcThirstNeedProcessor::UArcThirstNeedProcessor()
 	: NeedsQuery(*this)
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 }
 
 void UArcThirstNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
@@ -99,7 +99,7 @@ void UArcThirstNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 UArcFatigueNeedProcessor::UArcFatigueNeedProcessor()
 	: NeedsQuery(*this)
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 }
 
@@ -114,7 +114,7 @@ void UArcFatigueNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassE
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(ArcFatigueNeed);
 
-	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
+	NeedsQuery.ForEachEntityChunk(Context, [](FMassExecutionContext& Context)
 	{
 		const float DeltaTime = Context.GetDeltaTimeSeconds();
 		const TArrayView<FArcFatigueNeedFragment> Needs = Context.GetMutableFragmentView<FArcFatigueNeedFragment>();

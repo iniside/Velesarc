@@ -2,7 +2,7 @@
 
 #include "ArcMassSmartObjectObservers.h"
 #include "ArcMassSmartObjectFragments.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassExecutionContext.h"
 #include "SmartObjectSubsystem.h"
 

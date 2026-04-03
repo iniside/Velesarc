@@ -16,6 +16,7 @@ public class ArcAITests : ModuleRules
 			"CQTest",
 			"ArcAI",
 			"MassEntity",
+			"MassCore",
 			"GameplayTags",
 			"SmartObjectsModule",
 			"MassSmartObjects"

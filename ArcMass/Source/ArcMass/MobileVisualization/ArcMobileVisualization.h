@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityManager.h"
 #include "MassEntityTypes.h"
 #include "Subsystems/WorldSubsystem.h"

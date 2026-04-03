@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "ArcMass/Visualization/ArcMassEntityVisualization.h"
 #include "ArcMass/Physics/ArcMassPhysicsBody.h"
+#include "ArcMass/Physics/ArcMassPhysicsBodyConfig.h"
 #include "ArcMass/Visualization/ArcVisLifecycle.h"
 #include "ArcMass/Lifecycle/ArcMassLifecycle.h"
 #include "DrawDebugHelpers.h"
@@ -350,14 +351,16 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 		const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 		if (Rep)
 		{
-			const char* StateStr = Arcx::GameplayDebugger::VisEntity::GetVisStateString(Rep->bIsActorRepresentation, Rep->bHasMeshRendering, Rep->bHasPhysicsBody);
+			const FArcMassPhysicsBodyFragment* PhysBodyFrag = Manager->GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+			const bool bHasPhysicsBody = PhysBodyFrag && PhysBodyFrag->Body != nullptr;
+			const char* StateStr = Arcx::GameplayDebugger::VisEntity::GetVisStateString(Rep->bIsActorRepresentation, Rep->bHasMeshRendering, bHasPhysicsBody);
 			ImVec4 StateColor = Arcx::GameplayDebugger::VisEntity::GetVisStateColor(Rep->bIsActorRepresentation, Rep->bHasMeshRendering);
 			ImGui::TextColored(StateColor, "State: %s", StateStr);
 
 			ImGui::Text("Mesh Grid: (%d, %d, %d)", Rep->MeshGridCoords.X, Rep->MeshGridCoords.Y, Rep->MeshGridCoords.Z);
 			ImGui::Text("Physics Grid: (%d, %d, %d)", Rep->PhysicsGridCoords.X, Rep->PhysicsGridCoords.Y, Rep->PhysicsGridCoords.Z);
 			ImGui::Text("Mesh Rendering: %s", Rep->bHasMeshRendering ? "Active" : "Inactive");
-			ImGui::Text("Physics Body: %s", Rep->bHasPhysicsBody ? "Attached" : "None");
+			ImGui::Text("Physics Body: %s", bHasPhysicsBody ? "Attached" : "None");
 		}
 		else
 		{
@@ -375,16 +378,18 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 			{
 				ImGui::Text("  Base Mesh: %s", TCHAR_TO_ANSI(*MeshFrag->Mesh->GetName()));
 			}
-			if (Config->ActorClass)
-			{
-				ImGui::Text("  Actor Class: %s", TCHAR_TO_ANSI(*Config->ActorClass->GetName()));
-			}
 			ImGui::Text("  Cast Shadows: %s", Config->bCastShadows ? "true" : "false");
-			ImGui::Text("  Physics Body: %s", Config->bEnablePhysicsBody ? "true" : "false");
-			if (Config->bEnablePhysicsBody)
+			const FArcMassPhysicsBodyConfigFragment* PhysConfig = Manager->GetConstSharedFragmentDataPtr<FArcMassPhysicsBodyConfigFragment>(Entity);
+			ImGui::Text("  Physics Config: %s", PhysConfig ? "true" : "false");
+			if (PhysConfig)
 			{
-				ImGui::Text("  Body Type: %s", Config->PhysicsBodyType == EArcMassPhysicsBodyType::Dynamic ? "Dynamic" : "Static");
+				ImGui::Text("  Body Type: %s", PhysConfig->BodyType == EArcMassPhysicsBodyType::Dynamic ? "Dynamic" : "Static");
 			}
+		}
+		const FArcVisActorConfigFragment* ActorConfig = Manager->GetConstSharedFragmentDataPtr<FArcVisActorConfigFragment>(Entity);
+		if (ActorConfig && ActorConfig->ActorClass)
+		{
+			ImGui::Text("  Actor Class: %s", TCHAR_TO_ANSI(*ActorConfig->ActorClass->GetName()));
 		}
 	}
 

@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassStateTreeTypes.h"
 #include "ArcKnowledgeQuery.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "ArcMassQueryKnowledgeTask.generated.h"
 
 class UArcKnowledgeQueryDefinition;

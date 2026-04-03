@@ -7,6 +7,7 @@
 #include "Engine/CollisionProfile.h"
 #include "Framework/Application/SlateApplication.h"
 #include "IDetailChildrenBuilder.h"
+#include "IDetailGroup.h"
 #include "IDetailPropertyRow.h"
 #include "IDocumentation.h"
 #include "PhysicsEngine/BodySetup.h"
@@ -110,15 +111,31 @@ void FArcBodyInstanceExpander::BuildBodyInstanceUI(TSharedRef<IPropertyHandle> I
 
 	CollisionResponsesHandle->SetIgnoreValidation(true);
 
-	// Determine current profile
+	// -- Collision group --
+	IDetailGroup& CollisionGroup = ChildrenBuilder.AddGroup(TEXT("Collision"), LOCTEXT("CollisionGroupLabel", "Collision"), /*bStartExpanded=*/ true);
+	CreateCollisionSetup(CollisionGroup, InBodyInstanceHandle);
+	AddCollisionProperties(CollisionGroup, InBodyInstanceHandle);
+
+	// -- Physics group --
+	IDetailGroup& PhysicsGroup = ChildrenBuilder.AddGroup(TEXT("Physics"), LOCTEXT("PhysicsGroupLabel", "Physics"), /*bStartExpanded=*/ true);
+	AddPhysicsProperties(PhysicsGroup, InBodyInstanceHandle);
+}
+
+void FArcBodyInstanceExpander::CreateCollisionSetup(IDetailGroup& CollisionGroup, TSharedRef<IPropertyHandle> StructPropertyHandle)
+{
+	UpdateValidCollisionChannels();
+
+	if (ValidCollisionChannels.Num() == 0)
+	{
+		return;
+	}
+
+	// Determine current profile for the combo box initial selection
 	FName ProfileName;
 	TSharedPtr<FString> DisplayName = CollisionProfileComboList[0];
-	bool bDisplayAdvancedCollisionSettings = true;
-
 	if (CollisionProfileNameHandle->GetValue(ProfileName) == FPropertyAccess::Result::Success && ArcBodyInstanceExpanderPrivate::IsValidCollisionProfileName(CollisionProfile, ProfileName))
 	{
 		DisplayName = GetProfileString(ProfileName);
-		bDisplayAdvancedCollisionSettings = false;
 	}
 
 	const FString PresetsDocLink = TEXT("Shared/Collision");
@@ -127,7 +144,7 @@ void FArcBodyInstanceExpander::BuildBodyInstanceUI(TSharedRef<IPropertyHandle> I
 		nullptr, PresetsDocLink, TEXT("PresetDetail"));
 
 	// Collision Presets header row
-	ChildrenBuilder.AddCustomRow(LOCTEXT("CollisionPresetsLabel", "Collision Presets"))
+	CollisionGroup.AddWidgetRow()
 	.OverrideResetToDefault(FResetToDefaultOverride::Create(
 		TAttribute<bool>::Create([this]() { return ShouldShowResetToDefaultProfile(); }),
 		FSimpleDelegate::CreateLambda([this]() { SetToDefaultProfile(); })
@@ -167,35 +184,18 @@ void FArcBodyInstanceExpander::BuildBodyInstanceUI(TSharedRef<IPropertyHandle> I
 		]
 	];
 
-	// Collision channel setup
-	CreateCollisionSetup(InBodyInstanceHandle, ChildrenBuilder);
-
-	// Physics properties
-	AddPhysicsProperties(InBodyInstanceHandle, ChildrenBuilder);
-}
-
-void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> StructPropertyHandle, IDetailChildrenBuilder& StructBuilder)
-{
-	UpdateValidCollisionChannels();
-
-	if (ValidCollisionChannels.Num() == 0)
-	{
-		return;
-	}
-
 	int32 TotalNumChildren = ValidCollisionChannels.Num();
-	TAttribute<bool> CollisionEnabled(this, &FArcBodyInstanceExpander::IsCollisionEnabled);
 	TAttribute<bool> CustomCollisionEnabled(this, &FArcBodyInstanceExpander::ShouldEnableCustomCollisionSetup);
 	TAttribute<EVisibility> CustomCollisionVisibility(this, &FArcBodyInstanceExpander::ShouldShowCustomCollisionSetup);
 
 	int32 IndexSelected = InitializeObjectTypeComboList();
-	StructBuilder.AddProperty(CollisionEnabledHandle.ToSharedRef())
+	CollisionGroup.AddPropertyRow(CollisionEnabledHandle.ToSharedRef())
 	.IsEnabled(CustomCollisionEnabled)
 	.Visibility(CustomCollisionVisibility);
 
 	if (!StructPropertyHandle->GetProperty()->GetBoolMetaData(TEXT("HideObjectType")))
 	{
-		StructBuilder.AddCustomRow(LOCTEXT("ObjectType", "Object Type"))
+		CollisionGroup.AddWidgetRow()
 		.Visibility(CustomCollisionVisibility)
 		.IsEnabled(CustomCollisionEnabled)
 		.NameContent()
@@ -220,7 +220,7 @@ void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> 
 	}
 
 	// Column headers: Ignore / Overlap / Block
-	StructBuilder.AddCustomRow(LOCTEXT("CustomCollision", "Custom Collision"))
+	CollisionGroup.AddWidgetRow()
 	.IsEnabled(CustomCollisionEnabled)
 	.Visibility(CustomCollisionVisibility)
 	.ValueContent()
@@ -264,7 +264,7 @@ void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> 
 	];
 
 	// "All" row with master checkboxes
-	StructBuilder.AddCustomRow(LOCTEXT("All", "All"))
+	CollisionGroup.AddWidgetRow()
 	.IsEnabled(CustomCollisionEnabled)
 	.Visibility(CustomCollisionVisibility)
 	.NameContent()
@@ -329,7 +329,7 @@ void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> 
 	];
 
 	// Trace Responses header
-	StructBuilder.AddCustomRow(LOCTEXT("TraceResponses", "Trace Responses"))
+	CollisionGroup.AddWidgetRow()
 	.IsEnabled(CustomCollisionEnabled)
 	.Visibility(CustomCollisionVisibility)
 	.NameContent()
@@ -351,7 +351,7 @@ void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> 
 		{
 			FString ChannelDisplayName = ValidCollisionChannels[Index].DisplayName;
 
-			StructBuilder.AddCustomRow(LOCTEXT("CollisionChannel", "Collision Channel"))
+			CollisionGroup.AddWidgetRow()
 			.IsEnabled(CustomCollisionEnabled)
 			.Visibility(CustomCollisionVisibility)
 			.OverrideResetToDefault(FResetToDefaultOverride::Create(
@@ -411,7 +411,7 @@ void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> 
 	}
 
 	// Object Responses header
-	StructBuilder.AddCustomRow(LOCTEXT("ObjectResponses", "Object Responses"))
+	CollisionGroup.AddWidgetRow()
 	.IsEnabled(CustomCollisionEnabled)
 	.Visibility(CustomCollisionVisibility)
 	.NameContent()
@@ -433,7 +433,7 @@ void FArcBodyInstanceExpander::CreateCollisionSetup(TSharedRef<IPropertyHandle> 
 		{
 			FString ChannelDisplayName = ValidCollisionChannels[Index].DisplayName;
 
-			StructBuilder.AddCustomRow(LOCTEXT("CollisionChannel", "Collision Channel"))
+			CollisionGroup.AddWidgetRow()
 			.IsEnabled(CustomCollisionEnabled)
 			.Visibility(CustomCollisionVisibility)
 			.OverrideResetToDefault(FResetToDefaultOverride::Create(
@@ -919,41 +919,77 @@ EVisibility FArcBodyInstanceExpander::ShouldShowCustomCollisionSetup() const
 }
 
 ////////////////////////////////////////////////////////////////
+// Collision properties
+////////////////////////////////////////////////////////////////
+
+IDetailPropertyRow* FArcBodyInstanceExpander::AddPropertyToGroup(IDetailGroup& Group, TSharedRef<IPropertyHandle> StructHandle, FName PropertyName)
+{
+	TSharedPtr<IPropertyHandle> ChildHandle = StructHandle->GetChildHandle(PropertyName);
+	if (ChildHandle.IsValid())
+	{
+		return &Group.AddPropertyRow(ChildHandle.ToSharedRef());
+	}
+	return nullptr;
+}
+
+void FArcBodyInstanceExpander::AddCollisionProperties(IDetailGroup& CollisionGroup, TSharedRef<IPropertyHandle> InBodyInstanceHandle)
+{
+	AddPropertyToGroup(CollisionGroup, InBodyInstanceHandle, TEXT("PhysMaterialOverride"));
+	AddPropertyToGroup(CollisionGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bNotifyRigidBodyCollision));
+	AddPropertyToGroup(CollisionGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bUseCCD));
+	AddPropertyToGroup(CollisionGroup, InBodyInstanceHandle, TEXT("bUseMACD"));
+	AddPropertyToGroup(CollisionGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bIgnoreAnalyticCollisions));
+	AddPropertyToGroup(CollisionGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bSmoothEdgeCollisions));
+}
+
+////////////////////////////////////////////////////////////////
 // Physics properties
 ////////////////////////////////////////////////////////////////
 
-void FArcBodyInstanceExpander::AddPhysicsProperties(TSharedRef<IPropertyHandle> InBodyInstanceHandle, IDetailChildrenBuilder& ChildrenBuilder)
+void FArcBodyInstanceExpander::AddPhysicsProperties(IDetailGroup& PhysicsGroup, TSharedRef<IPropertyHandle> InBodyInstanceHandle)
 {
-	// Properties already handled by collision UI — skip these
-	static const TSet<FName> CollisionHandledProperties = {
-		TEXT("CollisionProfileName"),
-		TEXT("CollisionEnabled"),
-		TEXT("ObjectType"),
-		TEXT("CollisionResponses"),
-	};
+	// Primary
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bSimulatePhysics));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, TEXT("MassInKgOverride"));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, LinearDamping));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, AngularDamping));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bEnableGravity));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, GravityGroupIndex));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, TEXT("bInertiaConditioning"));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, DOFMode));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, CustomDOFPlaneNormal));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockTranslation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockRotation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockXTranslation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockYTranslation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockZTranslation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockXRotation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockYRotation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bLockZRotation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, TEXT("WalkableSlopeOverride"));
 
-	// Enumerate all child properties and add any that are editor-visible and not already handled
-	uint32 NumChildren = 0;
-	InBodyInstanceHandle->GetNumChildren(NumChildren);
-
-	for (uint32 ChildIndex = 0; ChildIndex < NumChildren; ++ChildIndex)
-	{
-		TSharedPtr<IPropertyHandle> ChildHandle = InBodyInstanceHandle->GetChildHandle(ChildIndex);
-		if (!ChildHandle.IsValid())
-		{
-			continue;
-		}
-
-		FName PropertyName = ChildHandle->GetProperty()->GetFName();
-
-		// Skip properties already rendered by collision UI
-		if (CollisionHandledProperties.Contains(PropertyName))
-		{
-			continue;
-		}
-
-		ChildrenBuilder.AddProperty(ChildHandle.ToSharedRef());
-	}
+	// Advanced
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bAutoWeld));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bStartAwake));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bGenerateWakeEvents));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bUpdateKinematicFromSimulation));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bGyroscopicTorqueEnabled));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, COMNudge));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, MassScale));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bUpdateMassWhenScaleChanges));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, InertiaTensorScale));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, MaxAngularVelocity));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, TEXT("MaxDepenetrationVelocity"));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, TEXT("bOneWayInteraction"));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, TEXT("bAllowPartialIslandSleep"));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, SleepFamily));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, CustomSleepThresholdMultiplier));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, StabilizationThresholdMultiplier));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, bOverrideSolverAsyncDeltaTime));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, SolverAsyncDeltaTime));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, PositionSolverIterationCount));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, VelocitySolverIterationCount));
+	AddPropertyToGroup(PhysicsGroup, InBodyInstanceHandle, GET_MEMBER_NAME_CHECKED(FBodyInstance, ProjectionSolverIterationCount));
 }
 
 ////////////////////////////////////////////////////////////////

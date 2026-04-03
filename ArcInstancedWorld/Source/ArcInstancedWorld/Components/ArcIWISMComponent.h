@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/InstancedStaticMeshComponent.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityManager.h"
 #include "ArcIWISMComponent.generated.h"
 

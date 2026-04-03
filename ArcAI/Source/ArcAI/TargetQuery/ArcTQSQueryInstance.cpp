@@ -12,6 +12,26 @@
 #include "MassEntityManager.h"
 #include "GameFramework/Actor.h"
 
+#if !UE_BUILD_SHIPPING
+
+// Get the display name for a step from its instanced struct
+static FString GetStepName(const FInstancedStruct& StepStruct)
+{
+	if (const UScriptStruct* ScriptStruct = StepStruct.GetScriptStruct())
+	{
+		// Try DisplayName metadata first (what's set in USTRUCT(DisplayName = "..."))
+		const FString DisplayName = ScriptStruct->GetMetaData(TEXT("DisplayName"));
+		if (!DisplayName.IsEmpty())
+		{
+			return DisplayName;
+		}
+		return ScriptStruct->GetName();
+	}
+	return TEXT("Unknown");
+}
+
+#endif // !UE_BUILD_SHIPPING
+
 #if ENABLE_VISUAL_LOG
 
 // Get a readable name for a target item (entity index, actor name, or location)
@@ -51,22 +71,6 @@ static FString GetItemDescription(const FArcTQSTargetItem& Item, const FArcTQSQu
 	default:
 		return FString::Printf(TEXT("Item(%.0f, %.0f, %.0f)"), Item.Location.X, Item.Location.Y, Item.Location.Z);
 	}
-}
-
-// Get the display name for a step from its instanced struct
-static FString GetStepName(const FInstancedStruct& StepStruct)
-{
-	if (const UScriptStruct* ScriptStruct = StepStruct.GetScriptStruct())
-	{
-		// Try DisplayName metadata first (what's set in USTRUCT(DisplayName = "..."))
-		const FString DisplayName = ScriptStruct->GetMetaData(TEXT("DisplayName"));
-		if (!DisplayName.IsEmpty())
-		{
-			return DisplayName;
-		}
-		return ScriptStruct->GetName();
-	}
-	return TEXT("Unknown");
 }
 
 void FArcTQSQueryInstance::FlushDebugLog()
@@ -156,6 +160,9 @@ bool FArcTQSQueryInstance::ExecuteStep(double Deadline)
 		RunSelection();
 		Status = EArcTQSQueryStatus::Completed;
 		TotalExecutionTime += FPlatformTime::Seconds() - StepStart;
+#if !UE_BUILD_SHIPPING
+		TotalExecutionTime -= DebugCollectionOverhead;
+#endif
 		TRACE_ARCTQS_QUERY_COMPLETED(*this);
 
 #if ENABLE_VISUAL_LOG
@@ -231,6 +238,12 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 		int32 FilteredCount = 0;
 #endif
 
+#if !UE_BUILD_SHIPPING
+		TArray<float> DebugRawScores;
+		DebugRawScores.SetNumZeroed(Items.Num());
+		int32 DebugFilteredCount = 0;
+#endif
+
 		// Process items from CurrentItemIndex to end, or until deadline
 		while (CurrentItemIndex < Items.Num())
 		{
@@ -245,11 +258,19 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 			{
 				const float RawScore = Step->ExecuteStep(Item, QueryContext);
 
+#if !UE_BUILD_SHIPPING
+					DebugRawScores[CurrentItemIndex] = RawScore;
+#endif
+
 				if (Step->StepType == EArcTQSStepType::Filter)
 				{
 					if (RawScore <= 0.0f)
 					{
 						Item.bValid = false;
+
+#if !UE_BUILD_SHIPPING
+							++DebugFilteredCount;
+#endif
 
 #if ENABLE_VISUAL_LOG
 						++FilteredCount;
@@ -287,6 +308,25 @@ bool FArcTQSQueryInstance::RunProcessingSteps(double Deadline)
 		{
 			DebugLog += FString::Printf(TEXT("Step %d [%s] (Score, weight=%.2f) — processed %d items\n"),
 				CurrentStepIndex, *StepName, Step->Weight, Items.Num());
+		}
+#endif
+
+#if !UE_BUILD_SHIPPING
+		{
+			const double DebugStart = FPlatformTime::Seconds();
+			FArcTQSDebugStepData StepDebug;
+			StepDebug.StepName = GetStepName(Steps[CurrentStepIndex]);
+			StepDebug.StepType = Step->StepType;
+			StepDebug.Weight = Step->Weight;
+			StepDebug.RawScores = MoveTemp(DebugRawScores);
+			StepDebug.FilteredCount = DebugFilteredCount;
+			StepDebug.CumulativeScores.SetNumUninitialized(Items.Num());
+			for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
+			{
+				StepDebug.CumulativeScores[ItemIdx] = Items[ItemIdx].Score;
+			}
+			DebugStepBreakdown.Add(MoveTemp(StepDebug));
+			DebugCollectionOverhead += FPlatformTime::Seconds() - DebugStart;
 		}
 #endif
 

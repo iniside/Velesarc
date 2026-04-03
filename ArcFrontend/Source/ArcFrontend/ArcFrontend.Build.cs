@@ -107,11 +107,19 @@ public class ArcFrontend : ModuleRules
 			new string[]
 			{
 				"ArcGun", "AudioModulation"
-				// ... add private dependencies that you statically link with here ...	
+				, "MassCore"
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
-		
-		
+
+
+		PublicDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"MassEntity"
+			}
+		);
+
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{

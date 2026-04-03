@@ -1,7 +1,7 @@
 ﻿#include "ArcAIDebugger.h"
 
 #include "DrawDebugHelpers.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassExecutionContext.h"
 #include "MassGameplayDebugTypes.h"

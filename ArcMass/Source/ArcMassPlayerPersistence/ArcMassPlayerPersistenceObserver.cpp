@@ -19,7 +19,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogArcMassPlayerPersistenceObserver, Log, All);
 UArcMassPlayerPersistenceObserver::UArcMassPlayerPersistenceObserver()
 	: EntityQuery{*this}
 {
-	ObservedType = FArcMassPlayerPersistenceTag::StaticStruct();
+	ObservedTypes.Add(FArcMassPlayerPersistenceTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bAutoRegisterWithProcessingPhases = true;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);

@@ -11,11 +11,17 @@
 #include "Engine/World.h"
 #include "StructUtils/StructView.h"
 
+UE_DEFINE_GAMEPLAY_TAG(TAG_GameKnowledge_Event_GlobalMessage, "GameKnowledge.Event.GlobalMessage");
+UE_DEFINE_GAMEPLAY_TAG(TAG_GameKnowledge_Event_SpatialMessage, "GameKnowledge.Event.SpatialMessage");
+
 void FArcKnowledgeEventBroadcaster::Initialize(UAsyncMessageWorldSubsystem* AsyncMessage, const FArcKnowledgeEventBroadcastConfig& InConfig)
 {
 
 	Config = InConfig;
 
+	Config.GlobalMessageId = FAsyncMessageId(TAG_GameKnowledge_Event_GlobalMessage);
+	Config.SpatialMessageId = FAsyncMessageId(TAG_GameKnowledge_Event_SpatialMessage);
+	
 	if (!AsyncMessage)
 	{
 		return;

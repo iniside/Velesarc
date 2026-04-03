@@ -18,7 +18,7 @@
 	{ \
 		bAutoRegisterWithProcessingPhases = true; \
 		bRequiresGameThreadExecution = false; \
-		ProcessingPhase = EMassProcessingPhase::PrePhysics; \
+		ProcessingPhase = EMassProcessingPhase::DuringPhysics; \
 		ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone); \
 	} \
 	\

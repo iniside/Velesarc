@@ -6,7 +6,7 @@
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
 #include "GameplayTagContainer.h"
 #include "GameplayTagsManager.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 
 // ---------------------------------------------------------------
 // Helpers

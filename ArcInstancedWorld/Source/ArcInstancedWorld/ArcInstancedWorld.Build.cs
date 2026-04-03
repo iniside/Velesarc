@@ -13,6 +13,7 @@ public class ArcInstancedWorld : ModuleRules
 				"Engine",
 				"CoreUObject",
 				"MassEntity",
+				"MassCore",
 				"MassSpawner",
 				"MassCommon",
 				"MassActors",

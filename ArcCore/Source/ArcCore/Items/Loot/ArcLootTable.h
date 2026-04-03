@@ -24,7 +24,7 @@
 #include "Engine/DataAsset.h"
 #include "ArcNamedPrimaryAssetId.h"
 #include "Items/ArcItemSpec.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "StructUtils/InstancedStruct.h"
 #include "StructUtils/StructView.h"
 

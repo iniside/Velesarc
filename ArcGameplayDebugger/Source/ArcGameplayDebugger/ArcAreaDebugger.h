@@ -5,9 +5,11 @@
 #include "ArcAreaTypes.h"
 #include "ArcAreaSlotDefinition.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
+#include "ArcKnowledgeTypes.h"
 
 class UArcAreaSubsystem;
+class UArcKnowledgeSubsystem;
 
 class FArcAreaDebugger
 {
@@ -47,9 +49,34 @@ private:
 		int32 CurrentSlotIndex = INDEX_NONE;
 	};
 
+	// --- Cached knowledge entry for the knowledge section ---
+	struct FKnowledgeEntryCache
+	{
+		FArcKnowledgeHandle Handle;
+		FGameplayTagContainer Tags;
+		FVector Location = FVector::ZeroVector;
+		float Relevance = 0.0f;
+		double Timestamp = 0.0;
+		float Lifetime = 0.0f;
+		bool bIsAdvertisement = false;
+		bool bClaimed = false;
+		FMassEntityHandle ClaimedBy;
+		FString PayloadTypeName;
+	};
+
+	// --- Cached claimable entity for knowledge claim popup ---
+	struct FClaimableEntityEntry
+	{
+		FMassEntityHandle Entity;
+		FString Label;
+		FVector Location = FVector::ZeroVector;
+		FGameplayTag Role;
+	};
+
 	// --- World helpers ---
 	static UWorld* GetDebugWorld();
 	UArcAreaSubsystem* GetAreaSubsystem() const;
+	UArcKnowledgeSubsystem* GetKnowledgeSubsystem() const;
 
 	// --- Refresh ---
 	void RefreshAreaList();
@@ -68,6 +95,12 @@ private:
 	// --- Assignment popup ---
 	void DrawAssignEntityPopup();
 
+	// --- Knowledge section ---
+	void RefreshKnowledgeEntries();
+	void RefreshClaimableEntities();
+	void DrawKnowledgeSection(const FMassEntityHandle& OwnerEntity);
+	void DrawClaimEntityPopup();
+
 	// --- State ---
 	TArray<FAreaListEntry> CachedAreas;
 	int32 SelectedAreaIndex = INDEX_NONE;
@@ -85,4 +118,15 @@ private:
 	int32 AssignTargetSlotIndex = INDEX_NONE;
 	TArray<FAssignableEntityEntry> CachedAssignableEntities;
 	char EntityFilterBuf[256] = {};
+
+	// Knowledge section state
+	TArray<FKnowledgeEntryCache> CachedKnowledgeEntries;
+	int32 SelectedKnowledgeIndex = INDEX_NONE;
+	FMassEntityHandle KnowledgeOwnerEntity;
+
+	// Claim popup state
+	bool bShowClaimPopup = false;
+	FArcKnowledgeHandle ClaimTargetHandle;
+	TArray<FClaimableEntityEntry> CachedClaimableEntities;
+	char ClaimEntityFilterBuf[256] = {};
 };

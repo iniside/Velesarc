@@ -39,10 +39,10 @@ const TArray<TObjectPtr<UMaterialInterface>>& FArcVisLifecycleConfigFragment::Re
 }
 
 TSubclassOf<AActor> FArcVisLifecycleConfigFragment::ResolveActorClass(
-	uint8 Phase, const FArcVisConfigFragment& BaseConfig) const
+	uint8 Phase, const FArcVisActorConfigFragment& BaseActorConfig) const
 {
 	const FArcVisLifecyclePhaseVisuals& Visuals = GetPhaseVisuals(Phase);
-	return Visuals.HasActorOverride() ? Visuals.ActorClassOverride : BaseConfig.ActorClass;
+	return Visuals.HasActorOverride() ? Visuals.ActorClassOverride : BaseActorConfig.ActorClass;
 }
 
 // ---------------------------------------------------------------------------

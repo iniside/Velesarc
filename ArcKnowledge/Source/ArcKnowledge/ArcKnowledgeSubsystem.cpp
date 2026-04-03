@@ -6,7 +6,7 @@
 #include "ArcKnowledgeQueryDefinition.h"
 #include "ArcKnowledgeEntryDefinition.h"
 #include "AsyncMessageWorldSubsystem.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "Engine/World.h"
 
 DECLARE_STATS_GROUP(TEXT("ArcKnowledge"), STATGROUP_ArcKnowledge, STATCAT_Advanced);
@@ -85,6 +85,11 @@ FArcKnowledgeHandle UArcKnowledgeSubsystem::RegisterKnowledge(FArcKnowledgeEntry
 	const FArcKnowledgeHandle Handle = FArcKnowledgeHandle::Make();
 	Entry.Handle = Handle;
 
+	if (Entry.bPersistent)
+	{
+		Entry.Lifetime = 0.0f;
+	}
+
 	if (Entry.Timestamp == 0.0 && GetWorld())
 	{
 		Entry.Timestamp = GetWorld()->GetTimeSeconds();
@@ -147,6 +152,22 @@ void UArcKnowledgeSubsystem::UpdateKnowledge(FArcKnowledgeHandle Handle, const F
 }
 
 void UArcKnowledgeSubsystem::RemoveKnowledge(FArcKnowledgeHandle Handle)
+{
+	const FArcKnowledgeEntry* Entry = Entries.Find(Handle);
+	if (!Entry || Entry->bPersistent)
+	{
+		return;
+	}
+
+	RemoveKnowledgeInternal(Handle);
+}
+
+void UArcKnowledgeSubsystem::ForceRemoveKnowledge(FArcKnowledgeHandle Handle)
+{
+	RemoveKnowledgeInternal(Handle);
+}
+
+void UArcKnowledgeSubsystem::RemoveKnowledgeInternal(FArcKnowledgeHandle Handle)
 {
 	const FArcKnowledgeEntry* Entry = Entries.Find(Handle);
 	if (!Entry)
@@ -333,11 +354,11 @@ void UArcKnowledgeSubsystem::RemoveKnowledgeBySource(FMassEntityHandle SourceEnt
 		return;
 	}
 
-	// Copy to avoid mutation during iteration (RemoveKnowledge modifies SourceEntityIndex)
+	// Copy to avoid mutation during iteration (ForceRemoveKnowledge modifies SourceEntityIndex)
 	TArray<FArcKnowledgeHandle> HandlesCopy = *Handles;
 	for (const FArcKnowledgeHandle& Handle : HandlesCopy)
 	{
-		RemoveKnowledge(Handle);
+		ForceRemoveKnowledge(Handle);
 	}
 }
 
@@ -623,25 +644,35 @@ bool UArcKnowledgeSubsystem::ClaimAdvertisement(FArcKnowledgeHandle Handle, FMas
 
 void UArcKnowledgeSubsystem::CompleteAdvertisement(FArcKnowledgeHandle Handle)
 {
-	// Fire AdvertisementCompleted before RemoveKnowledge (which fires Removed and deletes)
-	if (const FArcKnowledgeEntry* Entry = Entries.Find(Handle))
-	{
-		BroadcastKnowledgeEvent(EArcKnowledgeEventType::AdvertisementCompleted, *Entry);
-	}
-
-	RemoveKnowledge(Handle);
-}
-
-void UArcKnowledgeSubsystem::CancelAdvertisement(FArcKnowledgeHandle Handle)
-{
 	FArcKnowledgeEntry* Entry = Entries.Find(Handle);
 	if (!Entry)
 	{
 		return;
 	}
 
+	BroadcastKnowledgeEvent(EArcKnowledgeEventType::AdvertisementCompleted, *Entry);
+
+	if (Entry->bPersistent)
+	{
+		// Persistent entries stay with their claim state intact.
+		// Poster or manager must explicitly unclaim to make available again.
+		return;
+	}
+
+	RemoveKnowledgeInternal(Handle);
+}
+
+bool UArcKnowledgeSubsystem::CancelAdvertisement(FArcKnowledgeHandle Handle)
+{
+	FArcKnowledgeEntry* Entry = Entries.Find(Handle);
+	if (!Entry || !Entry->bClaimed)
+	{
+		return false;
+	}
+
 	Entry->bClaimed = false;
 	Entry->ClaimedBy = FMassEntityHandle();
+	return true;
 }
 
 // ====================================================================

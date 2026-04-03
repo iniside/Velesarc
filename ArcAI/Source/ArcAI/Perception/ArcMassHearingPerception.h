@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "ArcMassPerception.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassProcessor.h"
 #include "MassObserverProcessor.h"
 #include "MassEntityTraitBase.h"

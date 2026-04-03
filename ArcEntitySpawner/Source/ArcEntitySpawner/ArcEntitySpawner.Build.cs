@@ -15,6 +15,7 @@ public class ArcEntitySpawner : ModuleRules
 				, "Engine"
 				, "MassActors"
 				, "MassCommon"
+				, "MassCore"
 				, "MassEntity"
 				, "MassSimulation"
 				, "MassSpawner"

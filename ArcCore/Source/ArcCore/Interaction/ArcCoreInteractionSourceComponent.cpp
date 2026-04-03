@@ -17,6 +17,7 @@
 #include "ArcInteractionDisplayData.h"
 #include "MassEntitySubsystem.h"
 #include "SmartObjectDefinition.h"
+#include "ArcMass/Physics/ArcMassPhysicsEntityLink.h"
 
 UArcCoreInteractionSourceComponent::UArcCoreInteractionSourceComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -68,10 +69,10 @@ void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequ
 	// Extract the best target (first result after filtering + sorting)
 	TScriptInterface<IInteractionTarget> NewTarget;
 	FMassEntityHandle NewEntityTarget;
-
+	const FTargetingDefaultResultData& BestResult = TargetingResults.TargetResults.Num() > 0 ? TargetingResults.TargetResults[0] : FTargetingDefaultResultData();
+	
 	if (TargetingResults.TargetResults.Num() > 0)
-	{
-		const FTargetingDefaultResultData& BestResult = TargetingResults.TargetResults[0];
+	{	
 		if (AActor* HitActor = BestResult.HitResult.GetActor())
 		{
 			// Try actor first
@@ -181,7 +182,9 @@ void UArcCoreInteractionSourceComponent::HandleTargetingCompleted(FTargetingRequ
 		{
 			FArcInteractionAcquiredMessage AcquiredMsg;
 			AcquiredMsg.QueryResults = CurrentQueryResults;
-
+			AcquiredMsg.EntityHandle = CurrentEntityTarget;
+			AcquiredMsg.Location = ArcMassPhysicsEntityLink::ResolveHitToBodyTransform(BestResult.HitResult).GetLocation();
+			
 			FAsyncMessageId MessageId(Arcx::InteractionMessages::Interaction_Acquired);
 			MessageSystem->QueueMessageForBroadcast(MessageId, FConstStructView::Make(AcquiredMsg));
 		}

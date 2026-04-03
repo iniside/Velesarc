@@ -7,7 +7,7 @@
 #include "MassEntityTypes.h"
 #include "SmartObjectTypes.h"
 #include "ArcAreaSlotDefinition.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcAreaTypes.generated.h"
 
 /** Lightweight handle to an area registered in UArcAreaSubsystem. */

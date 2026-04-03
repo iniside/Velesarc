@@ -15,7 +15,7 @@ UArcMassPhysicsBodyDeactivateProcessor::UArcMassPhysicsBodyDeactivateProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
-	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Client | EProcessorExecutionFlags::Standalone);
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::AllNetModes);
 }
 
 void UArcMassPhysicsBodyDeactivateProcessor::InitializeInternal(

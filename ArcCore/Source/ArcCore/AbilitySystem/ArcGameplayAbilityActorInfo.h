@@ -22,7 +22,7 @@
 #pragma once
 
 #include "Abilities/GameplayAbilityTypes.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcGameplayAbilityActorInfo.generated.h"
 
 class UArcQuickBarComponent;

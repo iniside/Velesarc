@@ -8,6 +8,8 @@
 #include "MassStateTreeDependency.h"
 #include "StateTreeAsyncExecutionContext.h"
 #include "ArcMass/Messaging/ArcMassAsyncMessageEndpointFragment.h"
+#include "ArcKnowledgeSubsystem.h"
+#include "ArcKnowledgeEntry.h"
 #include "StateTreeLinker.h"
 
 FArcMassListenToKnowledgeEventTask::FArcMassListenToKnowledgeEventTask()
@@ -30,9 +32,19 @@ EStateTreeRunStatus FArcMassListenToKnowledgeEventTask::EnterState(FStateTreeExe
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-	// Reset outputs
-	InstanceData.bEventReceived = false;
-	InstanceData.ReceivedEvent = FArcKnowledgeChangedEvent();
+	// Reset all outputs
+	InstanceData.KnowledgeHandle = FArcKnowledgeHandle();
+	InstanceData.EventType = EArcKnowledgeEventType::Registered;
+	InstanceData.Tags.Reset();
+	InstanceData.Location = FVector::ZeroVector;
+	InstanceData.bEntryAvailable = false;
+	InstanceData.SourceEntity = FArcMassEntityHandleWrapper();
+	InstanceData.Payload.Reset();
+	InstanceData.Relevance = 1.0f;
+	InstanceData.Timestamp = 0.0;
+	InstanceData.Lifetime = 0.0f;
+	InstanceData.bClaimed = false;
+	InstanceData.ClaimedBy = FArcMassEntityHandleWrapper();
 
 	return EStateTreeRunStatus::Running;
 }
@@ -59,14 +71,12 @@ EStateTreeRunStatus FArcMassListenToKnowledgeEventTask::Tick(FStateTreeExecution
 		return EStateTreeRunStatus::Running;
 	}
 
-	// Get the message system
 	TSharedPtr<FAsyncMessageSystemBase> MessageSystem = UAsyncMessageWorldSubsystem::GetSharedMessageSystem(World);
 	if (!MessageSystem)
 	{
 		return EStateTreeRunStatus::Running;
 	}
 
-	// Get the entity's endpoint fragment
 	FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
 	const FMassEntityHandle Entity = MassCtx.GetEntity();
 
@@ -77,29 +87,14 @@ EStateTreeRunStatus FArcMassListenToKnowledgeEventTask::Tick(FStateTreeExecution
 	}
 
 	UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
-
-	// Capture filter data for the lambda
-	const FGameplayTagQuery TagFilter = InstanceData.TagFilter;
-	const TArray<EArcKnowledgeEventType> AcceptedTypes = InstanceData.AcceptedEventTypes;
+	UArcKnowledgeSubsystem* KnowledgeSubsystem = World->GetSubsystem<UArcKnowledgeSubsystem>();
 
 	InstanceData.BoundListenerHandle = MessageSystem->BindListener(
 		InstanceData.MessageId,
-		[SignalSubsystem, WeakContext = Context.MakeWeakExecutionContext(), Entity, TagFilter, AcceptedTypes](const FAsyncMessage& Message)
+		[SignalSubsystem, KnowledgeSubsystem, WeakContext = Context.MakeWeakExecutionContext(), Entity](const FAsyncMessage& Message)
 		{
 			const FArcKnowledgeChangedEvent* Event = Message.GetPayloadView().GetPtr<FArcKnowledgeChangedEvent>();
 			if (!Event)
-			{
-				return;
-			}
-
-			// Apply event type filter
-			if (!AcceptedTypes.IsEmpty() && !AcceptedTypes.Contains(Event->EventType))
-			{
-				return;
-			}
-
-			// Apply tag filter
-			if (!TagFilter.IsEmpty() && !TagFilter.Matches(Event->Tags))
 			{
 				return;
 			}
@@ -108,17 +103,61 @@ EStateTreeRunStatus FArcMassListenToKnowledgeEventTask::Tick(FStateTreeExecution
 			FArcMassListenToKnowledgeEventTaskInstanceData* InstanceDataPtr =
 				StrongContext.GetInstanceDataPtr<FArcMassListenToKnowledgeEventTaskInstanceData>();
 
-			if (InstanceDataPtr)
+			if (!InstanceDataPtr)
 			{
-				InstanceDataPtr->ReceivedEvent = *Event;
-				InstanceDataPtr->bEventReceived = true;
+				return;
+			}
 
-				StrongContext.BroadcastDelegate(InstanceDataPtr->OnEventReceived);
+			// Populate event-derived outputs
+			InstanceDataPtr->KnowledgeHandle = Event->Handle;
+			InstanceDataPtr->EventType = Event->EventType;
+			InstanceDataPtr->Tags = Event->Tags;
+			InstanceDataPtr->Location = Event->Location;
 
-				if (SignalSubsystem)
+			// Look up full entry from subsystem
+			InstanceDataPtr->bEntryAvailable = false;
+			if (KnowledgeSubsystem)
+			{
+				const FArcKnowledgeEntry* Entry = KnowledgeSubsystem->GetKnowledgeEntry(Event->Handle);
+				if (Entry)
 				{
-					SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
+					InstanceDataPtr->bEntryAvailable = true;
+					InstanceDataPtr->SourceEntity.EntityHandle = Entry->SourceEntity;
+					InstanceDataPtr->Payload = Entry->Payload;
+					InstanceDataPtr->Relevance = Entry->Relevance;
+					InstanceDataPtr->Timestamp = Entry->Timestamp;
+					InstanceDataPtr->Lifetime = Entry->Lifetime;
+					InstanceDataPtr->bClaimed = Entry->bClaimed;
+					InstanceDataPtr->ClaimedBy.EntityHandle = Entry->ClaimedBy;
 				}
+			}
+
+			// Fire the matching typed dispatcher
+			switch (Event->EventType)
+			{
+			case EArcKnowledgeEventType::Registered:
+				StrongContext.BroadcastDelegate(InstanceDataPtr->OnRegistered);
+				break;
+			case EArcKnowledgeEventType::Updated:
+				StrongContext.BroadcastDelegate(InstanceDataPtr->OnUpdated);
+				break;
+			case EArcKnowledgeEventType::Removed:
+				StrongContext.BroadcastDelegate(InstanceDataPtr->OnRemoved);
+				break;
+			case EArcKnowledgeEventType::AdvertisementPosted:
+				StrongContext.BroadcastDelegate(InstanceDataPtr->OnAdvertisementPosted);
+				break;
+			case EArcKnowledgeEventType::AdvertisementClaimed:
+				StrongContext.BroadcastDelegate(InstanceDataPtr->OnAdvertisementClaimed);
+				break;
+			case EArcKnowledgeEventType::AdvertisementCompleted:
+				StrongContext.BroadcastDelegate(InstanceDataPtr->OnAdvertisementCompleted);
+				break;
+			}
+
+			if (SignalSubsystem)
+			{
+				SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, {Entity});
 			}
 		},
 		FAsyncMessageBindingOptions(),

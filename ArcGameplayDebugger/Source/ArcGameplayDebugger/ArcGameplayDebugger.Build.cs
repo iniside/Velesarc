@@ -40,6 +40,7 @@ public class ArcGameplayDebugger : ModuleRules
 				"ArcBuilder",
 				"ArcAI",
 				"MassEntity",
+				"MassCore",
 				"MassSpawner",
 				"MassCommon",
 				"MassActors",

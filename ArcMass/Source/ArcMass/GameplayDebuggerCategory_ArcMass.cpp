@@ -5,6 +5,7 @@
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include "ArcMass/Visualization/ArcMassEntityVisualization.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
 #include "ArcMass/Lifecycle/ArcMassLifecycle.h"
 #include "CanvasItem.h"
 #include "GameFramework/PlayerController.h"
@@ -369,7 +370,7 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 
 	FMassExecutionContext Context(EntityManager, 0.f);
 	EntityQuery.ForEachEntityChunk(Context,
-		[this, &ViewLocation, &ViewDirection, MaxEntityDrawDistSq, MinViewDirDot, &VisSub](FMassExecutionContext& ExecContext)
+		[this, &EntityManager, &ViewLocation, &ViewDirection, MaxEntityDrawDistSq, MinViewDirDot, &VisSub](FMassExecutionContext& ExecContext)
 		{
 			const int32 NumEntities = ExecContext.GetNumEntities();
 			TConstArrayView<FTransformFragment> TransformList = ExecContext.GetFragmentView<FTransformFragment>();
@@ -429,7 +430,9 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 				}
 
 				// Physics body indicator — green ring at entity base
-				if (VisRep.bHasPhysicsBody)
+				const FArcMassPhysicsBodyFragment* PhysBodyFrag = EntityManager.GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+				const bool bHasPhysicsBody = PhysBodyFrag && PhysBodyFrag->Body != nullptr;
+				if (bHasPhysicsBody)
 				{
 					AddShape(FGameplayDebuggerShape::MakeCircle(
 						EntityLocation + FVector(0.f, 0.f, 5.f),
@@ -465,7 +468,7 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 				}
 
 				// Physics state
-				if (VisRep.bHasPhysicsBody)
+				if (bHasPhysicsBody)
 				{
 					Label += TEXT(" {green}[Phys]");
 				}

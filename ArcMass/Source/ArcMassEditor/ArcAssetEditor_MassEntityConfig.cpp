@@ -21,11 +21,13 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Preview/SArcMassEntityConfigPreviewViewport.h"
 
 #define LOCTEXT_NAMESPACE "ArcAssetEditor_MassEntityConfig"
 
 const FName FArcAssetEditor_MassEntityConfig::TraitListTabId(TEXT("MassConfigEditor_TraitList"));
 const FName FArcAssetEditor_MassEntityConfig::DetailsTabId(TEXT("MassConfigEditor_Details"));
+const FName FArcAssetEditor_MassEntityConfig::PreviewTabId(TEXT("MassConfigEditor_Preview"));
 const FName FArcAssetEditor_MassEntityConfig::ToolkitFName(TEXT("ArcMassEntityConfigEditor"));
 const FName FArcAssetEditor_MassEntityConfig::AppIdentifier(TEXT("ArcMassEntityConfigEditorApp"));
 
@@ -96,8 +98,8 @@ void FArcAssetEditor_MassEntityConfig::InitEditor(
 		.OnTraitSelected(FArcOnTraitSelected::CreateSP(
 			this, &FArcAssetEditor_MassEntityConfig::OnTraitSelected));
 
-	// Define two-panel layout: left trait list (30%), right details (70%)
-	const TSharedRef<FTabManager::FLayout> Layout = FTabManager::NewLayout("ArcMassEntityConfigEditor_Layout_v1")
+	// Define two-panel layout: left trait list (30%), right details+preview (70%)
+	const TSharedRef<FTabManager::FLayout> Layout = FTabManager::NewLayout("ArcMassEntityConfigEditor_Layout_v2")
 		->AddArea
 		(
 			FTabManager::NewPrimaryArea()->SetOrientation(Orient_Vertical)
@@ -116,8 +118,9 @@ void FArcAssetEditor_MassEntityConfig::InitEditor(
 				(
 					FTabManager::NewStack()
 					->SetSizeCoefficient(0.7f)
-					->SetHideTabWell(true)
 					->AddTab(DetailsTabId, ETabState::OpenedTab)
+					->AddTab(PreviewTabId, ETabState::OpenedTab)
+					->SetForegroundTab(DetailsTabId)
 				)
 			)
 		);
@@ -157,6 +160,12 @@ void FArcAssetEditor_MassEntityConfig::RegisterTabSpawners(const TSharedRef<FTab
 		.SetDisplayName(LOCTEXT("DetailsTab", "Details"))
 		.SetGroup(WorkspaceMenuCategory.ToSharedRef())
 		.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"));
+
+	InTabManager->RegisterTabSpawner(PreviewTabId,
+		FOnSpawnTab::CreateSP(this, &FArcAssetEditor_MassEntityConfig::SpawnTab_Preview))
+		.SetDisplayName(LOCTEXT("PreviewTab", "Preview"))
+		.SetGroup(WorkspaceMenuCategory.ToSharedRef())
+		.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Viewports"));
 }
 
 void FArcAssetEditor_MassEntityConfig::UnregisterTabSpawners(const TSharedRef<FTabManager>& InTabManager)
@@ -164,6 +173,7 @@ void FArcAssetEditor_MassEntityConfig::UnregisterTabSpawners(const TSharedRef<FT
 	FAssetEditorToolkit::UnregisterTabSpawners(InTabManager);
 	InTabManager->UnregisterTabSpawner(TraitListTabId);
 	InTabManager->UnregisterTabSpawner(DetailsTabId);
+	InTabManager->UnregisterTabSpawner(PreviewTabId);
 }
 
 TSharedRef<SDockTab> FArcAssetEditor_MassEntityConfig::SpawnTab_TraitList(const FSpawnTabArgs& Args)
@@ -218,6 +228,18 @@ TSharedRef<SDockTab> FArcAssetEditor_MassEntityConfig::SpawnTab_Details(const FS
 			[
 				ConfigDetailsView.ToSharedRef()
 			]
+		];
+}
+
+TSharedRef<SDockTab> FArcAssetEditor_MassEntityConfig::SpawnTab_Preview(const FSpawnTabArgs& Args)
+{
+	PreviewViewport = SNew(SArcMassEntityConfigPreviewViewport)
+		.ConfigAsset(GetEditingConfigAsset());
+
+	return SNew(SDockTab)
+		.Label(LOCTEXT("PreviewTitle", "Preview"))
+		[
+			PreviewViewport.ToSharedRef()
 		];
 }
 
@@ -551,6 +573,11 @@ void FArcAssetEditor_MassEntityConfig::OnConfigPropertyChanged(const FPropertyCh
 
 	// Clear selection since tree structure may have changed
 	DetailsSwitcher->SetActiveWidgetIndex(0);
+
+	if (PreviewViewport.IsValid())
+	{
+		PreviewViewport->RebuildPreview();
+	}
 }
 
 // ---------- Helpers ----------

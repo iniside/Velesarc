@@ -6,7 +6,7 @@
 #include "ArcEntitySpawner/ArcEntitySpawnerTypes.h"
 #include "MassEntityConfigAsset.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassSignalSubsystem.h"
 #include "MassSpawnerSubsystem.h"
 #include "MassStateTreeExecutionContext.h"

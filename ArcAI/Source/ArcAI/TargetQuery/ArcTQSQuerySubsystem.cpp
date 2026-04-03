@@ -247,6 +247,7 @@ void UArcTQSQuerySubsystem::StoreDebugData(const FArcTQSQueryInstance& Completed
 		}
 	}
 	Data.TotalValid = ValidCount;
+	Data.StepBreakdown = CompletedQuery.DebugStepBreakdown;
 }
 
 void UArcTQSQuerySubsystem::CleanupDebugData()

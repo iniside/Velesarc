@@ -6,10 +6,11 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "ArcMass/Visualization/ArcMassEntityVisualization.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
 #include "ArcMass/MobileVisualization/ArcMobileVisualization.h"
 #include "MassActorSubsystem.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityQuery.h"
 #include "MassExecutionContext.h"
 #include "GameFramework/Pawn.h"
@@ -223,8 +224,9 @@ void FArcVisualizationMinimapDebugger::Draw()
 				const FArcVisRepresentationFragment* VisRep = EM->GetFragmentDataPtr<FArcVisRepresentationFragment>(HoveredHandle);
 				if (VisRep)
 				{
+					const FArcMassPhysicsBodyFragment* HovPhysBody = EM->GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(HoveredHandle);
 					ImGui::Text("Physics: %s | Mesh: %s",
-						VisRep->bHasPhysicsBody ? "Yes" : "No",
+						(HovPhysBody && HovPhysBody->Body) ? "Yes" : "No",
 						VisRep->bHasMeshRendering ? "Yes" : "No");
 				}
 			}
@@ -595,7 +597,8 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 			const FArcVisRepresentationFragment* VisRep = EntityManager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 			if (VisRep)
 			{
-				bHasPhysics = VisRep->bHasPhysicsBody;
+				const FArcMassPhysicsBodyFragment* PhysBody = EntityManager->GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+				bHasPhysics = PhysBody && PhysBody->Body != nullptr;
 				bHasMesh = VisRep->bHasMeshRendering;
 				if (bHasPhysics)
 				{

@@ -209,6 +209,6 @@ void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, 
 #if WITH_EDITOR
 FText FArcMassUseSmartObjectTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
 {
-	return NSLOCTEXT("ArcAI", "UseSmartObjectDesc", "Use Smart Object");
+	return NSLOCTEXT("ArcAI", "UseSmartObjectDesc", "Arc Mass Use Smart Object");
 }
 #endif

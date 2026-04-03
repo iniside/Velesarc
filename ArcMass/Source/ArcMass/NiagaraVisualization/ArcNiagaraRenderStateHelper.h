@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ComponentInterfaces.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "NiagaraSystemInstanceController.h"
 #include "NiagaraSceneProxy.h"
 #include "NiagaraUserRedirectionParameterStore.h"

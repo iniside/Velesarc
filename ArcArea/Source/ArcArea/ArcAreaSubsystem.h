@@ -16,11 +16,14 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FArcAreaSlotStateChanged,
 	const FArcAreaSlotHandle& /*SlotHandle*/,
 	EArcAreaSlotState /*NewState*/);
 
+/** Per-entity delegate for area assignment changes. Passes the slot handle involved. */
+DECLARE_MULTICAST_DELEGATE_OneParam(FArcAreaEntityAssignmentDelegate, const FArcAreaSlotHandle& /*SlotHandle*/);
+
 /** Per-entity delegates for area assignment changes. */
 struct FArcAreaEntityDelegates
 {
-	FSimpleMulticastDelegate OnAssigned;
-	FSimpleMulticastDelegate OnUnassigned;
+	FArcAreaEntityAssignmentDelegate OnAssigned;
+	FArcAreaEntityAssignmentDelegate OnUnassigned;
 };
 
 /**

@@ -4,7 +4,20 @@
 
 #include "CoreMinimal.h"
 #include "ArcTQSTypes.h"
+#include "ArcTQSStep.h"
 #include "StructUtils/InstancedStruct.h"
+
+#if !UE_BUILD_SHIPPING
+struct FArcTQSDebugStepData
+{
+	FString StepName;
+	EArcTQSStepType StepType;
+	float Weight = 1.0f;
+	TArray<float> RawScores;
+	TArray<float> CumulativeScores;
+	int32 FilteredCount = 0;
+};
+#endif
 
 /**
  * Runtime state for an in-progress TQS query.
@@ -71,6 +84,11 @@ struct ARCAI_API FArcTQSQueryInstance
 	// Accumulated log text — built up during execution, flushed as a single
 	// UE_VLOG call when the query completes (or fails).
 	FString DebugLog;
+#endif
+
+#if !UE_BUILD_SHIPPING
+	TArray<FArcTQSDebugStepData> DebugStepBreakdown;
+	double DebugCollectionOverhead = 0.0;
 #endif
 
 	/**

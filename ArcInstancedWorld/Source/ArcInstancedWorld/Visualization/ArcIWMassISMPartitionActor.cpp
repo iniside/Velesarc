@@ -11,7 +11,7 @@
 #include "MassEntityTemplate.h"
 #include "MassEntityTemplateRegistry.h"
 #include "MassEntityConfigAsset.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassObserverManager.h"
 #include "Engine/ActorInstanceHandle.h"
 #include "Engine/StaticMesh.h"
@@ -611,11 +611,10 @@ void AArcIWMassISMPartitionActor::SpawnEntities()
 		ClassMeshSlotBases[ClassIndex] = ComputeMeshSlotBase(ClassIndex);
 	}
 
-	// Acquire creation context before entity creation — observers will be deferred
-	// until the context is released after persisted data is loaded.
-	{
-		TSharedRef<FMassObserverManager::FCreationContext> CreationContext =
-			EntityManager.GetObserverManager().GetOrMakeCreationContext();
+	// Hold the CreationContext from the first BatchCreateEntities alive across all
+	// classes — subsequent calls reuse the active context. Observers fire only when
+	// this ref drops, after persisted data is loaded.
+	TSharedPtr<FMassObserverManager::FCreationContext> CreationContext;
 
 	for (int32 ClassIndex = 0; ClassIndex < ActorClassEntries.Num(); ++ClassIndex)
 	{
@@ -710,7 +709,12 @@ void AArcIWMassISMPartitionActor::SpawnEntities()
 
 		const FMassArchetypeSharedFragmentValues& SharedValues = *SharedValuesPtr;
 		TArray<FMassEntityHandle> ClassEntities;
-		EntityManager.BatchCreateEntities(Archetype, SharedValues, InstanceCount, ClassEntities);
+		TSharedRef<FMassObserverManager::FCreationContext> ClassCreationContext =
+			EntityManager.BatchCreateEntities(Archetype, SharedValues, InstanceCount, ClassEntities);
+		if (!CreationContext.IsValid())
+		{
+			CreationContext = ClassCreationContext;
+		}
 
 		const int32 BaseIndex = SpawnedEntities.Num();
 		const int32 ClassMeshSlotBase = ClassMeshSlotBases[ClassIndex];
@@ -836,7 +840,6 @@ void AArcIWMassISMPartitionActor::SpawnEntities()
 	}
 
 	// CreationContext drops here — observers fire with correct persisted data
-	}
 }
 
 void AArcIWMassISMPartitionActor::DespawnEntities()

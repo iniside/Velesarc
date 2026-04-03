@@ -5,10 +5,12 @@
 #include "imgui.h"
 #include "MassDebugger.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Kismet/GameplayStatics.h"
+#include "Mass/EntityFragments.h"
 #include "UObject/UnrealType.h"
 
 namespace Arcx::GameplayDebugger::MassEntity
@@ -365,6 +367,29 @@ void FArcMassEntityDebugger::Draw()
 		DrawEntityDetailPanel();
 	}
 	ImGui::EndChild();
+
+	// Draw debug visualization for selected entity with transform
+	if (World && Manager && SelectedEntityIndex != INDEX_NONE && CachedEntities.IsValidIndex(SelectedEntityIndex))
+	{
+		const FMassEntityHandle SelectedEntity = CachedEntities[SelectedEntityIndex].Entity;
+		if (Manager->IsEntityActive(SelectedEntity))
+		{
+			const FTransformFragment* TransformFragment = Manager->GetFragmentDataPtr<FTransformFragment>(SelectedEntity);
+			if (TransformFragment)
+			{
+				const FVector EntityLocation = TransformFragment->GetTransform().GetLocation();
+				constexpr float SphereRadius = 100.f;
+
+				DrawDebugSphere(World, EntityLocation, SphereRadius, 16, FColor::Yellow, false, -1.f, SDPG_World, 2.f);
+
+				const APawn* LocalPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+				if (LocalPawn)
+				{
+					DrawDebugLine(World, LocalPawn->GetActorLocation(), EntityLocation, FColor::Cyan, false, -1.f, SDPG_World, 2.f);
+				}
+			}
+		}
+	}
 
 	ImGui::End();
 #endif

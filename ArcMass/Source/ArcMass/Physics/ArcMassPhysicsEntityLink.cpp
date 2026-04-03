@@ -8,6 +8,7 @@
 #include "Engine/HitResult.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsInterfaceTypesCore.h"
+#include "PhysicsEngine/PhysicsObjectExternalInterface.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 
 // ---------------------------------------------------------------------------
@@ -22,18 +23,16 @@ namespace
 	{
 	public:
 		FMassEntityHandle EntityHandle;
-		TWeakObjectPtr<UObject> Owner;
 
-		FArcMassPhysicsUserEntity(FMassEntityHandle InHandle, UObject* InOwner)
+		explicit FArcMassPhysicsUserEntity(FMassEntityHandle InHandle)
 			: FChaosUserDefinedEntity(ArcMassEntityTypeName)
 			, EntityHandle(InHandle)
-			, Owner(InOwner)
 		{
 		}
 
 		virtual TWeakObjectPtr<UObject> GetOwnerObject() override
 		{
-			return Owner;
+			return TWeakObjectPtr<UObject>();
 		}
 	};
 
@@ -62,8 +61,7 @@ namespace
 
 FChaosUserEntityAppend* ArcMassPhysicsEntityLink::Attach(
 	FBodyInstance& Body,
-	FMassEntityHandle EntityHandle,
-	UObject* OwnerObject)
+	FMassEntityHandle EntityHandle)
 {
 	check(IsInGameThread());
 
@@ -81,7 +79,7 @@ FChaosUserEntityAppend* ArcMassPhysicsEntityLink::Attach(
 		return nullptr;
 	}
 
-	FArcMassPhysicsUserEntity* UserEntity = new FArcMassPhysicsUserEntity(EntityHandle, OwnerObject);
+	FArcMassPhysicsUserEntity* UserEntity = new FArcMassPhysicsUserEntity(EntityHandle);
 
 	// Follow engine pattern from PhysicsObjectInterface.cpp:836-839.
 	// Capture existing user data via reinterpret_cast (same as engine does).
@@ -180,6 +178,21 @@ FMassEntityHandle ArcMassPhysicsEntityLink::ResolveHitFromPhysicsObject(const FH
 	Chaos::FSingleParticlePhysicsProxy* SingleProxy = static_cast<Chaos::FSingleParticlePhysicsProxy*>(Proxy);
 	void* UserData = SingleProxy->GetGameThreadAPI().UserData();
 	return ExtractEntityFromUserData(UserData);
+}
+
+FTransform ArcMassPhysicsEntityLink::ResolveHitToBodyTransform(const FHitResult& HitResult)
+{
+	check(IsInGameThread());
+
+	Chaos::FPhysicsObjectHandle PhysicsObject = HitResult.PhysicsObject;
+	if (!PhysicsObject)
+	{
+		return FTransform::Identity;
+	}
+
+	Chaos::FConstPhysicsObjectHandle ConstPhysicsObject = PhysicsObject;
+	Chaos::FReadPhysicsObjectInterface_External Interface = FPhysicsObjectExternalInterface::GetRead_AssumesLocked();
+	return Interface.GetTransform(ConstPhysicsObject);
 }
 
 FBodyInstance* ArcMassPhysicsEntityLink::ResolveHitToBody(const FHitResult& HitResult)

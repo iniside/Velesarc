@@ -269,7 +269,7 @@ UArcThermalConditionProcessor::UArcThermalConditionProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
@@ -303,6 +303,8 @@ void UArcThermalConditionProcessor::ConfigureQueries(const TSharedRef<FMassEntit
 	EntityQuery.AddConstSharedRequirement<FArcWetConditionConfig>(EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcOiledConditionConfig>(EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcBlindedConditionConfig>(EMassFragmentPresence::Optional);
+	
+	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
 void UArcThermalConditionProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)

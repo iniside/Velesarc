@@ -27,18 +27,27 @@
 #include "SceneView.h"
 #include "StructUtils/InstancedStruct.h"
 #include "UObject/WeakInterfacePtr.h"
+#include "Mass/EntityHandle.h"
 
 class FIndicatorDescriptor;
+struct FMassEntityManager;
 
 struct FActorCanvasProjection
 {
-	bool Project(FIndicatorDescriptor& CanvasEntry, const FSceneViewProjectionData& InProjectionData, const FVector2f& ScreenSize, FVector& ScreenPositionWithDepth);
+	bool Project(FIndicatorDescriptor& CanvasEntry, const FSceneViewProjectionData& InProjectionData, const FVector2f& ScreenSize, FVector& ScreenPositionWithDepth, const FMassEntityManager* EntityManager);
 };
 
 enum struct EActorCanvasProjectionMode
 {
 	Point,
 	BoundingBox
+};
+
+enum struct EIndicatorLocationMode : uint8
+{
+	Component,
+	MassEntity,
+	ManualTransform
 };
 
 class FIndicatorDescriptor
@@ -55,6 +64,18 @@ public:
 	{
 	}
 
+	FIndicatorDescriptor(FVector InWorldLocation)
+		: LocationMode(EIndicatorLocationMode::ManualTransform)
+		, ManualWorldLocation(InWorldLocation)
+	{
+	}
+
+	FIndicatorDescriptor(FMassEntityHandle InEntity)
+		: LocationMode(EIndicatorLocationMode::MassEntity)
+		, MassEntity(InEntity)
+	{
+	}
+
 	virtual ~FIndicatorDescriptor() = default;
 
 public:
@@ -65,6 +86,9 @@ public:
 	TWeakObjectPtr<AActor> LocationInterfaceActor;
 	
 	FName ComponentSocketName = NAME_None;
+	EIndicatorLocationMode LocationMode = EIndicatorLocationMode::Component;
+	FMassEntityHandle MassEntity;
+	FVector ManualWorldLocation = FVector::ZeroVector;
 
 	TSoftClassPtr<UUserWidget> GetIndicatorClass() const { return IndicatorWidgetClass; }
 	void SetIndicatorClass(TSoftClassPtr<UUserWidget> InIndicatorWidgetClass)
@@ -86,6 +110,10 @@ public:
 
 	bool ShouldRemove() const
 	{
+		if (LocationMode != EIndicatorLocationMode::Component)
+		{
+			return false;
+		}
 		return bAutoRemoveWhenIndicatorActorIsNull && Component.Get() == nullptr;
 	}
 
@@ -93,7 +121,18 @@ public:
 	// Layout Properties
 	//=======================
 
-	bool GetIsVisible() const { return Component.Get() != nullptr && bVisible; }
+	bool GetIsVisible() const
+	{
+		if (!bVisible)
+		{
+			return false;
+		}
+		if (LocationMode == EIndicatorLocationMode::Component && Component.Get() == nullptr)
+		{
+			return false;
+		}
+		return true;
+	}
 	void SetIsVisible(bool InVisible)
 	{
 		bVisible = InVisible;

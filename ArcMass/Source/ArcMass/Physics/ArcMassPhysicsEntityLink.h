@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 
 struct FBodyInstance;
 struct FHitResult;
@@ -28,11 +28,10 @@ namespace ArcMassPhysicsEntityLink
 	 *
 	 * @param Body           The ISM instance's FBodyInstance (from InstanceBodies[i]).
 	 * @param EntityHandle   The Mass entity that owns this ISM instance.
-	 * @param OwnerObject    UObject whose lifetime governs the physics body (typically the ISM component).
 	 * @return Allocated append pointer. Caller owns the lifetime — pass to Detach() before the body is destroyed.
 	 *         Returns nullptr if the body has no valid physics actor.
 	 */
-	ARCMASS_API FChaosUserEntityAppend* Attach(FBodyInstance& Body, FMassEntityHandle EntityHandle, UObject* OwnerObject);
+	ARCMASS_API FChaosUserEntityAppend* Attach(FBodyInstance& Body, FMassEntityHandle EntityHandle);
 
 	/**
 	 * Remove entity link from a physics body, restore original user data, and free allocations.
@@ -64,4 +63,11 @@ namespace ArcMassPhysicsEntityLink
 	 * Returns nullptr if no body is found.
 	 */
 	ARCMASS_API FBodyInstance* ResolveHitToBody(const FHitResult& HitResult);
+
+	/**
+	 * Extract the physics body's world transform from a trace hit via Chaos physics object.
+	 * Returns the particle's current position and rotation (not the impact point).
+	 * Returns FTransform::Identity if the physics object cannot be resolved.
+	 */
+	ARCMASS_API FTransform ResolveHitToBodyTransform(const FHitResult& HitResult);
 }

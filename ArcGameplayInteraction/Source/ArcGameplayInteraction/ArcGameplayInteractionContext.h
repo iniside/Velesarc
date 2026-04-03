@@ -4,7 +4,7 @@
 
 #include "GameplayInteractionStateTreeSchema.h"
 #include "GameplayInteractionsTypes.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassStateTreeDependency.h"
 #include "SmartObjectRuntime.h"
 #include "SmartObjectSubsystem.h"

@@ -18,6 +18,7 @@ public class ArcDamageSystem : ModuleRules
 				, "ArcCore"
 				, "ArcConditionEffects"
 				, "MassEntity"
+				, "MassCore"
 			}
 			);
 

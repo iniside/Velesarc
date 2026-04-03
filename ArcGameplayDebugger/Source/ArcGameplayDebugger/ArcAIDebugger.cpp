@@ -24,6 +24,7 @@
 #include "Perception/ArcAISense_GameplayAbility.h"
 #include "ArcImGuiReflectionWidget.h"
 #include "SmartObjectPlanner/Tasks/ArcMassUseSmartObjectTask.h"
+#include "StateTree/ArcMassExecuteAdvertisementTask.h"
 
 namespace
 {
@@ -361,7 +362,7 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 											{
 												SelectedStateFrameIdx = FrameIdx;
 												SelectedStateIdx = Idx;
-												bSelectedNested = false;
+												SelectedNestedType = ENestedTreeType::None;
 											}
 
 											ImGui::PopID();
@@ -504,7 +505,7 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 														{
 															NodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
 														}
-														if (bSelectedNested && NestedTaskStorageIdx == StorageIdx
+														if (SelectedNestedType == ENestedTreeType::SmartObject && NestedTaskStorageIdx == StorageIdx
 															&& SelectedStateFrameIdx == NFrameIdx && SelectedStateIdx == Idx)
 														{
 															NodeFlags |= ImGuiTreeNodeFlags_Selected;
@@ -522,7 +523,163 @@ void FArcAIDebugger::DrawEntityDetailPanel()
 														{
 															SelectedStateFrameIdx = NFrameIdx;
 															SelectedStateIdx = Idx;
-															bSelectedNested = true;
+															SelectedNestedType = ENestedTreeType::SmartObject;
+															NestedTaskStorageIdx = StorageIdx;
+														}
+
+														ImGui::PopID();
+
+														if (bIsActive)
+														{
+															ImGui::PopStyleColor();
+														}
+
+														if (bHasChildren && bNodeOpen)
+														{
+															DrawNestedStates(State.ChildrenBegin, State.ChildrenEnd);
+															ImGui::TreePop();
+														}
+
+														Idx = State.GetNextSibling();
+													}
+												};
+
+												DrawNestedStates(0, static_cast<uint16>(NAllStates.Num()));
+												ImGui::TreePop();
+											}
+										}
+									}
+
+									ScanRunningIndex += ActiveState.InstanceDataNum;
+								}
+							}
+
+							// Scan active task instance data for nested Advertisement state trees
+							for (int32 ScanFrameIdx = 0; ScanFrameIdx < ExecState->ActiveFrames.Num(); ScanFrameIdx++)
+							{
+								const FStateTreeExecutionFrame& ScanFrame = ExecState->ActiveFrames[ScanFrameIdx];
+								if (!ScanFrame.StateTree || !ScanFrame.ActiveInstanceIndexBase.IsValid())
+								{
+									continue;
+								}
+
+								TConstArrayView<FCompactStateTreeState> ScanStates = ScanFrame.StateTree->GetStates();
+								int32 ScanRunningIndex = ScanFrame.ActiveInstanceIndexBase.Get();
+
+								for (int32 AS = 0; AS < ScanFrame.ActiveStates.Num(); AS++)
+								{
+									uint16 ActiveIdx = ScanFrame.ActiveStates[AS].Index;
+									if (!ScanStates.IsValidIndex(ActiveIdx))
+									{
+										continue;
+									}
+
+									const FCompactStateTreeState& ActiveState = ScanStates[ActiveIdx];
+
+									for (int32 DataIdx = 0; DataIdx < ActiveState.InstanceDataNum; DataIdx++)
+									{
+										int32 StorageIdx = ScanRunningIndex + DataIdx;
+										if (!InstanceData->IsValidIndex(StorageIdx) || InstanceData->IsObject(StorageIdx))
+										{
+											continue;
+										}
+
+										FConstStructView View = InstanceData->GetStruct(StorageIdx);
+										if (View.GetScriptStruct() != FArcMassExecuteAdvertisementTaskInstanceData::StaticStruct())
+										{
+											continue;
+										}
+
+										const FArcMassExecuteAdvertisementTaskInstanceData& TaskData = View.Get<const FArcMassExecuteAdvertisementTaskInstanceData>();
+										const FArcAdvertisementExecutionContext& AdvCtx = TaskData.ExecutionContext;
+
+										if (!AdvCtx.IsValid())
+										{
+											continue;
+										}
+
+										const FStateTreeInstanceData& NestedInstanceData = AdvCtx.GetStateTreeInstanceData();
+										const FStateTreeExecutionState* NestedExecState = NestedInstanceData.GetExecutionState();
+										if (!NestedExecState)
+										{
+											continue;
+										}
+
+										for (int32 NFrameIdx = 0; NFrameIdx < NestedExecState->ActiveFrames.Num(); NFrameIdx++)
+										{
+											const FStateTreeExecutionFrame& NFrame = NestedExecState->ActiveFrames[NFrameIdx];
+											if (!NFrame.StateTree)
+											{
+												continue;
+											}
+
+											FString NFrameLabel = FString::Printf(TEXT("Advertisement [%s]"), *NFrame.StateTree->GetName());
+
+											TSet<uint16> NActiveStateIndices;
+											for (int32 NAS = 0; NAS < NFrame.ActiveStates.Num(); NAS++)
+											{
+												NActiveStateIndices.Add(NFrame.ActiveStates[NAS].Index);
+											}
+
+											ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.2f, 1.0f));
+											bool bNFrameOpen = ImGui::TreeNodeEx(TCHAR_TO_ANSI(*NFrameLabel), ImGuiTreeNodeFlags_DefaultOpen);
+											ImGui::PopStyleColor();
+
+											if (bNFrameOpen)
+											{
+												TConstArrayView<FCompactStateTreeState> NAllStates = NFrame.StateTree->GetStates();
+
+												TFunction<void(uint16, uint16)> DrawNestedStates = [&](uint16 Begin, uint16 End)
+												{
+													for (uint16 Idx = Begin; Idx < End; )
+													{
+														if (!NAllStates.IsValidIndex(Idx))
+														{
+															break;
+														}
+
+														const FCompactStateTreeState& State = NAllStates[Idx];
+														const bool bIsActive = NActiveStateIndices.Contains(Idx);
+														const bool bHasChildren = State.HasChildren();
+
+														FString StateLabel = State.Name.ToString();
+														if (State.Type == EStateTreeStateType::Linked || State.Type == EStateTreeStateType::LinkedAsset)
+														{
+															StateLabel += TEXT(" (Linked)");
+														}
+														else if (State.Type == EStateTreeStateType::Subtree)
+														{
+															StateLabel += TEXT(" (Subtree)");
+														}
+
+														ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanAvailWidth;
+														if (!bHasChildren)
+														{
+															NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+														}
+														if (bIsActive)
+														{
+															NodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
+														}
+														if (SelectedNestedType == ENestedTreeType::Advertisement && NestedTaskStorageIdx == StorageIdx
+															&& SelectedStateFrameIdx == NFrameIdx && SelectedStateIdx == Idx)
+														{
+															NodeFlags |= ImGuiTreeNodeFlags_Selected;
+														}
+
+														if (bIsActive)
+														{
+															ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
+														}
+
+														ImGui::PushID(static_cast<int>(Idx) + 20000 * (NFrameIdx + 1));
+														bool bNodeOpen = ImGui::TreeNodeEx(TCHAR_TO_ANSI(*StateLabel), NodeFlags);
+
+														if (ImGui::IsItemClicked())
+														{
+															SelectedStateFrameIdx = NFrameIdx;
+															SelectedStateIdx = Idx;
+															SelectedNestedType = ENestedTreeType::Advertisement;
 															NestedTaskStorageIdx = StorageIdx;
 														}
 
@@ -784,7 +941,7 @@ void FArcAIDebugger::DrawSelectedStatePanel()
 	}
 
 	// If selection is in a nested Gameplay Interaction tree, resolve to nested instance data
-	if (bSelectedNested)
+	if (SelectedNestedType == ENestedTreeType::SmartObject)
 	{
 		if (!InstanceData->IsValidIndex(NestedTaskStorageIdx) || InstanceData->IsObject(NestedTaskStorageIdx))
 		{
@@ -799,6 +956,46 @@ void FArcAIDebugger::DrawSelectedStatePanel()
 		}
 		const FArcMassUseSmartObjectTaskInstanceData& TaskData = TaskView.Get<const FArcMassUseSmartObjectTaskInstanceData>();
 		InstanceData = &TaskData.GameplayInteractionContext.GetStateTreeInstanceData();
+	}
+	else if (SelectedNestedType == ENestedTreeType::Advertisement)
+	{
+		if (!InstanceData->IsValidIndex(NestedTaskStorageIdx) || InstanceData->IsObject(NestedTaskStorageIdx))
+		{
+			ImGui::TextDisabled("Nested advertisement data no longer valid");
+			return;
+		}
+		FConstStructView TaskView = InstanceData->GetStruct(NestedTaskStorageIdx);
+		if (TaskView.GetScriptStruct() != FArcMassExecuteAdvertisementTaskInstanceData::StaticStruct())
+		{
+			ImGui::TextDisabled("Nested advertisement data type mismatch");
+			return;
+		}
+		const FArcMassExecuteAdvertisementTaskInstanceData& TaskData = TaskView.Get<const FArcMassExecuteAdvertisementTaskInstanceData>();
+		const FArcAdvertisementExecutionContext& AdvCtx = TaskData.ExecutionContext;
+
+		// Advertisement metadata
+		ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Advertisement Context");
+		ImGui::Separator();
+		ImGui::Text("Handle: %u", TaskData.AdvertisementHandle.GetValue());
+		ImGui::Text("Source Entity: %s", TCHAR_TO_ANSI(*AdvCtx.GetSourceEntity().DebugGetDescription()));
+		ImGui::Text("Executing Entity: %s", TCHAR_TO_ANSI(*AdvCtx.GetExecutingEntity().DebugGetDescription()));
+
+		const FInstancedStruct& Payload = AdvCtx.GetAdvertisementPayload();
+		if (Payload.IsValid())
+		{
+			FString PayloadTypeName = Payload.GetScriptStruct()->GetName();
+			ImGui::Text("Payload Type: %s", TCHAR_TO_ANSI(*PayloadTypeName));
+			ArcImGuiReflection::DrawStructView(TEXT("Payload"), FConstStructView(Payload));
+		}
+		else
+		{
+			ImGui::TextDisabled("Payload: (none)");
+		}
+
+		ImGui::Spacing();
+		ImGui::Separator();
+
+		InstanceData = &AdvCtx.GetStateTreeInstanceData();
 	}
 
 	const FStateTreeExecutionState* ExecState = InstanceData->GetExecutionState();

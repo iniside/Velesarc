@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "SmartObjectTypes.h"
 #include "StructUtils/PropertyBag.h"
@@ -143,3 +143,4 @@ struct ARCAI_API FArcTQSQueryContext
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FVector> ContextLocations;
 };
+

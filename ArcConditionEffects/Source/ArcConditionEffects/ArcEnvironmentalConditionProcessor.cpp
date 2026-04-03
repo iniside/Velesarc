@@ -18,7 +18,7 @@ UArcEnvironmentalConditionProcessor::UArcEnvironmentalConditionProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
@@ -47,6 +47,8 @@ void UArcEnvironmentalConditionProcessor::ConfigureQueries(const TSharedRef<FMas
 	EntityQuery.AddConstSharedRequirement<FArcExhaustedConditionConfig>(EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcCorrodedConditionConfig>(EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcShockedConditionConfig>(EMassFragmentPresence::Optional);
+	
+	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
 void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)

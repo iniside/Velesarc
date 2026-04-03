@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassStateTreeTypes.h"
 #include "ArcKnowledgeEntry.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "ArcMassPostAdvertisementTask.generated.h"
 
 USTRUCT()

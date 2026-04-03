@@ -7,7 +7,7 @@
 #include "MassAssortedFragmentsTrait.h"
 #include "SArcMassTraitPicker.h"
 #include "SArcMassStructPicker.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
 #include "ScopedTransaction.h"
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"

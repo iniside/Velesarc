@@ -2,7 +2,7 @@
 
 #include "ArcMassRegisterKnowledgeTask.h"
 #include "MassStateTreeExecutionContext.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeEntryDefinition.h"
 #include "StateTreeLinker.h"

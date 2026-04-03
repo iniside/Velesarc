@@ -95,7 +95,7 @@ void UArcAreaSubsystem::UnregisterArea(FArcAreaHandle Handle)
 		{
 			if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(PreviousEntity))
 			{
-				Delegates->OnUnassigned.Broadcast();
+				Delegates->OnUnassigned.Broadcast(FArcAreaSlotHandle(Handle, i));
 			}
 		}
 	}
@@ -116,7 +116,7 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaSlotHandle SlotHandle, FMassEntityH
 	}
 
 	FArcAreaSlotRuntime& Slot = Data->Slots[SlotHandle.SlotIndex];
-	if (Slot.State != EArcAreaSlotState::Vacant)
+	if (Slot.State != EArcAreaSlotState::Vacant && Slot.AssignedEntity != Entity)
 	{
 		return false;
 	}
@@ -142,12 +142,14 @@ bool UArcAreaSubsystem::AssignToSlot(FArcAreaSlotHandle SlotHandle, FMassEntityH
 	// Update NPC's fragment
 	UpdateNPCAssignmentFragment(Entity, SlotHandle);
 
-	BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Assigned);
-
+	// Fire per-entity delegate before slot state broadcast.
+	// The auto-vacancy listener moves the vacancy to a claimed map on Assigned state change.
 	if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(Entity))
 	{
-		Delegates->OnAssigned.Broadcast();
+		Delegates->OnAssigned.Broadcast(SlotHandle);
 	}
+
+	BroadcastOnSlotStateChanged(SlotHandle, EArcAreaSlotState::Assigned);
 
 	return true;
 }
@@ -185,7 +187,7 @@ bool UArcAreaSubsystem::UnassignFromSlot(FArcAreaSlotHandle SlotHandle)
 	{
 		if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(PreviousEntity))
 		{
-			Delegates->OnUnassigned.Broadcast();
+			Delegates->OnUnassigned.Broadcast(SlotHandle);
 		}
 	}
 
@@ -310,7 +312,7 @@ void UArcAreaSubsystem::DisableSlot(FArcAreaSlotHandle SlotHandle)
 	{
 		if (FArcAreaEntityDelegates* Delegates = EntityAssignmentDelegates.Find(PreviousEntity))
 		{
-			Delegates->OnUnassigned.Broadcast();
+			Delegates->OnUnassigned.Broadcast(SlotHandle);
 		}
 	}
 }

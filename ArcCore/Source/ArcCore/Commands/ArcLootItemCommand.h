@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "Commands/ArcReplicatedCommand.h"
 #include "MassEntityTypes.h"
 #include "UObject/ObjectPtr.h"

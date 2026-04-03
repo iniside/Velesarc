@@ -29,6 +29,7 @@ public class ArcMass : ModuleRules
 				, "Engine"
 				, "MassActors"
 				, "MassCommon"
+				, "MassCore"
 				, "MassEntity"
 				, "MassMovement"
 				, "MassSimulation"

@@ -444,6 +444,15 @@ UArcGameplayInteractionStateTreeSchema::UArcGameplayInteractionStateTreeSchema()
 	ContextDataDescs.Add({ TEXT("ContextEntityHandle"), FMassEntityHandle::StaticStruct(), FGuid("1c514052-47d0-4c8b-8308-056175ddaa5e")});
 	ContextDataDescs.Add({ TEXT("SmartObjectEntityHandle"), FMassEntityHandle::StaticStruct(), FGuid("f640404a-c5b8-4c45-a6e4-a2707254fa5a")});
 	ContextDataDescs.Add({ TEXT("SlotTransform"), TBaseStructure<FTransform>::Get(), FGuid("a3e17c84-5f92-4d1b-b8a3-6c4d2e9f0a15")});
+	
+	for (FStateTreeExternalDataDesc& DataDesc : ContextDataDescs)
+	{
+		if (DataDesc.Name == UE::GameplayInteraction::Names::SmartObjectActor)
+		{
+			DataDesc.Requirement = EStateTreeExternalDataRequirement::Optional;	
+		}
+		
+	}
 }
 
 bool UArcGameplayInteractionStateTreeSchema::IsStructAllowed(const UScriptStruct* InScriptStruct) const

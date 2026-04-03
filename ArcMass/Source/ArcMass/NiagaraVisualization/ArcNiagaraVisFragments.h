@@ -43,6 +43,10 @@ struct ARCMASS_API FArcNiagaraVisConfigFragment : public FMassConstSharedFragmen
 	/** Fixed bounds to use when bFixedBounds is true. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization", meta = (EditCondition = "bFixedBounds"))
 	FBox FixedBounds = FBox(ForceInit);
+
+	/** Local-space offset applied to the Niagara system relative to the entity origin. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization")
+	FTransform ComponentTransform = FTransform::Identity;
 };
 
 template<>

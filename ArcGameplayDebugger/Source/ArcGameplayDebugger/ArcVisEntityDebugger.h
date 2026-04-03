@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 
 class UWorld;
 struct FMassEntityManager;

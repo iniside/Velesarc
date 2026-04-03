@@ -3,7 +3,7 @@
 #include "ArcAreaTrait.h"
 
 #include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityTemplateRegistry.h"
 #include "MassEntityUtils.h"
 #include "MassStateTreeFragments.h"

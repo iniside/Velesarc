@@ -99,7 +99,7 @@ UArcBiologicalConditionProcessor::UArcBiologicalConditionProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
@@ -131,6 +131,8 @@ void UArcBiologicalConditionProcessor::ConfigureQueries(const TSharedRef<FMassEn
 	EntityQuery.AddConstSharedRequirement<FArcPoisonedConditionConfig>(EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcDiseasedConditionConfig>(EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcWeakenedConditionConfig>(EMassFragmentPresence::Optional);
+	
+	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
 void UArcBiologicalConditionProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)

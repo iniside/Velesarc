@@ -384,7 +384,11 @@ void FArcInteractionDebugger::Draw()
 					}
 					if (ASC)
 					{
-						ASC->TryActivateAbilityByClass(UArcGA_Interact::StaticClass());
+						FGameplayAbilitySpec* Spec =  ASC->FindAbilitySpecFromClass(UArcGA_Interact::StaticClass());
+						if (Spec)
+						{
+							ASC->TryActivateAbility(Spec->Handle);
+						}
 					}
 				}
 			}

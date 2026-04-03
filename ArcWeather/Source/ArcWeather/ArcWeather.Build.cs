@@ -29,6 +29,7 @@ public class ArcWeather : ModuleRules
 				"Engine",
 				"CoreUObject",
 				"MassEntity",
+				"MassCore",
 				"MassCommon",
 				"MassSimulation",
 				"MassSignals",

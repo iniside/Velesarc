@@ -233,6 +233,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ToggleDebuggerMenuItem("Plan Feasibility", PlanFeasibilityDebugger);
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Path Debugger", PathDebugger);
+					ToggleDebuggerMenuItem("Target Query", TQSDebugger);
 					ImGui::EndMenu();
 				}
 
@@ -271,6 +272,7 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				DrawIfVisible(PerceptionDebugger);
 				DrawIfVisible(PlanFeasibilityDebugger);
 				DrawIfVisible(PathDebugger);
+				DrawIfVisible(TQSDebugger);
 				DrawIfVisible(VisEntityDebugger);
 				DrawIfVisible(PhysicsDebugger);
 				DrawIfVisible(KnowledgeDebugger);

@@ -4,7 +4,7 @@
 #include "Mass/ArcKnowledgeFragments.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeEntry.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityView.h"
 #include "MassExecutionContext.h"
 
@@ -15,7 +15,7 @@
 UArcKnowledgeMemberAddObserver::UArcKnowledgeMemberAddObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcKnowledgeMemberTag::StaticStruct();
+	ObservedTypes.Add(FArcKnowledgeMemberTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -92,7 +92,7 @@ void UArcKnowledgeMemberAddObserver::Execute(FMassEntityManager& EntityManager, 
 UArcKnowledgeMemberRemoveObserver::UArcKnowledgeMemberRemoveObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcKnowledgeMemberTag::StaticStruct();
+	ObservedTypes.Add(FArcKnowledgeMemberTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -124,7 +124,7 @@ void UArcKnowledgeMemberRemoveObserver::Execute(FMassEntityManager& EntityManage
 			// Remove all knowledge entries registered by this entity
 			for (const FArcKnowledgeHandle& Handle : Member.RegisteredKnowledgeHandles)
 			{
-				Subsystem->RemoveKnowledge(Handle);
+				Subsystem->ForceRemoveKnowledge(Handle);
 			}
 			Member.RegisteredKnowledgeHandles.Empty();
 		}

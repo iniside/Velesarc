@@ -24,6 +24,9 @@ void UArcIceWeatherProcessor::ConfigureQueries(const TSharedRef<FMassEntityManag
 	EntityQuery.AddRequirement<FArcIceFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FArcMassHealthFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	
+	EntityQuery.AddSubsystemRequirement<UArcWeatherSubsystem>(EMassFragmentAccess::ReadWrite);
+	
 	EntityQuery.RegisterWithProcessor(*this);
 }
 

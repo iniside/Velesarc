@@ -5,7 +5,7 @@
 #include "ArcKnowledgeSubsystem.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeLinker.h"
 
@@ -67,6 +67,17 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 		ContextActor = const_cast<AActor*>(ActorFragment->Get());
 	}
 
+	// Resolve source entity location from its transform fragment (if available)
+	FVector SourceEntityLocation = FVector::ZeroVector;
+	if (Entry->SourceEntity.IsValid())
+	{
+		const FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+		if (const FTransformFragment* SourceTransform = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entry->SourceEntity))
+		{
+			SourceEntityLocation = SourceTransform->GetTransform().GetLocation();
+		}
+	}
+
 	// Set up the execution context — Owner is the subsystem, ContextActor is optional
 	InstanceData.ExecutionContext.SetOwner(KnowledgeSubsystem);
 	InstanceData.ExecutionContext.SetExecutingEntity(EntityHandle);
@@ -74,6 +85,8 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 	InstanceData.ExecutionContext.SetContextActor(ContextActor);
 	InstanceData.ExecutionContext.SetAdvertisementHandle(InstanceData.AdvertisementHandle);
 	InstanceData.ExecutionContext.SetAdvertisementPayload(Entry->Payload);
+	InstanceData.ExecutionContext.SetKnowledgeLocation(Entry->Location);
+	InstanceData.ExecutionContext.SetSourceEntityLocation(SourceEntityLocation);
 
 	// Activate the StateTree — pass Mass execution context for fragment resolution
 	if (!InstanceData.ExecutionContext.Activate(*Instruction, &MassCtx.GetMassEntityExecutionContext()))

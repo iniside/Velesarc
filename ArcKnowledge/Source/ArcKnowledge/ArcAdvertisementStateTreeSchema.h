@@ -15,6 +15,8 @@ namespace UE::ArcKnowledge::Names
 	extern ARCKNOWLEDGE_API const FName ExecutingEntityHandle;
 	extern ARCKNOWLEDGE_API const FName SourceEntityHandle;
 	extern ARCKNOWLEDGE_API const FName AdvertisementHandle;
+	extern ARCKNOWLEDGE_API const FName KnowledgeLocation;
+	extern ARCKNOWLEDGE_API const FName SourceEntityLocation;
 }
 
 /**
@@ -26,6 +28,8 @@ namespace UE::ArcKnowledge::Names
  * - ExecutingEntityHandle (FMassEntityHandle) — the Mass entity executing
  * - SourceEntityHandle (FMassEntityHandle) — the entity that posted the advertisement
  * - AdvertisementHandle (FArcKnowledgeHandle) — the knowledge handle of the advertisement
+ * - KnowledgeLocation (FVector) — location stored in the knowledge entry
+ * - SourceEntityLocation (FVector) — location of the entity that posted the knowledge
  */
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Advertisement Behavior"))
 class ARCKNOWLEDGE_API UArcAdvertisementStateTreeSchema : public UMassStateTreeSchema

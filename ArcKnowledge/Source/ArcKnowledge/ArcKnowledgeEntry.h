@@ -8,7 +8,7 @@
 #include "MassEntityTypes.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcAdvertisementInstruction.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcKnowledgeEntry.generated.h"
 
 /**
@@ -44,6 +44,12 @@ struct ARCKNOWLEDGE_API FArcKnowledgeEntry
 	/** How long this entry lives in seconds. 0 = infinite (default). Measured from Timestamp. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge", meta = (ClampMin = "0.0"))
 	float Lifetime = 0.0f;
+
+	/** Whether this entry is persistent and cannot be removed through normal paths.
+	  * Persistent entries survive advertisement completion and volume teardown.
+	  * Force-removed only when the source entity is destroyed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge")
+	bool bPersistent = false;
 
 	/** Optional arbitrary data (quantity, threat level, price, etc.). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge", meta = (BaseStruct = "/Script/ArcKnowledge.ArcKnowledgePayload", ExcludeBaseStruct))

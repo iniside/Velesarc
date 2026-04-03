@@ -25,6 +25,8 @@
 #include "Widgets/SLeafWidget.h"
 #include "IActorIndicatorWidget.h"
 #include "UI/IndicatorSystem/ArcIndicatorManagerComponent.h"
+#include "MassEntitySubsystem.h"
+#include "Engine/GameViewportClient.h"
 #include "Widgets/Layout/SBox.h"
 
 namespace EArrowDirection
@@ -187,7 +189,7 @@ EActiveTimerReturnType SActorCanvas::UpdateCanvas(double InCurrentTime, float In
 	UArcIndicatorManagerComponent* IndicatorComponent = IndicatorComponentPtr.Get();
 	if (IndicatorComponent == nullptr)
 	{
-		IndicatorComponent = UArcIndicatorManagerComponent::GetComponent(LocalPlayerContext.GetPlayerController());
+		IndicatorComponent = UArcIndicatorManagerComponent::GetIndicatorComponent(LocalPlayerContext.GetPlayerController());
 		if (IndicatorComponent)
 		{
 			IndicatorComponentPtr = IndicatorComponent;
@@ -210,6 +212,17 @@ EActiveTimerReturnType SActorCanvas::UpdateCanvas(double InCurrentTime, float In
 		if (LocalPlayer->GetProjectionData(LocalPlayer->ViewportClient->Viewport, /*out*/ ProjectionData))
 		{
 			SetShowAnyIndicators(true);
+
+			const FMassEntityManager* EntityManager = nullptr;
+			UWorld* World = LocalPlayerContext.GetWorld();
+			if (World)
+			{
+				UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+				if (MassSubsystem)
+				{
+					EntityManager = &MassSubsystem->GetEntityManager();
+				}
+			}
 
 			bool IndicatorsChanged = false;
 
@@ -247,7 +260,7 @@ EActiveTimerReturnType SActorCanvas::UpdateCanvas(double InCurrentTime, float In
 				}
 
 				FVector ScreenPositionWithDepth;
-				bool Success = ActorEntry->Projector.Project(*ActorEntry.Get(), ProjectionData, PaintGeometry.Size, OUT ScreenPositionWithDepth);
+				bool Success = ActorEntry->Projector.Project(*ActorEntry.Get(), ProjectionData, PaintGeometry.Size, OUT ScreenPositionWithDepth, EntityManager);
 
 				if (!Success)
 				{

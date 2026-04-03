@@ -5,12 +5,16 @@
 #include "CoreMinimal.h"
 #include "AsyncMessageId.h"
 #include "ArcKnowledgeEvent.h"
+#include "NativeGameplayTags.h"
 #include "ArcKnowledgeEventBroadcaster.generated.h"
 
 class FAsyncMessageSystemBase;
 class UArcMassSpatialHashSubsystem;
 class UAsyncMessageWorldSubsystem;
 struct FMassEntityManager;
+
+ARCKNOWLEDGE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameKnowledge_Event_GlobalMessage);
+ARCKNOWLEDGE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameKnowledge_Event_SpatialMessage);
 
 /** Configuration for knowledge event broadcasting. */
 USTRUCT(BlueprintType)

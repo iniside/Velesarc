@@ -10,7 +10,7 @@
 #include "MassEntityManager.h"
 #include "ArcInstancedWorld/ArcIWTypes.h"
 #include "ArcMass/Physics/ArcMassPhysicsBody.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcIWMassISMPartitionActor.generated.h"
 
 class IArcPersistenceBackend;

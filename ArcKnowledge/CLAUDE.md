@@ -11,7 +11,7 @@ Fully generic — the system has no hardcoded awareness of any specific domain. 
 - **Knowledge Entry** (`FArcKnowledgeEntry`): A fact — gameplay tags + location + optional `FInstancedStruct` payload + optional `FInstancedStruct` instruction. Generic: resource availability, events, capabilities are all just different tag combinations.
 - **Knowledge Payload** (`FArcKnowledgePayload`): Empty base struct for typed payloads. Derive to create domain-specific payloads (e.g., settlement data, vacancy data). Entry's `Payload` field uses `ExcludeBaseStruct` meta to enforce subtypes.
 - **Knowledge Query** (`FArcKnowledgeQuery`): Tags + `FInstancedStruct` filter/scorer pipelines. Returns scored results. NPCs decide what to do with them.
-- **Advertisements**: Knowledge entries with advertisement semantics. Posted by one entity, queried and claimed by another. Carry optional behavioral instructions (`FArcAdvertisementInstruction` subtypes) telling the claimer HOW to fulfill the advertisement.
+- **Advertisements**: Knowledge entries with advertisement semantics. Posted by one entity, queried and claimed by another. Carry optional behavioral instructions (`FArcAdvertisementInstruction` subtypes) telling the claimer HOW to fulfill the advertisement. Entries with bPersistent = true survive completion and must be explicitly unclaimed to become available again.
 - **Advertisement Instructions** (`FArcAdvertisementInstruction`): Empty base struct for behavioral instructions attached to advertisements. `FArcAdvertisementInstruction_StateTree` carries a `FStateTreeReference` that drives claimer behavior via `FArcAdvertisementExecutionContext`.
 - **Knowledge Events** (`FArcKnowledgeChangedEvent`): Push notifications when knowledge changes. Global broadcast (all listeners) and spatial broadcast (per-entity endpoints within radius).
 - **Knowledge Handle** (`FArcKnowledgeHandle`): Lightweight uint32 wrapper identifying entries in the subsystem.
@@ -24,7 +24,7 @@ Fully generic — the system has no hardcoded awareness of any specific domain. 
 - Spatial hash (`FArcKnowledgeSpatialHash`) for location-based queries
 - Source entity index (ownership-based cleanup)
 - Query execution pipeline (with spatial pre-filtering)
-- Advertisement management (post, claim, complete, cancel)
+- Advertisement management (post, claim, complete, cancel/unclaim, force-remove)
 - Event broadcaster
 - Lifetime-based expiration (entries with `Lifetime > 0` expire after that many seconds; default 0 = infinite)
 - Spatial query API: `QueryKnowledgeInRadius()`, `FindNearestKnowledge()`
@@ -76,9 +76,10 @@ Follows TQS pattern: `FInstancedStruct` arrays with `ExcludeBaseStruct`, base ty
 - `FArcMassRegisterKnowledgeTask` — Registers knowledge entry at entity's location. Supports inline parameters or referencing a `UArcKnowledgeEntryDefinition` data asset
 - `FArcMassPostAdvertisementTask` — Posts advertisement for others to claim (with optional payload + instruction)
 - `FArcMassClaimAdvertisementTask` — Claims an advertisement, with release/complete on exit options
+- `FArcMassUnclaimAdvertisementTask` — Unclaims an advertisement, making it available for re-claiming. Any entity can unclaim any advertisement.
 - `FArcMassExecuteAdvertisementTask` — Executes a claimed advertisement's StateTree instruction via `FArcAdvertisementExecutionContext`. Driven by the outer task's `Tick()` (no independent ticker). Completes/cancels the advertisement on success/interrupt in `ExitState()`.
 - `FArcKnowledgeAvailabilityConsideration` — Utility score based on nearby matching knowledge
-- `FArcMassListenToKnowledgeEventTask` — Listens for knowledge events on entity's async message endpoint
+- `FArcMassListenToKnowledgeEventTask` — Listens for knowledge events on entity's async message endpoint. Exposes per-event-type dispatchers (OnRegistered, OnUpdated, OnRemoved, OnAdvertisementPosted, OnAdvertisementClaimed, OnAdvertisementCompleted) and full entry data as bindable outputs (KnowledgeHandle, SourceEntity, Payload, Relevance, Timestamp, Lifetime, bClaimed, ClaimedBy). Entry lookup happens in the async callback; bEntryAvailable indicates whether the entry was found (false expected for Removed).
 
 ### TQS Integration
 - `FArcTQSGenerator_KnowledgeEntries` — Generates TQS target items from knowledge query results. Bridges knowledge system into TQS for spatial scoring.
@@ -108,5 +109,6 @@ Follows TQS pattern: `FInstancedStruct` arrays with `ExcludeBaseStruct`, base ty
 - `Mass/ArcKnowledgeTrait.h/.cpp` — Knowledge member trait
 - `Mass/ArcKnowledgeObservers.h/.cpp` — Add/remove observer processors
 - `StateTree/*.h/.cpp` — All StateTree tasks, conditions, considerations
+- `StateTree/ArcMassUnclaimAdvertisementTask.h/.cpp` — Unclaim advertisement StateTree task
 - `TQS/ArcTQSGenerator_KnowledgeEntries.h/.cpp` — Knowledge-to-TQS bridge generator
 - `Debug/GameplayDebuggerCategory_ArcKnowledge.h/.cpp` — Gameplay debugger visualization

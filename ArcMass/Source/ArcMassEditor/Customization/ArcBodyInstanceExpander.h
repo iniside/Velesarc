@@ -4,10 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "IDetailCustomNodeBuilder.h"
+#include "IDetailPropertyRow.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Widgets/Input/SComboBox.h"
 
 class IDetailChildrenBuilder;
+class IDetailGroup;
 class IPropertyHandle;
 class UCollisionProfile;
 
@@ -24,7 +26,11 @@ public:
 	void BuildBodyInstanceUI(TSharedRef<IPropertyHandle> BodyInstanceHandle, IDetailChildrenBuilder& ChildrenBuilder);
 
 private:
-	void CreateCollisionSetup(TSharedRef<IPropertyHandle> BodyInstanceHandle, IDetailChildrenBuilder& ChildrenBuilder);
+	void CreateCollisionSetup(IDetailGroup& CollisionGroup, TSharedRef<IPropertyHandle> BodyInstanceHandle);
+	void AddCollisionProperties(IDetailGroup& CollisionGroup, TSharedRef<IPropertyHandle> BodyInstanceHandle);
+	void AddPhysicsProperties(IDetailGroup& PhysicsGroup, TSharedRef<IPropertyHandle> BodyInstanceHandle);
+
+	static IDetailPropertyRow* AddPropertyToGroup(IDetailGroup& Group, TSharedRef<IPropertyHandle> StructHandle, FName PropertyName);
 
 	TSharedRef<SWidget> MakeCollisionProfileComboWidget(TSharedPtr<FString> InItem);
 	void OnCollisionProfileChanged(TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo);
@@ -57,8 +63,6 @@ private:
 	void UpdateValidCollisionChannels();
 	void RefreshCollisionProfiles();
 	TSharedPtr<FString> GetProfileString(FName ProfileName) const;
-
-	void AddPhysicsProperties(TSharedRef<IPropertyHandle> BodyInstanceHandle, IDetailChildrenBuilder& ChildrenBuilder);
 
 	TSharedPtr<IPropertyHandle> BodyInstanceHandle;
 	TSharedPtr<IPropertyHandle> CollisionProfileNameHandle;

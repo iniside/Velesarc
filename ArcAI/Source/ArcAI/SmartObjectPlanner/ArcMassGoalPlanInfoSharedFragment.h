@@ -3,7 +3,7 @@
 #pragma once
 #include "ArcSmartObjectPlanConditionEvaluator.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
 #include "MassEntityTraitBase.h"
 #include "StructUtils/InstancedStruct.h"
 

@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEQSBlueprintLibrary.h"
 #include "MassStateTreeTypes.h"
 #include "Containers/Ticker.h"

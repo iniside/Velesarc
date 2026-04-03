@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcMassEntityPersistenceSubsystem.generated.h"

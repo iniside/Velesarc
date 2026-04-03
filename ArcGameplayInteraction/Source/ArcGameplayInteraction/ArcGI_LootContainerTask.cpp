@@ -6,6 +6,8 @@
 #include "Commands/ArcLootItemCommand.h"
 
 #include "StateTreeExecutionContext.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcGILootContainer, Log, All);
 
@@ -36,6 +38,14 @@ EStateTreeRunStatus FArcGI_LootContainerTask::EnterState(FStateTreeExecutionCont
 	if (ItemsStoreClass)
 	{
 		ItemsStore = Cast<UArcItemsStoreComponent>(InteractorActor->FindComponentByClass(ItemsStoreClass));
+		if (!ItemsStore)
+		{
+			APawn* InteractorPawn = Cast<APawn>(InteractorActor);
+			if (InteractorPawn)
+			{
+				ItemsStore = Cast<UArcItemsStoreComponent>(InteractorPawn->GetPlayerState()->FindComponentByClass(ItemsStoreClass));
+			}
+		}
 	}
 	else
 	{

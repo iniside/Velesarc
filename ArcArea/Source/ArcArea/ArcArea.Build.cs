@@ -30,6 +30,7 @@ public class ArcArea : ModuleRules
 				"GameplayTags",
 				"StructUtils",
 				"MassEntity",
+				"MassCore",
 				"MassCommon",
 				"SmartObjectsModule",
 				"ArcCore",

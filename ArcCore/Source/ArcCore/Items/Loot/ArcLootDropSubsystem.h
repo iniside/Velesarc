@@ -22,7 +22,7 @@
 #pragma once
 
 #include "Subsystems/WorldSubsystem.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "StructUtils/StructView.h"
 #include "ArcLootDropSubsystem.generated.h"
 

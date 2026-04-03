@@ -2,7 +2,7 @@
 
 #include "ArcAdvertisementStateTreeSchema.h"
 #include "ArcKnowledgeTypes.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "StateTreeTaskBase.h"
 #include "Conditions/StateTreeAIConditionBase.h"
 #include "Tasks/StateTreeAITask.h"
@@ -15,6 +15,8 @@ namespace UE::ArcKnowledge::Names
 	const FName ExecutingEntityHandle = TEXT("ExecutingEntity");
 	const FName SourceEntityHandle = TEXT("SourceEntity");
 	const FName AdvertisementHandle = TEXT("AdvertisementHandle");
+	const FName KnowledgeLocation = TEXT("KnowledgeLocation");
+	const FName SourceEntityLocation = TEXT("SourceEntityLocation");
 }
 
 UArcAdvertisementStateTreeSchema::UArcAdvertisementStateTreeSchema()
@@ -24,6 +26,8 @@ UArcAdvertisementStateTreeSchema::UArcAdvertisementStateTreeSchema()
 		{ UE::ArcKnowledge::Names::ExecutingEntityHandle, FMassEntityHandle::StaticStruct(), FGuid(0xD7E8F9A0, 0xB1C2D3E4, 0xF5A6B7C8, 0xD9E0F1A2) },
 		{ UE::ArcKnowledge::Names::SourceEntityHandle, FMassEntityHandle::StaticStruct(), FGuid(0xB3C4D5E6, 0xF7A8B9C0, 0xD1E2F3A4, 0xB5C6D7E8) },
 		{ UE::ArcKnowledge::Names::AdvertisementHandle, FArcKnowledgeHandle::StaticStruct(), FGuid(0xF9A0B1C2, 0xD3E4F5A6, 0xB7C8D9E0, 0xF1A2B3C4) },
+		{ UE::ArcKnowledge::Names::KnowledgeLocation, TBaseStructure<FVector>::Get(), FGuid(0xA2B3C4D5, 0xE6F7A8B9, 0xC0D1E2F3, 0xA4B5C6D7) },
+		{ UE::ArcKnowledge::Names::SourceEntityLocation, TBaseStructure<FVector>::Get(), FGuid(0xD8E9F0A1, 0xB2C3D4E5, 0xF6A7B8C9, 0xD0E1F2A3) },
 	})
 {
 	// ContextActor is optional — advertisements can execute without an associated actor (pure Mass entities)

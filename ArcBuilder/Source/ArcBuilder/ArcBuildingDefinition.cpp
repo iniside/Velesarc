@@ -95,9 +95,9 @@ UClass* UArcBuildingDefinition::ResolvePreviewActorClass() const
 		if (const UArcEntityVisualizationTrait* ArcVisTrait =
 			Cast<UArcEntityVisualizationTrait>(MassEntityConfig->FindTrait(UArcEntityVisualizationTrait::StaticClass())))
 		{
-			if (ArcVisTrait->VisualizationConfig.ActorClass)
+			if (ArcVisTrait->ActorClass)
 			{
-				return ArcVisTrait->VisualizationConfig.ActorClass;
+				return ArcVisTrait->ActorClass;
 			}
 		}
 

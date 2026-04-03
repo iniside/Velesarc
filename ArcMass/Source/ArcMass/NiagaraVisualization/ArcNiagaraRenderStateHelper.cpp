@@ -3,7 +3,7 @@
 #include "ArcNiagaraRenderStateHelper.h"
 
 #include "ArcNiagaraVisFragments.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityManager.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSceneProxy.h"

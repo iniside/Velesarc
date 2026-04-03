@@ -32,6 +32,7 @@ public class ArcInstancedWorldEditor : ModuleRules
 				"UnrealEd",
 				"LevelEditor",
 				"ArcInstancedWorld",
+				"ArcMass",
 				"StructUtils",
 				"MassSpawner",
 				"ToolMenus"

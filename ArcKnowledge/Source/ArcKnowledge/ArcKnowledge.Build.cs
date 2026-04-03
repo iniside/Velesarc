@@ -34,6 +34,7 @@ public class ArcKnowledge : ModuleRules
 				"StructUtils",
 				"MassCommon",
 				"MassEntity",
+				"MassCore",
 				"MassSignals",
 				"MassSpawner",
 				"MassAIBehavior",

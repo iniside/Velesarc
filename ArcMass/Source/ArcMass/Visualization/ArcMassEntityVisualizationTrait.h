@@ -17,6 +17,9 @@ class ARCMASS_API UArcEntityVisualizationTrait : public UMassEntityTraitBase
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
+	TSubclassOf<AActor> ActorClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
 	FArcVisConfigFragment VisualizationConfig;
 
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
@@ -28,6 +31,13 @@ public:
 	/** Re-extract mesh, collision, and materials from the ActorClass exemplar. */
 	UFUNCTION(CallInEditor, Category = "Visualization")
 	void ExtractFromActorClass();
+
+	// --- Preview accessors (editor only) ---
+	UStaticMesh* GetExtractedMesh() const { return ExtractedMesh; }
+	const FTransform& GetExtractedComponentTransform() const { return ExtractedComponentTransform; }
+	const TArray<TObjectPtr<UMaterialInterface>>& GetExtractedMaterials() const { return ExtractedMaterials; }
+	UBodySetup* GetExtractedBodySetup() const { return ExtractedBodySetup; }
+	bool IsExtractionValid() const { return bExtractionValid; }
 #endif
 
 protected:

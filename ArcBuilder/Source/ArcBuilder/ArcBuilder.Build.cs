@@ -40,6 +40,7 @@ public class ArcBuilder : ModuleRules
 				"StructUtils",
 				"TargetingSystem",
 				"MassEntity",
+				"MassCore",
 				"MassActors",
 				"MassSpawner",
 				"MassRepresentation",

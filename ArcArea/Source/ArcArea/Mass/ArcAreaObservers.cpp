@@ -5,7 +5,7 @@
 #include "ArcAreaSubsystem.h"
 #include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
 #include "ArcMass/SmartObject/ArcMassSmartObjectObservers.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassExecutionContext.h"
 
 // ====================================================================

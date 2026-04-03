@@ -95,10 +95,10 @@ UArcSmoothWalkingMode::UArcSmoothWalkingMode(const FObjectInitializer& ObjectIni
 {
 }
 
-void UArcSmoothWalkingMode::GenerateWalkMove_Implementation(FMoverTickStartData& StartState, float DeltaSeconds, const FVector& DesiredVelocity
-															, const FQuat& DesiredFacing, const FQuat& CurrentFacing, FVector& InOutAngularVelocityDegrees, FVector& InOutVelocity)
+void UArcSmoothWalkingMode::GenerateWalkMove_Implementation(FMoverTickStartData& StartState, float DeltaSeconds, const FMoverSimContext& SimContext, const FVector& DesiredVelocity,
+									 const FQuat& DesiredFacing, const FQuat& CurrentFacing, FVector& InOutAngularVelocityDegrees, FVector& InOutVelocity)
 {
-	Super::GenerateWalkMove_Implementation(StartState, DeltaSeconds, DesiredVelocity, DesiredFacing, CurrentFacing, InOutAngularVelocityDegrees, InOutVelocity);
+	Super::GenerateWalkMove_Implementation(StartState, DeltaSeconds, SimContext, DesiredVelocity, DesiredFacing, CurrentFacing, InOutAngularVelocityDegrees, InOutVelocity);
 	
 	const FArcSmoothWalkingState* State = StartState.SyncState.SyncStateCollection.FindDataByType<FArcSmoothWalkingState>();
 	

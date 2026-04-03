@@ -2,7 +2,7 @@
 
 #include "ArcAreaAssignmentTrait.h"
 
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityTemplateRegistry.h"
 #include "MassEntityUtils.h"
 

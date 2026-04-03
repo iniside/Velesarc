@@ -2,7 +2,7 @@
 
 #pragma once
 #include "ArcMassPerception.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityTraitBase.h"
 #include "MassObserverProcessor.h"
 #include "MassProcessor.h"
