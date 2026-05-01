@@ -2,7 +2,7 @@
 
 #include "ArcSmartObjectPlanHealthCondition.h"
 
-#include "ArcMass/ArcMassFragments.h"
+#include "ArcMassDamageSystem/ArcMassHealthStatsFragment.h"
 #include "MassEntityManager.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
 
@@ -14,14 +14,15 @@ bool FArcSmartObjectPlanHealthCondition::CanUseEntity(
 		? Context.RequestingEntity
 		: Entity.EntityHandle;
 
-	const FArcMassHealthFragment* HealthFragment = Context.EntityManager->GetFragmentDataPtr<FArcMassHealthFragment>(TargetEntity);
+	const FArcMassHealthStatsFragment* HealthFragment = Context.EntityManager->GetFragmentDataPtr<FArcMassHealthStatsFragment>(TargetEntity);
 	if (!HealthFragment)
 	{
 		return false;
 	}
 
-	const float HealthPercent = (HealthFragment->MaxHealth > 0.f)
-		? (HealthFragment->CurrentHealth / HealthFragment->MaxHealth)
+	const float MaxHealth = HealthFragment->MaxHealth.GetCurrentValue();
+	const float HealthPercent = (MaxHealth > 0.f)
+		? (HealthFragment->Health.GetCurrentValue() / MaxHealth)
 		: 0.f;
 
 	switch (Comparison)

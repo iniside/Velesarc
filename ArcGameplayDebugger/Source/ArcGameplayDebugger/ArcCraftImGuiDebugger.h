@@ -7,8 +7,10 @@
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftContext.h"
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftEvaluator.h"
 #include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
+#include "Mass/EntityHandle.h"
 
 class UArcCraftStationComponent;
+class UArcCraftDebuggerDrawComponent;
 class UArcRecipeDefinition;
 class UArcMaterialPropertyTable;
 class UArcItemsStoreComponent;
@@ -26,6 +28,15 @@ struct FArcCraftImGuiSimBandResult
 	int32 HitCount = 0;
 	FString ModifierSummary;
 	TMap<FString, float> AccumulatedStatValues;
+};
+
+/** Cached info for a Mass entity craft station (no actor representation). */
+struct FArcCraftMassStationEntry
+{
+	FMassEntityHandle Entity;
+	FString Label;
+	FGameplayTagContainer StationTags;
+	int32 QueueSize = 0;
 };
 
 /**
@@ -65,6 +76,12 @@ private:
 
 	TArray<TWeakObjectPtr<UArcCraftStationComponent>> CachedStations;
 	int32 SelectedStationIndex = -1;
+
+	// ---- Mass entity stations ----
+	void DrawMassStationDetail();
+
+	TArray<FArcCraftMassStationEntry> CachedMassStations;
+	int32 SelectedMassStationIndex = -1;
 
 	bool bBypassIngredients = false;
 	bool bInstantCraft = false;
@@ -149,6 +166,14 @@ private:
 	void RefreshMaterialRecipes();
 	UArcItemsStoreComponent* GetLocalPlayerItemStore() const;
 	APlayerController* GetLocalPlayerController() const;
+
+	// ---- Debug drawing ----
+	void EnsureDrawActor(UWorld* InWorld);
+	void DestroyDrawActor();
+	void UpdateDrawComponent();
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcCraftDebuggerDrawComponent> DrawComponent;
 
 	static float ComputeBandWeight(
 		float BaseWeight, float MinQuality, float QualityWeightBias,

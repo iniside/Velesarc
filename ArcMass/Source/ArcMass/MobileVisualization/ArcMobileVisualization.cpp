@@ -5,6 +5,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Components/InstancedSkinnedMeshComponent.h"
 
 // ---------------------------------------------------------------------------
 // UArcMobileVisSubsystem
@@ -163,7 +164,7 @@ EArcMobileVisLOD UArcMobileVisSubsystem::EvaluateEntityLOD(
 		? ActorRadiusCellsLeave
 		: ActorRadiusCells;
 
-	const int32 EffectiveISMRadius = (CurrentLOD == EArcMobileVisLOD::Actor || CurrentLOD == EArcMobileVisLOD::StaticMesh)
+	const int32 EffectiveISMRadius = (CurrentLOD == EArcMobileVisLOD::Actor || CurrentLOD == EArcMobileVisLOD::InstancedMesh)
 		? ISMRadiusCellsLeave
 		: ISMRadiusCells;
 
@@ -173,7 +174,7 @@ EArcMobileVisLOD UArcMobileVisSubsystem::EvaluateEntityLOD(
 	}
 	if (MinDist <= EffectiveISMRadius)
 	{
-		return EArcMobileVisLOD::StaticMesh;
+		return EArcMobileVisLOD::InstancedMesh;
 	}
 	return EArcMobileVisLOD::None;
 }
@@ -193,6 +194,32 @@ void UArcMobileVisSubsystem::GetEntityCellsInRadius(const FIntVector& Center, in
 			OutCells.Add(Cell);
 		}
 	}
+}
+
+bool UArcMobileVisSubsystem::EvaluateEntityPhysics(
+	const FIntVector& EntityCell,
+	int32 PhysicsRadiusCells,
+	int32 PhysicsRadiusCellsLeave,
+	bool bCurrentlyHasPhysics) const
+{
+	if (SourceCellPositions.IsEmpty())
+	{
+		return false;
+	}
+
+	int32 MinDist = TNumericLimits<int32>::Max();
+	for (const auto& Pair : SourceCellPositions)
+	{
+		const FIntVector& SourceCell = Pair.Value;
+		const int32 DX = FMath::Abs(EntityCell.X - SourceCell.X);
+		const int32 DY = FMath::Abs(EntityCell.Y - SourceCell.Y);
+		const int32 DZ = FMath::Abs(EntityCell.Z - SourceCell.Z);
+		const int32 Dist = FMath::Max3(DX, DY, DZ);
+		MinDist = FMath::Min(MinDist, Dist);
+	}
+
+	const int32 EffectiveRadius = bCurrentlyHasPhysics ? PhysicsRadiusCellsLeave : PhysicsRadiusCells;
+	return MinDist <= EffectiveRadius;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,4 +430,150 @@ void UArcMobileVisSubsystem::UpdateISMTransform(
 
 	UInstancedStaticMeshComponent* ISMC = *Found;
 	ISMC->UpdateInstanceTransform(InstanceId, NewTransform, true, true, true);
+}
+
+// ---------------------------------------------------------------------------
+// ISKM component management
+// ---------------------------------------------------------------------------
+
+UInstancedSkinnedMeshComponent* UArcMobileVisSubsystem::GetOrCreateISKMComponent(
+	FRegionManager& Manager,
+	USkinnedAsset* Asset,
+	UTransformProviderData* Provider,
+	const TArray<TObjectPtr<UMaterialInterface>>& Materials,
+	bool bCastShadows)
+{
+	if (!Asset || !Manager.ManagerActor)
+	{
+		return nullptr;
+	}
+
+	const FObjectKey Key(Asset);
+	if (TObjectPtr<UInstancedSkinnedMeshComponent>* Existing = Manager.ISKMComponents.Find(Key))
+	{
+		return *Existing;
+	}
+
+	UInstancedSkinnedMeshComponent* NewISKMC = NewObject<UInstancedSkinnedMeshComponent>(Manager.ManagerActor);
+	NewISKMC->SetSkinnedAssetAndUpdate(Asset, true);
+	NewISKMC->SetCastShadow(bCastShadows);
+	NewISKMC->SetMobility(EComponentMobility::Movable);
+	NewISKMC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	if (Provider)
+	{
+		NewISKMC->SetTransformProvider(Provider);
+	}
+
+	for (int32 i = 0; i < Materials.Num(); i++)
+	{
+		if (Materials[i])
+		{
+			NewISKMC->SetMaterial(i, Materials[i]);
+		}
+	}
+
+	NewISKMC->RegisterComponent();
+	Manager.ManagerActor->AddInstanceComponent(NewISKMC);
+
+	Manager.ISKMComponents.Add(Key, NewISKMC);
+
+	return NewISKMC;
+}
+
+// ---------------------------------------------------------------------------
+// ISKM instance management
+// ---------------------------------------------------------------------------
+
+FPrimitiveInstanceId UArcMobileVisSubsystem::AddISKMInstance(
+	const FIntVector& RegionCoord,
+	TSubclassOf<AActor> ManagerClass,
+	USkinnedAsset* Asset,
+	UTransformProviderData* Provider,
+	const TArray<TObjectPtr<UMaterialInterface>>& Materials,
+	bool bCastShadows,
+	const FTransform& Transform,
+	int32 AnimationIndex,
+	FMassEntityHandle OwnerEntity)
+{
+	FRegionManager& Manager = GetOrCreateRegionManager(RegionCoord, ManagerClass);
+	UInstancedSkinnedMeshComponent* ISKMC = GetOrCreateISKMComponent(Manager, Asset, Provider, Materials, bCastShadows);
+	if (!ISKMC)
+	{
+		return FPrimitiveInstanceId();
+	}
+
+	const FPrimitiveInstanceId NewId = ISKMC->AddInstance(Transform, AnimationIndex, true);
+
+	const FObjectKey Key(Asset);
+	Manager.ISKMInstanceOwners.FindOrAdd(Key).Add(NewId.GetAsIndex(), OwnerEntity);
+
+	return NewId;
+}
+
+void UArcMobileVisSubsystem::RemoveISKMInstance(
+	const FIntVector& RegionCoord,
+	TSubclassOf<AActor> ManagerClass,
+	USkinnedAsset* Asset,
+	FPrimitiveInstanceId InstanceId,
+	FMassEntityManager& EntityManager)
+{
+	if (!Asset || !InstanceId.IsValid())
+	{
+		return;
+	}
+
+	const FRegionKey Key{RegionCoord, ManagerClass.Get()};
+	FRegionManager* Manager = RegionManagers.Find(Key);
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FObjectKey AssetKey(Asset);
+	TObjectPtr<UInstancedSkinnedMeshComponent>* Found = Manager->ISKMComponents.Find(AssetKey);
+	if (!Found || !*Found)
+	{
+		return;
+	}
+
+	UInstancedSkinnedMeshComponent* ISKMC = *Found;
+	ISKMC->RemoveInstance(InstanceId);
+
+	TMap<int32, FMassEntityHandle>* Owners = Manager->ISKMInstanceOwners.Find(AssetKey);
+	if (Owners)
+	{
+		Owners->Remove(InstanceId.GetAsIndex());
+	}
+}
+
+void UArcMobileVisSubsystem::UpdateISKMTransform(
+	const FIntVector& RegionCoord,
+	TSubclassOf<AActor> ManagerClass,
+	USkinnedAsset* Asset,
+	FPrimitiveInstanceId InstanceId,
+	const FTransform& NewTransform,
+	int32 AnimationIndex)
+{
+	if (!Asset || !InstanceId.IsValid())
+	{
+		return;
+	}
+
+	const FRegionKey Key{RegionCoord, ManagerClass.Get()};
+	FRegionManager* Manager = RegionManagers.Find(Key);
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FObjectKey AssetKey(Asset);
+	TObjectPtr<UInstancedSkinnedMeshComponent>* Found = Manager->ISKMComponents.Find(AssetKey);
+	if (!Found || !*Found)
+	{
+		return;
+	}
+
+	UInstancedSkinnedMeshComponent* ISKMC = *Found;
+	ISKMC->SetInstanceTransform(InstanceId, NewTransform, true);
 }

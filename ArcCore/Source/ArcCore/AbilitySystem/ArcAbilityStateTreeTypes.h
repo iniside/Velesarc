@@ -274,7 +274,7 @@ public:
 	FGameplayTag Tag;
 	
 	UPROPERTY()
-	bool bPlayed;
+	bool bPlayed = false;
 	
 	UPROPERTY()
 	bool bResetPlayRate = false;

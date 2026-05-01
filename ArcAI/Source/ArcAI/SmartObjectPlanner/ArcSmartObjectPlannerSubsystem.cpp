@@ -2,10 +2,8 @@
 
 #include "ArcSmartObjectPlannerSubsystem.h"
 
-#include "ArcMassGoalPlanInfoSharedFragment.h"
 #include "ArcSmartObjectPlanConditionEvaluator.h"
 #include "ArcSmartObjectPlanResponse.h"
-#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 #include "GameplayDebuggerCategoryReplicator.h"
 #include "GameplayTagContainer.h"
 #include "HAL/PlatformTime.h"
@@ -16,9 +14,7 @@
 #include "MassEntitySubsystem.h"
 #include "MassExecutionContext.h"
 #include "MassGameplayDebugTypes.h"
-#include "SmartObjectSubsystem.h"
 #include "InstancedActors/ArcCoreInstancedActorsSubsystem.h"
-#include "SmartObjectRequestTypes.h"
 
 // -------------------------------------------------------------------
 // UArcSmartObjectPlannerSubsystem
@@ -48,11 +44,7 @@ void UArcSmartObjectPlannerSubsystem::Tick(float DeltaTime)
 			continue;
 		}
 
-		TArray<FArcPotentialEntity> Candidates;
-		Candidates.Reserve(64);
-		GatherCandidates(Request, Candidates);
-
-		BuildAllPlans(Request, Candidates);
+		BuildAllPlans(Request);
 	}
 }
 
@@ -61,80 +53,50 @@ TStatId UArcSmartObjectPlannerSubsystem::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UArcSmartObjectPlannerSubsystem, STATGROUP_Tickables);
 }
 
-void UArcSmartObjectPlannerSubsystem::GatherCandidates(
+void UArcSmartObjectPlannerSubsystem::RunSensors(
 	const FArcSmartObjectPlanRequest& Request,
+	const FArcSmartObjectPlanEvaluationContext& Context,
 	TArray<FArcPotentialEntity>& OutCandidates)
 {
-	UMassEntitySubsystem* MassEntitySubsystem = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
-	USmartObjectSubsystem* SOSubsystem = GetWorld()->GetSubsystem<USmartObjectSubsystem>();
-	const UArcMassSpatialHashSubsystem* SpatialHash = GetWorld()->GetSubsystem<UArcMassSpatialHashSubsystem>();
-	if (!MassEntitySubsystem || !SOSubsystem || !SpatialHash)
+	for (const TInstancedStruct<FArcSmartObjectPlanSensor>& Sensor : Request.SensorsArray)
 	{
-		return;
+		if (Sensor.IsValid())
+		{
+			Sensor.Get().GatherCandidates(Context, Request, OutCandidates);
+		}
 	}
+}
 
-	FMassEntityManager& EntityManager = MassEntitySubsystem->GetMutableEntityManager();
-
-	// Query spatial hash for nearby entities, filtering to only those with SmartObject + GoalPlanInfo
-	TArray<FArcMassEntityInfo> NearbyEntities;
-	NearbyEntities.Reserve(64);
-
-	SpatialHash->GetSpatialHashGrid().QueryEntitiesInRadiusFiltered(
-		Request.SearchOrigin,
-		Request.SearchRadius,
-		[&EntityManager](const FMassEntityHandle& Entity, const FVector& /*Location*/) -> bool
-		{
-			return EntityManager.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(Entity) != nullptr
-				&& EntityManager.GetConstSharedFragmentDataPtr<FArcMassGoalPlanInfoSharedFragment>(Entity) != nullptr;
-		},
-		NearbyEntities);
-
-	for (const FArcMassEntityInfo& Info : NearbyEntities)
+void UArcSmartObjectPlannerSubsystem::DeduplicateCandidates(TArray<FArcPotentialEntity>& Candidates)
+{
+	for (int32 LaterIdx = Candidates.Num() - 1; LaterIdx > 0; --LaterIdx)
 	{
-		const FArcSmartObjectOwnerFragment* SmartObjectOwner = EntityManager.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(Info.Entity);
-		const FArcMassGoalPlanInfoSharedFragment* GoalPlanInfo = EntityManager.GetConstSharedFragmentDataPtr<FArcMassGoalPlanInfoSharedFragment>(Info.Entity);
-
-		// Already filtered above, but guard anyway
-		if (!SmartObjectOwner || !GoalPlanInfo)
+		for (int32 EarlierIdx = 0; EarlierIdx < LaterIdx; ++EarlierIdx)
 		{
-			continue;
-		}
-
-		FArcPotentialEntity PotentialEntity;
-		PotentialEntity.EntityHandle = Info.Entity;
-		PotentialEntity.Location = Info.Location;
-		PotentialEntity.Provides = GoalPlanInfo->Provides;
-		PotentialEntity.Requires = GoalPlanInfo->Requires;
-
-		for (const auto& Cond : GoalPlanInfo->CustomConditions)
-		{
-			PotentialEntity.CustomConditions.Add(FConstStructView(Cond.GetScriptStruct(), Cond.GetMemory()));
-		}
-
-		TArray<FSmartObjectSlotHandle> OutSlots;
-		SOSubsystem->FindSlots(SmartObjectOwner->SmartObjectHandle, FSmartObjectRequestFilter(), /*out*/ OutSlots, {});
-
-		for (int32 SlotIndex = 0; SlotIndex < OutSlots.Num(); SlotIndex++)
-		{
-			if (!SOSubsystem->CanBeClaimed(OutSlots[SlotIndex]))
+			if (Candidates[LaterIdx].EntityHandle != Candidates[EarlierIdx].EntityHandle)
 			{
 				continue;
 			}
 
-			if (PotentialEntity.FoundCandidateSlots.NumSlots >= 4)
+			// Later sensor's Provides/Requires win
+			Candidates[EarlierIdx].Provides = Candidates[LaterIdx].Provides;
+			Candidates[EarlierIdx].Requires = Candidates[LaterIdx].Requires;
+
+			// Keep first non-empty FoundCandidateSlots
+			if (Candidates[EarlierIdx].FoundCandidateSlots.NumSlots == 0)
 			{
-				PotentialEntity.FoundCandidateSlots.NumSlots = 4;
-				break;
+				Candidates[EarlierIdx].FoundCandidateSlots = Candidates[LaterIdx].FoundCandidateSlots;
 			}
 
-			FSmartObjectCandidateSlot CandidateSlot;
-			CandidateSlot.Result.SmartObjectHandle = SmartObjectOwner->SmartObjectHandle;
-			CandidateSlot.Result.SlotHandle = OutSlots[SlotIndex];
-			PotentialEntity.FoundCandidateSlots.Slots[PotentialEntity.FoundCandidateSlots.NumSlots] = CandidateSlot;
-			PotentialEntity.FoundCandidateSlots.NumSlots++;
-		}
+			// Union CustomConditions
+			for (const FConstStructView& Cond : Candidates[LaterIdx].CustomConditions)
+			{
+				Candidates[EarlierIdx].CustomConditions.Add(Cond);
+			}
 
-		OutCandidates.Add(PotentialEntity);
+			Candidates.RemoveAtSwap(LaterIdx);
+			break;
+		}
 	}
 }
 
@@ -151,7 +113,11 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 	TArray<FArcSmartObjectPlanContainer>& OutPlans,
 	TArray<bool>& UsedEntities,
 	int32 MaxPlans,
-	const FArcSmartObjectPlanEvaluationContext* Context)
+	const FArcSmartObjectPlanEvaluationContext* Context
+#if !UE_BUILD_SHIPPING
+	, FArcSmartObjectPlanDebugData* DebugData
+#endif
+)
 {
 	// Stop if we already have enough plans
 	if (OutPlans.Num() >= MaxPlans)
@@ -162,6 +128,9 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 	// Prevent plans that are too long
 	if (CurrentPlan.Num() >= 20)
 	{
+#if !UE_BUILD_SHIPPING
+		if (DebugData) DebugData->bHitDepthLimit = true;
+#endif
 		return false;
 	}
 
@@ -173,6 +142,22 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 		OutPlans.Add(NewPlan);
 		return true;
 	}
+
+#if !UE_BUILD_SHIPPING
+	auto SetRejection = [DebugData](FMassEntityHandle Handle, EArcPlanCandidateRejection Reason, const FString& Detail = FString())
+	{
+		if (!DebugData) return;
+		for (FArcPlanCandidateDebugEntry& Entry : DebugData->Candidates)
+		{
+			if (Entry.EntityHandle == Handle && Entry.Rejection == EArcPlanCandidateRejection::None)
+			{
+				Entry.Rejection = Reason;
+				Entry.RejectionDetail = Detail;
+				break;
+			}
+		}
+	};
+#endif
 
 	// Find what we still need
 	FGameplayTagContainer StillNeeded = NeededTags;
@@ -192,13 +177,26 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 		FArcPotentialEntity& Entity = AvailableEntities[EntityIndex];
 
 		// Slot availability already verified by GatherCandidates
-		if (Entity.FoundCandidateSlots.NumSlots == 0)
+		if (Entity.FoundCandidateSlots.NumSlots == 0 && !Entity.KnowledgeHandle.IsValid())
 		{
+#if !UE_BUILD_SHIPPING
+			SetRejection(Entity.EntityHandle, EArcPlanCandidateRejection::NoSlots);
+#endif
 			continue;
 		}
 
-		if (Context && !EvaluateCustomConditions(Entity, *Context))
+#if !UE_BUILD_SHIPPING
+		FString ConditionFailName;
+#endif
+		if (Context && !EvaluateCustomConditions(Entity, *Context
+#if !UE_BUILD_SHIPPING
+			, &ConditionFailName
+#endif
+		))
 		{
+#if !UE_BUILD_SHIPPING
+			SetRejection(Entity.EntityHandle, EArcPlanCandidateRejection::CustomConditionFailed, ConditionFailName);
+#endif
 			continue;
 		}
 
@@ -209,6 +207,11 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 		if (NewTagsThisEntityWouldAdd.IsEmpty())
 		{
+#if !UE_BUILD_SHIPPING
+			SetRejection(Entity.EntityHandle, EArcPlanCandidateRejection::NoNewTags,
+				FString::Printf(TEXT("Provides: %s, Already have: %s"),
+					*Entity.Provides.ToStringSimple(), *AlreadyProvided.ToStringSimple()));
+#endif
 			continue; // This entity doesn't add anything new that we need
 		}
 
@@ -239,7 +242,11 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 					RequirementPlans,
 					UsedEntities,
 					1,
-					Context);
+					Context
+#if !UE_BUILD_SHIPPING
+					, DebugData
+#endif
+				);
 
 				UsedEntities[EntityIndex] = false; // Unreserve
 
@@ -266,6 +273,10 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 					if (!ConflictingTags.IsEmpty())
 					{
+#if !UE_BUILD_SHIPPING
+						SetRejection(Entity.EntityHandle, EArcPlanCandidateRejection::RequirementConflict,
+							FString::Printf(TEXT("Conflicting: %s"), *ConflictingTags.ToStringSimple()));
+#endif
 						continue; // Requirement plan would introduce duplicate capabilities
 					}
 
@@ -278,6 +289,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 					Item.Location = Entity.Location;
 					Item.Requires = Entity.Requires;
 					Item.FoundCandidateSlots = Entity.FoundCandidateSlots;
+					Item.KnowledgeHandle = Entity.KnowledgeHandle;
 					CurrentPlan.Add(Item);
 
 					CurrentTags.AppendTags(RequirementPlanProvides);
@@ -309,7 +321,11 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 						OutPlans,
 						UsedEntities,
 						MaxPlans,
-						Context))
+						Context
+#if !UE_BUILD_SHIPPING
+						, DebugData
+#endif
+					))
 					{
 						bFoundValidPlan = true;
 					}
@@ -335,6 +351,13 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 
 					CurrentPlan.SetNum(PlanSizeBefore);
 				}
+#if !UE_BUILD_SHIPPING
+				else
+				{
+					SetRejection(Entity.EntityHandle, EArcPlanCandidateRejection::RequirementUnsatisfiable,
+						FString::Printf(TEXT("Missing: %s"), *MissingRequirements.ToStringSimple()));
+				}
+#endif
 
 				// Don't continue to direct use if we had missing requirements
 				continue;
@@ -352,6 +375,7 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 		Item.Location = Entity.Location;
 		Item.Requires = Entity.Requires;
 		Item.FoundCandidateSlots = Entity.FoundCandidateSlots;
+		Item.KnowledgeHandle = Entity.KnowledgeHandle;
 		CurrentPlan.Add(Item);
 
 		// Continue recursively
@@ -364,7 +388,11 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 			OutPlans,
 			UsedEntities,
 			MaxPlans,
-			Context))
+			Context
+#if !UE_BUILD_SHIPPING
+			, DebugData
+#endif
+		))
 		{
 			bFoundValidPlan = true;
 		}
@@ -386,20 +414,9 @@ bool UArcSmartObjectPlannerSubsystem::BuildPlanRecursive(
 }
 
 
-void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
-	const FArcSmartObjectPlanRequest& Request,
-	TArray<FArcPotentialEntity>& AvailableEntities)
+void UArcSmartObjectPlannerSubsystem::BuildAllPlans(const FArcSmartObjectPlanRequest& Request)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(UArcSmartObjectPlannerSubsystem::BuildAllPlans);
-
-	TArray<bool> UsedEntities;
-	UsedEntities.SetNumZeroed(AvailableEntities.Num());
-
-	FArcSmartObjectPlanResponse Response;
-	Response.Handle = Request.Handle;
-	Response.AccumulatedTags.AppendTags(Request.InitialTags);
-
-	Response.Plans.Reserve(32);
 
 	FMassEntityManager& EntityManager = GetWorld()->GetSubsystem<UMassEntitySubsystem>()->GetMutableEntityManager();
 
@@ -410,6 +427,73 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 	{
 		Context.RequestingLocation = Transform->GetTransform().GetLocation();
 	}
+
+	TArray<FArcPotentialEntity> AvailableEntities;
+	AvailableEntities.Reserve(64);
+
+#if !UE_BUILD_SHIPPING
+	TMap<FMassEntityHandle, FString> EntitySensorSources;
+
+	for (const TInstancedStruct<FArcSmartObjectPlanSensor>& Sensor : Request.SensorsArray)
+	{
+		if (!Sensor.IsValid())
+		{
+			continue;
+		}
+
+		const int32 CountBefore = AvailableEntities.Num();
+		Sensor.Get().GatherCandidates(Context, Request, AvailableEntities);
+
+		FString SensorName = Sensor.GetScriptStruct()->GetDisplayNameText().ToString();
+		for (int32 i = CountBefore; i < AvailableEntities.Num(); i++)
+		{
+			FString& Existing = EntitySensorSources.FindOrAdd(AvailableEntities[i].EntityHandle);
+			if (Existing.IsEmpty())
+			{
+				Existing = SensorName;
+			}
+			else
+			{
+				Existing += TEXT(", ");
+				Existing += SensorName;
+			}
+		}
+	}
+#else
+	RunSensors(Request, Context, AvailableEntities);
+#endif
+
+	DeduplicateCandidates(AvailableEntities);
+
+#if !UE_BUILD_SHIPPING
+	FArcSmartObjectPlanDebugData DebugData;
+	DebugData.SearchOrigin = Request.SearchOrigin;
+	DebugData.SearchRadius = Request.SearchRadius;
+	DebugData.RequiredTags = Request.Requires;
+	DebugData.InitialTags = Request.InitialTags;
+
+	DebugData.Candidates.Reserve(AvailableEntities.Num());
+	for (const FArcPotentialEntity& Entity : AvailableEntities)
+	{
+		FArcPlanCandidateDebugEntry Entry;
+		Entry.EntityHandle = Entity.EntityHandle;
+		Entry.Location = Entity.Location;
+		Entry.Provides = Entity.Provides;
+		Entry.Requires = Entity.Requires;
+		Entry.SlotCount = Entity.FoundCandidateSlots.NumSlots;
+		Entry.SensorSource = EntitySensorSources.FindRef(Entity.EntityHandle);
+		DebugData.Candidates.Add(Entry);
+	}
+#endif
+
+	TArray<bool> UsedEntities;
+	UsedEntities.SetNumZeroed(AvailableEntities.Num());
+
+	FArcSmartObjectPlanResponse Response;
+	Response.Handle = Request.Handle;
+	Response.AccumulatedTags.AppendTags(Request.InitialTags);
+
+	Response.Plans.Reserve(32);
 
 	FGameplayTagContainer CurrentTags = Request.InitialTags;
 	FGameplayTagContainer AlreadyProvided = Request.InitialTags;
@@ -425,7 +509,25 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 		UsedEntities,
 		Request.MaxPlans,
 		&Context
+#if !UE_BUILD_SHIPPING
+		, &DebugData
+#endif
 	);
+
+#if !UE_BUILD_SHIPPING
+	DebugData.PlansFound = Response.Plans.Num();
+
+	FGameplayTagContainer AllProvided;
+	for (const FArcPotentialEntity& Entity : AvailableEntities)
+	{
+		AllProvided.AppendTags(Entity.Provides);
+	}
+	DebugData.UnsatisfiedTags = Request.Requires;
+	DebugData.UnsatisfiedTags.RemoveTags(AllProvided);
+	DebugData.UnsatisfiedTags.RemoveTags(Request.InitialTags);
+
+	SetDebugDiagnostics(Request.RequestingEntity, MoveTemp(DebugData));
+#endif
 
 	// Sort plans by efficiency
 	Response.Plans.Sort([&Request](const FArcSmartObjectPlanContainer& A, const FArcSmartObjectPlanContainer& B)
@@ -456,12 +558,24 @@ void UArcSmartObjectPlannerSubsystem::BuildAllPlans(
 }
 
 
-bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(const FArcPotentialEntity& Entity, const FArcSmartObjectPlanEvaluationContext& Context)
+bool UArcSmartObjectPlannerSubsystem::EvaluateCustomConditions(
+	const FArcPotentialEntity& Entity,
+	const FArcSmartObjectPlanEvaluationContext& Context
+#if !UE_BUILD_SHIPPING
+	, FString* OutFailedConditionName
+#endif
+)
 {
 	for (const FConstStructView& View : Entity.CustomConditions)
 	{
 		if (View.Get<FArcSmartObjectPlanConditionEvaluator>().CanUseEntity(Entity, Context) == false)
 		{
+#if !UE_BUILD_SHIPPING
+			if (OutFailedConditionName)
+			{
+				*OutFailedConditionName = View.GetScriptStruct()->GetName();
+			}
+#endif
 			return false;
 		}
 	}
@@ -691,6 +805,46 @@ void FGameplayDebuggerCategory_SmartObjectPlanner::CollectData(APlayerController
 
 		AddShape(FGameplayDebuggerShape::MakeArrow(Start, End, 20.f, 5.f, FColor::Red, FString::Printf(TEXT("Step %d To %d"), StepNum, NextStepNum)));
 	}
+
+#if !UE_BUILD_SHIPPING
+	const FArcSmartObjectPlanDebugData* Diag = SmartObjectPlanner->GetDebugDiagnostics(CachedEntity);
+	if (Diag)
+	{
+		for (const FArcPlanCandidateDebugEntry& Cand : Diag->Candidates)
+		{
+			FColor CandColor;
+			switch (Cand.Rejection)
+			{
+			case EArcPlanCandidateRejection::None: CandColor = FColor::Green; break;
+			case EArcPlanCandidateRejection::NoSlots: CandColor = FColor(180, 50, 50); break;
+			case EArcPlanCandidateRejection::CustomConditionFailed: CandColor = FColor(200, 80, 80); break;
+			case EArcPlanCandidateRejection::NoNewTags: CandColor = FColor::Yellow; break;
+			case EArcPlanCandidateRejection::RequirementConflict: CandColor = FColor::Orange; break;
+			case EArcPlanCandidateRejection::RequirementUnsatisfiable: CandColor = FColor(255, 60, 60); break;
+			default: CandColor = FColor::White; break;
+			}
+
+			FString Label;
+			switch (Cand.Rejection)
+			{
+			case EArcPlanCandidateRejection::None: Label = TEXT("OK"); break;
+			case EArcPlanCandidateRejection::NoSlots: Label = TEXT("No Slots"); break;
+			case EArcPlanCandidateRejection::CustomConditionFailed: Label = FString::Printf(TEXT("Cond: %s"), *Cand.RejectionDetail); break;
+			case EArcPlanCandidateRejection::NoNewTags: Label = TEXT("No New Tags"); break;
+			case EArcPlanCandidateRejection::RequirementConflict: Label = TEXT("Req Conflict"); break;
+			case EArcPlanCandidateRejection::RequirementUnsatisfiable: Label = TEXT("Req Unsat"); break;
+			default: Label = TEXT("?"); break;
+			}
+
+			if (!Cand.SensorSource.IsEmpty())
+			{
+				Label += FString::Printf(TEXT("\n(%s)"), *Cand.SensorSource);
+			}
+
+			AddShape(FGameplayDebuggerShape::MakeCylinder(Cand.Location, 15.f, 180.f, CandColor, Label));
+		}
+	}
+#endif
 }
 
 void FGameplayDebuggerCategory_SmartObjectPlanner::DrawData(APlayerController* OwnerPC, FGameplayDebuggerCanvasContext& CanvasContext)

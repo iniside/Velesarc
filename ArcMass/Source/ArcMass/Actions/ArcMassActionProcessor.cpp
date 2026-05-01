@@ -15,6 +15,7 @@ UArcMassDeathActionProcessor::UArcMassDeathActionProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 }
 
 void UArcMassDeathActionProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)

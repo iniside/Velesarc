@@ -64,7 +64,7 @@ public:
 	{
 		return FArcItemFragment_GrantedGameplayEffects::StaticStruct();
 	}
-	
+
 	virtual ~FArcItemFragment_GrantedGameplayEffects() override
 	{
 	}

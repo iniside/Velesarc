@@ -94,6 +94,9 @@ struct ARCCRAFT_API FArcCraftOutputFragment : public FMassFragment
 
 	UPROPERTY()
 	TArray<FArcItemSpec> OutputItems;
+
+	/** Set by craft tick processor when new output is added. Cleared by consumers. */
+	bool bOutputDirty = false;
 };
 
 template<>

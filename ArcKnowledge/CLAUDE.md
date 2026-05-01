@@ -77,6 +77,9 @@ Follows TQS pattern: `FInstancedStruct` arrays with `ExcludeBaseStruct`, base ty
 - `FArcMassPostAdvertisementTask` — Posts advertisement for others to claim (with optional payload + instruction)
 - `FArcMassClaimAdvertisementTask` — Claims an advertisement, with release/complete on exit options
 - `FArcMassUnclaimAdvertisementTask` — Unclaims an advertisement, making it available for re-claiming. Any entity can unclaim any advertisement.
+- `FArcMassStoreKnowledgeHandleTask` — Passthrough: copies input handle to output for persistent storage in StateTree state
+- `FArcMassHasClaimedAdvertisementsCondition` — Checks if executing entity has any active advertisement claims
+- `FArcMassGetClaimedAdvertisementsTask` — Returns all advertisement handles currently claimed by executing entity
 - `FArcMassExecuteAdvertisementTask` — Executes a claimed advertisement's StateTree instruction via `FArcAdvertisementExecutionContext`. Driven by the outer task's `Tick()` (no independent ticker). Completes/cancels the advertisement on success/interrupt in `ExitState()`.
 - `FArcKnowledgeAvailabilityConsideration` — Utility score based on nearby matching knowledge
 - `FArcMassListenToKnowledgeEventTask` — Listens for knowledge events on entity's async message endpoint. Exposes per-event-type dispatchers (OnRegistered, OnUpdated, OnRemoved, OnAdvertisementPosted, OnAdvertisementClaimed, OnAdvertisementCompleted) and full entry data as bindable outputs (KnowledgeHandle, SourceEntity, Payload, Relevance, Timestamp, Lifetime, bClaimed, ClaimedBy). Entry lookup happens in the async callback; bEntryAvailable indicates whether the entry was found (false expected for Removed).
@@ -110,5 +113,8 @@ Follows TQS pattern: `FInstancedStruct` arrays with `ExcludeBaseStruct`, base ty
 - `Mass/ArcKnowledgeObservers.h/.cpp` — Add/remove observer processors
 - `StateTree/*.h/.cpp` — All StateTree tasks, conditions, considerations
 - `StateTree/ArcMassUnclaimAdvertisementTask.h/.cpp` — Unclaim advertisement StateTree task
+- `StateTree/ArcMassStoreKnowledgeHandleTask.h/.cpp` — Store knowledge handle passthrough task
+- `StateTree/ArcMassHasClaimedAdvertisementsCondition.h/.cpp` — Has claimed advertisements condition
+- `StateTree/ArcMassGetClaimedAdvertisementsTask.h/.cpp` — Get claimed advertisements task
 - `TQS/ArcTQSGenerator_KnowledgeEntries.h/.cpp` — Knowledge-to-TQS bridge generator
 - `Debug/GameplayDebuggerCategory_ArcKnowledge.h/.cpp` — Gameplay debugger visualization

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSGenerator.h"
+#include "ArcTQSGenerator.h"
 #include "GameplayTagContainer.h"
 #include "ArcTQSGenerator_KnowledgeEntries.generated.h"
 

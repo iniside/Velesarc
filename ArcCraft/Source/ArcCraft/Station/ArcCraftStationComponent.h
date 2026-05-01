@@ -35,7 +35,6 @@
 #include "ArcCraftStationComponent.generated.h"
 
 class UArcRecipeDefinition;
-class UArcCraftVisEntityComponent;
 struct FMassEntityHandle;
 
 /**
@@ -213,9 +212,6 @@ public:
 	 */
 	TArray<FArcCraftQueueEntry> GetLiveQueue() const;
 
-	/** Whether this station is backed by a Mass entity. */
-	bool IsEntityBacked() const { return CachedVisComponent.IsValid(); }
-
 	/** Get the station's tags. */
 	const FGameplayTagContainer& GetStationTags() const { return StationTags; }
 
@@ -224,6 +220,12 @@ public:
 
 	/** Get the current actor-side queue entries for syncing back to entity. */
 	const FArcCraftStationQueue& GetCraftQueue() const { return CraftQueue; }
+
+	/**
+	 * Get the entity handle for this station.
+	 * Returns an invalid handle until a future system sets it.
+	 */
+	FMassEntityHandle GetEntityHandle() const;
 
 protected:
 	virtual void BeginPlay() override;
@@ -257,17 +259,8 @@ private:
 	// ---- Entity Access Helpers ----
 
 	/**
-	 * Get the entity handle from the owning actor's UArcCraftVisEntityComponent.
-	 * Returns an invalid handle if the component is missing.
-	 */
-	FMassEntityHandle GetEntityHandle() const;
-
-	/**
 	 * Get the entity manager for the current world.
 	 * Returns nullptr if the subsystem is unavailable.
 	 */
 	FMassEntityManager* GetEntityManager() const;
-
-	/** Cached reference to the vis entity component on our owner. Set in BeginPlay. */
-	TWeakObjectPtr<UArcCraftVisEntityComponent> CachedVisComponent;
 };

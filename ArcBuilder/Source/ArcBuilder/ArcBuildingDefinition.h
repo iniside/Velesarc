@@ -31,8 +31,7 @@ public:
 
 /**
  * Primary data asset defining a building piece.
- * Identified by a GUID-based primary asset ID, following the same
- * pattern as UArcRecipeDefinition and UArcLootTable.
+ * Identified by a GUID-based primary asset ID.
  */
 UCLASS(BlueprintType, meta = (LoadBehavior = "LazyOnDemand"))
 class ARCBUILDER_API UArcBuildingDefinition : public UDataAsset

@@ -12,6 +12,11 @@
 #include "MassSignalSubsystem.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "Player/ArcHeroComponentBase.h"
+#include "ArcConditionMassEffectsConfig.h"
+#include "ArcConditionSaturationAttributes.h"
+#include "ArcConditionSaturationHandler.h"
+#include "Effects/ArcEffectFunctions.h"
+#include "Fragments/ArcEffectStackFragment.h"
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -47,21 +52,12 @@ void UArcConditionReactionProcessor::ConfigureQueries(const TSharedRef<FMassEnti
 	// ASC fragment — optional (entities without ASC still get prev-state tracking)
 	EntityQuery.AddRequirement<FArcCoreAbilitySystemFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 
-	// All 13 condition fragments — optional, read-only
-	EntityQuery.AddRequirement<FArcBurningConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcBleedingConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcChilledConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcShockedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcPoisonedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcDiseasedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcWeakenedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcOiledConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcWetConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcCorrodedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcBlindedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcSuffocatingConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcExhaustedConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
+	// Consolidated condition states fragment — optional, read-only
+	EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	
+	EntityQuery.AddRequirement<FArcConditionSaturationAttributes>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
+	EntityQuery.AddRequirement<FArcEffectStackFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
+
 	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
@@ -90,16 +86,6 @@ void UArcConditionReactionProcessor::EnsureTagContainersBuilt()
 // SignalEntities
 // ---------------------------------------------------------------------------
 
-#define ARC_PROCESS_CONDITION(Name, EnumVal) \
-{ \
-	const FArcConditionState* State = Arc::Condition::GetOptionalStateConst<FArc##Name##ConditionFragment>(Ctx, Idx); \
-	ProcessConditionTransition(EArcConditionType::EnumVal, State, EntityPrevStates[static_cast<int32>(EArcConditionType::EnumVal)], Entity, ASC, Subsystem); \
-	if (ConditionSet && ASC) \
-	{ \
-		ASC->SetNumericAttributeBase(UArcConditionAttributeSet::Get##Name##SaturationAttribute(), State ? State->Saturation : 0.f); \
-	} \
-}
-
 void UArcConditionReactionProcessor::SignalEntities(FMassEntityManager& EntityManager, FMassExecutionContext& Context, FMassSignalNameLookup& EntitySignals)
 {
 	EnsureTagContainersBuilt();
@@ -107,12 +93,16 @@ void UArcConditionReactionProcessor::SignalEntities(FMassEntityManager& EntityMa
 	TRACE_CPUPROFILER_EVENT_SCOPE(ArcConditionReaction);
 
 	UArcConditionEffectsSubsystem* Subsystem = UWorld::GetSubsystem<UArcConditionEffectsSubsystem>(EntityManager.GetWorld());
+	UArcConditionMassEffectsConfig* MassConfig = Subsystem ? Subsystem->GetMassEffectsConfig() : nullptr;
 
 	EntityQuery.ForEachEntityChunk(Context,
-		[this, &EntityManager, Subsystem](FMassExecutionContext& Ctx)
+		[this, &EntityManager, Subsystem, MassConfig](FMassExecutionContext& Ctx)
 		{
 			TConstArrayView<FArcCoreAbilitySystemFragment> ASCFragments = Ctx.GetFragmentView<FArcCoreAbilitySystemFragment>();
 			const bool bHasASC = !ASCFragments.IsEmpty();
+
+			TArrayView<FArcConditionSaturationAttributes> SatAttrFragments = Ctx.GetMutableFragmentView<FArcConditionSaturationAttributes>();
+			const bool bHasSatAttrs = !SatAttrFragments.IsEmpty();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -135,20 +125,38 @@ void UArcConditionReactionProcessor::SignalEntities(FMassEntityManager& EntityMa
 					}
 				}
 
+				FArcConditionSaturationAttributes* SatAttrs = bHasSatAttrs ? &SatAttrFragments[Idx] : nullptr;
+
 				// Process all 13 conditions
-				ARC_PROCESS_CONDITION(Burning, Burning)
-				ARC_PROCESS_CONDITION(Bleeding, Bleeding)
-				ARC_PROCESS_CONDITION(Chilled, Chilled)
-				ARC_PROCESS_CONDITION(Shocked, Shocked)
-				ARC_PROCESS_CONDITION(Poisoned, Poisoned)
-				ARC_PROCESS_CONDITION(Diseased, Diseased)
-				ARC_PROCESS_CONDITION(Weakened, Weakened)
-				ARC_PROCESS_CONDITION(Oiled, Oiled)
-				ARC_PROCESS_CONDITION(Wet, Wet)
-				ARC_PROCESS_CONDITION(Corroded, Corroded)
-				ARC_PROCESS_CONDITION(Blinded, Blinded)
-				ARC_PROCESS_CONDITION(Suffocating, Suffocating)
-				ARC_PROCESS_CONDITION(Exhausted, Exhausted)
+				TConstArrayView<FArcConditionStatesFragment> CondFrags = Ctx.GetFragmentView<FArcConditionStatesFragment>();
+				const FArcConditionStatesFragment* CondFrag = !CondFrags.IsEmpty() ? &CondFrags[Idx] : nullptr;
+
+				for (int32 i = 0; i < ArcConditionTypeCount; ++i)
+				{
+					const EArcConditionType Type = static_cast<EArcConditionType>(i);
+					const FArcConditionState* State = CondFrag ? &CondFrag->States[i] : nullptr;
+					const FArcConditionPrevState SnapshotPrev = EntityPrevStates[i];
+
+					ProcessConditionTransition(Type, State, EntityPrevStates[i], Entity, ASC, Subsystem);
+
+					if (MassConfig)
+					{
+						const FArcConditionMassEffectEntry* MassEntry = MassConfig->ConditionEffects.Find(Type);
+						ProcessMassConditionTransition(Type, State, SnapshotPrev, Entity, EntityManager, MassEntry);
+					}
+
+					const float Sat = State ? State->Saturation : 0.f;
+
+					if (ConditionSet && ASC)
+					{
+						ASC->SetNumericAttributeBase(UArcConditionAttributeSet::GetSaturationAttributeByIndex(i), Sat);
+					}
+
+					if (SatAttrs)
+					{
+						SatAttrs->GetSaturationByIndex(i)->SetBaseValue(Sat);
+					}
+				}
 			}
 		}
 	);
@@ -162,8 +170,6 @@ void UArcConditionReactionProcessor::SignalEntities(FMassEntityManager& EntityMa
 		}
 	}
 }
-
-#undef ARC_PROCESS_CONDITION
 
 // ---------------------------------------------------------------------------
 // ProcessConditionTransition
@@ -308,4 +314,67 @@ void UArcConditionReactionProcessor::RemoveEffectsWithTags(UArcCoreAbilitySystem
 	}
 
 	ASC->RemoveActiveEffectsWithTags(TagContainer);
+}
+
+// ---------------------------------------------------------------------------
+// ProcessMassConditionTransition
+// ---------------------------------------------------------------------------
+
+void UArcConditionReactionProcessor::ProcessMassConditionTransition(
+	EArcConditionType ConditionType,
+	const FArcConditionState* CurrentState,
+	const FArcConditionPrevState& PrevState,
+	FMassEntityHandle Entity,
+	FMassEntityManager& EntityManager,
+	const FArcConditionMassEffectEntry* MassEntry)
+{
+	const bool bIsActive = CurrentState ? CurrentState->bActive : false;
+	const float Saturation = CurrentState ? CurrentState->Saturation : 0.f;
+	const EArcConditionOverloadPhase OverloadPhase = CurrentState ? CurrentState->OverloadPhase : EArcConditionOverloadPhase::None;
+
+	const bool bWasActive = PrevState.bActive;
+	const float PrevSaturation = PrevState.Saturation;
+	const EArcConditionOverloadPhase PrevOverloadPhase = PrevState.OverloadPhase;
+
+	const int32 TypeIdx = static_cast<int32>(ConditionType);
+
+	// Activation
+	if (!bWasActive && bIsActive)
+	{
+		if (MassEntry && MassEntry->ActivationEffect)
+		{
+			ArcEffects::TryApplyEffect(EntityManager, Entity, MassEntry->ActivationEffect, Entity);
+		}
+	}
+
+	// Deactivation
+	if (bWasActive && !bIsActive)
+	{
+		ArcEffects::RemoveEffectsByTag(EntityManager, Entity, ActiveTagContainers[TypeIdx]);
+	}
+
+	// Break (saturation crossed 100)
+	if (PrevSaturation < 100.f && Saturation >= 100.f)
+	{
+		if (MassEntry && MassEntry->BurstEffect)
+		{
+			ArcEffects::TryApplyEffect(EntityManager, Entity, MassEntry->BurstEffect, Entity);
+		}
+	}
+
+	// Overload transitions
+	if (PrevOverloadPhase != OverloadPhase)
+	{
+		if (PrevOverloadPhase == EArcConditionOverloadPhase::None && OverloadPhase == EArcConditionOverloadPhase::Overloaded)
+		{
+			if (MassEntry && MassEntry->OverloadEffect)
+			{
+				ArcEffects::TryApplyEffect(EntityManager, Entity, MassEntry->OverloadEffect, Entity);
+			}
+		}
+		else if (PrevOverloadPhase == EArcConditionOverloadPhase::Overloaded || PrevOverloadPhase == EArcConditionOverloadPhase::Burnout)
+		{
+			ArcEffects::RemoveEffectsByTag(EntityManager, Entity, OverloadTagContainers[TypeIdx]);
+		}
+	}
 }

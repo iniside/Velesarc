@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcMassDamageSystem",
+	"Description": "Mass-native damage attributes and typed damage execution",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"Plugins": [
+		{
+			"Name": "ArcMassAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcConditionEffects",
+			"Enabled": true
+		}
+	],
+	"Modules": [
+		{
+			"Name": "ArcMassDamageSystem",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

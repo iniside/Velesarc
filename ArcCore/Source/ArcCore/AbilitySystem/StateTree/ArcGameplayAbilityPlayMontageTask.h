@@ -32,7 +32,7 @@ struct FArcGameplayAbilityPlayMontageTaskInstanceData
 
 	/** Optional montage section name to jump to after starting playback. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	FName SectionName;
+	FName SectionName = NAME_None;
 
 	/** Gameplay tag sent as gameplay event when the montage ends. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
@@ -40,7 +40,7 @@ struct FArcGameplayAbilityPlayMontageTaskInstanceData
 
 	/** When true, gathers UArcAnimNotify_MarkGameplayEvent notifies from the montage and fires them as gameplay events during playback. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	bool bGatherNotifies;
+	bool bGatherNotifies = false;
 
 	/** Blend out time in seconds when stopping the montage. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
@@ -62,10 +62,10 @@ struct FArcGameplayAbilityPlayMontageTaskInstanceData
 	TArray<FArcNotifyEvent> NotifyEvents;
 
 	UPROPERTY()
-	float CurrentTime;
+	float CurrentTime = 0;
 
 	UPROPERTY()
-	float PlayedMontageLength;
+	float PlayedMontageLength = 0;
 
 	FOnMontageEnded MontageEndedDelegate;
 	FOnMontageSectionChanged SectionChangedDelegate;

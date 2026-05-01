@@ -6,9 +6,9 @@
 #include "MassStateTreeExecutionContext.h"
 #include "MassStateTreeTypes.h"
 #include "StateTreeAsyncExecutionContext.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSTypes.h"
 #include "StructUtils/InstancedStruct.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
+#include "ArcTQSQuerySubsystem.h"
 #include "ArcTQSRunQueryTask.generated.h"
 
 class UArcTQSQueryDefinition;
@@ -45,15 +45,15 @@ struct FArcTQSRunQueryTaskInstanceData
 	// --- Inline definition (when bUseInlineDefinition = true) ---
 
 	// Optional context provider that produces ContextLocations dynamically
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSContextProvider", EditCondition = "bUseInlineDefinition"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcTargetQuery.ArcTQSContextProvider", EditCondition = "bUseInlineDefinition"))
 	FInstancedStruct InlineContextProvider;
 
 	// Generator that produces the initial target pool
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcTargetQuery.ArcTQSGenerator"))
 	FInstancedStruct InlineGenerator;
 
 	// Ordered pipeline of filter/score steps
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSStep", EditCondition = "bUseInlineDefinition"))
+	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcTargetQuery.ArcTQSStep", EditCondition = "bUseInlineDefinition"))
 	TArray<FInstancedStruct> InlineSteps;
 
 	// How to select from the final scored pool

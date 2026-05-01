@@ -78,7 +78,7 @@ struct FArcGameplayAbilityGetActivationTimePropertyFunctionInstanceData
 
 	/** The activation time value read from the ability. */
 	UPROPERTY(EditAnywhere, Category = Output)
-	float ActivationTime;
+	float ActivationTime = 0;
 };
 
 /**
@@ -119,7 +119,7 @@ struct FArcGameplayAbilityGetItemScalableFloatPropertyFunctionInstanceData
 
 	/** The evaluated scalable float value. */
 	UPROPERTY(EditAnywhere, Category = Output)
-	float Value;
+	float Value = 0;
 };
 
 /**

@@ -149,6 +149,10 @@ namespace
 		if (Debugger.bShow)
 		{
 			Debugger.Draw();
+			if (!Debugger.bShow)
+			{
+				Debugger.Uninitialize();
+			}
 		}
 	}
 }
@@ -213,6 +217,8 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ToggleDebuggerMenuItem("Area", AreaDebugger);
 					ToggleDebuggerMenuItem("Needs", NeedsDebugger);
 					ToggleDebuggerMenuItem("Interactions", InteractionDebugger);
+					ToggleDebuggerMenuItem("Economy", EconomyDebugger);
+					ToggleDebuggerMenuItem("Game Director", GameDirectorDebugger);
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Gameplay Tag Tree", GameplayTagTreeWidget);
 					ImGui::EndMenu();
@@ -246,7 +252,11 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 					ImGui::Separator();
 					ToggleDebuggerMenuItem("Spatial Hash Minimap", SpatialHashMinimapDebugger);
 					ToggleDebuggerMenuItem("Visualization Minimap", VisualizationMinimapDebugger);
+					ToggleDebuggerMenuItem("Mobile Visualization", MobileVisEntityDebugger);
 					ToggleDebuggerMenuItem("ArcIW Minimap", IWMinimapDebugger);
+					ImGui::Separator();
+					ToggleDebuggerMenuItem("Mass Abilities", MassAbilitiesDebugger);
+					ToggleDebuggerMenuItem("Mass Items", MassItemsDebugger);
 					ImGui::EndMenu();
 				}
 
@@ -279,12 +289,17 @@ void UArcGameplayDebuggerSubsystem::Tick(float DeltaTime)
 				DrawIfVisible(AreaDebugger);
 				DrawIfVisible(SpatialHashMinimapDebugger);
 				DrawIfVisible(VisualizationMinimapDebugger);
+				DrawIfVisible(MobileVisEntityDebugger);
 				DrawIfVisible(ConditionDebugger);
 				DrawIfVisible(NeedsDebugger);
 				DrawIfVisible(WeatherMinimapDebugger);
 				DrawIfVisible(IWMinimapDebugger);
 				DrawIfVisible(InteractionDebugger);
 				DrawIfVisible(WorldPersistenceDebugger);
+				DrawIfVisible(EconomyDebugger);
+				DrawIfVisible(GameDirectorDebugger);
+				DrawIfVisible(MassAbilitiesDebugger);
+				DrawIfVisible(MassItemsDebugger);
 				if (bDrawDebug)
 				{
 					ImGui::ShowDemoWindow();

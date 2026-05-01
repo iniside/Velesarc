@@ -24,13 +24,14 @@
 #include "ArcCoreUtils.h"
 #include "MassEntitySubsystem.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
-#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
 #include "Engine/World.h"
 #include "Items/ArcItemData.h"
+#include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemId.h"
 #include "Items/ArcItemsArray.h"
 #include "Items/ArcItemsStoreComponent.h"
+#include "Items/ArcItemStackMethod.h"
 
 // -------------------------------------------------------------------
 // FArcCraftOutputDelivery (base)
@@ -167,26 +168,15 @@ bool FArcCraftOutputDelivery_ToInstigator::DeliverOutput(
 // FArcCraftOutputDelivery_EntityStore
 // -------------------------------------------------------------------
 
-UArcCraftVisEntityComponent* FArcCraftOutputDelivery_EntityStore::GetVisComponent(
-	const UArcCraftStationComponent* Station) const
-{
-	if (!Station || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
-}
-
 FArcCraftOutputFragment* FArcCraftOutputDelivery_EntityStore::GetOutputFragment(
 	const UArcCraftStationComponent* Station) const
 {
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp)
+	if (!Station)
 	{
 		return nullptr;
 	}
 
-	const FMassEntityHandle Entity = VisComp->GetEntityHandle();
+	const FMassEntityHandle Entity = Station->GetEntityHandle();
 	if (!Entity.IsValid())
 	{
 		return nullptr;
@@ -216,21 +206,6 @@ FArcCraftOutputFragment* FArcCraftOutputDelivery_EntityStore::GetOutputFragment(
 UArcItemsStoreComponent* FArcCraftOutputDelivery_EntityStore::GetMirrorOutputStore(
 	const UArcCraftStationComponent* Station) const
 {
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-
-	TArray<UArcItemsStoreComponent*> Stores;
-	Station->GetOwner()->GetComponents<UArcItemsStoreComponent>(Stores);
-	for (UArcItemsStoreComponent* Store : Stores)
-	{
-		if (Store && Store->IsA(VisComp->OutputStoreClass))
-		{
-			return Store;
-		}
-	}
 	return nullptr;
 }
 
@@ -246,9 +221,16 @@ bool FArcCraftOutputDelivery_EntityStore::DeliverOutput(
 		return false;
 	}
 
-	OutputFrag->OutputItems.Add(OutputSpec);
+	const UArcItemDefinition* OutputDef = OutputSpec.GetItemDefinition();
+	const FArcItemStackMethod* StackMethod = OutputDef ? OutputDef->GetStackMethod<FArcItemStackMethod>() : nullptr;
+	FArcItemSpec SpecCopy = OutputSpec;
+	if (!StackMethod || !StackMethod->TryStackSpec(OutputFrag->OutputItems, MoveTemp(SpecCopy)))
+	{
+		OutputFrag->OutputItems.Add(OutputSpec);
+	}
 
-	// Mirror to actor-side store if alive (for UI)
+	// Mirror to actor-side store if alive (for UI).
+	// AddItem applies its own StackMethod check, so the mirror stays in sync.
 	UArcItemsStoreComponent* MirrorStore = GetMirrorOutputStore(Station);
 	if (MirrorStore)
 	{

@@ -8,8 +8,6 @@
 #include "MassEntityTraitBase.h"
 #include "ArcIceWeatherProcessor.generated.h"
 
-struct FArcMassHealthFragment;
-
 UCLASS(meta = (DisplayName = "Arc Ice Weather Processor"))
 class ARCWEATHER_API UArcIceWeatherProcessor : public UMassProcessor
 {
@@ -24,11 +22,8 @@ protected:
 
 private:
 	FMassEntityQuery EntityQuery;
-	float CurrentSignalTime = 0;
 };
 
-/** Trait that adds ice and health fragments to a Mass entity.
- *  Enables the entity to participate in ice weather effects (accumulation and thawing). */
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Ice", Category = "Weather"))
 class ARCWEATHER_API UArcIceTrait : public UMassEntityTraitBase
 {
@@ -37,6 +32,6 @@ class ARCWEATHER_API UArcIceTrait : public UMassEntityTraitBase
 public:
 	UPROPERTY(EditAnywhere)
 	FArcIceFragment IceConfig;
-	
+
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };

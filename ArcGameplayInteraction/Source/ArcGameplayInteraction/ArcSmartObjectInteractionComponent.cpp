@@ -9,7 +9,6 @@
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "SmartObjectSubsystem.h"
-#include "ArcMass/Visualization/ArcVisEntityComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
@@ -82,11 +81,6 @@ bool UArcSmartObjectInteractionComponent::StartInteraction(APawn* Interactor)
 	{
 		EntityHandle = AgentComp->GetEntityHandle();
 	}
-	else if (UArcVisEntityComponent* VisEntityComp = OwnerActor->FindComponentByClass<UArcVisEntityComponent>())
-	{
-		EntityHandle = VisEntityComp->GetEntityHandle();
-	}
-	
 	if (!EntityHandle.IsValid())
 	{
 		return false;

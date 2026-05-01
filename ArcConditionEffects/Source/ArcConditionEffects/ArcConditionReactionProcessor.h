@@ -14,6 +14,9 @@ class UGameplayEffect;
 class UArcConditionEffectsSubsystem;
 class UArcCoreAbilitySystemComponent;
 struct FArcConditionEffectEntry;
+class UArcConditionMassEffectsConfig;
+struct FArcConditionMassEffectEntry;
+struct FArcConditionSaturationAttributes;
 
 UCLASS()
 class ARCCONDITIONEFFECTS_API UArcConditionReactionProcessor : public UMassSignalProcessorBase
@@ -39,6 +42,14 @@ private:
 
 	void ApplyEffectToASC(UArcCoreAbilitySystemComponent* ASC, TSubclassOf<UGameplayEffect> EffectClass, float Saturation);
 	void RemoveEffectsWithTags(UArcCoreAbilitySystemComponent* ASC, const FGameplayTagContainer& TagContainer);
+
+	void ProcessMassConditionTransition(
+		EArcConditionType ConditionType,
+		const FArcConditionState* CurrentState,
+		const FArcConditionPrevState& PrevState,
+		FMassEntityHandle Entity,
+		FMassEntityManager& EntityManager,
+		const FArcConditionMassEffectEntry* MassEntry);
 
 	TMap<FMassEntityHandle, TStaticArray<FArcConditionPrevState, ArcConditionTypeCount>> PrevStates;
 

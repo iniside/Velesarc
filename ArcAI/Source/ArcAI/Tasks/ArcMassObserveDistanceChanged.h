@@ -25,7 +25,7 @@ struct FArcMassObserveDistanceChangedTaskInstanceData
 
 	/** Fixed world location to measure distance from when bUseCompareLocation is true. Overrides the entity's own position. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	FVector CompareLocation;
+	FVector CompareLocation = FVector::ZeroVector;
 
 	/** Distance threshold in world units. The OnDistanceChanged delegate fires when the distance exceeds this value. */
 	UPROPERTY(EditAnywhere, Category = Parameter)

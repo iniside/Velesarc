@@ -286,24 +286,8 @@ void UArcThermalConditionProcessor::InitializeInternal(UObject& Owner, const TSh
 
 void UArcThermalConditionProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	// Thermal conditions — required ReadWrite for the primary ones
-	EntityQuery.AddRequirement<FArcBurningConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcChilledConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcWetConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcOiledConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-
-	// Cross-domain conditions that thermal can affect
-	EntityQuery.AddRequirement<FArcBleedingConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcDiseasedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcBlindedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-
-	// Configs — optional since entity may not have all conditions
-	EntityQuery.AddConstSharedRequirement<FArcBurningConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcChilledConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcWetConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcOiledConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcBlindedConditionConfig>(EMassFragmentPresence::Optional);
-	
+	EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddConstSharedRequirement<FArcConditionConfigsShared>(EMassFragmentPresence::All);
 	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
@@ -346,20 +330,8 @@ void UArcThermalConditionProcessor::SignalEntities(FMassEntityManager& EntityMan
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityRequestMap, &StateChangedEntities, &OverloadChangedEntities](FMassExecutionContext& Ctx)
 		{
-			// Get optional fragment views
-			TArrayView<FArcBurningConditionFragment> BurningFrags  = Ctx.GetMutableFragmentView<FArcBurningConditionFragment>();
-			TArrayView<FArcChilledConditionFragment> ChilledFrags  = Ctx.GetMutableFragmentView<FArcChilledConditionFragment>();
-			TArrayView<FArcWetConditionFragment>     WetFrags      = Ctx.GetMutableFragmentView<FArcWetConditionFragment>();
-			TArrayView<FArcOiledConditionFragment>   OiledFrags    = Ctx.GetMutableFragmentView<FArcOiledConditionFragment>();
-			TArrayView<FArcBleedingConditionFragment> BleedingFrags = Ctx.GetMutableFragmentView<FArcBleedingConditionFragment>();
-			TArrayView<FArcDiseasedConditionFragment> DiseasedFrags = Ctx.GetMutableFragmentView<FArcDiseasedConditionFragment>();
-			TArrayView<FArcBlindedConditionFragment>  BlindedFrags  = Ctx.GetMutableFragmentView<FArcBlindedConditionFragment>();
-
-			const FArcConditionConfig* BurningCfg = Arc::Condition::GetOptionalConfig<FArcBurningConditionConfig>(Ctx);
-			const FArcConditionConfig* ChilledCfg = Arc::Condition::GetOptionalConfig<FArcChilledConditionConfig>(Ctx);
-			const FArcConditionConfig* WetCfg     = Arc::Condition::GetOptionalConfig<FArcWetConditionConfig>(Ctx);
-			const FArcConditionConfig* OiledCfg   = Arc::Condition::GetOptionalConfig<FArcOiledConditionConfig>(Ctx);
-			const FArcConditionConfig* BlindedCfg = Arc::Condition::GetOptionalConfig<FArcBlindedConditionConfig>(Ctx);
+			TArrayView<FArcConditionStatesFragment> CondFrags = Ctx.GetMutableFragmentView<FArcConditionStatesFragment>();
+			const FArcConditionConfigsShared& Configs = Ctx.GetConstSharedFragment<FArcConditionConfigsShared>();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -367,15 +339,20 @@ void UArcThermalConditionProcessor::SignalEntities(FMassEntityManager& EntityMan
 				TArray<FArcConditionApplicationRequest*>* Requests = EntityRequestMap.Find(Entity);
 				if (!Requests) { continue; }
 
-				const int32 Idx = *EntityIt;
+				FArcConditionStatesFragment& Frag = CondFrags[EntityIt];
+				FArcConditionState* Burning  = &Frag.States[(int32)EArcConditionType::Burning];
+				FArcConditionState* Chilled  = &Frag.States[(int32)EArcConditionType::Chilled];
+				FArcConditionState* Wet      = &Frag.States[(int32)EArcConditionType::Wet];
+				FArcConditionState* Oiled    = &Frag.States[(int32)EArcConditionType::Oiled];
+				FArcConditionState* Bleeding = &Frag.States[(int32)EArcConditionType::Bleeding];
+				FArcConditionState* Diseased = &Frag.States[(int32)EArcConditionType::Diseased];
+				FArcConditionState* Blinded  = &Frag.States[(int32)EArcConditionType::Blinded];
 
-				FArcConditionState* Burning  = !BurningFrags.IsEmpty()  ? &BurningFrags[Idx].State  : nullptr;
-				FArcConditionState* Chilled  = !ChilledFrags.IsEmpty()  ? &ChilledFrags[Idx].State  : nullptr;
-				FArcConditionState* Wet      = !WetFrags.IsEmpty()      ? &WetFrags[Idx].State      : nullptr;
-				FArcConditionState* Oiled    = !OiledFrags.IsEmpty()    ? &OiledFrags[Idx].State    : nullptr;
-				FArcConditionState* Bleeding = !BleedingFrags.IsEmpty() ? &BleedingFrags[Idx].State : nullptr;
-				FArcConditionState* Diseased = !DiseasedFrags.IsEmpty() ? &DiseasedFrags[Idx].State : nullptr;
-				FArcConditionState* Blinded  = !BlindedFrags.IsEmpty()  ? &BlindedFrags[Idx].State  : nullptr;
+				const FArcConditionConfig* BurningCfg = &Configs.Configs[(int32)EArcConditionType::Burning];
+				const FArcConditionConfig* ChilledCfg = &Configs.Configs[(int32)EArcConditionType::Chilled];
+				const FArcConditionConfig* WetCfg     = &Configs.Configs[(int32)EArcConditionType::Wet];
+				const FArcConditionConfig* OiledCfg   = &Configs.Configs[(int32)EArcConditionType::Oiled];
+				const FArcConditionConfig* BlindedCfg = &Configs.Configs[(int32)EArcConditionType::Blinded];
 
 				// Snapshot for change detection
 				auto Snapshot = [](const FArcConditionState* S) -> TPair<bool, EArcConditionOverloadPhase>

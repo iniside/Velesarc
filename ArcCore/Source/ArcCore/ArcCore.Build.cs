@@ -97,6 +97,8 @@ public class ArcCore : ModuleRules
 				, "InteractableInterface"
 				, "AsyncMessageSystem"
 				, "ModelViewViewModel"
+				, "StructUtils"
+				, "ArcMassReplicationRuntime"
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -117,6 +119,12 @@ public class ArcCore : ModuleRules
 			new string[]
 			{
 				"NetCore"
+			});
+
+		PublicDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"ArcMassAbilities"
 			});
 		
 		PublicDependencyModuleNames.AddRange(

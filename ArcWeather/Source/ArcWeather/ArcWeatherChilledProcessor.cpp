@@ -21,7 +21,7 @@ void UArcWeatherChilledProcessor::ConfigureQueries(const TSharedRef<FMassEntityM
 {
 	EntityQuery.Initialize(EntityManager);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	EntityQuery.AddRequirement<FArcChilledConditionFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadOnly);
 	
 	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddSubsystemRequirement<UArcWeatherSubsystem>(EMassFragmentAccess::ReadWrite);
@@ -45,7 +45,7 @@ void UArcWeatherChilledProcessor::Execute(FMassEntityManager& EntityManager, FMa
 	EntityQuery.ForEachEntityChunk(Context, [WeatherSubsystem, ConditionSubsystem, DeltaTime](FMassExecutionContext& Ctx)
 	{
 		const TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
-		const TConstArrayView<FArcChilledConditionFragment> ChilledFragments = Ctx.GetFragmentView<FArcChilledConditionFragment>();
+		const TConstArrayView<FArcConditionStatesFragment> ConditionFragments = Ctx.GetFragmentView<FArcConditionStatesFragment>();
 
 		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
@@ -59,7 +59,7 @@ void UArcWeatherChilledProcessor::Execute(FMassEntityManager& EntityManager, FMa
 			{
 				ConditionSubsystem->ApplyCondition(Entity, EArcConditionType::Chilled, ColdIntensity * DeltaTime);
 			}
-			else if (ChilledFragments[EntityIt].State.Saturation > 0.f)
+			else if (ConditionFragments[EntityIt].States[(int32)EArcConditionType::Chilled].Saturation > 0.f)
 			{
 				const FArcWeatherCell* Cell = WeatherSubsystem->GetGrid().Find(
 					WeatherSubsystem->WorldToCell(Location));

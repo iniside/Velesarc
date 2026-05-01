@@ -808,26 +808,24 @@ void FArcDebuggerItems::DrawInstancedDataTree(const FArcItemData* Item)
 		ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_None, 300.f);
 		ImGui::TableHeadersRow();
 
-		// InstancedData map
-		for (const auto& Pair : Item->InstancedData)
+		// InstancedData map (TMap<const UScriptStruct*, FStructView>)
+		for (const TPair<const UScriptStruct*, FStructView>& Pair : Item->InstancedData)
 		{
+			const UScriptStruct* Struct = Pair.Key;
+			const FArcItemInstance* InstancePtr = Pair.Value.GetPtr<FArcItemInstance>();
+
 			ImGui::TableNextRow();
 
 			// Type column
 			ImGui::TableSetColumnIndex(0);
-			FString TypeName = Pair.Key.ToString();
-			if (Pair.Value.IsValid())
-			{
-				TypeName = GetNameSafe(Pair.Value->GetScriptStruct());
-			}
-
+			FString TypeName = GetNameSafe(Struct);
 			bool bOpen = ImGui::TreeNode(TCHAR_TO_ANSI(*TypeName));
 
 			// Data column
 			ImGui::TableSetColumnIndex(1);
-			if (Pair.Value.IsValid())
+			if (InstancePtr)
 			{
-				ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*Pair.Value->ToString()));
+				ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*InstancePtr->ToString()));
 			}
 			else
 			{
@@ -837,18 +835,17 @@ void FArcDebuggerItems::DrawInstancedDataTree(const FArcItemData* Item)
 			// Children: struct properties
 			if (bOpen)
 			{
-				if (Pair.Value.IsValid())
+				if (InstancePtr)
 				{
-					UScriptStruct* Struct = Pair.Value->GetScriptStruct();
-					const uint8* Data = reinterpret_cast<const uint8*>(Pair.Value.Get());
+					const uint8* DataPtr = reinterpret_cast<const uint8*>(InstancePtr);
 
-					if (Struct && Data)
+					if (Struct && DataPtr)
 					{
 						for (TFieldIterator<FProperty> PropIt(Struct); PropIt; ++PropIt)
 						{
 							FProperty* Prop = *PropIt;
 							FString ValueStr;
-							const void* PropAddr = Prop->ContainerPtrToValuePtr<void>(Data);
+							const void* PropAddr = Prop->ContainerPtrToValuePtr<void>(DataPtr);
 							Prop->ExportTextItem_Direct(ValueStr, PropAddr, nullptr, nullptr, PPF_None);
 
 							ImGui::TableNextRow();
@@ -866,35 +863,44 @@ void FArcDebuggerItems::DrawInstancedDataTree(const FArcItemData* Item)
 		// Replicated ItemInstances
 		for (int32 Idx = 0; Idx < Item->ItemInstances.Data.Num(); ++Idx)
 		{
-			const FArcItemInstanceInternal& Instance = Item->ItemInstances.Data[Idx];
+			const FInstancedStruct& Instance = Item->ItemInstances.Data[Idx];
 			if (!Instance.IsValid())
 			{
 				continue;
 			}
 
+			const FArcItemInstance* InstancePtr = Instance.GetPtr<FArcItemInstance>();
+			const UScriptStruct* InstanceStruct = Instance.GetScriptStruct();
+
 			ImGui::TableNextRow();
 
 			// Type column
 			ImGui::TableSetColumnIndex(0);
-			FString RepTypeName = FString::Printf(TEXT("[Rep] %s"), *GetNameSafe(Instance.Data->GetScriptStruct()));
+			FString RepTypeName = FString::Printf(TEXT("[Rep] %s"), *GetNameSafe(InstanceStruct));
 			bool bOpen = ImGui::TreeNode(TCHAR_TO_ANSI(*RepTypeName));
 
 			// Data column
 			ImGui::TableSetColumnIndex(1);
-			ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*Instance.Data->ToString()));
+			if (InstancePtr)
+			{
+				ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*InstancePtr->ToString()));
+			}
+			else
+			{
+				ImGui::TextDisabled("(null)");
+			}
 
 			if (bOpen)
 			{
-				UScriptStruct* Struct = Instance.Data->GetScriptStruct();
-				const uint8* Data = reinterpret_cast<const uint8*>(Instance.Data.Get());
+				const uint8* DataPtr = reinterpret_cast<const uint8*>(InstancePtr);
 
-				if (Struct && Data)
+				if (InstanceStruct && DataPtr)
 				{
-					for (TFieldIterator<FProperty> PropIt(Struct); PropIt; ++PropIt)
+					for (TFieldIterator<FProperty> PropIt(InstanceStruct); PropIt; ++PropIt)
 					{
 						FProperty* Prop = *PropIt;
 						FString ValueStr;
-						const void* PropAddr = Prop->ContainerPtrToValuePtr<void>(Data);
+						const void* PropAddr = Prop->ContainerPtrToValuePtr<void>(DataPtr);
 						Prop->ExportTextItem_Direct(ValueStr, PropAddr, nullptr, nullptr, PPF_None);
 
 						ImGui::TableNextRow();

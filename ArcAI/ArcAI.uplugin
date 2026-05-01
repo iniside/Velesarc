@@ -112,6 +112,14 @@
 		{
 			"Name": "ArcNeeds",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcTargetQuery",
+			"Enabled": true
+		},
+		{
+			"Name": "ZoneGraph",
+			"Enabled": true
 		}
 	]
 }

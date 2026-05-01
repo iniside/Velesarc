@@ -152,6 +152,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ArcMassAbilities",
+			"Enabled": true
+		},
+		{
 			"Name": "GameplayCameras",
 			"Enabled": true
 		},
@@ -201,6 +205,10 @@
 		},
 		{
 			"Name": "SlateIM",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassReplication",
 			"Enabled": true
 		}
 	]

@@ -160,6 +160,8 @@ public:
 	FGameplayAttributeData ExhaustedSaturation;
 	ARC_CONDITION_ATTRIBUTE_HELPERS(Exhausted)
 
+	static FGameplayAttribute GetSaturationAttributeByIndex(int32 Index);
+
 private:
 	void ForwardToMass(EArcConditionType ConditionType, float Amount);
 };

@@ -65,7 +65,14 @@ public class ArcGameplayDebugger : ModuleRules
 				"MassEngine",
 				"InteractableInterface",
 				"InstancedActors",
-				"PhysicsCore"
+				"PhysicsCore",
+				"ArcTargetQuery",
+				"ArcEconomy",
+				"ArcMassAbilities",
+				"ArcMassItemsRuntime",
+				"NavigationSystem",
+				"AssetRegistry",
+				"GameplayBehaviorsModule"
 
 				// ... add other public dependencies that you statically link with here ...
 			}

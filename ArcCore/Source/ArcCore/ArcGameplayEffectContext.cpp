@@ -54,12 +54,6 @@ const FArcItemData* FArcGameplayEffectContext::GetSourceItemPtr() const
 	return nullptr;
 }
 
-const TWeakPtr<FArcItemData> FArcGameplayEffectContext::GetSourceItemWeakPtr() const
-{
-	UArcItemsStoreComponent* ItemsStore = Cast<UArcItemsStoreComponent>(GetSourceObject());
-	return ItemsStore->GetWeakItemPtr(GetSourceItemHandle());
-}
-
 const UArcItemDefinition* FArcGameplayEffectContext::GetSourceItem() const
 {
 	if (SourceItem)

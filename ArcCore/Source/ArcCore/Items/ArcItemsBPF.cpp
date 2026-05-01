@@ -138,7 +138,7 @@ bool UArcItemsBPF::ItemHasAnyTag(const FArcItemDataHandle& InItem
 bool UArcItemsBPF::ItemHasAllTags(const FArcItemDataHandle& InItem
 	, FGameplayTagContainer InTag, bool bExact)
 {
-	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::FindFragment<FArcItemFragment_Tags>(*InItem))
+	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::FindFragment<FArcItemFragment_Tags>(InItem.Get()))
 	{
 		if (bExact)
 		{

@@ -3,7 +3,7 @@
 #include "ArcAreaDebugger.h"
 
 #include "imgui.h"
-#include "DrawDebugHelpers.h"
+#include "ArcAreaDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "ArcAreaSubsystem.h"
@@ -109,6 +109,17 @@ namespace
 		}
 	}
 
+	FColor SOSlotStateWorldColor(ESmartObjectSlotState State)
+	{
+		switch (State)
+		{
+		case ESmartObjectSlotState::Free:     return VacantColor;
+		case ESmartObjectSlotState::Claimed:  return AssignedColor;
+		case ESmartObjectSlotState::Occupied: return ActiveColor;
+		default:                              return DisabledColor;
+		}
+	}
+
 	const FString TagMergingPolicyToString(ESmartObjectTagMergingPolicy Policy)
 	{
 		switch (Policy)
@@ -129,6 +140,7 @@ namespace
 		default:                                       return TEXT("Unknown");
 		}
 	}
+
 }
 
 // ====================================================================
@@ -180,6 +192,7 @@ void FArcAreaDebugger::Initialize()
 	bDrawAllAreas = true;
 	bDrawSelectedDetail = true;
 	bDrawLabels = true;
+	SelectedSlotIndex = INDEX_NONE;
 	bShowAssignPopup = false;
 	AssignTargetSlotIndex = INDEX_NONE;
 	CachedKnowledgeEntries.Reset();
@@ -194,9 +207,11 @@ void FArcAreaDebugger::Initialize()
 
 void FArcAreaDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	CachedAreas.Reset();
 	CachedAssignableEntities.Reset();
 	SelectedAreaIndex = INDEX_NONE;
+	SelectedSlotIndex = INDEX_NONE;
 	CachedKnowledgeEntries.Reset();
 	CachedClaimableEntities.Reset();
 	SelectedKnowledgeIndex = INDEX_NONE;
@@ -441,6 +456,7 @@ void FArcAreaDebugger::Draw()
 	if (!ImGui::Begin("Area Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -567,6 +583,10 @@ void FArcAreaDebugger::DrawAreaListPanel()
 			ImGui::PushStyleColor(ImGuiCol_Text, Color);
 			if (ImGui::Selectable(TCHAR_TO_ANSI(*Entry.Label), bSelected))
 			{
+				if (SelectedAreaIndex != i)
+				{
+					SelectedSlotIndex = INDEX_NONE;
+				}
 				SelectedAreaIndex = i;
 			}
 			ImGui::PopStyleColor();
@@ -1020,8 +1040,17 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 			ImGui::PushID(i);
 			ImGui::TableNextRow();
 
-			// Index
+			// Selectable spanning all columns for row selection
 			ImGui::TableSetColumnIndex(0);
+			const bool bSlotSelected = (SelectedSlotIndex == i);
+			if (ImGui::Selectable("##SlotRow", bSlotSelected,
+				ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+			{
+				SelectedSlotIndex = (SelectedSlotIndex == i) ? INDEX_NONE : i;
+			}
+			ImGui::SameLine();
+
+			// Index
 			ImGui::Text("%d", i);
 
 			// State
@@ -1630,18 +1659,30 @@ void FArcAreaDebugger::DrawWorldVisualization()
 	UWorld* World = GetDebugWorld();
 	if (!World)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	UArcAreaSubsystem* Sub = GetAreaSubsystem();
 	if (!Sub)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	constexpr float ZOffset = 100.f;
 
-	// Draw all areas as markers
+	FArcAreaDebugDrawData Data;
+	Data.ZOffset = ZOffset;
+	Data.bDrawLabels = bDrawLabels;
+
+	// Collect all non-selected area markers
 	if (bDrawAllAreas)
 	{
 		for (int32 i = 0; i < CachedAreas.Num(); ++i)
@@ -1654,80 +1695,150 @@ void FArcAreaDebugger::DrawWorldVisualization()
 				continue; // Selected drawn separately
 			}
 
-			DrawDebugPoint(World, Entry.Location + FVector(0, 0, ZOffset), 12.f, AreaColor, false, -1.f);
-
-			if (bDrawLabels)
-			{
-				FString ShortLabel = FString::Printf(TEXT("H%u %s"), Entry.Handle.GetValue(),
-					*Entry.DisplayName);
-				DrawDebugString(World, Entry.Location + FVector(0, 0, ZOffset + 30.f), ShortLabel, nullptr, AreaColor, -1.f, true, 0.8f);
-			}
+			FArcAreaDebugDrawEntry& Marker = Data.AreaMarkers.AddDefaulted_GetRef();
+			Marker.Location = Entry.Location;
+			Marker.Color = AreaColor;
+			Marker.Label = FString::Printf(TEXT("H%u %s"), Entry.Handle.GetValue(), *Entry.DisplayName);
 		}
 	}
 
-	// Draw selected area with full detail
+	// Collect selected area with full detail
 	if (bDrawSelectedDetail && SelectedAreaIndex != INDEX_NONE && CachedAreas.IsValidIndex(SelectedAreaIndex))
 	{
 		const FAreaListEntry& SelEntry = CachedAreas[SelectedAreaIndex];
 		const FArcAreaData* AreaData = Sub->GetAreaData(SelEntry.Handle);
-		if (!AreaData)
+		if (AreaData)
 		{
-			return;
-		}
+			Data.bHasSelectedArea = true;
+			Data.SelectedLocation = AreaData->Location;
+			Data.SelectedColor = SelectedAreaColor;
+			Data.SelectedLabel = FString::Printf(TEXT("H%u %s\n%d slots"),
+				AreaData->Handle.GetValue(), *AreaData->DisplayName.ToString(), AreaData->Slots.Num());
 
-		const FVector& Loc = AreaData->Location;
+			USmartObjectSubsystem* SOSub = World->GetSubsystem<USmartObjectSubsystem>();
+			UMassEntitySubsystem* MassSub = World->GetSubsystem<UMassEntitySubsystem>();
+			FMassEntityManager* Manager = MassSub ? &MassSub->GetMutableEntityManager() : nullptr;
 
-		// Sphere marker
-		DrawDebugSphere(World, Loc + FVector(0, 0, ZOffset), 50.f, 16, SelectedAreaColor, false, -1.f, 0, 2.f);
-
-		// Label
-		FString DetailLabel = FString::Printf(TEXT("H%u %s\n%d slots"),
-			AreaData->Handle.GetValue(), *AreaData->DisplayName.ToString(), AreaData->Slots.Num());
-		DrawDebugString(World, Loc + FVector(0, 0, ZOffset + 70.f), DetailLabel, nullptr, FColor::White, -1.f, true, 1.0f);
-
-		// Vertical line
-		DrawDebugLine(World, Loc, Loc + FVector(0, 0, ZOffset + 50.f), SelectedAreaColor, false, -1.f, 0, 2.f);
-
-		// Draw lines to assigned entities
-		UMassEntitySubsystem* MassSub = World->GetSubsystem<UMassEntitySubsystem>();
-		if (MassSub)
-		{
-			FMassEntityManager& Manager = MassSub->GetMutableEntityManager();
-
-			for (int32 SlotIdx = 0; SlotIdx < AreaData->Slots.Num(); ++SlotIdx)
+			// --- SO slots: always drawn at their world-space transforms ---
+			if (SOSub && AreaData->SmartObjectHandle.IsValid())
 			{
-				const FArcAreaSlotRuntime& SlotRuntime = AreaData->Slots[SlotIdx];
-				if (!SlotRuntime.AssignedEntity.IsValid())
+				TArray<FSmartObjectSlotHandle> SOSlots;
+				SOSub->GetAllSlots(AreaData->SmartObjectHandle, SOSlots);
+
+				for (int32 i = 0; i < SOSlots.Num(); ++i)
 				{
-					continue;
-				}
+					TOptional<FTransform> SlotTransform = SOSub->GetSlotTransform(SOSlots[i]);
+					if (!SlotTransform.IsSet())
+					{
+						continue;
+					}
 
-				if (!Manager.IsEntityValid(SlotRuntime.AssignedEntity))
+					const ESmartObjectSlotState SOState = SOSub->GetSlotState(SOSlots[i]);
+
+					FArcAreaDebugSlotMarker& Marker = Data.SlotMarkers.AddDefaulted_GetRef();
+					Marker.SlotLocation = SlotTransform.GetValue().GetLocation();
+					Marker.SlotColor = SOSlotStateWorldColor(SOState);
+					Marker.SlotLabel = FString::Printf(TEXT("SO%d [%s]"), i, *SOSlotStateToString(SOState));
+					Marker.bSelected = (SelectedSlotIndex == i);
+				}
+			}
+
+			// --- Area definition slots: fan-out around area center ---
+			{
+				constexpr float FanRadius = 80.f;
+				const FVector Center = AreaData->Location;
+				const int32 NumSlots = AreaData->Slots.Num();
+
+				for (int32 SlotIdx = 0; SlotIdx < NumSlots; ++SlotIdx)
 				{
-					continue;
+					const FArcAreaSlotRuntime& SlotRuntime = AreaData->Slots[SlotIdx];
+
+					FVector SlotPos;
+					if (NumSlots == 1)
+					{
+						SlotPos = Center + FVector(FanRadius, 0.f, 0.f);
+					}
+					else
+					{
+						const float Angle = (2.f * UE_PI * SlotIdx) / NumSlots;
+						SlotPos = Center + FVector(FMath::Cos(Angle) * FanRadius, FMath::Sin(Angle) * FanRadius, 0.f);
+					}
+
+					FArcAreaDebugSlotMarker& Marker = Data.SlotMarkers.AddDefaulted_GetRef();
+					Marker.SlotLocation = SlotPos;
+					Marker.SlotColor = SlotStateWorldColor(SlotRuntime.State);
+					Marker.bSelected = (SelectedSlotIndex == (SOSub && AreaData->SmartObjectHandle.IsValid()
+						? -1 : SlotIdx));
+
+					if (SlotRuntime.AssignedEntity.IsValid())
+					{
+						Marker.SlotLabel = FString::Printf(TEXT("S%d E%d [%s]"),
+							SlotIdx, SlotRuntime.AssignedEntity.Index, *SlotStateToString(SlotRuntime.State));
+					}
+					else
+					{
+						Marker.SlotLabel = FString::Printf(TEXT("S%d"), SlotIdx);
+					}
+
+					if (SlotRuntime.AssignedEntity.IsValid() && Manager && Manager->IsEntityValid(SlotRuntime.AssignedEntity))
+					{
+						const FTransformFragment* Transform = Manager->GetFragmentDataPtr<FTransformFragment>(SlotRuntime.AssignedEntity);
+						if (Transform)
+						{
+							Marker.bHasEntity = true;
+							Marker.EntityLocation = Transform->GetTransform().GetLocation();
+							Marker.LineColor = SlotStateWorldColor(SlotRuntime.State);
+						}
+					}
 				}
-
-				const FTransformFragment* Transform = Manager.GetFragmentDataPtr<FTransformFragment>(SlotRuntime.AssignedEntity);
-				if (!Transform)
-				{
-					continue;
-				}
-
-				FVector EntityLoc = Transform->GetTransform().GetLocation();
-				FColor LineColor = SlotStateWorldColor(SlotRuntime.State);
-
-				// Line from area to entity
-				DrawDebugLine(World, Loc + FVector(0, 0, ZOffset * 0.5f), EntityLoc + FVector(0, 0, 50.f),
-					LineColor, false, -1.f, 0, 1.5f);
-
-				// Entity marker
-				DrawDebugSphere(World, EntityLoc + FVector(0, 0, 50.f), 20.f, 8, LineColor, false, -1.f, 0, 1.5f);
-
-				// Entity label
-				FString EntityLabel = FString::Printf(TEXT("E%d [S%d %s]"),
-					SlotRuntime.AssignedEntity.Index, SlotIdx, *SlotStateToString(SlotRuntime.State));
-				DrawDebugString(World, EntityLoc + FVector(0, 0, 80.f), EntityLabel, nullptr, LineColor, -1.f, true, 0.7f);
 			}
 		}
 	}
+
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
+	{
+		DrawComponent->UpdateAreaData(Data);
+	}
+}
+
+// ====================================================================
+// AreaDebuggerDraw
+// ====================================================================
+
+void FArcAreaDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("AreaDebuggerDraw"));
+#endif
+
+	UArcAreaDebuggerDrawComponent* NewComponent = NewObject<UArcAreaDebuggerDrawComponent>(NewActor, UArcAreaDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcAreaDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

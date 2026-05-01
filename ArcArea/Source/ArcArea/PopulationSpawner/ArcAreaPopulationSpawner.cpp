@@ -9,7 +9,7 @@
 #include "Mass/EntityFragments.h"
 #include "MassEntityConfigAsset.h"
 #include "MassCommands.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
+#include "ArcTQSQuerySubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Components/BillboardComponent.h"
 #include "UObject/ConstructorHelpers.h"

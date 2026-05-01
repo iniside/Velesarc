@@ -35,7 +35,7 @@ struct ARCCORE_API FArcSocketSlot
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Data", meta = (Categories = "QuickSlotId"))
+	UPROPERTY(EditAnywhere, Category = "Data", meta = (Categories = "SlotId"))
 	FGameplayTag SlotId;
 
 	UPROPERTY(EditAnywhere)

@@ -159,13 +159,18 @@ void FArcItemSpecJsonSerializer::ToJson(void* Data
 	JsonObject["Level"] = Spec->Level;
 	JsonObject["ItemDefinitionId"] = std::string(TCHAR_TO_ANSI(*Spec->ItemDefinitionId.ToString()));
 
-	for (TSharedPtr<FArcItemInstance>& Inst : Spec->InitialInstanceData)
+	for (const FInstancedStruct& Inst : Spec->InitialInstanceData)
 	{
+		if (!Inst.IsValid())
+		{
+			continue;
+		}
 		nlohmann::json InstanceData;
-		InstanceData["StructType"] = TCHAR_TO_ANSI(*Inst->GetScriptStruct()->GetStructPathName().ToString());
-		FArcJsonSerializers::ToJson(Inst->GetScriptStruct(), Inst.Get(), {}, InstanceData);
-		
-		JsonObject["InitialInstanceData"].push_back(InstanceData);	
+		const UScriptStruct* ScriptStruct = Inst.GetScriptStruct();
+		InstanceData["StructType"] = TCHAR_TO_ANSI(*ScriptStruct->GetStructPathName().ToString());
+		FArcJsonSerializers::ToJson(const_cast<UScriptStruct*>(ScriptStruct), const_cast<uint8*>(Inst.GetMemory()), {}, InstanceData);
+
+		JsonObject["InitialInstanceData"].push_back(InstanceData);
 	}
 }
 
@@ -187,13 +192,11 @@ void FArcItemSpecJsonSerializer::FromJson(void* Data
 		FTopLevelAssetPath Path(StructType);
 		UScriptStruct* ScriptStruct = FindObjectSafe<UScriptStruct>(Path);
 
-		void* Allocated = FMemory::Malloc(ScriptStruct->GetCppStructOps()->GetSize(), ScriptStruct->GetCppStructOps()->GetAlignment());
-		ScriptStruct->GetCppStructOps()->Construct(Allocated);
+		FInstancedStruct Instance;
+		Instance.InitializeAs(ScriptStruct);
+		FArcJsonSerializers::FromJson(ScriptStruct, Instance.GetMutableMemory(), {}, *it);
 
-		FArcJsonSerializers::FromJson(ScriptStruct, Allocated, {}, *it);
-		
-		TSharedPtr<FArcItemInstance> SharedPtr = MakeShareable(static_cast<FArcItemInstance*>(Allocated));
-		Spec->InitialInstanceData.Add(SharedPtr);
+		Spec->InitialInstanceData.Add(MoveTemp(Instance));
 	}
 }
 

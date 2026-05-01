@@ -6,7 +6,9 @@
 #include "MassDebugger.h"
 #include "MassEntitySubsystem.h"
 #include "Mass/EntityElementTypes.h"
-#include "DrawDebugHelpers.h"
+#include "ArcMassEntityDebuggerDrawComponent.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Kismet/GameplayStatics.h"
@@ -278,6 +280,7 @@ void FArcMassEntityDebugger::Initialize()
 
 void FArcMassEntityDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	CachedEntities.Reset();
 	SelectedEntityIndex = INDEX_NONE;
 }
@@ -315,12 +318,17 @@ void FArcMassEntityDebugger::Draw()
 	if (!ImGui::Begin("Mass Entity Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
 	FMassEntityManager* Manager = Arcx::GameplayDebugger::MassEntity::GetEntityManager();
 	if (!Manager)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearSelectedEntity();
+		}
 		ImGui::TextDisabled("No MassEntitySubsystem available");
 		ImGui::End();
 		return;
@@ -380,14 +388,43 @@ void FArcMassEntityDebugger::Draw()
 				const FVector EntityLocation = TransformFragment->GetTransform().GetLocation();
 				constexpr float SphereRadius = 100.f;
 
-				DrawDebugSphere(World, EntityLocation, SphereRadius, 16, FColor::Yellow, false, -1.f, SDPG_World, 2.f);
-
 				const APawn* LocalPawn = UGameplayStatics::GetPlayerPawn(World, 0);
-				if (LocalPawn)
+
+				EnsureDrawActor(World);
+				if (DrawComponent.IsValid())
 				{
-					DrawDebugLine(World, LocalPawn->GetActorLocation(), EntityLocation, FColor::Cyan, false, -1.f, SDPG_World, 2.f);
+					if (LocalPawn)
+					{
+						const FVector PawnLoc = LocalPawn->GetActorLocation();
+						DrawComponent->UpdateSelectedEntity(EntityLocation, SphereRadius, &PawnLoc);
+					}
+					else
+					{
+						DrawComponent->UpdateSelectedEntity(EntityLocation, SphereRadius, nullptr);
+					}
 				}
 			}
+			else
+			{
+				if (DrawComponent.IsValid())
+				{
+					DrawComponent->ClearSelectedEntity();
+				}
+			}
+		}
+		else
+		{
+			if (DrawComponent.IsValid())
+			{
+				DrawComponent->ClearSelectedEntity();
+			}
+		}
+	}
+	else
+	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearSelectedEntity();
 		}
 	}
 
@@ -786,4 +823,41 @@ void FArcMassEntityDebugger::DrawFragmentProperties(const UScriptStruct* Fragmen
 		}
 		ImGui::EndTable();
 	}
+}
+
+void FArcMassEntityDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("MassEntityDebuggerDraw"));
+#endif
+
+	UArcMassEntityDebuggerDrawComponent* NewComponent = NewObject<UArcMassEntityDebuggerDrawComponent>(NewActor, UArcMassEntityDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcMassEntityDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

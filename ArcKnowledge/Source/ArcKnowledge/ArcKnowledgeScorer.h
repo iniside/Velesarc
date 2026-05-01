@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "ArcKnowledgeScorer.generated.h"
 
-struct FArcKnowledgeEntry;
+struct FArcKnowledgeQueryCandidate;
 struct FArcKnowledgeQueryContext;
 
 /**
@@ -25,7 +25,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeScorer
 	float Weight = 1.0f;
 
 	/** Return a 0-1 normalized score for the entry. */
-	virtual float Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const
+	virtual float Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const
 	{
 		return 1.0f;
 	}
@@ -41,7 +41,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeScorer_Distance : public FArcKnowledgeScore
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorer", meta = (ClampMin = 1.0))
 	float MaxDistance = 10000.0f;
 
-	virtual float Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual float Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };
 
 /** Scores by relevance — higher relevance scores higher. */
@@ -50,7 +50,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeScorer_Relevance : public FArcKnowledgeScor
 {
 	GENERATED_BODY()
 
-	virtual float Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual float Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };
 
 /** Scores by freshness — more recent entries score higher. */
@@ -63,7 +63,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeScorer_Freshness : public FArcKnowledgeScor
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorer", meta = (ClampMin = 1.0))
 	float HalfLifeSeconds = 300.0f;
 
-	virtual float Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual float Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };
 
 /**
@@ -101,5 +101,5 @@ struct ARCKNOWLEDGE_API FArcKnowledgeScorer_Influence : public FArcKnowledgeScor
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorer")
 	bool bInvert = false;
 
-	virtual float Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual float Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };

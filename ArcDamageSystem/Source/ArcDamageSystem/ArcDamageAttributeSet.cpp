@@ -144,10 +144,17 @@ void UArcDamageAttributeSet::SyncConditionResistances()
 
 	FGameplayEffectAttributeCaptureSpec& CaptureSpec = CachedResistanceCaptureSpec.GetValue();
 
-	// Iterate each mapping entry: evaluate per-tag resistance and write to fragment.
+	// Retrieve the consolidated condition states fragment.
+	FArcConditionStatesFragment* StatesFragment = EntityManager.GetFragmentDataPtr<FArcConditionStatesFragment>(EntityHandle);
+	if (!StatesFragment)
+	{
+		return;
+	}
+
+	// Iterate each mapping entry: evaluate per-tag resistance and write to the indexed state.
 	for (const FArcDamageConditionMapping& Mapping : CachedMappingAsset->Mappings)
 	{
-		if (!Mapping.DamageTypeTag.IsValid() || !Mapping.ConditionFragmentType)
+		if (!Mapping.DamageTypeTag.IsValid() || Mapping.ConditionTypeIndex < 0 || Mapping.ConditionTypeIndex >= ArcConditionTypeCount)
 		{
 			continue;
 		}
@@ -162,15 +169,6 @@ void UArcDamageAttributeSet::SyncConditionResistances()
 		float ResistanceValue = 0.f;
 		CaptureSpec.AttemptCalculateAttributeMagnitude(EvalParams, ResistanceValue);
 
-		// Retrieve the fragment for this entity and write Resistance.
-		FStructView FragmentView = EntityManager.GetFragmentDataStruct(EntityHandle, Mapping.ConditionFragmentType);
-		if (!FragmentView.IsValid())
-		{
-			continue;
-		}
-
-		// All condition fragments inherit from FArcConditionFragment which holds State.
-		FArcConditionFragment* Fragment = FragmentView.GetPtr<FArcConditionFragment>();
-		Fragment->State.Resistance = FMath::Clamp(ResistanceValue, 0.f, 1.f);
+		StatesFragment->States[Mapping.ConditionTypeIndex].Resistance = FMath::Clamp(ResistanceValue, 0.f, 1.f);
 	}
 }

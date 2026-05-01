@@ -3,7 +3,7 @@
 #include "ArcPerceptionDebugger.h"
 
 #include "imgui.h"
-#include "DrawDebugHelpers.h"
+#include "ArcPerceptionDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "MassCommonFragments.h"
@@ -71,6 +71,7 @@ void FArcPerceptionDebugger::Uninitialize()
 	CachedPerceivers.Reset();
 	SelectedPerceiverIndex = INDEX_NONE;
 	HighlightedPerceivedEntity = FMassEntityHandle();
+	DestroyDrawActor();
 }
 
 void FArcPerceptionDebugger::RefreshPerceiverList()
@@ -129,6 +130,7 @@ void FArcPerceptionDebugger::Draw()
 	if (!ImGui::Begin("Perception Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -508,18 +510,30 @@ void FArcPerceptionDebugger::DrawWorldVisualization()
 #if WITH_MASSENTITY_DEBUG
 	if (SelectedPerceiverIndex == INDEX_NONE || !CachedPerceivers.IsValidIndex(SelectedPerceiverIndex))
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	UWorld* World = Arcx::GameplayDebugger::Perception::GetPerceptionDebugWorld();
 	if (!World)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	FMassEntityManager* Manager = Arcx::GameplayDebugger::Perception::GetPerceptionEntityManager();
 	if (!Manager)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
@@ -528,12 +542,20 @@ void FArcPerceptionDebugger::DrawWorldVisualization()
 
 	if (!Manager->IsEntityActive(Entity))
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	const FTransformFragment* TransformFrag = Manager->GetFragmentDataPtr<FTransformFragment>(Entity);
 	if (!TransformFrag)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
@@ -541,19 +563,37 @@ void FArcPerceptionDebugger::DrawWorldVisualization()
 	const FVector Forward = TransformFrag->GetTransform().GetRotation().GetForwardVector();
 	const float CurrentTime = World->GetTimeSeconds();
 
-	// Draw entity marker
-	constexpr float ZOffset = 100.f;
-	DrawDebugSphere(World, EntityLoc + FVector(0, 0, ZOffset), 40.f, 12, FColor::Cyan, false, -1.f, 0, 2.f);
-	DrawDebugString(World, EntityLoc + FVector(0, 0, ZOffset + 60.f), *Entry.Label, nullptr, FColor::White, -1.f, true, 1.2f);
+	FArcPerceptionDebugDrawData DrawData;
 
-	// Draw sight range + perceived entities
+	// Entity marker
+	DrawData.EntityMarker.Location = EntityLoc + FVector(0, 0, 100.f);
+	DrawData.EntityMarker.Label = Entry.Label;
+	DrawData.EntityMarker.Color = FColor::Cyan;
+
+	DrawData.bDrawSenseShapes = bDrawSightShapes || bDrawHearingShapes;
+	DrawData.bDrawPerceivedPositions = bDrawPerceivedPositions;
+
+	// Sight sense shape
 	if (bDrawSightShapes && Entry.bHasSight)
 	{
 		const FArcPerceptionSightSenseConfigFragment* SightConfig = Manager->GetConstSharedFragmentDataPtr<FArcPerceptionSightSenseConfigFragment>(Entity);
 		if (SightConfig)
 		{
-			FVector EyePos = EntityLoc + FVector(0, 0, SightConfig->EyeOffset);
-			DrawSenseRange(EyePos, Forward, SightConfig, Arcx::GameplayDebugger::Perception::SightColor);
+			FArcPerceptionDebugSenseShape& Shape = DrawData.SenseShapes.AddDefaulted_GetRef();
+			Shape.Origin = EntityLoc + FVector(0, 0, SightConfig->EyeOffset);
+			Shape.Forward = Forward;
+			Shape.Color = Arcx::GameplayDebugger::Perception::SightColor;
+			if (SightConfig->ShapeType == EArcPerceptionShapeType::Radius)
+			{
+				Shape.Type = FArcPerceptionDebugSenseShape::EType::Sphere;
+				Shape.Radius = SightConfig->Radius;
+			}
+			else
+			{
+				Shape.Type = FArcPerceptionDebugSenseShape::EType::Cone;
+				Shape.ConeHalfAngleDegrees = SightConfig->ConeHalfAngleDegrees;
+				Shape.ConeLength = SightConfig->ConeLength;
+			}
 		}
 
 		if (bDrawPerceivedPositions)
@@ -562,24 +602,54 @@ void FArcPerceptionDebugger::DrawWorldVisualization()
 			{
 				for (const FArcPerceivedEntity& PE : SightResult->PerceivedEntities)
 				{
-					bool bHighlighted = (PE.Entity == HighlightedPerceivedEntity);
-					float TimeSinceLastSeen = static_cast<float>(CurrentTime - PE.LastTimeSeen);
-					bool bActive = TimeSinceLastSeen < 0.5f;
-					FColor Color = bHighlighted ? Arcx::GameplayDebugger::Perception::HighlightColor : (bActive ? Arcx::GameplayDebugger::Perception::ActivePerceivedColor : Arcx::GameplayDebugger::Perception::FadingPerceivedColor);
-					DrawPerceivedEntityMarker(PE, Color, bHighlighted, Manager);
+					const bool bHighlighted = (PE.Entity == HighlightedPerceivedEntity);
+					const float TimeSinceLastSeen = static_cast<float>(CurrentTime - PE.LastTimeSeen);
+					const bool bActive = TimeSinceLastSeen < 0.5f;
+					const FColor Color = bHighlighted ? Arcx::GameplayDebugger::Perception::HighlightColor : (bActive ? Arcx::GameplayDebugger::Perception::ActivePerceivedColor : Arcx::GameplayDebugger::Perception::FadingPerceivedColor);
+
+					FVector DrawPos = PE.LastKnownLocation;
+					if (Manager->IsEntityActive(PE.Entity))
+					{
+						if (const FTransformFragment* PETransform = Manager->GetFragmentDataPtr<FTransformFragment>(PE.Entity))
+						{
+							DrawPos = PETransform->GetTransform().GetLocation();
+						}
+					}
+
+					FArcPerceptionDebugPerceivedEntity& DebugPE = DrawData.PerceivedEntities.AddDefaulted_GetRef();
+					DebugPE.Location = DrawPos;
+					DebugPE.Label = FString::Printf(TEXT("E%d (%.0f)"), PE.Entity.Index, PE.Distance);
+					DebugPE.Color = Color;
+					DebugPE.SphereRadius = bHighlighted ? 50.f : 30.f;
+					DebugPE.Thickness = bHighlighted ? 3.f : 1.5f;
+					DebugPE.ZOffset = 100.f;
+					DebugPE.bHighlighted = bHighlighted;
 				}
 			}
 		}
 	}
 
-	// Draw hearing range + perceived entities
+	// Hearing sense shape
 	if (bDrawHearingShapes && Entry.bHasHearing)
 	{
 		const FArcPerceptionHearingSenseConfigFragment* HearingConfig = Manager->GetConstSharedFragmentDataPtr<FArcPerceptionHearingSenseConfigFragment>(Entity);
 		if (HearingConfig)
 		{
-			FVector EyePos = EntityLoc + FVector(0, 0, HearingConfig->EyeOffset);
-			DrawSenseRange(EyePos, Forward, HearingConfig, Arcx::GameplayDebugger::Perception::HearingColor);
+			FArcPerceptionDebugSenseShape& Shape = DrawData.SenseShapes.AddDefaulted_GetRef();
+			Shape.Origin = EntityLoc + FVector(0, 0, HearingConfig->EyeOffset);
+			Shape.Forward = Forward;
+			Shape.Color = Arcx::GameplayDebugger::Perception::HearingColor;
+			if (HearingConfig->ShapeType == EArcPerceptionShapeType::Radius)
+			{
+				Shape.Type = FArcPerceptionDebugSenseShape::EType::Sphere;
+				Shape.Radius = HearingConfig->Radius;
+			}
+			else
+			{
+				Shape.Type = FArcPerceptionDebugSenseShape::EType::Cone;
+				Shape.ConeHalfAngleDegrees = HearingConfig->ConeHalfAngleDegrees;
+				Shape.ConeLength = HearingConfig->ConeLength;
+			}
 		}
 
 		if (bDrawPerceivedPositions)
@@ -588,109 +658,74 @@ void FArcPerceptionDebugger::DrawWorldVisualization()
 			{
 				for (const FArcPerceivedEntity& PE : HearingResult->PerceivedEntities)
 				{
-					bool bHighlighted = (PE.Entity == HighlightedPerceivedEntity);
-					float TimeSinceLastSeen = static_cast<float>(CurrentTime - PE.LastTimeSeen);
-					bool bActive = TimeSinceLastSeen < 0.5f;
-					FColor Color = bHighlighted ? Arcx::GameplayDebugger::Perception::HighlightColor : (bActive ? FColor(200, 50, 50) : FColor(200, 130, 50));
-					DrawPerceivedEntityMarker(PE, Color, bHighlighted, Manager);
+					const bool bHighlighted = (PE.Entity == HighlightedPerceivedEntity);
+					const float TimeSinceLastSeen = static_cast<float>(CurrentTime - PE.LastTimeSeen);
+					const bool bActive = TimeSinceLastSeen < 0.5f;
+					const FColor Color = bHighlighted ? Arcx::GameplayDebugger::Perception::HighlightColor : (bActive ? FColor(200, 50, 50) : FColor(200, 130, 50));
+
+					FVector DrawPos = PE.LastKnownLocation;
+					if (Manager->IsEntityActive(PE.Entity))
+					{
+						if (const FTransformFragment* PETransform = Manager->GetFragmentDataPtr<FTransformFragment>(PE.Entity))
+						{
+							DrawPos = PETransform->GetTransform().GetLocation();
+						}
+					}
+
+					FArcPerceptionDebugPerceivedEntity& DebugPE = DrawData.PerceivedEntities.AddDefaulted_GetRef();
+					DebugPE.Location = DrawPos;
+					DebugPE.Label = FString::Printf(TEXT("E%d (%.0f)"), PE.Entity.Index, PE.Distance);
+					DebugPE.Color = Color;
+					DebugPE.SphereRadius = bHighlighted ? 50.f : 30.f;
+					DebugPE.Thickness = bHighlighted ? 3.f : 1.5f;
+					DebugPE.ZOffset = 100.f;
+					DebugPE.bHighlighted = bHighlighted;
 				}
 			}
 		}
 	}
-#endif
-}
 
-void FArcPerceptionDebugger::DrawSenseRange(const FVector& Origin, const FVector& Forward,
-	const FArcPerceptionSenseConfigFragment* Config, const FColor& Color) const
-{
-#if WITH_MASSENTITY_DEBUG
-	UWorld* World = Arcx::GameplayDebugger::Perception::GetPerceptionDebugWorld();
-	if (!World || !Config)
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
 	{
-		return;
-	}
-
-	if (Config->ShapeType == EArcPerceptionShapeType::Radius)
-	{
-		DrawDebugSphere(World, Origin, Config->Radius, 24, Color, false, -1.f, 0, 1.5f);
-	}
-	else // Cone
-	{
-		float HalfAngleRad = FMath::DegreesToRadians(Config->ConeHalfAngleDegrees);
-		float ConeRadius = Config->ConeLength * FMath::Tan(HalfAngleRad);
-
-		// Draw cone approximation with lines
-		FVector ConeEnd = Origin + Forward * Config->ConeLength;
-		constexpr int32 NumSegments = 16;
-
-		// Build a right/up basis
-		FVector Right = FVector::CrossProduct(Forward, FVector::UpVector);
-		if (Right.IsNearlyZero())
-		{
-			Right = FVector::CrossProduct(Forward, FVector::RightVector);
-		}
-		Right.Normalize();
-		FVector Up = FVector::CrossProduct(Right, Forward);
-		Up.Normalize();
-
-		TArray<FVector> RingPoints;
-		RingPoints.SetNum(NumSegments);
-		for (int32 i = 0; i < NumSegments; ++i)
-		{
-			float Angle = (2.f * UE_PI * i) / NumSegments;
-			FVector Offset = (Right * FMath::Cos(Angle) + Up * FMath::Sin(Angle)) * ConeRadius;
-			RingPoints[i] = ConeEnd + Offset;
-		}
-
-		// Draw cone lines from origin to ring
-		for (int32 i = 0; i < NumSegments; i += 2)
-		{
-			DrawDebugLine(World, Origin, RingPoints[i], Color, false, -1.f, 0, 1.5f);
-		}
-
-		// Draw ring at cone end
-		for (int32 i = 0; i < NumSegments; ++i)
-		{
-			int32 Next = (i + 1) % NumSegments;
-			DrawDebugLine(World, RingPoints[i], RingPoints[Next], Color, false, -1.f, 0, 1.5f);
-		}
+		DrawComponent->UpdatePerceptionData(DrawData);
 	}
 #endif
 }
 
-void FArcPerceptionDebugger::DrawPerceivedEntityMarker(const FArcPerceivedEntity& PE, const FColor& Color,
-	bool bHighlighted, FMassEntityManager* Manager) const
+void FArcPerceptionDebugger::EnsureDrawActor(UWorld* World)
 {
-#if WITH_MASSENTITY_DEBUG
-	UWorld* World = Arcx::GameplayDebugger::Perception::GetPerceptionDebugWorld();
-	if (!World)
+	if (DrawActor.IsValid())
 	{
 		return;
 	}
 
-	constexpr float ZOffset = 100.f;
-	float SphereRadius = bHighlighted ? 50.f : 30.f;
-	float Thickness = bHighlighted ? 3.f : 1.5f;
-
-	// Try to get current position if entity is still alive
-	FVector DrawPos = PE.LastKnownLocation;
-	if (Manager && Manager->IsEntityActive(PE.Entity))
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
 	{
-		if (const FTransformFragment* Transform = Manager->GetFragmentDataPtr<FTransformFragment>(PE.Entity))
-		{
-			DrawPos = Transform->GetTransform().GetLocation();
-		}
+		return;
 	}
 
-	DrawDebugSphere(World, DrawPos + FVector(0, 0, ZOffset), SphereRadius, 8, Color, false, -1.f, 0, Thickness);
-
-	FString Label = FString::Printf(TEXT("E%d (%.0f)"), PE.Entity.Index, PE.Distance);
-	DrawDebugString(World, DrawPos + FVector(0, 0, ZOffset + SphereRadius + 20.f), Label, nullptr, Color, -1.f, true, 1.0f);
-
-	if (bHighlighted)
-	{
-		// Draw a vertical line for extra visibility
-		DrawDebugLine(World, DrawPos, DrawPos + FVector(0, 0, ZOffset + SphereRadius + 10.f), Color, false, -1.f, 0, 2.f);
-	}
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("PerceptionDebuggerDraw"));
 #endif
+
+	UArcPerceptionDebuggerDrawComponent* NewComponent = NewObject<UArcPerceptionDebuggerDrawComponent>(NewActor, UArcPerceptionDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcPerceptionDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

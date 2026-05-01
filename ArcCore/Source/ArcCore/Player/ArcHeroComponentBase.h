@@ -101,6 +101,21 @@ public:
 	virtual void SetEntityHandle(const FMassEntityHandle NewHandle) override;
 };
 
+UINTERFACE()
+class UArcComponentInitStateInterface : public UInterface
+{
+	GENERATED_BODY()
+};
+
+class IArcComponentInitStateInterface
+{
+	GENERATED_BODY()
+
+public:
+	virtual bool IsDataReady() const = 0;
+};
+
+
 
 UCLASS(ClassGroup = (Arc), meta = (BlueprintSpawnableComponent))
 class ARCCORE_API UArcHeroComponentBase
@@ -217,16 +232,16 @@ struct FArcMoverRotationThresholds
 	GENERATED_BODY()
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
-	float FL;
+	float FL = 0;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
-	float FR;
+	float FR = 0;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
-	float BL;
+	float BL = 0;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mover")
-	float BR;
+	float BR = 0;
 };
 
 class UNavMoverComponent;

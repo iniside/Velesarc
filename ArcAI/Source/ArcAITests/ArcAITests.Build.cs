@@ -19,7 +19,8 @@ public class ArcAITests : ModuleRules
 			"MassCore",
 			"GameplayTags",
 			"SmartObjectsModule",
-			"MassSmartObjects"
+			"MassSmartObjects",
+			"ArcKnowledge"
 		});
 	}
 }

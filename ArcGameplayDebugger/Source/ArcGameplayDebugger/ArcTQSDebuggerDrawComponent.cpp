@@ -1,11 +1,12 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcTQSDebuggerDrawComponent.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
+#include "ArcTQSQuerySubsystem.h"
 
 #if UE_ENABLE_DEBUG_DRAWING
 #include "Engine/Canvas.h"
 #include "GameFramework/PlayerController.h"
+#include "SceneManagement.h"
 #endif
 
 namespace ArcTQSDebuggerDraw
@@ -35,6 +36,35 @@ namespace ArcTQSDebuggerDraw
 	static const FColor SelectedColor = FColor::White;
 	static const FColor FilteredColor(128, 128, 128);
 }
+
+// --- Always-visible scene proxy ---
+
+#if UE_ENABLE_DEBUG_DRAWING
+class FArcTQSDebuggerSceneProxy final : public FDebugRenderSceneProxy
+{
+public:
+	explicit FArcTQSDebuggerSceneProxy(const UPrimitiveComponent& InComponent)
+		: FDebugRenderSceneProxy(&InComponent)
+	{
+		DrawType = SolidAndWireMeshes;
+		TextWithoutShadowDistance = 1500.0f;
+	}
+
+	virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* View) const override
+	{
+		FPrimitiveViewRelevance Result;
+		Result.bDrawRelevance = true;
+		Result.bDynamicRelevance = true;
+		Result.bSeparateTranslucency = Result.bNormalTranslucency = true;
+		return Result;
+	}
+
+	virtual uint32 GetMemoryFootprint() const override
+	{
+		return sizeof(*this) + FDebugRenderSceneProxy::GetAllocatedSize();
+	}
+};
+#endif
 
 // --- Delegate Helper ---
 
@@ -78,6 +108,7 @@ void UArcTQSDebuggerDrawComponent::UpdateQueryData(
 	bStoredDrawLabels = bInDrawLabels || bInDrawScores;
 
 	CollectShapes(InData, bInDrawAllItems, bInDrawLabels, bInDrawScores, bInDrawFilteredItems, InSelectedItemIndex, InHoveredItemIndex, StoredSpheres, StoredTexts, StoredArrows);
+	UpdateBounds();
 	MarkRenderStateDirty();
 }
 
@@ -98,7 +129,7 @@ FBoxSphereBounds UArcTQSDebuggerDrawComponent::CalcBounds(const FTransform& Loca
 	}
 	if (!BoundingBox.IsValid)
 	{
-		BoundingBox = FBox(FVector::ZeroVector, FVector(100.0f));
+		BoundingBox = FBox(FVector(-5000.0f), FVector(5000.0f));
 	}
 	return FBoxSphereBounds(BoundingBox);
 }
@@ -106,7 +137,7 @@ FBoxSphereBounds UArcTQSDebuggerDrawComponent::CalcBounds(const FTransform& Loca
 #if UE_ENABLE_DEBUG_DRAWING
 FDebugRenderSceneProxy* UArcTQSDebuggerDrawComponent::CreateDebugSceneProxy()
 {
-	FDebugRenderSceneProxy* Proxy = new FDebugRenderSceneProxy(this);
+	FArcTQSDebuggerSceneProxy* Proxy = new FArcTQSDebuggerSceneProxy(*this);
 
 	Proxy->Spheres = StoredSpheres;
 	Proxy->Texts = StoredTexts;

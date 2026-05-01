@@ -74,6 +74,7 @@ public:
 	virtual bool UsesFileRevisions() const override;
 	virtual bool UsesSnapshots() const override;
 	virtual bool AllowsDiffAgainstDepot() const override;
+	virtual bool UsesSoftRevertOnDelete() const override { return false; }
 	virtual TOptional<bool> HasChangesToSync() const override;
 	virtual TOptional<bool> HasChangesToCheckIn() const override;
 	virtual void Tick() override;

@@ -28,7 +28,6 @@
 
 class UArcCraftStationComponent;
 class UArcItemsStoreComponent;
-class UArcCraftVisEntityComponent;
 struct FArcCraftOutputFragment;
 
 /**
@@ -152,7 +151,6 @@ public:
 	virtual ~FArcCraftOutputDelivery_EntityStore() override = default;
 
 private:
-	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
 	FArcCraftOutputFragment* GetOutputFragment(const UArcCraftStationComponent* Station) const;
 	UArcItemsStoreComponent* GetMirrorOutputStore(const UArcCraftStationComponent* Station) const;
 };

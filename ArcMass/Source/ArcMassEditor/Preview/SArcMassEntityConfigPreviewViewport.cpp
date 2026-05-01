@@ -326,9 +326,11 @@ void SArcMassEntityConfigPreviewViewport::Construct(const FArguments& InArgs)
 	Contributors.Add(MakeUnique<FArcVisualizationPreviewContributor>());
 	Contributors.Add(MakeUnique<FArcPhysicsCollisionPreviewContributor>());
 	Contributors.Add(MakeUnique<FArcMeshVisualizationPreviewContributor>());
+	Contributors.Add(MakeUnique<FArcFastGeoVisualizationPreviewContributor>());
 	Contributors.Add(MakeUnique<FArcCompositeMeshPreviewContributor>());
 	Contributors.Add(MakeUnique<FArcPhysicsBodyTraitPreviewContributor>());
 	Contributors.Add(MakeUnique<FArcNiagaraVisPreviewContributor>());
+	Contributors.Add(MakeUnique<FArcSkinnedMeshVisualizationPreviewContributor>());
 
 	SEditorViewport::Construct(SEditorViewport::FArguments());
 

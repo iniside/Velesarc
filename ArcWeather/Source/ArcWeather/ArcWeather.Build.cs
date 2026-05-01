@@ -35,6 +35,8 @@ public class ArcWeather : ModuleRules
 				"MassSignals",
 				"MassSpawner",
 				"ArcMass",
+				"ArcMassAbilities",
+				"ArcMassDamageSystem",
 				"ArcConditionEffects",
 				"GameplayTags"
 			}

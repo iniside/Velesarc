@@ -4,6 +4,7 @@
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanRequest.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
+#include "SmartObjectPlanner/Sensors/ArcSmartObjectPlanSpatialHashSensor.h"
 #include "MassCommonFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassSignalSubsystem.h"
@@ -47,9 +48,18 @@ EStateTreeRunStatus FArcMassMakeSmartObjectPlanTask::EnterState(FStateTreeExecut
 	Request.CustomConditionsArray.Reset(InstanceData.CustomConditions.Num());
 	for (const TInstancedStruct<FArcSmartObjectPlanConditionEvaluator>& Eval : InstanceData.CustomConditions)
 	{
-		Request.CustomConditionsArray.Add(FConstStructView(Eval.GetScriptStruct(), Eval.GetMemory()));	
+		Request.CustomConditionsArray.Add(FConstStructView(Eval.GetScriptStruct(), Eval.GetMemory()));
 	}
-	
+
+	if (InstanceData.Sensors.IsEmpty())
+	{
+		Request.SensorsArray.Emplace_GetRef().InitializeAs<FArcSmartObjectPlanSpatialHashSensor>();
+	}
+	else
+	{
+		Request.SensorsArray = InstanceData.Sensors;
+	}
+
 	UArcSmartObjectPlannerSubsystem* PreconSubsystem = Context.GetWorld()->GetSubsystem<UArcSmartObjectPlannerSubsystem>();
 
 	

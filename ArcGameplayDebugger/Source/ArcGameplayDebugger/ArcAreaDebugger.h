@@ -7,8 +7,9 @@
 #include "GameplayTagContainer.h"
 #include "Mass/EntityHandle.h"
 #include "ArcKnowledgeTypes.h"
-
+class AActor;
 class UArcAreaSubsystem;
+class UArcAreaDebuggerDrawComponent;
 class UArcKnowledgeSubsystem;
 
 class FArcAreaDebugger
@@ -104,6 +105,7 @@ private:
 	// --- State ---
 	TArray<FAreaListEntry> CachedAreas;
 	int32 SelectedAreaIndex = INDEX_NONE;
+	int32 SelectedSlotIndex = INDEX_NONE;
 	char AreaFilterBuf[256] = {};
 	float LastRefreshTime = 0.f;
 
@@ -129,4 +131,10 @@ private:
 	FArcKnowledgeHandle ClaimTargetHandle;
 	TArray<FClaimableEntityEntry> CachedClaimableEntities;
 	char ClaimEntityFilterBuf[256] = {};
+
+	// Draw actor
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcAreaDebuggerDrawComponent> DrawComponent;
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 };

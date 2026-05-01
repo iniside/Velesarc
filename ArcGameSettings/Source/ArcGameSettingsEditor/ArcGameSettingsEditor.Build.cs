@@ -21,7 +21,9 @@ public class ArcGameSettingsEditor : ModuleRules
             {
                 "Slate",
                 "SlateCore",
-                "UnrealEd"
+                "UnrealEd",
+                "AssetDefinition",
+                "AssetTools",
             }
         );
     }

@@ -33,305 +33,15 @@
 
 DEFINE_LOG_CATEGORY(LogItemArray);
 
-FArcItemDataInternal::FArcItemDataInternal(const FArcItemDataInternal& Other)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("FArcItemDataInternal Deep Copy");
-
-	TMap<const UScriptStruct*, const FArcScalableFloatItemFragment*> ScalableFloatFragmentsTempCopy;
-	if (ItemPtr.IsValid() && ItemId == Other.ItemId)
-	{
-		ScalableFloatFragmentsTempCopy = MoveTemp(ItemPtr->ScalableFloatFragments);
-	}
-		
-	ItemId = Other.ItemId;
-	OwningArray = Other.OwningArray;
-	
-	if (Equals(Other.ItemPtr) == false)
-	{
-		if (Other.ItemPtr.IsValid() == false)
-		{
-			ItemPtr.Reset();
-			return;
-		}
-		if (ItemPtr.IsValid() == false)
-		{
-			ItemPtr = MakeShareable(new FArcItemData);
-		}
-
-		*ItemPtr.Get() = *Other.ItemPtr.Get();
-
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal Deep Copy"))
-	}
-}
-
-FArcItemDataInternal::FArcItemDataInternal(FArcItemDataInternal&& Other)
-{
-	ItemId = Other.ItemId;
-	ItemPtr = MoveTemp(Other.ItemPtr);
-	OwningArray = MoveTemp(Other.OwningArray);
-	
-	UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal Move"))
-}
-
-FArcItemDataInternal::FArcItemDataInternal(FArcItemData&& Other)
-{
-	ItemId = Other.GetItemId();
-	ItemPtr = MakeShareable(new FArcItemData(MoveTemp(Other)));
-}
-
-void FArcItemDataInternal::SetItemData(TSharedPtr<FArcItemData>& InItem
-									   , const FArcItemSpec& InSpec)
-{
-	ItemPtr = InItem;
-	ItemId = ItemPtr->GetItemId();
-
-	const UArcItemDefinition* ItemDef = UArcCoreAssetManager::Get().GetAsset<UArcItemDefinition>(InSpec.GetItemDefinitionId());
-
-	// Fallback: use the definition set directly on the spec (e.g. from tests or manually created items)
-	if (ItemDef == nullptr)
-	{
-		ItemDef = InSpec.GetItemDefinition();
-	}
-
-	ItemPtr->SetItemSpec(InSpec);
-
-	TArray<const FArcItemFragment_ItemInstanceBase*> InstancesToMake;
-	if (ItemDef != nullptr)
-	{
-		InstancesToMake = ItemDef->GetFragmentsOfType<FArcItemFragment_ItemInstanceBase>();
-	}
-	for (const FArcItemFragment_ItemInstanceBase* IIB : InstancesToMake)
-	{
-		if (IIB->GetCreateItemInstance() == false)
-		{
-			continue;
-		}
-		
-		if (UScriptStruct* InstanceType = IIB->GetItemInstanceType())
-		{
-			int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const TSharedPtr<FArcItemInstance>& Other)
-			{
-				return Other->GetScriptStruct() == InstanceType;
-			});
-			
-			int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
-			{
-				TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
-
-				if (InitialDataIdx != INDEX_NONE)
-				{
-					InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
-				}
-
-				ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
-			}
-		}
-	}
-
-	TArray<const FArcItemFragment_ItemInstanceBase*> SpecFragments = InSpec.GetSpecFragments();
-	for (const FArcItemFragment_ItemInstanceBase* Fragment : SpecFragments)
-	{
-		if (Fragment->GetCreateItemInstance() == false)
-		{
-			continue;
-		}
-
-		
-		if (UScriptStruct* InstanceType = Fragment->GetItemInstanceType())
-		{
-			int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const TSharedPtr<FArcItemInstance>& Other)
-			{
-				return Other->GetScriptStruct() == InstanceType;
-			});
-			
-			TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
-			if (InitialDataIdx != INDEX_NONE)
-			{
-				InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
-			}
-
-			int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
-			ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
-		}
-	}
-
-	ItemPtr->SetItemInstances(ItemPtr->ItemInstances);
-}
-
-bool FArcItemDataInternal::operator==(const FArcItemDataInternal& Other) const
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("FArcItemDataInternal::operator==");
-	// When used as replicated property and we want to detect changes of the intance
-	// data we need to compare the data stored in the inner structs.
-	if (ItemId != Other.ItemId)
-	{
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal operator== %s ids different"), *ItemPtr->GetItemDefinition()->GetName())
-		return false;
-	}
-
-	if (ItemPtr.IsValid() != Other.ItemPtr.IsValid())
-	{
-		bItemDataChanged = true;
-		return false;
-	}
-
-	if (ItemPtr->ItemInstances != Other.ItemPtr->ItemInstances)
-	{
-		bItemInstancesChanged = true;
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal operator== %s item instanced different"), *ItemPtr->GetItemDefinition()->GetName())
-	}
-	
-	if (*ItemPtr.Get() != *Other.ItemPtr.Get())
-	{
-		if (OwningArray)
-		{
-			OwningArray->ChangedItems.FindOrAdd(ItemId) = *ItemPtr;
-		}
-		bItemDataChanged = true;
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal operator== %s item data different"), *ItemPtr->GetItemDefinition()->GetName())
-		return false;
-	}
-
-	return true;
-}
-
-bool FArcItemDataInternal::Equals(const TSharedPtr<FArcItemData>& OtherItemPtr)
-{
-	if (ItemPtr.IsValid() != OtherItemPtr.IsValid())
-	{
-		//bItemDataChanged = true;
-		return false;
-	}
-
-	if (ItemPtr->ItemInstances != OtherItemPtr->ItemInstances)
-	{
-		//bItemInstancesChanged = true;
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal Equals %s item instanced different"), *ItemPtr->GetItemDefinition()->GetName())
-		return false;
-	}
-	
-	if (*ItemPtr.Get() != *OtherItemPtr.Get())
-	{
-		if (OwningArray)
-		{
-			OwningArray->ChangedItems.FindOrAdd(ItemId) = *ItemPtr;
-		}
-		//bItemDataChanged = true;
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal::Equals %s item data different"), *ItemPtr->GetItemDefinition()->GetName())
-		return false;
-	}
-	
-	return true;
-}
-
-FArcItemDataInternal& FArcItemDataInternal::operator=(const FArcItemDataInternal& Other)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("FArcItemDataInternal::operator=");
-
-	OwningArray = Other.OwningArray;
-	if (Equals(Other.ItemPtr) == false)
-	{
-		TMap<const UScriptStruct*, const FArcScalableFloatItemFragment*> ScalableFloatFragmentsTempCopy;
-		if (ItemPtr.IsValid() && ItemId == Other.ItemId)
-		{
-			ScalableFloatFragmentsTempCopy = MoveTemp(ItemPtr->ScalableFloatFragments);
-		}
-
-		ItemId = Other.ItemId;
-
-		if (Other.ItemPtr.IsValid() == false)
-		{
-			ItemPtr.Reset();
-			return *this;
-		}
-		if (ItemPtr.IsValid() == false)
-		{
-			ItemPtr = MakeShareable(new FArcItemData);
-		}
-
-		*ItemPtr.Get() = *Other.ItemPtr.Get();
-
-		if (ItemPtr.IsValid() && ItemId == Other.ItemId)
-		{
-			ItemPtr->ScalableFloatFragments = MoveTemp(ScalableFloatFragmentsTempCopy);
-		}
-		
-		UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal::operator= Deep Copy"))
-	}
-	
-	return *this;
-}
-
-FArcItemDataInternal& FArcItemDataInternal::operator=(FArcItemDataInternal&& Other)
-{
-	ItemId = Other.ItemId;
-	ItemPtr = MoveTemp(Other.ItemPtr);
-	OwningArray = MoveTemp(Other.OwningArray);
-	
-	UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal operator= Move"))
-
-	ItemPtr->SetItemInstances(ItemPtr->ItemInstances);
-	return *this;
-}
-
-void FArcItemDataInternal::PreReplicatedRemove(const FArcItemsArray& InArraySerializer)
-{
-	OnItemRemovedDelegate.Broadcast(ItemId);
-	if (ItemPtr.IsValid())
-	{
-		ItemPtr->PreReplicatedRemove(InArraySerializer);
-		InArraySerializer.RemoveWeakCachedItem(ItemId);
-		InArraySerializer.RemoveCachedItem(ItemId);
-	}
-}
-
-void FArcItemDataInternal::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
-{
-	if (ItemPtr.IsValid())
-	{
-		InArraySerializer.AddWeakCachedItem(ItemId, ItemPtr);
-		InArraySerializer.AddCachedItem(ItemId, ItemPtr.Get());
-		//ItemPtr->ItemId = ItemId;
-		ItemPtr->PostReplicatedAdd(InArraySerializer);
-	}
-}
-
-void FArcItemDataInternal::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
-{
-
-	if (ItemPtr.IsValid() && bItemDataChanged)
-	{
-		bItemDataChanged = false;
-		bItemInstancesChanged = false;
-		ItemPtr->PostReplicatedChange(InArraySerializer);
-	}
-
-	if (bItemInstancesChanged)
-	{
-		bItemInstancesChanged = false;
-		if (ItemPtr.IsValid())
-		{
-			ItemPtr->OnItemChanged();
-		}
-	}
-}
-
-void FArcItemDataInternal::AddStructReferencedObjects(FReferenceCollector& Collector) const
-{
-	//if (ItemPtr.IsValid())
-	//{
-	//	TObjectPtr<const UArcItemDefinition> Def = GetItem()->GetItemDefinition();
-	//	Collector.AddReferencedObject<UArcItemDefinition>(Def);
-	//}
-}
 
 void FArcItemCopyContainerHelper::CopyPersistentInstances(FArcItemSpec& OutSpec, const FArcItemData* InData)
 {
-	for (const FArcItemInstanceInternal& Instance : InData->ItemInstances.Data)
+	for (const FInstancedStruct& Instance : InData->ItemInstances.Data)
 	{
-		if (Instance.Data->ShouldPersist())
+		const FArcItemInstance* InstancePtr = Instance.GetPtr<FArcItemInstance>();
+		if (InstancePtr && InstancePtr->ShouldPersist())
 		{
-			OutSpec.InitialInstanceData.Add(Instance.Data->Duplicate());
+			OutSpec.InitialInstanceData.Add(Instance);
 		}
 	}
 }
@@ -346,34 +56,13 @@ FArcItemSpec FArcItemCopyContainerHelper::ToSpec(const FArcItemData* InData)
 	return Spec;
 }
 
-FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(UArcItemsStoreComponent* InItemsStore, const FArcItemDataInternal& InDataInternal)
-{
-	FArcItemCopyContainerHelper Container;
-	Container.Item = InDataInternal.GetItem()->Spec;
-	Container.Item.ItemId = InDataInternal.GetItem()->GetItemId();
-	Container.SlotId = InDataInternal.GetItem()->GetSlotId();
-	CopyPersistentInstances(Container.Item, InDataInternal.GetItem().Get());
-
-	TArray<const FArcItemDataInternal*> AttachedItems = InItemsStore->GetItemsArray().GetInternalItemsAttachedTo(InDataInternal.GetItemId());
-
-	for (const FArcItemDataInternal* Item : AttachedItems)
-	{
-		if (Item)
-		{
-			int32 Idx = Container.ItemAttachments.Add( {Item->GetItem()->GetItemId(), Item->GetItem()->Spec, Item->GetItem()->GetAttachSlot() });
-			Container.ItemAttachments[Idx].Item.ItemId = Item->GetItem()->GetItemId();
-			CopyPersistentInstances(Container.ItemAttachments[Idx].Item, Item->GetItem().Get());
-		}
-	}
-
-	return Container;
-}
-
 FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(UArcItemsStoreComponent* InItemsStore, const FArcItemData* InData)
 {
 	FArcItemCopyContainerHelper Container;
 	Container.Item = InData->Spec;
 	Container.Item.ItemId = InData->GetItemId();
+	Container.Item.Amount = InData->GetStacks();
+	Container.Item.Level = InData->GetLevel();
 	Container.SlotId = InData->GetSlotId();
 	CopyPersistentInstances(Container.Item, InData);
 
@@ -385,6 +74,8 @@ FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(UArcItemsStoreCompo
 		{
 			int32 Idx = Container.ItemAttachments.Add( { Item->GetItemId(), Item->Spec, Item->GetAttachSlot() });
 			Container.ItemAttachments[Idx].Item.ItemId = Item->GetItemId();
+			Container.ItemAttachments[Idx].Item.Amount = Item->GetStacks();
+			Container.ItemAttachments[Idx].Item.Level = Item->GetLevel();
 			CopyPersistentInstances(Container.ItemAttachments[Idx].Item, Item);
 		}
 	}
@@ -397,6 +88,8 @@ FArcItemCopyContainerHelper FArcItemCopyContainerHelper::New(const FArcItemData*
 	FArcItemCopyContainerHelper Container;
 	Container.Item = InData->Spec;
 	Container.Item.ItemId = InData->GetItemId();
+	Container.Item.Amount = InData->GetStacks();
+	Container.Item.Level = InData->GetLevel();
 	Container.SlotId = InData->GetSlotId();
 	CopyPersistentInstances(Container.Item, InData);
 
@@ -439,66 +132,36 @@ TArray<FArcItemId> FArcItemCopyContainerHelper::AddItems(UArcItemsStoreComponent
 	return OutIds;
 }
 
-FArcItemDataInternalWrapper::FArcItemDataInternalWrapper(const FArcItemSpec& InItem)
-{
-	TSharedPtr<FArcItemData> NewEntry = FArcItemData::NewFromSpec(InItem);
-	Item.SetItemData(NewEntry
-		, InItem);
-}
-
-FArcItemDataInternalWrapper::FArcItemDataInternalWrapper(const FArcItemDataInternalWrapper& InItem)
-{
-	UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternalWrapper ctor Copy"))
-	Item = InItem.Item;
-}
-
-FArcItemDataInternalWrapper::FArcItemDataInternalWrapper(FArcItemDataInternalWrapper&& InItem)
-{
-	UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternalWrapper ctor Move"))
-	Item = MoveTemp(InItem.Item);
-}
-
-FArcItemDataInternalWrapper::FArcItemDataInternalWrapper(FArcItemDataInternal&& InternalItem)
-{
-	Item = MoveTemp(InternalItem);
-}
-
-FArcItemDataInternalWrapper& FArcItemDataInternalWrapper::operator=(const FArcItemDataInternalWrapper& Other)
-{
-	UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternalWrapper operator= DeepCopy"))
-	*Item.ItemPtr.Get() = *Other.Item.ItemPtr.Get();
-
-	return *this;
-}
-
-FArcItemDataInternalWrapper& FArcItemDataInternalWrapper::operator=(FArcItemDataInternalWrapper&& Other)
-{
-	UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternalWrapper operator= Move"))
-	Item = MoveTemp(Other.Item);
-	
-	return *this;
-}
+FArcGenericItemIdDelegate FArcItemDataInternalWrapper::OnItemRemovedDelegate = FArcGenericItemIdDelegate();
 
 void FArcItemDataInternalWrapper::PreReplicatedRemove(const FArcItemsArray& InArraySerializer)
 {
-	Item.PreReplicatedRemove(InArraySerializer);
+	FArcItemData* Data = ToItem();
+	if (Data)
+	{
+		OnItemRemovedDelegate.Broadcast(Data->GetItemId());
+		Data->PreReplicatedRemove(InArraySerializer);
+		InArraySerializer.RemoveCachedItem(Data->GetItemId());
+	}
 }
 
 void FArcItemDataInternalWrapper::PostReplicatedAdd(const FArcItemsArray& InArraySerializer)
 {
-	Item.OwningArray = &InArraySerializer;
-
-	Item.PostReplicatedAdd(InArraySerializer);
+	FArcItemData* Data = ToItem();
+	if (Data)
+	{
+		InArraySerializer.AddCachedItem(Data->GetItemId(), Data);
+		Data->PostReplicatedAdd(InArraySerializer);
+	}
 }
 
 void FArcItemDataInternalWrapper::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 {
-	Item.PostReplicatedChange(InArraySerializer);
-}
-
-bool FArcItemDataInternalWrapper::operator==(const FArcItemDataInternalWrapper& Other) const
-{
-	return Item == Other.Item;
+	FArcItemData* Data = ToItem();
+	if (Data)
+	{
+		Data->PostReplicatedChange(InArraySerializer);
+	}
 }
 
 void FArcItemsArray::PreReplicatedRemove(const TArrayView<int32>& RemovedIndices
@@ -525,33 +188,33 @@ void FArcItemsArray::PostReplicatedChange(const TArrayView<int32>& ChangedIndice
 	}
 }
 
-void FArcItemsArray::AddInternalItem(UArcItemsStoreComponent* NewItemStoreComponent, FArcItemDataInternal&& InItem
-	, TArray<FArcItemDataInternal*>& AttachedItems)
+void FArcItemsArray::AddInternalItem(UArcItemsStoreComponent* NewItemStoreComponent, FInstancedStruct&& InItem
+	, TArray<FInstancedStruct>& AttachedItems)
 {
-	FArcItemDataInternalWrapper Item(MoveTemp(InItem));
+	FArcItemDataInternalWrapper Wrapper;
+	Wrapper.ItemData = MoveTemp(InItem);
+	FArcItemData* Data = Wrapper.ToItem();
+	Data->Initialize(NewItemStoreComponent);
 
-	Item.GetInternalItem()->GetItem()->Initialize(NewItemStoreComponent);
-	
-	int32 Idx = Items.Add(MoveTemp(Item));
+	int32 Idx = Items.Add(MoveTemp(Wrapper));
+	FArcItemData* AddedData = Items[Idx].ToItem();
+	AddCachedItem(AddedData->GetItemId(), AddedData);
 
-	AddCachedItem(Items[Idx].Item.GetItem()->GetItemId(), Items[Idx].Item.GetItem().Get());
-	AddWeakCachedItem(Items[Idx].Item.GetItem()->GetItemId(), Items[Idx].Item.GetItem());
-	
-	for (FArcItemDataInternal* AttachedItem : AttachedItems)
+	for (FInstancedStruct& AttachedItem : AttachedItems)
 	{
-		FArcItemDataInternalWrapper InternalAttachedItem(MoveTemp(*AttachedItem));
+		FArcItemDataInternalWrapper AttachWrapper;
+		AttachWrapper.ItemData = MoveTemp(AttachedItem);
+		FArcItemData* AttachData = AttachWrapper.ToItem();
+		AttachData->Initialize(NewItemStoreComponent);
 
-		InternalAttachedItem.GetInternalItem()->GetItem()->Initialize(NewItemStoreComponent);
-	
-		int32 AttachIdx = Items.Add(MoveTemp(InternalAttachedItem));
-		AddCachedItem(Items[AttachIdx].Item.GetItem()->GetItemId(), Items[AttachIdx].Item.GetItem().Get());
-		AddWeakCachedItem(Items[AttachIdx].Item.GetItem()->GetItemId(), Items[AttachIdx].Item.GetItem());
-		
-		Items[AttachIdx].ToItem()->AttachToItem(Items[Idx].ToItem()->ItemId, Items[AttachIdx].ToItem()->GetAttachSlot());
+		int32 AttachIdx = Items.Add(MoveTemp(AttachWrapper));
+		FArcItemData* AddedAttach = Items[AttachIdx].ToItem();
+		AddCachedItem(AddedAttach->GetItemId(), AddedAttach);
 
+		AddedAttach->AttachToItem(AddedData->ItemId, AddedAttach->GetAttachSlot());
 		Edit().MarkItemDirty(Items[AttachIdx]);
 	}
-	
+
 	Edit().MarkItemDirty(Items[Idx]);
 }
 
@@ -562,12 +225,13 @@ TArray<FArcItemCopyContainerHelper> FArcItemsArray::GetAllInternalItems() const
 
 	for (const FArcItemDataInternalWrapper& Wrapper : Items)
 	{
-		if (Wrapper.ToItem()->GetOwnerId().IsValid())
+		const FArcItemData* Data = Wrapper.ToItem();
+		if (Data && Data->GetOwnerId().IsValid())
 		{
 			continue;
 		}
-		
-		Out.Add(FArcItemCopyContainerHelper::New(Owner, *Wrapper.GetInternalItem()));
+
+		Out.Add(FArcItemCopyContainerHelper::New(Owner, Data));
 	}
 
 	return Out;
@@ -596,45 +260,40 @@ TArray<FArcItemId> FArcItemsArray::AddItemCopyInternal(UArcItemsStoreComponent* 
 int32 FArcItemsArray::AddItem(const FArcItemSpec& NewItemSpec
 							  , bool& bAlreadyExists)
 {
-	FArcItemDataInternalWrapper Item(NewItemSpec);
-	int32 Idx = Items.Add(MoveTemp(Item));
+	FArcItemDataInternalWrapper Wrapper(NewItemSpec);
+	int32 Idx = Items.Add(MoveTemp(Wrapper));
 	Edit().MarkItemDirty(Items[Idx]);
-	
-	AddCachedItem(Items[Idx].Item.GetItem()->GetItemId(), Items[Idx].Item.GetItem().Get());
-	AddWeakCachedItem(Items[Idx].Item.GetItem()->GetItemId(), Items[Idx].Item.GetItem());
-	
-	return Items.Num() - 1;;
+
+	FArcItemData* Data = Items[Idx].ToItem();
+	AddCachedItem(Data->GetItemId(), Data);
+
+	return Items.Num() - 1;
 }
 
 void FArcItemsArray::RemoveItem(const FArcItemId& InItemId)
 {
 	RemoveCachedItem(InItemId);
-	RemoveWeakCachedItem(InItemId);
-	
-	int32 Idx = IndexOf(InItemId);
-	if (Items[Idx].Item.GetItem())
-	{
-		Items[Idx].Item.GetItem()->Deinitialize();	
-	}
-	
 
-	//Copy.SetItemInstance(nullptr);
-	//Copy.SetItemSpec(nullptr);
-	
+	int32 Idx = IndexOf(InItemId);
+	FArcItemData* Data = Items[Idx].ToItem();
+	if (Data)
+	{
+		Data->Deinitialize();
+	}
+
 	MarkItemDirtyHandle(InItemId);
 
-	//Entry.Reset();
-	//Items[Idx].Item.Reset();
-	
 	Items.RemoveAt(Idx);
 	Edit().MarkArrayDirty();
 }
 
 void FArcItemsArray::RemoveItem(int32 Idx)
 {
-	RemoveCachedItem(Items[Idx].Item.GetItemId());
-	RemoveWeakCachedItem(Items[Idx].Item.GetItemId());
-	;
+	FArcItemData* Data = Items[Idx].ToItem();
+	if (Data)
+	{
+		RemoveCachedItem(Data->GetItemId());
+	}
 	MarkItemDirtyIdx(Idx);
 	Edit().MarkArrayDirty();
 
@@ -645,14 +304,14 @@ void FArcItemsArray::AddItemInstance(const FArcItemData* ToItem, UScriptStruct* 
 {
 	for (FArcItemDataInternalWrapper& Wrapper : Items)
 	{
-		if (Wrapper.Item.GetItem()->GetItemId() == ToItem->GetItemId())
+		FArcItemData* Data = Wrapper.ToItem();
+		if (Data && Data->GetItemId() == ToItem->GetItemId())
 		{
-			TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InInstanceType);
-			
-			int32 Idx = Wrapper.Item.GetItem()->ItemInstances.Data.AddDefaulted();
-			
-			Wrapper.Item.GetItem()->ItemInstances.Data[Idx].Data = SharedPtr;
-			Wrapper.Item.GetItem()->SetItemInstances(Wrapper.Item.GetItem()->ItemInstances);
+			FInstancedStruct NewInstance;
+			NewInstance.InitializeAs(InInstanceType, nullptr);
+
+			Data->ItemInstances.Data.Add(MoveTemp(NewInstance));
+			Data->SetItemInstances(Data->ItemInstances);
 			MarkItemDirtyHandle(ToItem->GetItemId());
 			break;
 		}

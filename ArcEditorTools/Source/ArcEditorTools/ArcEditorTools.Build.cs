@@ -101,7 +101,18 @@ public class ArcEditorTools : ModuleRules
 				, "ArcInstancedWorld"
 				, "MassEntity"
 				, "MassCore"
+				, "MassSignals"
 				, "WorkspaceMenuStructure"
+				, "ArcArea"
+				, "ArcConditionEffects"
+				, "ArcDamageSystem"
+				, "ArcKnowledge"
+				, "ArcNeeds"
+				, "ArcTargetQuery"
+				, "MeshPartition"
+				, "MeshPartitionEditor"
+				, "GeometryCore"
+				, "ZoneGraph"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

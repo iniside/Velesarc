@@ -38,18 +38,6 @@ public:
 	FArcNamedPrimaryAssetId VisualItem;
 
 public:
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_ItemVisualAttachment::StaticStruct();
-	}
-	
-	virtual TSharedPtr<FArcItemInstance> Duplicate() const override
-	{
-		TSharedPtr<FArcItemInstance_ItemVisualAttachment> SharedPtr = ArcItems::AllocateInstance<FArcItemInstance_ItemVisualAttachment>();
-		SharedPtr->VisualItem = VisualItem;
-		return SharedPtr;
-	}
-
 	virtual bool Equals(const FArcItemInstance& Other) const override
 	{
 		const FArcItemInstance_ItemVisualAttachment& Instance = static_cast<const FArcItemInstance_ItemVisualAttachment&>(Other);
@@ -82,6 +70,6 @@ public:
 	{
 		return FArcItemFragment_ItemVisualAttachment::StaticStruct();
 	}
-	
+
 	virtual ~FArcItemFragment_ItemVisualAttachment() override = default;
 };

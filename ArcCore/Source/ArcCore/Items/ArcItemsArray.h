@@ -46,132 +46,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogItemArray
 
 class FReferenceCollector;
 
-USTRUCT()
-struct ARCCORE_API FArcItemDataInternal
-{
-	GENERATED_BODY()
-	
-	friend struct FArcItemDataInternalWrapper;
-	friend struct Arcx::Net::FArcItemDataInternalNetSerializer;
-	friend struct FArcItemsArray;
-	friend struct FArcItemCopyContainerHelper;
-	
-protected:
-	/*
-	 * ItemEntry and ItemSpec are only pointers only to have some stable adress
-	 * in case of array reallocate, since some systems rely on storying the pointer to
-	 * item locally.
-	 */
-	// if we got to this point, might add polymprphism later.
-	TSharedPtr<FArcItemData> ItemPtr = nullptr;
-	
-public:
-	UPROPERTY()
-	FArcItemId ItemId;
-
-	UPROPERTY(NotReplicated)
-	mutable bool bItemDataChanged = false;
-
-	UPROPERTY(NotReplicated)
-	mutable bool bItemInstancesChanged = false;
-
-	const FArcItemsArray* OwningArray = nullptr;
-	// Called when item is being removed. Only bind to it if you need just Id. Item
-	// Pointer might not be valid.
-	static FArcGenericItemIdDelegate OnItemRemovedDelegate;
-
-	FArcItemId GetItemId() const
-	{
-		return ItemId;
-	}
-
-	const TSharedPtr<FArcItemData>& GetItem() const
-	{
-		return ItemPtr;
-	}
-
-	TSharedPtr<FArcItemData>& GetItem()
-	{
-		return ItemPtr;
-	}
-	
-	FArcItemDataInternal()
-	{
-	}
-	
-	FArcItemDataInternal(const FArcItemDataInternal& Other);
-	FArcItemDataInternal(FArcItemDataInternal&& Other);
-	FArcItemDataInternal(FArcItemData&& Other);
-	
-	~FArcItemDataInternal()
-	{
-		if (ItemPtr.IsValid())
-		{
-			ItemPtr.Reset();	
-		}
-	}
-
-	void Reset()
-	{
-		ItemPtr.Reset();
-	}
-	
-	void SetItemData(TSharedPtr<FArcItemData>& InItem
-					  , const FArcItemSpec& InSpec);
-	
-	bool operator==(const FArcItemDataInternal& Other) const;
-
-	bool Equals(const TSharedPtr<FArcItemData>& OtherItemPtr);
-	
-	bool operator==(const FArcItemId& InItemId) const
-	{
-		return ItemId == InItemId;
-	}
-
-	bool operator==(const FPrimaryAssetId& AssetId) const
-	{
-		return ItemPtr->GetItemDefinitionId() == AssetId;
-	}
-	
-	bool operator==(const UArcItemDefinition* ItemDefinition) const
-	{
-		return ItemPtr->GetItemDefinition() == ItemDefinition;
-	}
-	
-	FArcItemDataInternal& operator=(const FArcItemDataInternal& Other);
-	FArcItemDataInternal& operator=(FArcItemDataInternal&& Other);
-	
-	void PreReplicatedRemove(const struct FArcItemsArray& InArraySerializer);
-
-	void PostReplicatedAdd(const struct FArcItemsArray& InArraySerializer);
-
-	void PostReplicatedChange(const struct FArcItemsArray& InArraySerializer);
-
-	FArcItemData* ToItem()
-	{
-		return ItemPtr.Get();
-	}
-
-	const FArcItemData* ToItem() const
-	{
-		return ItemPtr.Get();
-	}
-
-	/** Exposes references to GC system */
-	void AddStructReferencedObjects(FReferenceCollector& Collector) const;
-};
-
-template <>
-struct TStructOpsTypeTraits<FArcItemDataInternal> : public TStructOpsTypeTraitsBase2<FArcItemDataInternal>
-{
-	enum
-	{
-		WithZeroConstructor = true,
-		WithCopy = true
-		, WithIdenticalViaEquality = true
-		, WithAddStructReferencedObjects = true
-	};
-};
 
 USTRUCT()
 struct FArcAttachedItemHelper
@@ -207,7 +81,6 @@ struct ARCCORE_API FArcItemCopyContainerHelper
 	UPROPERTY()
 	TArray<FArcAttachedItemHelper> ItemAttachments;
 
-	static FArcItemCopyContainerHelper New(UArcItemsStoreComponent* InItemsStore, const FArcItemDataInternal& InDataInternal);
 	static FArcItemCopyContainerHelper New(UArcItemsStoreComponent* InItemsStore, const FArcItemData* InData);
 	static FArcItemCopyContainerHelper New(const FArcItemData* InData);
 
@@ -248,73 +121,72 @@ struct FArcItemDataInternalWrapper
 	GENERATED_BODY()
 
 	friend struct FArcItemsArray;
-	
-private:
-	UPROPERTY()
-	FArcItemDataInternal Item;
 
-	
+	UPROPERTY()
+	FInstancedStruct ItemData;
+
+	// Called when item is being removed. Only bind to it if you need just Id. Item
+	// Pointer might not be valid.
+	static FArcGenericItemIdDelegate OnItemRemovedDelegate;
+
 public:
-	FArcItemDataInternalWrapper()
-		: Item()
+	FArcItemDataInternalWrapper() = default;
+
+	explicit FArcItemDataInternalWrapper(const FArcItemSpec& InSpec)
 	{
+		ItemData = FArcItemData::NewFromSpec(InSpec);
+		FArcItemData* Data = ItemData.GetMutablePtr<FArcItemData>();
+		Data->Spec = InSpec;
 	}
 
-private:
-	FArcItemDataInternalWrapper(const FArcItemSpec& InItem);
-	
-public:
-	FArcItemDataInternalWrapper(const FArcItemDataInternalWrapper& InItem);
-	FArcItemDataInternalWrapper(FArcItemDataInternalWrapper&& InItem);
-	
-private:
-	FArcItemDataInternalWrapper(FArcItemDataInternal&& InternalItem);
-	
-public:
-	FArcItemDataInternalWrapper& operator=(const FArcItemDataInternalWrapper& Other);
-	FArcItemDataInternalWrapper& operator=(FArcItemDataInternalWrapper&& Other);
-	
+	FArcItemDataInternalWrapper(const FArcItemDataInternalWrapper& Other) = default;
+	FArcItemDataInternalWrapper(FArcItemDataInternalWrapper&& Other) = default;
+	FArcItemDataInternalWrapper& operator=(const FArcItemDataInternalWrapper& Other) = default;
+	FArcItemDataInternalWrapper& operator=(FArcItemDataInternalWrapper&& Other) = default;
+
 	void PreReplicatedRemove(const struct FArcItemsArray& InArraySerializer);
-
 	void PostReplicatedAdd(const struct FArcItemsArray& InArraySerializer);
-
 	void PostReplicatedChange(const struct FArcItemsArray& InArraySerializer);
 
-	bool operator==(const FArcItemDataInternalWrapper& Other) const;
-
-	bool operator==(const FArcItemId& ItemId) const
+	bool operator==(const FArcItemDataInternalWrapper& Other) const
 	{
-		return Item == ItemId;
+		const FArcItemData* A = ItemData.GetPtr<FArcItemData>();
+		const FArcItemData* B = Other.ItemData.GetPtr<FArcItemData>();
+		if (A && B) return *A == *B;
+		return A == B;
+	}
+
+	bool operator==(const FArcItemId& InItemId) const
+	{
+		const FArcItemData* Data = ItemData.GetPtr<FArcItemData>();
+		return Data && Data->GetItemId() == InItemId;
 	}
 
 	bool operator==(const FPrimaryAssetId& AssetId) const
 	{
-		return Item == AssetId;
-	}
-	
-	bool operator==(const UArcItemDefinition* ItemDefinition) const
-	{
-		return Item == ItemDefinition;
+		const FArcItemData* Data = ItemData.GetPtr<FArcItemData>();
+		return Data && Data->GetItemDefinitionId() == AssetId;
 	}
 
-	TSharedPtr<FArcItemData>& ToSharedPtr()
+	bool operator==(const UArcItemDefinition* ItemDefinition) const
 	{
-		return Item.ItemPtr;
+		const FArcItemData* Data = ItemData.GetPtr<FArcItemData>();
+		return Data && Data->GetItemDefinition() == ItemDefinition;
 	}
-	
+
 	FArcItemData* ToItem()
 	{
-		return Item.ToItem();
+		return ItemData.GetMutablePtr<FArcItemData>();
 	}
 
 	const FArcItemData* ToItem() const
 	{
-		return Item.ToItem();
+		return ItemData.GetPtr<FArcItemData>();
 	}
-	
-	const FArcItemDataInternal* GetInternalItem() const
+
+	bool IsValid() const
 	{
-		return &Item;
+		return ItemData.IsValid();
 	}
 };
 
@@ -324,10 +196,8 @@ struct TStructOpsTypeTraits<FArcItemDataInternalWrapper>
 {
 	enum
 	{
-		WithZeroConstructor = true,
 		WithCopy = true
 		, WithIdenticalViaEquality = true
-		, // We have a custom compare operator
 	};
 };
 
@@ -348,10 +218,6 @@ protected:
 	TArray<FArcItemDataInternalWrapper> Items;
 
 	mutable TMap<FArcItemId, FArcItemData*> ItemsMap;
-	mutable TMap<FArcItemId, TWeakPtr<FArcItemData>> ItemsWeakMap;
-	
-public:
-	mutable TMap<FArcItemId, FArcItemData> ChangedItems;
 	
 public:
 	const TArray<FArcItemDataInternalWrapper>& GetItems() const
@@ -405,16 +271,6 @@ public:
 		ItemsMap.Remove(InId);
 	}
 
-	void AddWeakCachedItem(const FArcItemId& InId, TSharedPtr<FArcItemData>& InItem) const
-	{
-		ItemsWeakMap.FindOrAdd(InId) = InItem;
-	}
-
-	void RemoveWeakCachedItem(const FArcItemId& InId) const
-	{
-		ItemsWeakMap[InId].Reset();;
-		ItemsWeakMap.Remove(InId);
-	}
 
 	using ItemArrayType = TArray<FArcItemDataInternalWrapper>;
 	
@@ -460,18 +316,7 @@ public:
 		Owner = NewOwner;
 	}
 
-	void AddInternalItem(UArcItemsStoreComponent* NewItemStoreComponent, FArcItemDataInternal&& InItem, TArray<FArcItemDataInternal*>& AttachedItems);
-	
-	const FArcItemDataInternal* FindItemDataInternal(const FArcItemId& Id) const
-	{
-		int32 Idx = Items.IndexOfByKey(Id);
-		if (Idx != INDEX_NONE)
-		{
-			return &Items[Idx].Item;
-		}
-
-		return nullptr;
-	}
+	void AddInternalItem(UArcItemsStoreComponent* NewItemStoreComponent, FInstancedStruct&& InItem, TArray<FInstancedStruct>& AttachedItems);
 
 	TArray<FArcItemCopyContainerHelper> GetAllInternalItems() const;
 	FArcItemCopyContainerHelper GetItemCopyHelper(const FArcItemId& InItemId) const;
@@ -495,28 +340,6 @@ public:
 		return nullptr;
 	}
 
-	TWeakPtr<FArcItemData>& GetWeakItem(const FArcItemId& InItemId)
-	{
-		if (TWeakPtr<FArcItemData>* P = ItemsWeakMap.Find(InItemId))
-		{
-			return *P;
-		}
-		
-		static TWeakPtr<FArcItemData> Invalid = nullptr;
-		return Invalid;
-	}
-
-	const TWeakPtr<FArcItemData>& GetWeakItem(const FArcItemId& InItemId) const
-	{
-		if (const TWeakPtr<FArcItemData>* P = ItemsWeakMap.Find(InItemId))
-		{
-			return *P;
-		}
-		
-		static TWeakPtr<FArcItemData> Invalid = nullptr;
-		return Invalid;
-	}
-	
 	FArcItemData* operator[](FArcItemId InItemId)
 	{
 		if (FArcItemData** P = ItemsMap.Find(InItemId))
@@ -549,33 +372,6 @@ public:
 		return nullptr;
 	}
 
-	TWeakPtr<FArcItemData>& GetWeakItemFromSlot(const FGameplayTag& InSlotId)
-	{
-		for (FArcItemDataInternalWrapper& W : Items)
-		{
-			if(W.ToItem()->GetSlotId() == InSlotId)
-			{
-				return ItemsWeakMap[W.Item.GetItemId()];
-			}
-		}
-
-		static TWeakPtr<FArcItemData> Invalid = nullptr;
-		return Invalid;
-	}
-	
-	FArcItemDataInternal* GetInternalItem(const FArcItemId& InItemId) const
-	{
-		for (const FArcItemDataInternalWrapper& W : Items)
-		{
-			if (W.ToItem()->GetItemId() == InItemId)
-			{
-				return const_cast<FArcItemDataInternal*>(W.GetInternalItem());
-			}
-		}
-
-		return nullptr;
-	}
-	
 	TArray<const FArcItemData*> GetAllItemsOnSlots() const
 	{
 		TArray<const FArcItemData*> Out;
@@ -610,25 +406,6 @@ public:
 		return Out;
 	}
 
-	TArray<const FArcItemDataInternal*> GetInternalItemsAttachedTo(const FArcItemId& InItemId) const
-	{
-		TArray<const FArcItemDataInternal*> Out;
-
-		if (InItemId.IsValid() == false)
-		{
-			return Out;
-		}
-		
-		for (const FArcItemDataInternalWrapper& W : Items)
-		{
-			if(W.ToItem()->GetOwnerId() == InItemId)
-			{
-				Out.Add(&W.Item);
-			}
-		}
-
-		return Out;
-	}
 	
 	void MarkItemDirtyIdx(int32 Idx);
 

@@ -4,8 +4,11 @@
 
 #include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
 struct FMassArchetypeHandle;
+class AActor;
+class UArcMassEntityDebuggerDrawComponent;
 
 class FArcMassEntityDebugger
 {
@@ -24,6 +27,8 @@ private:
 	void DrawLeafValue(const FProperty* Prop, const void* ContainerPtr);
 
 	void RefreshEntityList();
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 
 	struct FEntityEntry
 	{
@@ -35,4 +40,7 @@ private:
 	int32 SelectedEntityIndex = INDEX_NONE;
 	char EntityFilterBuf[256] = {};
 	float LastRefreshTime = 0.f;
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcMassEntityDebuggerDrawComponent> DrawComponent;
 };

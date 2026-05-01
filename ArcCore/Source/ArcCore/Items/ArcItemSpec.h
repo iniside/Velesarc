@@ -28,9 +28,7 @@
 #include "Items/Fragments/ArcItemFragment.h"
 #include "Net/Serialization/FastArraySerializer.h"
 
-#include "Iris/Serialization/PolymorphicNetSerializer.h"
-#include "Iris/ReplicationState/IrisFastArraySerializer.h"
-#include "Iris/ReplicationState/Private/IrisFastArraySerializerInternal.h"
+#include "StructUtils/InstancedStruct.h"
 
 #include "ArcItemSpec.generated.h"
 
@@ -44,83 +42,55 @@ struct ARCCORE_API FArcItemSpecFragmentInstances
 	GENERATED_BODY()
 
 private:
-	TArray<TSharedPtr< FArcItemFragment_ItemInstanceBase>, TInlineAllocator<8>> Data;
+	UPROPERTY()
+	TArray<FInstancedStruct> Data;
 
 public:
 	FArcItemSpecFragmentInstances() { }
 
-	FArcItemSpecFragmentInstances(FArcItemFragment_ItemInstanceBase* DataPtr)
-	{
-		Data.Add(TSharedPtr<FArcItemFragment_ItemInstanceBase>(DataPtr));
-	}
+	void Clear() { Data.Reset(); }
+	int32 Num() const { return Data.Num(); }
 
-	FArcItemSpecFragmentInstances(FArcItemSpecFragmentInstances&& Other) : Data(MoveTemp(Other.Data)) { }
-	FArcItemSpecFragmentInstances(const FArcItemSpecFragmentInstances& Other) : Data(Other.Data) { }
-
-	FArcItemSpecFragmentInstances& operator=(FArcItemSpecFragmentInstances&& Other) { Data = MoveTemp(Other.Data); return *this; }
-	FArcItemSpecFragmentInstances& operator=(const FArcItemSpecFragmentInstances& Other) { Data = Other.Data; return *this; }
-
-	~FArcItemSpecFragmentInstances()
-	{
-		Data.Empty();
-	}
-
-public:
-	void Clear()
-	{
-		Data.Reset();
-	}
-
-	int32 Num() const
-	{
-		return Data.Num();
-	}
-
-	/** Returns true if index is valid */
 	bool IsValid(int32 Index) const
 	{
 		return (Index < Data.Num() && Data[Index].IsValid());
 	}
 
-	/** Returns data at index, or nullptr if invalid */
 	const FArcItemFragment_ItemInstanceBase* Get(int32 Index) const
 	{
-		return IsValid(Index) ? Data[Index].Get() : nullptr;
+		return IsValid(Index) ? Data[Index].GetPtr<FArcItemFragment_ItemInstanceBase>() : nullptr;
 	}
 
-	/** Returns data at index, or nullptr if invalid */
 	FArcItemFragment_ItemInstanceBase* Get(int32 Index)
 	{
-		return IsValid(Index) ? Data[Index].Get() : nullptr;
+		return IsValid(Index) ? Data[Index].GetMutablePtr<FArcItemFragment_ItemInstanceBase>() : nullptr;
 	}
 
 	const FArcItemFragment_ItemInstanceBase* Get(UScriptStruct* InType) const
 	{
-		for (const TSharedPtr<FArcItemFragment_ItemInstanceBase>& InstanceBase : Data)
+		for (const FInstancedStruct& Instance : Data)
 		{
-			if (InstanceBase->GetScriptStruct()->IsChildOf(InType))
+			if (Instance.IsValid() && Instance.GetScriptStruct()->IsChildOf(InType))
 			{
-				return InstanceBase.Get();
+				return Instance.GetPtr<FArcItemFragment_ItemInstanceBase>();
 			}
 		}
-
 		return nullptr;
 	}
 
 	template<typename T>
 	const FArcItemFragment_ItemInstanceBase* Get() const
 	{
-		for (const TSharedPtr<FArcItemFragment_ItemInstanceBase>& InstanceBase : Data)
+		for (const FInstancedStruct& Instance : Data)
 		{
-			if (InstanceBase->GetScriptStruct()->IsChildOf(T::StaticStruct()))
+			if (Instance.IsValid() && Instance.GetScriptStruct()->IsChildOf(T::StaticStruct()))
 			{
-				return InstanceBase.Get();
+				return Instance.GetPtr<FArcItemFragment_ItemInstanceBase>();
 			}
 		}
-
 		return nullptr;
 	}
-	
+
 	void RemoveAt(int32 Index)
 	{
 		if (Index >= 0 && Index < Num())
@@ -129,93 +99,50 @@ public:
 		}
 	}
 
-	/** Adds a new FExamplePolymorphicArrayStruct data to FExamplePolymorphicArrayStruct, it must have been created with new */
 	void Add(FArcItemFragment_ItemInstanceBase* DataPtr)
 	{
-		Data.Add(TSharedPtr<FArcItemFragment_ItemInstanceBase>(DataPtr));
+		UScriptStruct* StructType = DataPtr->GetScriptStruct();
+		FInstancedStruct& Added = Data.AddDefaulted_GetRef();
+		Added.InitializeAs(StructType, reinterpret_cast<const uint8*>(DataPtr));
 	}
 
-	/** Adds a pre-constructed shared pointer (e.g. with a custom deleter). */
-	void Add(TSharedPtr<FArcItemFragment_ItemInstanceBase> DataPtr)
+	void Add(const FInstancedStruct& InStruct)
 	{
-		Data.Add(MoveTemp(DataPtr));
+		Data.Add(InStruct);
 	}
 
-	/** Does a shallow copy of data from one handle to another */
 	void Append(const FArcItemSpecFragmentInstances& OtherHandle)
 	{
 		Data.Append(OtherHandle.Data);
 	}
 
-	/** Comparison operator */
 	bool operator==(const FArcItemSpecFragmentInstances& Other) const
 	{
-		// This comparison operator only compares actual instance pointers
-		if (Data.Num() != Other.Data.Num())
-		{
-			return false;
-		}
-
-		for (int32 It = 0, EndIt = Data.Num(); It < EndIt; ++It)
-		{
-			if (Data[It].IsValid() != Other.Data[It].IsValid())
-			{
-				return false;
-			}
-			if (Data[It].Get() != Other.Data[It].Get())
-			{
-				return false;
-			}
-		}
-		return true;
+		return Data == Other.Data;
 	}
 
-	/** Comparison operator */
 	bool operator!=(const FArcItemSpecFragmentInstances& Other) const
 	{
-		return !(FArcItemSpecFragmentInstances::operator==(Other));
-	}
-
-	/** For PolymorphicStructArrayNetSerializer */
-	static TArrayView<TSharedPtr<FArcItemFragment_ItemInstanceBase>> GetArray(FArcItemSpecFragmentInstances& ArrayContainer)
-	{
-		return MakeArrayView(ArrayContainer.Data);
+		return !(operator==(Other));
 	}
 
 	TArray<const FArcItemFragment_ItemInstanceBase*> GetDataArray() const
 	{
 		TArray<const FArcItemFragment_ItemInstanceBase*> Out;
-
-		for (int32 Idx = 0; Idx < Data.Num(); Idx++)
+		for (const FInstancedStruct& Instance : Data)
 		{
-			Out.Add(Data[Idx].Get());
+			if (Instance.IsValid())
+			{
+				const FArcItemFragment_ItemInstanceBase* Ptr = Instance.GetPtr<FArcItemFragment_ItemInstanceBase>();
+				if (Ptr)
+				{
+					Out.Add(Ptr);
+				}
+			}
 		}
-
 		return Out;
 	}
-
-	static void SetArrayNum(FArcItemSpecFragmentInstances& ArrayContainer, SIZE_T Num)
-	{
-		ArrayContainer.Data.SetNum(static_cast<SSIZE_T>(Num));
-	}
 };
-
-template<>
-struct TStructOpsTypeTraits<FArcItemSpecFragmentInstances> : public TStructOpsTypeTraitsBase2<FArcItemSpecFragmentInstances>
-{
-	enum
-	{
-		WithCopy = true,		// Necessary so that TSharedPtr<FExamplePolymorphicArrayItem> Data is copied around
-		WithIdenticalViaEquality = true,
-	};
-};
-
-namespace UE::Net
-{
-
-	UE_NET_DECLARE_SERIALIZER(FArcItemSpecFragmentInstancesNetSerializer, ARCCORE_API);
-
-}
 
 /*
  * Spec which contain definition of item from which FArcItemData can be created.
@@ -254,7 +181,7 @@ public:
 	UPROPERTY()
 	FArcItemSpecFragmentInstances InstanceData;
 
-	TArray<TSharedPtr<FArcItemInstance>> InitialInstanceData;
+	TArray<FInstancedStruct> InitialInstanceData;
 	
 	UPROPERTY()
 	mutable TObjectPtr<const UArcItemDefinition> ItemDefinition;

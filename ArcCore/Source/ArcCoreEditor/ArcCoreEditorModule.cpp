@@ -100,6 +100,7 @@ void FArcCoreEditorModule::StartupModule()
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 	ArcAssetCategory = AssetTools.RegisterAdvancedAssetCategory(FName(TEXT("Arc Core"))
 		, FText::FromString("Arc Core"));
+	AssetTools.RegisterAdvancedAssetCategory(FName(TEXT("Arc Game")), FText::FromString("Arc Game"));
 	InputAssetCategory = AssetTools.FindAdvancedAssetCategory(FName(TEXT("Input")));
 	{
 		RegisterAssetTypeAction(AssetTools

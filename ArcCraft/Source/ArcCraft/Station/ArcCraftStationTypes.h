@@ -45,6 +45,18 @@ enum class EArcCraftStationTimeMode : uint8
 };
 
 /**
+ * Lifecycle state of a craft queue entry.
+ */
+UENUM()
+enum class EArcCraftQueueEntryState : uint8
+{
+	/** Queued but ingredients have not been consumed yet. */
+	Pending,
+	/** Ingredients consumed, craft timer is ticking. */
+	Active
+};
+
+/**
  * A single entry in the crafting queue.
  * Replicated via Iris fast array serializer.
  */
@@ -84,6 +96,10 @@ struct ARCCRAFT_API FArcCraftQueueEntry : public FFastArraySerializerItem
 	/** Time mode copied from the station at queue time. */
 	UPROPERTY(BlueprintReadOnly)
 	EArcCraftStationTimeMode TimeMode = EArcCraftStationTimeMode::AutoTick;
+
+	/** Lifecycle state — Pending until CraftTick consumes ingredients. */
+	UPROPERTY(BlueprintReadOnly)
+	EArcCraftQueueEntryState State = EArcCraftQueueEntryState::Pending;
 };
 
 /**

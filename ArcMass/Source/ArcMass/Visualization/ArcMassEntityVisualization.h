@@ -11,9 +11,11 @@
 #include "Mesh/MassEngineMeshFragments.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcMassVisualizationConfigFragments.h"
+#include "ArcMass/SkinnedMeshVisualization/ArcMassSkinnedMeshFragments.h"
 #include "ArcMassEntityVisualization.generated.h"
 
 class UStaticMesh;
+class USkinnedAsset;
 class UMaterialInterface;
 class UBodySetup;
 class UMassEntityConfigAsset;
@@ -21,6 +23,9 @@ struct FMassOverrideMaterialsFragment;
 struct FMassEntityManager;
 struct FMassArchetypeHandle;
 struct FMassExecutionContext;
+struct FArcMassSkinnedMeshFragment;
+struct FArcMassRenderISMSkinnedFragment;
+struct FArcMassInstancedSkinnedMeshRenderStateHelper;
 
 // ---------------------------------------------------------------------------
 // Signals
@@ -48,9 +53,6 @@ struct ARCMASS_API FArcVisRepresentationFragment : public FMassFragment
 	/** Physics grid cell coordinates (set once on init, only meaningful for physics-enabled entities). */
 	FIntVector PhysicsGridCoords = FIntVector::ZeroValue;
 
-	/** Current representation state. */
-	bool bIsActorRepresentation = false;
-
 	/** Whether MassEngine mesh rendering is active (visible). */
 	bool bHasMeshRendering = false;
 
@@ -77,35 +79,6 @@ struct TMassFragmentTraits<FArcVisConfigFragment> final
 	{
 		AuthorAcceptsItsNotTriviallyCopyable = true
 	};
-};
-
-/** Actor class for visualization — entities with this fragment support actor swapping. */
-USTRUCT(BlueprintType)
-struct ARCMASS_API FArcVisActorConfigFragment : public FMassConstSharedFragment
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, Category = "Visualization")
-	TSubclassOf<AActor> ActorClass;
-};
-
-template<>
-struct TMassFragmentTraits<FArcVisActorConfigFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-/** Marks a pre-placed actor that should be reused during ISM<->Actor swaps instead of spawning/destroying. */
-USTRUCT()
-struct ARCMASS_API FArcVisPrePlacedActorFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-	/** Weak reference to the pre-placed actor in the level. */
-	TWeakObjectPtr<AActor> PrePlacedActor;
 };
 
 /** Tag to identify visualization entities. */
@@ -166,6 +139,26 @@ struct FArcVisISMHolderKey
 	}
 };
 
+struct FArcVisSkinnedISMHolderKey
+{
+	TWeakObjectPtr<const USkinnedAsset> SkinnedAsset;
+	bool bCastShadow = false;
+	bool bHasOverrideMaterials = false;
+
+	friend bool operator==(const FArcVisSkinnedISMHolderKey& A, const FArcVisSkinnedISMHolderKey& B)
+	{
+		return A.SkinnedAsset == B.SkinnedAsset && A.bCastShadow == B.bCastShadow && A.bHasOverrideMaterials == B.bHasOverrideMaterials;
+	}
+
+	friend uint32 GetTypeHash(const FArcVisSkinnedISMHolderKey& Key)
+	{
+		uint32 Hash = GetTypeHash(Key.SkinnedAsset);
+		Hash = HashCombine(Hash, GetTypeHash(Key.bCastShadow));
+		Hash = HashCombine(Hash, GetTypeHash(Key.bHasOverrideMaterials));
+		return Hash;
+	}
+};
+
 /** Pending ISM activation request — collected during processor execution, resolved in deferred command. */
 struct FArcPendingISMActivation
 {
@@ -173,6 +166,17 @@ struct FArcPendingISMActivation
 	FIntVector Cell;
 	FTransform WorldTransform;
 	FArcMassStaticMeshConfigFragment StaticMeshConfigFrag;
+	FArcMassVisualizationMeshConfigFragment VisMeshConfigFrag;
+	FMassOverrideMaterialsFragment OverrideMats;
+	bool bHasOverrideMats = false;
+};
+
+struct FArcPendingSkinnedISMActivation
+{
+	FMassEntityHandle SourceEntity;
+	FIntVector Cell;
+	FTransform WorldTransform;
+	FArcMassSkinnedMeshFragment SkinnedMeshFrag;
 	FArcMassVisualizationMeshConfigFragment VisMeshConfigFrag;
 	FMassOverrideMaterialsFragment OverrideMats;
 	bool bHasOverrideMats = false;
@@ -302,6 +306,20 @@ public:
 	void BatchActivateISMEntities(TArray<FArcPendingISMActivation>&& PendingActivations, FMassExecutionContext& Context);
 	void InitializeISMHolderArchetypes(FMassEntityManager& EntityManager);
 
+	const TMap<FIntVector, TMap<FArcVisISMHolderKey, FMassEntityHandle>>& GetCellISMHolders() const { return CellISMHolders; }
+
+	// --- Skinned ISM Holders ---
+	FMassEntityHandle FindOrCreateSkinnedISMHolder(
+		const FIntVector& Cell,
+		const FArcMassSkinnedMeshFragment& SkinnedMeshFrag,
+		const FArcMassVisualizationMeshConfigFragment& VisMeshConfigFrag,
+		const FMassOverrideMaterialsFragment* OverrideMats,
+		FMassEntityManager& EntityManager);
+
+	int32 AddSkinnedISMInstance(FMassEntityHandle HolderEntity, const FTransform& WorldTransform, uint32 AnimationIndex, FMassEntityManager& EntityManager);
+	void RemoveSkinnedISMInstance(FMassEntityHandle HolderEntity, int32 InstanceIndex, const FIntVector& Cell, FMassEntityManager& EntityManager);
+	void BatchActivateSkinnedISMEntities(TArray<FArcPendingSkinnedISMActivation>&& PendingActivations, FMassExecutionContext& Context);
+
 private:
 	void RecomputeMeshRadiusCells();
 	void RecomputePhysicsRadiusCells();
@@ -328,6 +346,13 @@ private:
 	FMassArchetypeHandle ISMHolderArchetype;
 	FMassArchetypeHandle ISMHolderArchetypeWithMats;
 	bool bISMHolderArchetypesInitialized = false;
+
+	void InitializeSkinnedISMHolderArchetypes(FMassEntityManager& EntityManager);
+
+	TMap<FIntVector, TMap<FArcVisSkinnedISMHolderKey, FMassEntityHandle>> CellSkinnedISMHolders;
+	FMassArchetypeHandle SkinnedISMHolderArchetype;
+	FMassArchetypeHandle SkinnedISMHolderArchetypeWithMats;
+	bool bSkinnedISMHolderArchetypesInitialized = false;
 };
 
 // ---------------------------------------------------------------------------

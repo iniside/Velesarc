@@ -261,8 +261,13 @@ bool UArcItemGameplayAbility::BP_GetSourceItem(FArcItemDataHandle& OutItem)
 	{
 		return false;
 	}
-	OutItem = SourceItemsStore->GetWeakItemPtr(SourceItemId);
-	return OutItem.IsValid();
+	FArcItemData* Data = SourceItemsStore->GetItemPtr(SourceItemId);
+	if (Data)
+	{
+		OutItem = FArcItemDataHandle(Data);
+		return true;
+	}
+	return false;
 }
 
 FArcItemData* UArcItemGameplayAbility::GetSourceItemEntryPtr() const
@@ -407,11 +412,12 @@ UArcItemsStoreComponent* UArcItemGameplayAbility::GetItemsStoreComponent(TSubcla
 
 FArcItemDataHandle UArcItemGameplayAbility::GetItemDataHandle() const
 {
-	if (!SourceItemId.IsValid() || SourceItemsStore == nullptr)
+	if (SourceItemsStore == nullptr)
 	{
 		return FArcItemDataHandle();
 	}
-	return FArcItemDataHandle(SourceItemsStore->GetWeakItemPtr(SourceItemId));
+	FArcItemData* Data = SourceItemsStore->GetItemPtr(SourceItemId);
+	return FArcItemDataHandle(Data);
 }
 
 const UArcItemDefinition* UArcItemGameplayAbility::GetSourceItemData() const

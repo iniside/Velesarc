@@ -23,7 +23,7 @@ struct FArcMassDrawDebugSphereTaskInstanceData
 
 	/** World-space location at which to draw the debug sphere. */
 	UPROPERTY(EditAnywhere, Category = Input)
-	FVector Location;
+	FVector Location = FVector::ZeroVector;
 
 	/** Radius of the debug sphere in world units. */
 	UPROPERTY(EditAnywhere, Category = Parameter)

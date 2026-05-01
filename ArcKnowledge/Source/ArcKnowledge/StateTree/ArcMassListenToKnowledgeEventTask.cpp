@@ -15,7 +15,8 @@
 FArcMassListenToKnowledgeEventTask::FArcMassListenToKnowledgeEventTask()
 {
 	bShouldCallTick = true;
-	bShouldStateChangeOnReselect = true;
+	bShouldStateChangeOnReselect = false;
+	bShouldCopyBoundPropertiesOnExitState = false;
 }
 
 bool FArcMassListenToKnowledgeEventTask::Link(FStateTreeLinker& Linker)
@@ -30,22 +31,6 @@ void FArcMassListenToKnowledgeEventTask::GetDependencies(UE::MassBehavior::FStat
 
 EStateTreeRunStatus FArcMassListenToKnowledgeEventTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	// Reset all outputs
-	InstanceData.KnowledgeHandle = FArcKnowledgeHandle();
-	InstanceData.EventType = EArcKnowledgeEventType::Registered;
-	InstanceData.Tags.Reset();
-	InstanceData.Location = FVector::ZeroVector;
-	InstanceData.bEntryAvailable = false;
-	InstanceData.SourceEntity = FArcMassEntityHandleWrapper();
-	InstanceData.Payload.Reset();
-	InstanceData.Relevance = 1.0f;
-	InstanceData.Timestamp = 0.0;
-	InstanceData.Lifetime = 0.0f;
-	InstanceData.bClaimed = false;
-	InstanceData.ClaimedBy = FArcMassEntityHandleWrapper();
-
 	return EStateTreeRunStatus::Running;
 }
 
@@ -169,7 +154,21 @@ EStateTreeRunStatus FArcMassListenToKnowledgeEventTask::Tick(FStateTreeExecution
 void FArcMassListenToKnowledgeEventTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
+	
+	// Reset all outputs
+	InstanceData.KnowledgeHandle = FArcKnowledgeHandle();
+	InstanceData.EventType = EArcKnowledgeEventType::Registered;
+	InstanceData.Tags.Reset();
+	InstanceData.Location = FVector::ZeroVector;
+	InstanceData.bEntryAvailable = false;
+	InstanceData.SourceEntity = FArcMassEntityHandleWrapper();
+	InstanceData.Payload.Reset();
+	InstanceData.Relevance = 1.0f;
+	InstanceData.Timestamp = 0.0;
+	InstanceData.Lifetime = 0.0f;
+	InstanceData.bClaimed = false;
+	InstanceData.ClaimedBy = FArcMassEntityHandleWrapper();
+	
 	if (InstanceData.BoundListenerHandle.IsValid())
 	{
 		UWorld* World = Context.GetWorld();

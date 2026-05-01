@@ -1,14 +1,14 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcKnowledgeScorer.h"
-#include "ArcKnowledgeEntry.h"
+#include "ArcKnowledgeQueryCandidate.h"
 #include "ArcKnowledgeQuery.h"
 #include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 #include "Engine/World.h"
 
-float FArcKnowledgeScorer_Distance::Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const
+float FArcKnowledgeScorer_Distance::Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const
 {
-	const float Dist = FVector::Dist(Entry.Location, Context.QueryOrigin);
+	const float Dist = FVector::Dist(Candidate.Location, Context.QueryOrigin);
 	if (MaxDistance <= 0.0f)
 	{
 		return 1.0f;
@@ -16,14 +16,14 @@ float FArcKnowledgeScorer_Distance::Score(const FArcKnowledgeEntry& Entry, const
 	return FMath::Clamp(1.0f - (Dist / MaxDistance), 0.0f, 1.0f);
 }
 
-float FArcKnowledgeScorer_Relevance::Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const
+float FArcKnowledgeScorer_Relevance::Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const
 {
-	return FMath::Clamp(Entry.Relevance, 0.0f, 1.0f);
+	return FMath::Clamp(Candidate.Relevance, 0.0f, 1.0f);
 }
 
-float FArcKnowledgeScorer_Freshness::Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const
+float FArcKnowledgeScorer_Freshness::Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const
 {
-	const double Age = Context.CurrentTime - Entry.Timestamp;
+	const double Age = Context.CurrentTime - Candidate.Timestamp;
 	if (Age <= 0.0)
 	{
 		return 1.0f;
@@ -32,7 +32,7 @@ float FArcKnowledgeScorer_Freshness::Score(const FArcKnowledgeEntry& Entry, cons
 	return FMath::Clamp(static_cast<float>(FMath::Pow(2.0, -Age / static_cast<double>(HalfLifeSeconds))), 0.0f, 1.0f);
 }
 
-float FArcKnowledgeScorer_Influence::Score(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const
+float FArcKnowledgeScorer_Influence::Score(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const
 {
 	const UWorld* World = Context.World.Get();
 	if (!World)
@@ -49,11 +49,11 @@ float FArcKnowledgeScorer_Influence::Score(const FArcKnowledgeEntry& Entry, cons
 	float Influence;
 	if (QueryRadius > 0.0f)
 	{
-		Influence = InfluenceSub->QueryInfluenceInRadius(GridIndex, Entry.Location, QueryRadius, Channel);
+		Influence = InfluenceSub->QueryInfluenceInRadius(GridIndex, Candidate.Location, QueryRadius, Channel);
 	}
 	else
 	{
-		Influence = InfluenceSub->QueryInfluence(GridIndex, Entry.Location, Channel);
+		Influence = InfluenceSub->QueryInfluence(GridIndex, Candidate.Location, Channel);
 	}
 
 	const float NormalizedScore = FMath::Clamp(Influence / MaxInfluence, 0.0f, 1.0f);

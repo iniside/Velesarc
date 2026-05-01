@@ -4,8 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "imgui.h"
+#include "UObject/WeakObjectPtr.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
+class AActor;
 class AArcIWMassISMPartitionActor;
+class UArcIWMinimapDebuggerDrawComponent;
 class UArcIWVisualizationSubsystem;
 struct FMassEntityManager;
 
@@ -106,4 +110,11 @@ private:
 	FVector HoveredEntityPos = FVector::ZeroVector;
 	int32 HoveredEntityIndex = INDEX_NONE;
 	int32 HoveredEntityState = 0; // 0=Game, 1=Mesh, 2=MeshPhysics, 3=Actor, 4=ActorKeepHydrated, 5=SimpleMesh, 6=SkinnedMesh, 7=SkinnedMeshPhysics, 8=SimpleSkinnedMesh
+
+	// --- Draw component ---
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcIWMinimapDebuggerDrawComponent> DrawComponent;
 };

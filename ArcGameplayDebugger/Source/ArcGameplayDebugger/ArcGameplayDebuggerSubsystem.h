@@ -28,6 +28,7 @@
 #include "ArcLootTableDebugger.h"
 #include "ArcSpatialHashMinimapDebugger.h"
 #include "ArcVisualizationMinimapDebugger.h"
+#include "ArcMobileVisEntityDebugger.h"
 #include "ArcConditionImGuiDebugger.h"
 #include "ArcNeedsDebugger.h"
 #include "ArcWeatherMinimapDebugger.h"
@@ -35,6 +36,10 @@
 #include "ArcInteractionDebugger.h"
 #include "ArcWorldPersistenceDebugger.h"
 #include "ArcTQSDebugger.h"
+#include "ArcEconomyDebugger.h"
+#include "ArcGameDirectorDebugger.h"
+#include "ArcMassAbilitiesDebugger.h"
+#include "ArcMassItemsDebugger.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcGameplayDebuggerSubsystem.generated.h"
@@ -97,6 +102,8 @@ private:
 
 	FArcVisualizationMinimapDebugger VisualizationMinimapDebugger;
 
+	FArcMobileVisEntityDebugger MobileVisEntityDebugger;
+
 	FArcConditionImGuiDebugger ConditionDebugger;
 
 	FArcNeedsDebugger NeedsDebugger;
@@ -108,6 +115,14 @@ private:
 	FArcInteractionDebugger InteractionDebugger;
 
 	FArcWorldPersistenceDebugger WorldPersistenceDebugger;
+
+	FArcEconomyDebugger EconomyDebugger;
+
+	FArcGameDirectorDebugger GameDirectorDebugger;
+
+	FArcMassAbilitiesDebugger MassAbilitiesDebugger;
+
+	FArcMassItemsDebugger MassItemsDebugger;
 
 	void Toggle();
 	

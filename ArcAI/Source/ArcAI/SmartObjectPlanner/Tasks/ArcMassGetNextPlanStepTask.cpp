@@ -68,6 +68,7 @@ EStateTreeRunStatus FArcMassGetNextPlanStepTask::EnterState(FStateTreeExecutionC
 
 	InstanceData.SmartObjectEntityHandle.EntityHandle = Item.EntityHandle;
 	InstanceData.StepLocation = Item.Location;
+	InstanceData.KnowledgeHandle = Item.KnowledgeHandle;
 	
 	ExecutionRuntimeData.CurrentStep++;
 	FArcSmartObjectOwnerFragment* SOOwner = MassCtx.GetEntityManager().GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(Item.EntityHandle);

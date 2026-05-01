@@ -9,8 +9,8 @@
 #include "ArcDamageResistanceMappingAsset.generated.h"
 
 /**
- * Maps a DamageType.* gameplay tag to a condition fragment type.
- * Used by UArcDamageAttributeSet to sync DamageResistance into condition fragment State.Resistance.
+ * Maps a DamageType.* gameplay tag to a condition type index.
+ * Used by UArcDamageAttributeSet to sync DamageResistance into condition State.Resistance.
  */
 USTRUCT(BlueprintType)
 struct ARCDAMAGESYSTEM_API FArcDamageConditionMapping
@@ -21,9 +21,9 @@ struct ARCDAMAGESYSTEM_API FArcDamageConditionMapping
 	UPROPERTY(EditAnywhere)
 	FGameplayTag DamageTypeTag;
 
-	/** Condition fragment type whose State.Resistance receives the filtered value. Must derive from FArcConditionFragment. */
-	UPROPERTY(EditAnywhere, meta = (MetaStruct = "/Script/ArcConditionEffects.ArcConditionFragment"))
-	TObjectPtr<UScriptStruct> ConditionFragmentType = nullptr;
+	/** Index into FArcConditionStatesFragment::States (cast of EArcConditionType). */
+	UPROPERTY(EditAnywhere, meta = (ClampMin = "0", ClampMax = "12"))
+	int32 ConditionTypeIndex = 0;
 };
 
 /**

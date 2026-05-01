@@ -85,14 +85,15 @@ const UArcItemDefinition* UArcAbilitiesBPF::GetOwnerItemDef(const FGameplayEffec
 FArcItemDataHandle UArcAbilitiesBPF::GetOwnerItemData(const FGameplayEffectContextHandle& Context, bool& bSucecss)
 {
 	const FArcGameplayEffectContext* Ctx = static_cast<const FArcGameplayEffectContext*>(Context.Get());
-
-	TWeakPtr<FArcItemData> ItemData = Ctx->GetSourceItemWeakPtr();
-	if (ItemData.IsValid())
+	if (Ctx)
 	{
-		bSucecss = true;
-		return ItemData;	
+		const FArcItemData* ItemData = Ctx->GetSourceItemPtr();
+		if (ItemData)
+		{
+			bSucecss = true;
+			return FArcItemDataHandle(const_cast<FArcItemData*>(ItemData));
+		}
 	}
-
 	bSucecss = false;
 	return FArcItemDataHandle();
 }

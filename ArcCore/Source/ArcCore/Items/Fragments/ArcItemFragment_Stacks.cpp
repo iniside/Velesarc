@@ -29,6 +29,14 @@ void FArcItemFragment_Stacks::OnItemAdded(const FArcItemData* InItem) const
 {
 	FArcItemInstance_Stacks* Instance = ArcItemsHelper::FindMutableInstance<FArcItemInstance_Stacks>(InItem);
 
+	if (InItem->Spec.InitialInstanceData.ContainsByPredicate([](const FInstancedStruct& Entry)
+	{
+		return Entry.GetScriptStruct() == FArcItemInstance_Stacks::StaticStruct();
+	}))
+	{
+		return;
+	}
+
 	Instance->Stacks = InitialStacks;
 }
 

@@ -2,11 +2,10 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
 #include "UObject/ObjectPtr.h"
 #include "ArcKnowledgeFilter.generated.h"
 
-struct FArcKnowledgeEntry;
+struct FArcKnowledgeQueryCandidate;
 struct FArcKnowledgeQueryContext;
 
 /**
@@ -21,7 +20,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeFilter
 	virtual ~FArcKnowledgeFilter() = default;
 
 	/** Return true if the entry passes this filter. */
-	virtual bool PassesFilter(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const
+	virtual bool PassesFilter(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const
 	{
 		return true;
 	}
@@ -42,7 +41,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeFilter_MaxDistance : public FArcKnowledgeFi
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (ClampMin = 0.0))
 	float MaxDistance = 10000.0f;
 
-	virtual bool PassesFilter(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual bool PassesFilter(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 	virtual float GetSpatialRadius() const override { return MaxDistance; }
 };
 
@@ -55,7 +54,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeFilter_MinRelevance : public FArcKnowledgeF
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (ClampMin = 0.0, ClampMax = 1.0))
 	float MinRelevance = 0.1f;
 
-	virtual bool PassesFilter(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual bool PassesFilter(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };
 
 /** Filters entries not older than a specified age in seconds. */
@@ -67,7 +66,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeFilter_MaxAge : public FArcKnowledgeFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (ClampMin = 0.0))
 	float MaxAgeSeconds = 300.0f;
 
-	virtual bool PassesFilter(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual bool PassesFilter(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };
 
 /** Filters entries whose payload is a specific struct type. */
@@ -79,7 +78,7 @@ struct ARCKNOWLEDGE_API FArcKnowledgeFilter_PayloadType : public FArcKnowledgeFi
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
 	TObjectPtr<UScriptStruct> RequiredPayloadType = nullptr;
 
-	virtual bool PassesFilter(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual bool PassesFilter(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };
 
 /** Filters out entries that have been claimed. */
@@ -88,5 +87,5 @@ struct ARCKNOWLEDGE_API FArcKnowledgeFilter_NotClaimed : public FArcKnowledgeFil
 {
 	GENERATED_BODY()
 
-	virtual bool PassesFilter(const FArcKnowledgeEntry& Entry, const FArcKnowledgeQueryContext& Context) const override;
+	virtual bool PassesFilter(const FArcKnowledgeQueryCandidate& Candidate, const FArcKnowledgeQueryContext& Context) const override;
 };

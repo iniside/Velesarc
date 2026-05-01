@@ -21,6 +21,7 @@ public:
 
 private:
 	static EAssetTypeCategories::Type ArcMassAssetCategory;
+	static const FName EntityVisualizationTabId;
 
 	UArcPlacedEntityPlacementFactory* PlacementFactory = nullptr;
 	UArcPlacedCompositeMeshPlacementFactory* CompositePlacementFactory = nullptr;

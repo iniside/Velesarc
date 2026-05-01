@@ -101,6 +101,30 @@ ARC_CONDITION_REMOVE_HANDLER(Exhausted, Exhausted)
 #undef ARC_CONDITION_REMOVE_HANDLER
 
 // ---------------------------------------------------------------------------
+// GetSaturationAttributeByIndex
+// ---------------------------------------------------------------------------
+
+FGameplayAttribute UArcConditionAttributeSet::GetSaturationAttributeByIndex(int32 Index)
+{
+	static const FGameplayAttribute Attributes[] = {
+		GetBurningSaturationAttribute(),
+		GetBleedingSaturationAttribute(),
+		GetChilledSaturationAttribute(),
+		GetShockedSaturationAttribute(),
+		GetPoisonedSaturationAttribute(),
+		GetDiseasedSaturationAttribute(),
+		GetWeakenedSaturationAttribute(),
+		GetOiledSaturationAttribute(),
+		GetWetSaturationAttribute(),
+		GetCorrodedSaturationAttribute(),
+		GetBlindedSaturationAttribute(),
+		GetSuffocatingSaturationAttribute(),
+		GetExhaustedSaturationAttribute(),
+	};
+	return (Index >= 0 && Index < ArcConditionTypeCount) ? Attributes[Index] : FGameplayAttribute();
+}
+
+// ---------------------------------------------------------------------------
 // ForwardToMass — shared logic for all handlers
 // ---------------------------------------------------------------------------
 

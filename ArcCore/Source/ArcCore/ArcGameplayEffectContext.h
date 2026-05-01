@@ -89,8 +89,6 @@ public:
 
 	const FArcItemData* GetSourceItemPtr() const;
 
-	const TWeakPtr<FArcItemData> GetSourceItemWeakPtr() const;
-
 	void SetSourceItemId(const FArcItemId& InSourceItemId)
 	{
 		SourceItemId = InSourceItemId;
@@ -177,12 +175,3 @@ struct TStructOpsTypeTraits<FArcGameplayEffectContext> : public TStructOpsTypeTr
 	};
 };
 
-USTRUCT()
-struct FArcHealthFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-public:
-	float Health = 0;
-	float MaxHealth = 0;
-};

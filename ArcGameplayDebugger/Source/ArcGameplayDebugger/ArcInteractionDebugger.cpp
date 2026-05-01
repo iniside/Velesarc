@@ -11,8 +11,7 @@
 #include "Interaction/ArcCoreInteractionSourceComponent.h"
 #include "Interaction/ArcInteractionDisplayData.h"
 #include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
-#include "ArcMass/Visualization/ArcVisEntityComponent.h"
-#include "DrawDebugHelpers.h"
+#include "ArcInteractionDebuggerDrawComponent.h"
 #include "InstancedActorsComponent.h"
 #include "MassAgentComponent.h"
 #include "MassEntitySubsystem.h"
@@ -107,10 +106,6 @@ namespace Arcx::GameplayDebugger::Interaction
 			if (UMassAgentComponent* AgentComp = HitActor->FindComponentByClass<UMassAgentComponent>())
 			{
 				return AgentComp->GetEntityHandle();
-			}
-			if (UArcVisEntityComponent* VisComp = HitActor->FindComponentByClass<UArcVisEntityComponent>())
-			{
-				return VisComp->GetEntityHandle();
 			}
 		}
 
@@ -310,6 +305,7 @@ void FArcInteractionDebugger::Initialize()
 
 void FArcInteractionDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	SelectedCandidateIdx = INDEX_NONE;
 }
 
@@ -325,6 +321,7 @@ void FArcInteractionDebugger::Draw()
 	if (!ImGui::Begin("Interaction Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -704,6 +701,10 @@ void FArcInteractionDebugger::DrawViewportDebug()
 
 	if (!TargetActor)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
@@ -716,5 +717,46 @@ void FArcInteractionDebugger::DrawViewportDebug()
 		Radius = 50.f;
 	}
 
-	DrawDebugSphere(World, Origin, Radius, 16, FColor::Green, false, -1.f, SDPG_World, 2.f);
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
+	{
+		DrawComponent->UpdateInteractionTarget(Origin, Radius);
+	}
+}
+
+void FArcInteractionDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("InteractionDebuggerDraw"));
+#endif
+
+	UArcInteractionDebuggerDrawComponent* NewComponent = NewObject<UArcInteractionDebuggerDrawComponent>(NewActor, UArcInteractionDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcInteractionDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

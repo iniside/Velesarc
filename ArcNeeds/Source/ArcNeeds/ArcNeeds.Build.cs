@@ -30,6 +30,7 @@ public class ArcNeeds : ModuleRules
 				"MassEntity",
 				"MassCore",
 				"MassCommon",
+				"MassSpawner",
 				"GameplayAbilities",
 				"GameplayTags",
 				"ArcCore",

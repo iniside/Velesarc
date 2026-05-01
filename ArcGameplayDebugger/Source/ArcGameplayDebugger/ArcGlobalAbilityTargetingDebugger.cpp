@@ -1,5 +1,6 @@
 ﻿#include "ArcGlobalAbilityTargetingDebugger.h"
 
+#include "ArcGlobalAbilityTargetingDebuggerDrawComponent.h"
 #include "imgui.h"
 #include "StateTreePropertyBindings.h"
 #include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
@@ -25,6 +26,7 @@ void FArcGlobalAbilityTargetingDebugger::Initialize()
 
 void FArcGlobalAbilityTargetingDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 }
 
 void HitResultToTable(const FHitResult& InHIt)
@@ -142,34 +144,58 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 {
 	if (!GEngine)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
-	
+
 	if (!GEngine->GameViewport)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	UWorld* World = GEngine->GameViewport->GetWorld();
 	if (!World)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
 	if (!PC)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	if (!PC->PlayerState)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	UAssetManager* AssetManager = UAssetManager::GetIfInitialized();
 	if (!AssetManager)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
@@ -179,6 +205,16 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 	
 	UArcCoreAbilitySystemComponent* AbilitySystem = PS->FindComponentByClass<UArcCoreAbilitySystemComponent>();
 	if (!AbilitySystem)
+	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
+		return;
+	}
+
+	EnsureDrawActor(World);
+	if (!DrawComponent.IsValid())
 	{
 		return;
 	}
@@ -243,18 +279,28 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 						, FColor::QuantizeUNormFloatTo8(DebugDraw[Counter].Color[2])
 						, 255);
 					
+					TArray<FArcTargetingDebugSphere> Spheres;
+
 					if (AActor* Actor = Targeting.Value.HitResult.GetActor())
 					{
-						DrawDebugSphere(World, Actor->GetActorLocation(), DebugDraw[Counter].Size, 16, Color, false);	
+						FArcTargetingDebugSphere& Sphere = Spheres.AddDefaulted_GetRef();
+						Sphere.Location = Actor->GetActorLocation();
+						Sphere.Radius = DebugDraw[Counter].Size;
+						Sphere.Color = Color;
 					}
 
 					for (const FHitResult& Hit : Targeting.Value.HitResults)
 					{
 						if (AActor* Actor = Hit.GetActor())
 						{
-							DrawDebugSphere(World, Actor->GetActorLocation(), DebugDraw[Counter].Size, 16, Color, false);	
-						}		
+							FArcTargetingDebugSphere& Sphere = Spheres.AddDefaulted_GetRef();
+							Sphere.Location = Actor->GetActorLocation();
+							Sphere.Radius = DebugDraw[Counter].Size;
+							Sphere.Color = Color;
+						}
 					}
+
+					DrawComponent->UpdateTargetingSpheres(Spheres);
 
 					FTargetingDebugInfo TargetingDebugInfo;
 					const FTargetingTaskSet* TaskSet = Targeting.Value.TargetingPreset->GetTargetingTaskSet();
@@ -277,6 +323,10 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 						}
 					}
 				}
+				else
+				{
+					DrawComponent->ClearShapes();
+				}
 				ImGui::TreePop();
 			}
 			
@@ -289,4 +339,41 @@ void FArcGlobalAbilityTargetingDebugger::Draw()
 	}
 
 	ImGui::End();
+}
+
+void FArcGlobalAbilityTargetingDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("GlobalAbilityTargetingDebuggerDraw"));
+#endif
+
+	UArcGlobalAbilityTargetingDebuggerDrawComponent* NewComponent = NewObject<UArcGlobalAbilityTargetingDebuggerDrawComponent>(NewActor, UArcGlobalAbilityTargetingDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcGlobalAbilityTargetingDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

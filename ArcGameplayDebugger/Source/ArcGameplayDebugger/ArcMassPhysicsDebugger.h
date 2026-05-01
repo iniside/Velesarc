@@ -4,8 +4,12 @@
 
 #include "Mass/EntityHandle.h"
 #include "Engine/HitResult.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
+class AActor;
+class UArcMassPhysicsDebuggerDrawComponent;
 class UWorld;
+struct FArcMassPhysicsDebugDrawData;
 struct FBodyInstance;
 
 class FArcMassPhysicsDebugger
@@ -23,7 +27,10 @@ private:
 	void DrawForceControls();
 	void DrawVisualizationToggles();
 	void DrawWorldVisualization();
-	void DrawCollisionShapes(UWorld* World, const FTransform& BodyTransform);
+	void CollectBodyShapes(FBodyInstance* Body, FColor Color, FArcMassPhysicsDebugDrawData& OutData);
+	void CollectAllPhysicsBodies(FArcMassPhysicsDebugDrawData& OutData);
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 
 	FHitResult CachedHitResult;
 	FMassEntityHandle DetectedEntity;
@@ -37,4 +44,8 @@ private:
 	bool bDrawBounds = true;
 	bool bDrawCollisionShapes = true;
 	bool bDrawHitLine = true;
+	bool bDrawAllBodies = false;
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcMassPhysicsDebuggerDrawComponent> DrawComponent;
 };

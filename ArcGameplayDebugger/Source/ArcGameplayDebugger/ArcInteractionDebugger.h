@@ -3,8 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
+class AActor;
 class UArcCoreInteractionSourceComponent;
+class UArcInteractionDebuggerDrawComponent;
 
 class FArcInteractionDebugger
 {
@@ -22,4 +25,9 @@ private:
 
 	int32 SelectedCandidateIdx = INDEX_NONE;
 	float LastRefreshTime = 0.f;
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcInteractionDebuggerDrawComponent> DrawComponent;
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 };

@@ -64,22 +64,22 @@ struct FArcGameplayAbilityComboStepTaskInstanceData
 	FGameplayTag InputPressedTag;
 
 	UPROPERTY()
-	int32 InputHandle;
+	int32 InputHandle = INDEX_NONE;
 
 	UPROPERTY()
-	int32 ReleasedHandle;
+	int32 ReleasedHandle = INDEX_NONE;
 
 	UPROPERTY()
-	float StartComboTime;
+	float StartComboTime = 0;
 
 	UPROPERTY()
-	float EndComboTime;
+	float EndComboTime = 0;
 
 	UPROPERTY()
-	bool bIsComboWindowActive;
+	bool bIsComboWindowActive = false;
 
 	UPROPERTY()
-	float CurrentTime;
+	float CurrentTime = 0;
 
 	UPROPERTY()
 	TArray<FArcNotifyEvent> NotifyEvents;

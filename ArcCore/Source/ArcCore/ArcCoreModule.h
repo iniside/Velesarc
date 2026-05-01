@@ -21,7 +21,6 @@
 
 #pragma once
 
-#include "Debug/ArcItemsDebugWindow.h"
 #include "Modules/ModuleManager.h"
 
 class IHttpRouter;
@@ -29,9 +28,6 @@ class IHttpRouter;
 class FArcCoreModule : public IModuleInterface
 {
 public:
-	static FArcItemsDebugWindow GArcItemsDebugWindow;
-	
-
 	void OnAllModuleLoadingPhasesComplete();
 
 	/** IModuleInterface implementation */

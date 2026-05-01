@@ -2,7 +2,7 @@
 
 #include "UtilityAI/Considerations/ArcUtilityConsideration_EntityHealth.h"
 #include "MassEntityManager.h"
-#include "ArcMass/ArcMassFragments.h"
+#include "ArcMassDamageSystem/ArcMassHealthStatsFragment.h"
 
 float FArcUtilityConsideration_EntityHealth::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
@@ -16,13 +16,14 @@ float FArcUtilityConsideration_EntityHealth::Score(const FArcUtilityTarget& Targ
 		return 0.0f;
 	}
 
-	const FArcMassHealthFragment* HealthFragment =
-		Context.EntityManager->GetFragmentDataPtr<FArcMassHealthFragment>(Target.EntityHandle);
+	const FArcMassHealthStatsFragment* HealthFragment =
+		Context.EntityManager->GetFragmentDataPtr<FArcMassHealthStatsFragment>(Target.EntityHandle);
 
-	if (!HealthFragment || HealthFragment->MaxHealth <= 0.0f)
+	const float MaxHealth = HealthFragment ? HealthFragment->MaxHealth.GetCurrentValue() : 0.0f;
+	if (!HealthFragment || MaxHealth <= 0.0f)
 	{
 		return 0.0f;
 	}
 
-	return FMath::Clamp(HealthFragment->CurrentHealth / HealthFragment->MaxHealth, 0.0f, 1.0f);
+	return FMath::Clamp(HealthFragment->Health.GetCurrentValue() / MaxHealth, 0.0f, 1.0f);
 }

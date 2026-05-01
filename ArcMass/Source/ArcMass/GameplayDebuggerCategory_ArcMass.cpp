@@ -397,22 +397,13 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 				}
 
 				const FArcVisRepresentationFragment& VisRep = VisRepList[i];
-				const bool bIsActor = VisRep.bIsActorRepresentation;
 				const FMassEntityHandle Entity = ExecContext.GetEntity(i);
 
 				// --- Shape based on representation type ---
 				constexpr float ShapeSize = 30.f;
 				const FVector ShapePos = EntityLocation + FVector(0.f, 0.f, 20.f);
 
-				if (bIsActor)
-				{
-					// Capsule for actor representation
-					AddShape(FGameplayDebuggerShape::MakeCapsule(
-						ShapePos + FVector(0, 0, ShapeSize),
-						ShapeSize * 0.4f, ShapeSize,
-						ArcMassDebugColors::EntityActor));
-				}
-				else if (VisRep.bHasMeshRendering)
+				if (VisRep.bHasMeshRendering)
 				{
 					// Box for MassEngine mesh representation
 					AddShape(FGameplayDebuggerShape::MakeBox(
@@ -454,11 +445,7 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 
 				// Entity ID and representation
 				Label += FString::Printf(TEXT("{orange}%s"), *Entity.DebugGetDescription());
-				if (bIsActor)
-				{
-					Label += TEXT(" {cyan}[Actor]");
-				}
-				else if (VisRep.bHasMeshRendering)
+				if (VisRep.bHasMeshRendering)
 				{
 					Label += TEXT(" {yellow}[MeshVis]");
 				}

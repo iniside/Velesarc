@@ -3,6 +3,7 @@
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
 #include "StateTreePropertyRef.h"
 #include "ArcMass/ArcMassEntityHandleWrapper.h"
+#include "ArcKnowledgeTypes.h"
 
 #include "ArcMassGetNextPlanStepTask.generated.h"
 
@@ -25,7 +26,11 @@ struct FArcMassGetNextPlanStepTaskInstanceData
 
 	// Output: world location of the current step's smart object
 	UPROPERTY(EditAnywhere, Category = Output)
-	FVector StepLocation;
+	FVector StepLocation = FVector::ZeroVector;
+
+	// Output: knowledge handle for knowledge-sourced steps (invalid for SmartObject steps)
+	UPROPERTY(EditAnywhere, Category = Output)
+	FArcKnowledgeHandle KnowledgeHandle;
 
 	// Dispatched when all plan steps have been consumed
 	UPROPERTY(EditAnywhere, Category = Parameter)
@@ -39,7 +44,7 @@ struct FArcMassGetNextPlanStepTaskRuntimeInstanceData
 
 	// Plan steps to iterate through sequentially
 	UPROPERTY(VisibleAnywhere, Category = Parameter)
-	int32 CurrentStep;
+	int32 CurrentStep = INDEX_NONE;
 };
 /**
 * Iterates through plan steps one at a time. Each entry advances the step index and outputs

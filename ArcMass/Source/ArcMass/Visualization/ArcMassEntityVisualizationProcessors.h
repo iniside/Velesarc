@@ -33,8 +33,7 @@ private:
 // ---------------------------------------------------------------------------
 // Mesh Activate Processor
 // Subscribes to VisMeshActivated — finds or creates an ISM holder for the
-// entity's cell/mesh config and adds the entity as an ISM instance. For
-// actor-tier entities, spawns or reveals the actor instead.
+// entity's cell/mesh config and adds the entity as an ISM instance.
 // ---------------------------------------------------------------------------
 
 UCLASS()
@@ -54,8 +53,7 @@ protected:
 // ---------------------------------------------------------------------------
 // Mesh Deactivate Processor
 // Subscribes to VisMeshDeactivated — removes the entity's ISM instance from
-// its holder (destroying the holder if empty) and cleans up actor
-// representation for entities leaving deactivation range.
+// its holder (destroying the holder if empty).
 // ---------------------------------------------------------------------------
 
 UCLASS()
@@ -74,8 +72,8 @@ protected:
 
 // ---------------------------------------------------------------------------
 // Entity Init Observer
-// Observes FArcVisEntityTag Add — registers entity in grid, handles
-// pre-placed actors, and signals VisMeshActivated if in an active cell.
+// Observes FArcVisEntityTag Add — registers entity in grid and signals
+// VisMeshActivated if in an active cell.
 // ---------------------------------------------------------------------------
 
 UCLASS()

@@ -28,6 +28,7 @@ public class ArcEntitySpawner : ModuleRules
 				, "ArcAI"
 				, "ArcMass"
 				, "ArcPersistence"
+				, "ArcTargetQuery"
 			}
 		);
 

@@ -55,18 +55,6 @@ public:
 		Stacks = NumStacks;
 	}
 	
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_Stacks::StaticStruct();
-	}
-	
-	virtual TSharedPtr<FArcItemInstance> Duplicate() const override
-	{
-		TSharedPtr<FArcItemInstance_Stacks> SharedPtr = ArcItems::AllocateInstance<FArcItemInstance_Stacks>();
-		SharedPtr->Stacks = Stacks;
-		return SharedPtr;
-	}
-
 	virtual bool Equals(const FArcItemInstance& Other) const override
 	{
 		const FArcItemInstance_Stacks& OtherInstance = static_cast<const FArcItemInstance_Stacks&>(Other);

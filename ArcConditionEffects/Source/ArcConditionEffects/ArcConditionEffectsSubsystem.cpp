@@ -2,6 +2,7 @@
 
 #include "ArcConditionEffectsSubsystem.h"
 
+#include "ArcConditionMassEffectsConfig.h"
 #include "ArcConditionFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassSignalSubsystem.h"
@@ -50,7 +51,7 @@ void UArcConditionEffectsSubsystem::ApplyCondition(const FMassEntityHandle& Enti
 
 const FArcConditionState* UArcConditionEffectsSubsystem::GetConditionState(const UWorld* World, const FMassEntityHandle& Entity, EArcConditionType ConditionType)
 {
-	if (!World || !Entity.IsValid())
+	if (!World || !Entity.IsValid() || ConditionType >= EArcConditionType::MAX)
 	{
 		return nullptr;
 	}
@@ -67,35 +68,8 @@ const FArcConditionState* UArcConditionEffectsSubsystem::GetConditionState(const
 		return nullptr;
 	}
 
-	// Switch on condition type to query the correct typed fragment
-	switch (ConditionType)
-	{
-#define ARC_CASE_CONDITION(Name, EnumVal) \
-	case EArcConditionType::EnumVal: \
-	{ \
-		const FArc##Name##ConditionFragment* Frag = EntityManager.GetFragmentDataPtr<FArc##Name##ConditionFragment>(Entity); \
-		return Frag ? &Frag->State : nullptr; \
-	}
-
-	ARC_CASE_CONDITION(Burning,     Burning)
-	ARC_CASE_CONDITION(Bleeding,    Bleeding)
-	ARC_CASE_CONDITION(Chilled,     Chilled)
-	ARC_CASE_CONDITION(Shocked,     Shocked)
-	ARC_CASE_CONDITION(Poisoned,    Poisoned)
-	ARC_CASE_CONDITION(Diseased,    Diseased)
-	ARC_CASE_CONDITION(Weakened,    Weakened)
-	ARC_CASE_CONDITION(Oiled,       Oiled)
-	ARC_CASE_CONDITION(Wet,         Wet)
-	ARC_CASE_CONDITION(Corroded,    Corroded)
-	ARC_CASE_CONDITION(Blinded,     Blinded)
-	ARC_CASE_CONDITION(Suffocating, Suffocating)
-	ARC_CASE_CONDITION(Exhausted,   Exhausted)
-
-#undef ARC_CASE_CONDITION
-
-	default:
-		return nullptr;
-	}
+	const FArcConditionStatesFragment* Frag = EntityManager.GetFragmentDataPtr<FArcConditionStatesFragment>(Entity);
+	return Frag ? &Frag->States[static_cast<int32>(ConditionType)] : nullptr;
 }
 
 float UArcConditionEffectsSubsystem::GetConditionSaturation(const UObject* WorldContextObject, const FMassEntityHandle& Entity, EArcConditionType ConditionType)
@@ -128,4 +102,9 @@ void UArcConditionEffectsSubsystem::SetEffectsConfig(UArcConditionEffectsConfig*
 				 "Existing GEs applied under the old config will NOT be automatically cleaned up."));
 	}
 	EffectsConfig = Config;
+}
+
+void UArcConditionEffectsSubsystem::SetMassEffectsConfig(UArcConditionMassEffectsConfig* Config)
+{
+	MassEffectsConfig = Config;
 }

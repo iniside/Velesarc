@@ -107,11 +107,12 @@ struct ARCCORE_API ArcItemsHelper
 
 		return TraverseHierarchy(InItem, [InItem, ItemsSubsystem](const FArcItemData* Item) -> T*
 		{
-			if (TSharedPtr<FArcItemInstance>* Ptr = const_cast<FArcItemData*>(Item)->InstancedData.Find(T::StaticStruct()->GetFName()))
+			FStructView* View = const_cast<FArcItemData*>(Item)->InstancedData.Find(T::StaticStruct());
+			if (View)
 			{
 				const_cast<FArcItemData*>(Item)->OwnerComponent->MarkItemDirtyById(Item->GetItemId());
 				ItemsSubsystem->OnItemChangedDynamic.Broadcast(InItem->GetItemsStoreComponent(), InItem->GetItemId());
-				return StaticCastSharedPtr<T>(*Ptr).Get();
+				return View->GetPtr<T>();
 			}
 			return nullptr;
 		});
@@ -121,10 +122,11 @@ struct ARCCORE_API ArcItemsHelper
 	{
 		return TraverseHierarchy(InItem, [InstanceType](const FArcItemData* Item) -> FArcItemInstance*
 		{
-			if (TSharedPtr<FArcItemInstance>* Ptr = const_cast<FArcItemData*>(Item)->InstancedData.Find(InstanceType->GetFName()))
+			FStructView* View = const_cast<FArcItemData*>(Item)->InstancedData.Find(InstanceType);
+			if (View)
 			{
 				const_cast<FArcItemData*>(Item)->OwnerComponent->MarkItemDirtyById(Item->GetItemId());
-				return Ptr->Get();
+				return View->GetPtr<FArcItemInstance>();
 			}
 			return nullptr;
 		});
@@ -135,9 +137,10 @@ struct ARCCORE_API ArcItemsHelper
 	{
 		return TraverseHierarchy(InItem, [](const FArcItemData* Item) -> const T*
 		{
-			if (const TSharedPtr<FArcItemInstance>* Ptr = Item->InstancedData.Find(T::StaticStruct()->GetFName()))
+			const FStructView* View = Item->InstancedData.Find(T::StaticStruct());
+			if (View)
 			{
-				return StaticCastSharedPtr<T>(*Ptr).Get();
+				return View->GetPtr<T>();
 			}
 			return nullptr;
 		});
@@ -148,16 +151,15 @@ struct ARCCORE_API ArcItemsHelper
 	{
 		InItem->GetItemsStoreComponent()->ItemsArray.AddItemInstance(InItem, T::StaticStruct());
 	}
-	
+
 	template<typename T>
 	static void ForEachInstance(const FArcItemData* InItem, TFunctionRef<void(const FArcItemData*, T*)> ForEachFunc)
 	{
-		for (const TPair<FName, TSharedPtr<FArcItemInstance>>& Pair : InItem->InstancedData)
+		for (TPair<const UScriptStruct*, FStructView>& Pair : const_cast<FArcItemData*>(InItem)->InstancedData)
 		{
-			if (Pair.Value->GetScriptStruct()->IsChildOf(T::StaticStruct()))
+			if (Pair.Key->IsChildOf(T::StaticStruct()))
 			{
-				T* Instance = static_cast<T*>(Pair.Value.Get());
-				
+				T* Instance = Pair.Value.GetPtr<T>();
 				ForEachFunc(InItem, Instance);
 			}
 		}

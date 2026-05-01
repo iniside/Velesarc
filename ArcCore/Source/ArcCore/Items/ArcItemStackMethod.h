@@ -58,6 +58,14 @@ public:
 	 */
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const { return true; }
 
+	/**
+	 * Attempt to merge InSpec into ExistingSpecs according to this stack method.
+	 * Returns true if a matching definition was found — InSpec was merged into
+	 * existing stacks, with any overflow appended as a new entry.
+	 * Returns false if no matching definition exists — caller should append InSpec manually.
+	 */
+	virtual bool TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const;
+
 	virtual ~FArcItemStackMethod() = default;
 };
 
@@ -79,6 +87,8 @@ public:
 	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
+
+	virtual bool TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const override;
 
 	virtual ~FArcItemStackMethod_CanNotStack() override = default;
 };
@@ -102,6 +112,8 @@ public:
 	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
+
+	virtual bool TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const override;
 
 	virtual ~FArcItemStackMethod_CanNotStackUnique() override = default;
 };
@@ -128,6 +140,8 @@ public:
 	virtual bool CanStack(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
 
 	virtual bool CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const override;
+
+	virtual bool TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const override;
 
 	virtual ~FArcItemStackMethod_StackByType() override = default;
 };

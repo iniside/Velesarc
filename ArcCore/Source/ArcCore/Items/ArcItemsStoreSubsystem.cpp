@@ -38,28 +38,26 @@ void UArcItemsStoreSubsystem::SetupItem(FArcItemData* ItemPtr, const FArcItemSpe
     	{
     		continue;
     	}
-    	
+
     	if (UScriptStruct* InstanceType = IIB->GetItemInstanceType())
     	{
-    		int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const TSharedPtr<FArcItemInstance>& Other)
+    		int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const FInstancedStruct& Other)
     		{
-    			return Other->GetScriptStruct() == InstanceType;
+    			return Other.GetScriptStruct() == InstanceType;
     		});
-    		
-    		int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
+
+    		FInstancedStruct NewInstance;
+    		NewInstance.InitializeAs(InstanceType, nullptr);
+
+    		if (InitialDataIdx != INDEX_NONE)
     		{
-    			TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
-
-    			if (InitialDataIdx != INDEX_NONE)
-    			{
-    				InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
-    			}
-
-    			ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
+    			NewInstance = InSpec.InitialInstanceData[InitialDataIdx];
     		}
+
+    		ItemPtr->ItemInstances.Data.Add(MoveTemp(NewInstance));
     	}
     }
-    
+
     TArray<const FArcItemFragment_ItemInstanceBase*> SpecFragments = InSpec.GetSpecFragments();
     for (const FArcItemFragment_ItemInstanceBase* Fragment : SpecFragments)
     {
@@ -67,22 +65,23 @@ void UArcItemsStoreSubsystem::SetupItem(FArcItemData* ItemPtr, const FArcItemSpe
     	{
     		continue;
     	}
-    
+
     	if (UScriptStruct* InstanceType = Fragment->GetItemInstanceType())
     	{
-    		int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const TSharedPtr<FArcItemInstance>& Other)
+    		int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const FInstancedStruct& Other)
     		{
-    			return Other->GetScriptStruct() == InstanceType;
+    			return Other.GetScriptStruct() == InstanceType;
     		});
-    		
-    		TSharedPtr<FArcItemInstance> SharedPtr = ArcItems::AllocateInstance(InstanceType);
+
+    		FInstancedStruct NewInstance;
+    		NewInstance.InitializeAs(InstanceType, nullptr);
+
     		if (InitialDataIdx != INDEX_NONE)
     		{
-    			InstanceType->GetCppStructOps()->Copy(SharedPtr.Get(), InSpec.InitialInstanceData[InitialDataIdx].Get(), 0);
+    			NewInstance = InSpec.InitialInstanceData[InitialDataIdx];
     		}
 
-    		int32 Idx = ItemPtr->ItemInstances.Data.AddDefaulted();
-    		ItemPtr->ItemInstances.Data[Idx] = SharedPtr;
+    		ItemPtr->ItemInstances.Data.Add(MoveTemp(NewInstance));
     	}
     }
     
@@ -91,13 +90,15 @@ void UArcItemsStoreSubsystem::SetupItem(FArcItemData* ItemPtr, const FArcItemSpe
 
 FArcItemId UArcItemsStoreSubsystem::AddItem(const FArcItemSpec& InItem, const FArcItemId& OwnerItemId, UArcItemsStoreComponent* InComponent)
 {
-	TSharedPtr<FArcItemData> NewEntry = FArcItemData::NewFromSpec(InItem);
-	SetupItem(NewEntry.Get(), InItem);
-	NewEntry->Initialize(InComponent);
-	
-	ItemsMap.Add(NewEntry->GetItemId(), NewEntry);
-	
-	return NewEntry->GetItemId();
+	FInstancedStruct NewEntry = FArcItemData::NewFromSpec(InItem);
+	FArcItemData* NewEntryPtr = NewEntry.GetMutablePtr<FArcItemData>();
+	SetupItem(NewEntryPtr, InItem);
+	NewEntryPtr->Initialize(InComponent);
+
+	const FArcItemId NewId = NewEntryPtr->GetItemId();
+	ItemsMap.Emplace(NewId, MoveTemp(NewEntry));
+
+	return NewId;
 }
 
 FArcItemId UArcItemsStoreSubsystem::AddItem(FArcItemCopyContainerHelper& InContainer)
@@ -107,19 +108,20 @@ FArcItemId UArcItemsStoreSubsystem::AddItem(FArcItemCopyContainerHelper& InConta
 
 FArcItemCopyContainerHelper UArcItemsStoreSubsystem::GetItem(const FArcItemId& InItemId) const
 {
-	if (const TSharedPtr<FArcItemData>* Item = ItemsMap.Find(InItemId))
+	if (const FInstancedStruct* Item = ItemsMap.Find(InItemId))
 	{
-		FArcItemCopyContainerHelper ItemCopyContainer = FArcItemCopyContainerHelper::New(Item->Get());
+		const FArcItemData* Data = Item->GetPtr<FArcItemData>();
+		FArcItemCopyContainerHelper ItemCopyContainer = FArcItemCopyContainerHelper::New(Data);
 
-		const TArray<FArcItemId>& AttachedItem = (*Item)->AttachedItems;
+		const TArray<FArcItemId>& AttachedItem = Data->AttachedItems;
 		for (const FArcItemId& AttachedItemId : AttachedItem)
 		{
-			if (const TSharedPtr<FArcItemData>* AttachedItemPtr = ItemsMap.Find(AttachedItemId))
+			if (const FInstancedStruct* AttachedItemPtr = ItemsMap.Find(AttachedItemId))
 			{
-				
+
 			}
 		}
-		
+
 		return ItemCopyContainer;
 	}
 	
@@ -128,20 +130,20 @@ FArcItemCopyContainerHelper UArcItemsStoreSubsystem::GetItem(const FArcItemId& I
 
 const FArcItemData* UArcItemsStoreSubsystem::GetItemPtr(const FArcItemId& InItemId) const
 {
-	if (const TSharedPtr<FArcItemData>* ItemPtr = ItemsMap.Find(InItemId))
+	if (const FInstancedStruct* ItemPtr = ItemsMap.Find(InItemId))
 	{
-		return ItemPtr->Get();
+		return ItemPtr->GetPtr<FArcItemData>();
 	}
-	
+
 	return nullptr;
 }
 
 FArcItemData* UArcItemsStoreSubsystem::GetItemPtr(const FArcItemId& InItemId)
 {
-	if (TSharedPtr<FArcItemData>* ItemPtr = ItemsMap.Find(InItemId))
+	if (FInstancedStruct* ItemPtr = ItemsMap.Find(InItemId))
 	{
-		return ItemPtr->Get();
+		return ItemPtr->GetMutablePtr<FArcItemData>();
 	}
-	
+
 	return nullptr;
 }

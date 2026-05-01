@@ -1,0 +1,26 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "ArcUIModels",
+	"Description": "UI models bridging Mass entity data to MVVM ViewModels",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcUIModels",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{"Name": "ArcFrontend", "Enabled": true},
+		{"Name": "ArcMassAbilities", "Enabled": true},
+		{"Name": "ArcMassDamageSystem", "Enabled": true},
+		{"Name": "ModelViewViewModel", "Enabled": true}
+	]
+}

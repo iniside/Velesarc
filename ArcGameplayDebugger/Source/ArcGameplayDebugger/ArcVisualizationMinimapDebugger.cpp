@@ -41,6 +41,21 @@ namespace Arcx::GameplayDebugger::VisEntity::Minimap
 	static const ImU32 MobileCellBorderColor = IM_COL32(45, 45, 85, 90);
 	static const ImU32 MobileGridLineColor = IM_COL32(40, 40, 70, 70);
 
+	// Mobile LOD entity colors
+	static const ImU32 MobileLODActorColor = IM_COL32(80, 200, 100, 200);
+	static const ImU32 MobileLODActorHoveredColor = IM_COL32(120, 240, 140, 255);
+	static const ImU32 MobileLODISMColor = IM_COL32(70, 130, 190, 200);
+	static const ImU32 MobileLODISMHoveredColor = IM_COL32(110, 175, 230, 255);
+	static const ImU32 MobileLODNoneColor = IM_COL32(100, 100, 100, 140);
+	static const ImU32 MobileLODNoneHoveredColor = IM_COL32(150, 150, 150, 200);
+
+	// Mobile radius circles
+	static const ImU32 MobileActorRadiusColor = IM_COL32(80, 200, 100, 160);
+	static const ImU32 MobileISMRadiusColor = IM_COL32(70, 130, 190, 120);
+
+	// Mobile regions
+	static const ImU32 MobileRegionBorderColor = IM_COL32(160, 100, 60, 120);
+
 	// Entity dots
 	static const ImU32 StaticEntityColor = IM_COL32(150, 140, 40, 180);
 	static const ImU32 StaticEntityHoveredColor = IM_COL32(200, 195, 80, 255);
@@ -95,6 +110,11 @@ void FArcVisualizationMinimapDebugger::Initialize()
 	MeshEntityCount = 0;
 	SourceEntityCount = 0;
 	SourceEntityPositions.Reset();
+	MobileActorCount = 0;
+	MobileISMCount = 0;
+	MobileNoneCount = 0;
+	MobileActorRadius = 0.0f;
+	MobileISMRadius = 0.0f;
 }
 
 void FArcVisualizationMinimapDebugger::Uninitialize()
@@ -203,6 +223,18 @@ void FArcVisualizationMinimapDebugger::Draw()
 	DrawSourceEntities();
 	DrawRadiusCircles();
 	DrawEntities();
+	if (bShowMobileEntities)
+	{
+		DrawMobileEntities();
+	}
+	if (bShowMobileRadii)
+	{
+		DrawMobileRadiusCircles();
+	}
+	if (bShowMobileRegions)
+	{
+		DrawMobileRegions();
+	}
 
 	DrawList->PopClipRect();
 
@@ -221,13 +253,40 @@ void FArcVisualizationMinimapDebugger::Draw()
 			HoveredHandle.Index = HoveredEntityIndex;
 			if (EM->IsEntityValid(HoveredHandle))
 			{
-				const FArcVisRepresentationFragment* VisRep = EM->GetFragmentDataPtr<FArcVisRepresentationFragment>(HoveredHandle);
-				if (VisRep)
+				if (bHoveredIsMobile)
 				{
-					const FArcMassPhysicsBodyFragment* HovPhysBody = EM->GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(HoveredHandle);
-					ImGui::Text("Physics: %s | Mesh: %s",
-						(HovPhysBody && HovPhysBody->Body) ? "Yes" : "No",
-						VisRep->bHasMeshRendering ? "Yes" : "No");
+					const FArcMobileVisLODFragment* LODFrag = EM->GetFragmentDataPtr<FArcMobileVisLODFragment>(HoveredHandle);
+					const FArcMobileVisRepFragment* RepFrag = EM->GetFragmentDataPtr<FArcMobileVisRepFragment>(HoveredHandle);
+					if (LODFrag)
+					{
+						const char* LODStr = LODFrag->CurrentLOD == EArcMobileVisLOD::Actor ? "Actor"
+							: LODFrag->CurrentLOD == EArcMobileVisLOD::InstancedMesh ? "ISM" : "None";
+						ImGui::Text("LOD: %s", LODStr);
+					}
+					if (RepFrag)
+					{
+						ImGui::Text("Cell: (%d, %d, %d)", RepFrag->GridCoords.X, RepFrag->GridCoords.Y, RepFrag->GridCoords.Z);
+						ImGui::Text("Region: (%d, %d, %d)", RepFrag->RegionCoord.X, RepFrag->RegionCoord.Y, RepFrag->RegionCoord.Z);
+						if (RepFrag->bIsActorRepresentation)
+						{
+							ImGui::TextColored(ImVec4(0.31f, 0.78f, 0.39f, 1.0f), "Hydrated Actor");
+						}
+						else if (RepFrag->ISMInstanceId != INDEX_NONE)
+						{
+							ImGui::Text("ISM Instance: %d", RepFrag->ISMInstanceId);
+						}
+					}
+				}
+				else
+				{
+					const FArcVisRepresentationFragment* VisRep = EM->GetFragmentDataPtr<FArcVisRepresentationFragment>(HoveredHandle);
+					if (VisRep)
+					{
+						const FArcMassPhysicsBodyFragment* HovPhysBody = EM->GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(HoveredHandle);
+						ImGui::Text("Physics: %s | Mesh: %s",
+							(HovPhysBody && HovPhysBody->Body) ? "Yes" : "No",
+							VisRep->bHasMeshRendering ? "Yes" : "No");
+					}
 				}
 			}
 		}
@@ -321,17 +380,23 @@ void FArcVisualizationMinimapDebugger::DrawGridLines(float CellSize, ImU32 LineC
 	const float WorldMaxY = FMath::Max(WorldTopLeft.Y, WorldBottomRight.Y);
 
 	// Snap to cell boundaries (one cell beyond visible for clean edges)
-	const int32 CellMinX = FMath::FloorToInt32(WorldMinX / CellSize) - 1;
-	const int32 CellMaxX = FMath::CeilToInt32(WorldMaxX / CellSize) + 1;
-	const int32 CellMinY = FMath::FloorToInt32(WorldMinY / CellSize) - 1;
-	const int32 CellMaxY = FMath::CeilToInt32(WorldMaxY / CellSize) + 1;
+	// Clamp to reasonable range to avoid int32 overflow when zoomed out or panned far
+	const double RawCellMinX = FMath::FloorToDouble(static_cast<double>(WorldMinX) / CellSize) - 1.0;
+	const double RawCellMaxX = FMath::CeilToDouble(static_cast<double>(WorldMaxX) / CellSize) + 1.0;
+	const double RawCellMinY = FMath::FloorToDouble(static_cast<double>(WorldMinY) / CellSize) - 1.0;
+	const double RawCellMaxY = FMath::CeilToDouble(static_cast<double>(WorldMaxY) / CellSize) + 1.0;
 
 	// Cap line count to avoid perf issues at extreme zoom-out
 	const int32 MaxLines = 200;
-	if ((CellMaxX - CellMinX) + (CellMaxY - CellMinY) > MaxLines)
+	if ((RawCellMaxX - RawCellMinX) > MaxLines || (RawCellMaxY - RawCellMinY) > MaxLines)
 	{
 		return;
 	}
+
+	const int32 CellMinX = static_cast<int32>(RawCellMinX);
+	const int32 CellMaxX = static_cast<int32>(RawCellMaxX);
+	const int32 CellMinY = static_cast<int32>(RawCellMinY);
+	const int32 CellMaxY = static_cast<int32>(RawCellMaxY);
 
 	const float CanvasLeft = CanvasPos.x;
 	const float CanvasRight = CanvasPos.x + CanvasSize.x;
@@ -512,7 +577,7 @@ void FArcVisualizationMinimapDebugger::DrawGrid()
 		DrawGridLines(PhysicsGridCellSize, VisColors::PhysicsGridLineColor);
 	}
 
-	// --- Mobile visualization grid (unchanged) ---
+	// --- Mobile visualization grid ---
 	if (bShowMobileGrid)
 	{
 		UArcMobileVisSubsystem* MobileSub = GetMobileVisSubsystem();
@@ -520,12 +585,18 @@ void FArcVisualizationMinimapDebugger::DrawGrid()
 		{
 			MobileCellSize = MobileSub->GetCellSize();
 
-			const auto& SourcePositions = MobileSub->GetSourcePositions();
-			for (const auto& Pair : SourcePositions)
+			const TMap<FIntVector, TArray<FMassEntityHandle>>& MobileEntityCells = MobileSub->GetEntityCells();
+			MobileCellCount = MobileEntityCells.Num();
+			MobileEntityCount = 0;
+
+			for (const TPair<FIntVector, TArray<FMassEntityHandle>>& Pair : MobileEntityCells)
 			{
-				const FIntVector& Cell = Pair.Value;
-				const float WorldMinX = Cell.X * MobileCellSize;
-				const float WorldMinY = Cell.Y * MobileCellSize;
+				const FIntVector& Coords = Pair.Key;
+				const int32 EntityCount = Pair.Value.Num();
+				MobileEntityCount += EntityCount;
+
+				const float WorldMinX = Coords.X * MobileCellSize;
+				const float WorldMinY = Coords.Y * MobileCellSize;
 				const float WorldMaxX = WorldMinX + MobileCellSize;
 				const float WorldMaxY = WorldMinY + MobileCellSize;
 
@@ -538,8 +609,23 @@ void FArcVisualizationMinimapDebugger::DrawGrid()
 					continue;
 				}
 
-				DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::SourceColor & 0x40FFFFFF);
-				DrawList->AddRect(ScreenMin, ScreenMax, VisColors::SourceColor, 0.0f, 0, 2.0f);
+				DrawList->AddRectFilled(ScreenMin, ScreenMax, VisColors::CellColorByCount(EntityCount, VisColors::MobileCellFillColor));
+				DrawList->AddRect(ScreenMin, ScreenMax, VisColors::MobileCellBorderColor, 0.0f, 0, 1.0f);
+
+				const float CellScreenSize = (ScreenMax.x - ScreenMin.x);
+				if (CellScreenSize > 24.0f)
+				{
+					char CountBuf[16];
+					FCStringAnsi::Snprintf(CountBuf, sizeof(CountBuf), "%d", EntityCount);
+					const ImVec2 TextSize = ImGui::CalcTextSize(CountBuf);
+					DrawList->AddText(
+						ImVec2(
+							(ScreenMin.x + ScreenMax.x - TextSize.x) * 0.5f,
+							(ScreenMin.y + ScreenMax.y - TextSize.y) * 0.5f
+						),
+						VisColors::HUDTextColor, CountBuf
+					);
+				}
 			}
 
 			DrawGridLines(MobileCellSize, VisColors::MobileGridLineColor);
@@ -677,45 +763,191 @@ void FArcVisualizationMinimapDebugger::DrawEntities()
 		}
 	}
 
-	// --- Mobile entities (unchanged) ---
-	if (bShowMobileGrid)
+}
+
+// ====================================================================
+// Mobile Entity Drawing
+// ====================================================================
+
+void FArcVisualizationMinimapDebugger::DrawMobileEntities()
+{
+	FMassEntityManager* EntityManager = GetEntityManager();
+	if (!EntityManager)
 	{
-		UArcMobileVisSubsystem* MobileSub = GetMobileVisSubsystem();
-		if (MobileSub && EntityManager)
+		return;
+	}
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+	const ImGuiIO& IO = ImGui::GetIO();
+
+	MobileActorCount = 0;
+	MobileISMCount = 0;
+	MobileNoneCount = 0;
+	MobileActorRadius = 0.0f;
+	MobileISMRadius = 0.0f;
+
+	float BestHoverDistSq = 64.0f;
+	const float EntityRadius = FMath::Clamp(Zoom * 50.0f, 2.0f, 6.0f);
+
+	FMassEntityQuery MobileQuery(EntityManager->AsShared());
+	MobileQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
+	MobileQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	MobileQuery.AddRequirement<FArcMobileVisLODFragment>(EMassFragmentAccess::ReadOnly);
+	MobileQuery.AddRequirement<FArcMobileVisRepFragment>(EMassFragmentAccess::ReadOnly);
+	MobileQuery.AddConstSharedRequirement<FArcMobileVisDistanceConfigFragment>();
+
+	FMassExecutionContext QueryContext(*EntityManager, 0.f);
+	MobileQuery.ForEachEntityChunk(QueryContext,
+		[this, DrawList, &IO, &BestHoverDistSq, EntityRadius](FMassExecutionContext& Ctx)
 		{
-			const TMap<FMassEntityHandle, FIntVector>& SourcePositions = MobileSub->GetSourcePositions();
-			for (const TPair<FMassEntityHandle, FIntVector>& Pair : SourcePositions)
+			TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
+			TConstArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetFragmentView<FArcMobileVisLODFragment>();
+			const FArcMobileVisDistanceConfigFragment& DistConfig = Ctx.GetConstSharedFragment<FArcMobileVisDistanceConfigFragment>();
+
+			if (MobileActorRadius == 0.0f)
 			{
-				const FMassEntityHandle& Entity = Pair.Key;
-				if (!EntityManager->IsEntityValid(Entity))
-				{
-					continue;
-				}
-
-				const FTransformFragment* TransformFrag = EntityManager->GetFragmentDataPtr<FTransformFragment>(Entity);
-				if (!TransformFrag)
-				{
-					continue;
-				}
-
-				const FVector& Position = TransformFrag->GetTransform().GetLocation();
-				const ImVec2 ScreenPos = WorldToScreen(Position.X, Position.Y);
-
-				if (ScreenPos.x >= CanvasPos.x - 8.0f && ScreenPos.x <= CanvasPos.x + CanvasSize.x + 8.0f &&
-					ScreenPos.y >= CanvasPos.y - 8.0f && ScreenPos.y <= CanvasPos.y + CanvasSize.y + 8.0f)
-				{
-					const float S = EntityRadius * 2.0f;
-					DrawList->AddQuadFilled(
-						ImVec2(ScreenPos.x, ScreenPos.y - S),
-						ImVec2(ScreenPos.x + S, ScreenPos.y),
-						ImVec2(ScreenPos.x, ScreenPos.y + S),
-						ImVec2(ScreenPos.x - S, ScreenPos.y),
-						VisColors::SourceColor
-					);
-				}
-
-				MobileEntityCount++;
+				MobileActorRadius = DistConfig.ActorRadius;
+				MobileISMRadius = DistConfig.ISMRadius;
 			}
+
+			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+			{
+				const FVector& Pos = Transforms[EntityIt].GetTransform().GetLocation();
+				const EArcMobileVisLOD LOD = LODFragments[EntityIt].CurrentLOD;
+
+				ImU32 BaseColor;
+				ImU32 HoveredColor;
+				if (LOD == EArcMobileVisLOD::Actor)
+				{
+					BaseColor = VisColors::MobileLODActorColor;
+					HoveredColor = VisColors::MobileLODActorHoveredColor;
+					++MobileActorCount;
+				}
+				else if (LOD == EArcMobileVisLOD::InstancedMesh)
+				{
+					BaseColor = VisColors::MobileLODISMColor;
+					HoveredColor = VisColors::MobileLODISMHoveredColor;
+					++MobileISMCount;
+				}
+				else
+				{
+					BaseColor = VisColors::MobileLODNoneColor;
+					HoveredColor = VisColors::MobileLODNoneHoveredColor;
+					++MobileNoneCount;
+				}
+
+				const ImVec2 ScreenPos = WorldToScreen(Pos.X, Pos.Y);
+
+				if (ScreenPos.x < CanvasPos.x - EntityRadius || ScreenPos.x > CanvasPos.x + CanvasSize.x + EntityRadius ||
+					ScreenPos.y < CanvasPos.y - EntityRadius || ScreenPos.y > CanvasPos.y + CanvasSize.y + EntityRadius)
+				{
+					continue;
+				}
+
+				const float DX = IO.MousePos.x - ScreenPos.x;
+				const float DY = IO.MousePos.y - ScreenPos.y;
+				const float DistSq = DX * DX + DY * DY;
+
+				ImU32 DrawColor = BaseColor;
+				if (DistSq < BestHoverDistSq)
+				{
+					BestHoverDistSq = DistSq;
+					bHasHoveredEntity = true;
+					HoveredEntityPos = Pos;
+					HoveredEntityIndex = Ctx.GetEntity(EntityIt).Index;
+					bHoveredIsPlayer = false;
+					bHoveredIsMobile = true;
+					DrawColor = HoveredColor;
+				}
+
+				DrawList->AddCircleFilled(ScreenPos, EntityRadius, DrawColor);
+			}
+		});
+}
+
+// ====================================================================
+// Mobile Radius Circle Drawing
+// ====================================================================
+
+void FArcVisualizationMinimapDebugger::DrawMobileRadiusCircles()
+{
+	if (SourceEntityPositions.IsEmpty() || (MobileActorRadius == 0.0f && MobileISMRadius == 0.0f))
+	{
+		return;
+	}
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
+	for (const FVector& Pos : SourceEntityPositions)
+	{
+		const ImVec2 Center = WorldToScreen(Pos.X, Pos.Y);
+		DrawList->AddCircle(Center, MobileActorRadius * Zoom, VisColors::MobileActorRadiusColor, 0, 2.0f);
+		DrawList->AddCircle(Center, MobileISMRadius * Zoom, VisColors::MobileISMRadiusColor, 0, 1.5f);
+	}
+}
+
+// ====================================================================
+// Mobile Region Drawing
+// ====================================================================
+
+void FArcVisualizationMinimapDebugger::DrawMobileRegions()
+{
+	UArcMobileVisSubsystem* MobileSub = GetMobileVisSubsystem();
+	if (!MobileSub)
+	{
+		return;
+	}
+
+	ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
+	const float CellSize = MobileSub->GetCellSize();
+	const int32 RegionExtent = MobileSub->GetRegionExtent();
+	const int32 RegionStride = RegionExtent * 2 + 1;
+	const float RegionWorldSize = RegionStride * CellSize;
+
+	if (RegionWorldSize <= 0.0f)
+	{
+		return;
+	}
+
+	const float RegionScreenSize = RegionWorldSize * Zoom;
+	if (RegionScreenSize < 8.0f)
+	{
+		return;
+	}
+
+	const FVector2D WorldTopLeft = ScreenToWorld(CanvasPos);
+	const FVector2D WorldBottomRight = ScreenToWorld(ImVec2(CanvasPos.x + CanvasSize.x, CanvasPos.y + CanvasSize.y));
+
+	const float WorldMinX = FMath::Min(WorldTopLeft.X, WorldBottomRight.X);
+	const float WorldMaxX = FMath::Max(WorldTopLeft.X, WorldBottomRight.X);
+	const float WorldMinY = FMath::Min(WorldTopLeft.Y, WorldBottomRight.Y);
+	const float WorldMaxY = FMath::Max(WorldTopLeft.Y, WorldBottomRight.Y);
+
+	const int32 RegionMinX = FMath::FloorToInt32(WorldMinX / RegionWorldSize) - 1;
+	const int32 RegionMaxX = FMath::CeilToInt32(WorldMaxX / RegionWorldSize) + 1;
+	const int32 RegionMinY = FMath::FloorToInt32(WorldMinY / RegionWorldSize) - 1;
+	const int32 RegionMaxY = FMath::CeilToInt32(WorldMaxY / RegionWorldSize) + 1;
+
+	const int32 MaxRegions = 50;
+	if ((RegionMaxX - RegionMinX) * (RegionMaxY - RegionMinY) > MaxRegions)
+	{
+		return;
+	}
+
+	for (int32 RX = RegionMinX; RX <= RegionMaxX; ++RX)
+	{
+		for (int32 RY = RegionMinY; RY <= RegionMaxY; ++RY)
+		{
+			const float RWorldMinX = RX * RegionWorldSize;
+			const float RWorldMinY = RY * RegionWorldSize;
+			const float RWorldMaxX = RWorldMinX + RegionWorldSize;
+			const float RWorldMaxY = RWorldMinY + RegionWorldSize;
+
+			const ImVec2 ScreenMin = WorldToScreen(RWorldMinX, RWorldMaxY);
+			const ImVec2 ScreenMax = WorldToScreen(RWorldMaxX, RWorldMinY);
+
+			DrawList->AddRect(ScreenMin, ScreenMax, VisColors::MobileRegionBorderColor, 0.0f, 0, 2.0f);
 		}
 	}
 }
@@ -832,11 +1064,10 @@ void FArcVisualizationMinimapDebugger::DrawRadiusCircles()
 
 void FArcVisualizationMinimapDebugger::DrawHUD()
 {
+	// Row 1: Static visualization toggles
 	ImGui::Checkbox("Mesh Grid", &bShowMeshGrid);
 	ImGui::SameLine();
 	ImGui::Checkbox("Physics Grid", &bShowPhysicsGrid);
-	ImGui::SameLine();
-	ImGui::Checkbox("Mobile", &bShowMobileGrid);
 	ImGui::SameLine();
 	ImGui::Checkbox("Active Cells", &bShowActiveCells);
 	ImGui::SameLine();
@@ -848,31 +1079,35 @@ void FArcVisualizationMinimapDebugger::DrawHUD()
 		Zoom = 0.05f;
 	}
 
+	// Row 2: Mobile visualization toggles
+	ImGui::Checkbox("Mob Grid", &bShowMobileGrid);
+	ImGui::SameLine();
+	ImGui::Checkbox("Mob Entities", &bShowMobileEntities);
+	ImGui::SameLine();
+	ImGui::Checkbox("Mob Radii", &bShowMobileRadii);
+	ImGui::SameLine();
+	ImGui::Checkbox("Mob Regions", &bShowMobileRegions);
+
+	// Stats row 1: Grid stats
+	bool bHasPrevStat = false;
 	if (bShowMeshGrid)
 	{
 		ImGui::TextColored(ImVec4(0.31f, 0.63f, 0.86f, 0.9f), "Mesh: %d entities, %d cells (%.0f)", MeshGridEntityCount, MeshGridCellCount, MeshGridCellSize);
+		bHasPrevStat = true;
 	}
 	if (bShowPhysicsGrid)
 	{
-		if (bShowMeshGrid)
-		{
-			ImGui::SameLine();
-			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
-			ImGui::SameLine();
-		}
+		if (bHasPrevStat) { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|"); ImGui::SameLine(); }
 		ImGui::TextColored(ImVec4(0.39f, 0.78f, 0.47f, 0.9f), "Physics: %d entities, %d cells (%.0f)", PhysicsGridEntityCount, PhysicsGridCellCount, PhysicsGridCellSize);
+		bHasPrevStat = true;
 	}
 	if (bShowMobileGrid)
 	{
-		if (bShowMeshGrid || bShowPhysicsGrid)
-		{
-			ImGui::SameLine();
-			ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
-			ImGui::SameLine();
-		}
-		ImGui::TextColored(ImVec4(0.27f, 0.51f, 0.75f, 0.9f), "Mobile: %d sources (%.0f)", MobileEntityCount, MobileCellSize);
+		if (bHasPrevStat) { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|"); ImGui::SameLine(); }
+		ImGui::TextColored(ImVec4(0.27f, 0.51f, 0.75f, 0.9f), "Mobile: %d entities, %d cells (%.0f)", MobileEntityCount, MobileCellCount, MobileCellSize);
 	}
 
+	// Stats row 2: Active entity counts + mobile LOD breakdown
 	ImGui::TextColored(ImVec4(0.31f, 0.63f, 0.86f, 0.9f), "Mesh Active: %d", MeshEntityCount);
 	ImGui::SameLine();
 	ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
@@ -882,4 +1117,16 @@ void FArcVisualizationMinimapDebugger::DrawHUD()
 	ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
 	ImGui::SameLine();
 	ImGui::TextColored(ImVec4(0.75f, 0.47f, 0.12f, 0.9f), "Sources: %d", SourceEntityCount);
+
+	if (bShowMobileEntities)
+	{
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 0.6f), "|");
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.31f, 0.78f, 0.39f, 0.9f), "Actor:%d", MobileActorCount);
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.27f, 0.51f, 0.75f, 0.9f), "ISM:%d", MobileISMCount);
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 0.9f), "None:%d", MobileNoneCount);
+	}
 }

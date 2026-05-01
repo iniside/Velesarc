@@ -38,8 +38,6 @@
 #include "Misc/CoreDelegates.h"
 
 #define LOCTEXT_NAMESPACE "FArcGameCoreModule"
-FArcItemsDebugWindow FArcCoreModule::GArcItemsDebugWindow = FArcItemsDebugWindow();
-
 namespace Arcx
 {
 	FPrimaryAssetId GetExperiencePrimaryId(UWorld* InWorld, FString& OutExperienceIdSource)
@@ -148,18 +146,6 @@ void FArcCoreModule::StartupModule()
 		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_Attributes::MakeInstance));
 	GameplayDebuggerModule.NotifyCategoriesChanged();
 #endif // WITH_GAMEPLAY_DEBUGGER
-
-#if WITH_EDITOR
-	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstace)
-		{
-			FArcCoreModule::GArcItemsDebugWindow.World = GameInstace->GetWorld();
-		});
-	
-	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstace)
-		{
-			FArcCoreModule::GArcItemsDebugWindow.World = nullptr;
-		});
-#endif
 	
 	FCoreDelegates::OnAllModuleLoadingPhasesComplete.AddRaw(this, &FArcCoreModule::OnAllModuleLoadingPhasesComplete);
 	

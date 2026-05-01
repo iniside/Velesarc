@@ -38,6 +38,18 @@
 		{
 			"Name": "EngineAssetDefinitions",
 			"Enabled": true
+		},
+		{
+			"Name": "PCG",
+			"Enabled": true
+		},
+		{
+			"Name": "FastGeoStreaming",
+			"Enabled": true
+		},
+		{
+			"Name": "UAF",
+			"Enabled": true
 		}
 	]
 }

@@ -3,7 +3,7 @@
 #include "ArcTQSRewindDebuggerTrack.h"
 #include "ArcTQSTraceProvider.h"
 #include "ArcTQSTraceTypes.h"
-#include "TargetQuery/ArcTQSTypes.h"  // for FArcTQSQueryContext::StaticStruct()
+#include "ArcTQSTypes.h"  // for FArcTQSQueryContext::StaticStruct()
 #include "IRewindDebugger.h"
 #include "Widgets/Text/SMultiLineEditableText.h"
 #include "Widgets/Layout/SScrollBox.h"

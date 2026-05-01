@@ -27,10 +27,10 @@ static const ImVec4 ColorActive		= ImVec4(0.3f, 1.f, 0.3f, 1.f);
 static const ImVec4 ColorInactive		= ImVec4(0.5f, 0.5f, 0.5f, 1.f);
 
 // ---------------------------------------------------------------------------
-// Condition type name table
+// Condition type name table (ANSI for ImGui)
 // ---------------------------------------------------------------------------
 
-static const char* ConditionTypeNames[] =
+static const char* ConditionTypeNamesAnsi[] =
 {
 	"Burning",
 	"Bleeding",
@@ -46,7 +46,7 @@ static const char* ConditionTypeNames[] =
 	"Suffocating",
 	"Exhausted",
 };
-static_assert(UE_ARRAY_COUNT(ConditionTypeNames) == ArcConditionTypeCount, "ConditionTypeNames must match EArcConditionType::MAX");
+static_assert(UE_ARRAY_COUNT(ConditionTypeNamesAnsi) == ArcConditionTypeCount, "ConditionTypeNamesAnsi must match EArcConditionType::MAX");
 
 static const char* OverloadPhaseNames[] = { "None", "Overloaded", "Burnout" };
 
@@ -140,48 +140,41 @@ static void DrawConditionRow(
 }
 
 // ---------------------------------------------------------------------------
-// Macro to reduce repetition for all 13 conditions
+// Helpers — condition group color lookup
 // ---------------------------------------------------------------------------
 
-#define ARC_IMGUI_DRAW_CONDITION(Name, GroupColor) \
-	{ \
-		const FArc##Name##ConditionFragment* Frag = EntityManager.GetFragmentDataPtr<FArc##Name##ConditionFragment>(Entity); \
-		if (Frag) \
-		{ \
-			bHasAnyCondition = true; \
-			const FArc##Name##ConditionConfig* Cfg = EntityManager.GetConstSharedFragmentDataPtr<FArc##Name##ConditionConfig>(Entity); \
-			DrawConditionRow(#Name, Frag->State, Cfg ? &Cfg->Config : nullptr, GroupColor); \
-		} \
+namespace Arcx::GameplayDebugger::Conditions
+{
+	static const ImVec4& GetGroupColor(int32 ConditionIdx)
+	{
+		if (ConditionIdx <= (int32)EArcConditionType::Weakened)
+		{
+			return ColorHysteresis;
+		}
+		if (ConditionIdx <= (int32)EArcConditionType::Corroded)
+		{
+			return ColorLinear;
+		}
+		return ColorEnvironment;
 	}
 
-#define ARC_IMGUI_CHECK_HAS_CONDITION(Name) \
-	EntityManager.GetFragmentDataPtr<FArc##Name##ConditionFragment>(Entity) != nullptr
-
-// ---------------------------------------------------------------------------
-// Macro for attribute set comparison row
-// ---------------------------------------------------------------------------
-
-#define ARC_IMGUI_ATTR_ROW(Name) \
-	{ \
-		const FArc##Name##ConditionFragment* Frag = EntityManager.GetFragmentDataPtr<FArc##Name##ConditionFragment>(Entity); \
-		float AttrSat = AttrSet->Get##Name##Saturation(); \
-		float FragSat = Frag ? Frag->State.Saturation : 0.f; \
-		bool bMatch = FMath::IsNearlyEqual(AttrSat, FragSat, 0.1f); \
-		ImGui::Text("%-12s", #Name); \
-		ImGui::SameLine(100.f); \
-		ImGui::Text("Attr: %5.1f", AttrSat); \
-		ImGui::SameLine(200.f); \
-		ImGui::Text("Frag: %5.1f", FragSat); \
-		ImGui::SameLine(300.f); \
-		if (bMatch) \
-		{ \
-			ImGui::TextColored(ColorActive, "OK"); \
-		} \
-		else \
-		{ \
-			ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "MISMATCH"); \
-		} \
+	static const char* GetGroupLabel(int32 ConditionIdx)
+	{
+		if (ConditionIdx == (int32)EArcConditionType::Burning)
+		{
+			return "--- Hysteresis ---";
+		}
+		if (ConditionIdx == (int32)EArcConditionType::Oiled)
+		{
+			return "--- Linear ---";
+		}
+		if (ConditionIdx == (int32)EArcConditionType::Blinded)
+		{
+			return "--- Environmental ---";
+		}
+		return nullptr;
 	}
+}
 
 // ---------------------------------------------------------------------------
 // Initialize
@@ -289,21 +282,8 @@ void FArcConditionImGuiDebugger::Draw()
 
 		FString Desc = Entity.DebugGetDescription();
 
-		// Check if entity has at least one condition fragment
-		bool bHasCondition =
-			ARC_IMGUI_CHECK_HAS_CONDITION(Burning) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Bleeding) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Chilled) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Shocked) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Poisoned) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Diseased) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Weakened) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Oiled) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Wet) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Corroded) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Blinded) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Suffocating) ||
-			ARC_IMGUI_CHECK_HAS_CONDITION(Exhausted);
+		// Check if entity has the consolidated condition fragment
+		bool bHasCondition = EntityManager.GetFragmentDataPtr<FArcConditionStatesFragment>(Entity) != nullptr;
 
 		if (bHasCondition)
 		{
@@ -349,35 +329,29 @@ void FArcConditionImGuiDebugger::Draw()
 	if (bHasValidEntity)
 	{
 		FMassEntityHandle Entity = SelectedEntity;
-		bool bHasAnyCondition = false;
+		const FArcConditionStatesFragment* StatesFrag = EntityManager.GetFragmentDataPtr<FArcConditionStatesFragment>(Entity);
+		const FArcConditionConfigsShared* ConfigsShared = EntityManager.GetConstSharedFragmentDataPtr<FArcConditionConfigsShared>(Entity);
 
-		// Group A: Hysteresis
-		ImGui::TextColored(ColorHysteresis, "--- Hysteresis ---");
-		ARC_IMGUI_DRAW_CONDITION(Burning, ColorHysteresis)
-		ARC_IMGUI_DRAW_CONDITION(Bleeding, ColorHysteresis)
-		ARC_IMGUI_DRAW_CONDITION(Chilled, ColorHysteresis)
-		ARC_IMGUI_DRAW_CONDITION(Shocked, ColorHysteresis)
-		ARC_IMGUI_DRAW_CONDITION(Poisoned, ColorHysteresis)
-		ARC_IMGUI_DRAW_CONDITION(Diseased, ColorHysteresis)
-		ARC_IMGUI_DRAW_CONDITION(Weakened, ColorHysteresis)
+		if (StatesFrag)
+		{
+			for (int32 Idx = 0; Idx < ArcConditionTypeCount; ++Idx)
+			{
+				const char* GroupLabel = Arcx::GameplayDebugger::Conditions::GetGroupLabel(Idx);
+				if (GroupLabel)
+				{
+					if (Idx > 0)
+					{
+						ImGui::Spacing();
+					}
+					ImGui::TextColored(Arcx::GameplayDebugger::Conditions::GetGroupColor(Idx), "%s", GroupLabel);
+				}
 
-		ImGui::Spacing();
-
-		// Group B: Linear
-		ImGui::TextColored(ColorLinear, "--- Linear ---");
-		ARC_IMGUI_DRAW_CONDITION(Oiled, ColorLinear)
-		ARC_IMGUI_DRAW_CONDITION(Wet, ColorLinear)
-		ARC_IMGUI_DRAW_CONDITION(Corroded, ColorLinear)
-
-		ImGui::Spacing();
-
-		// Group C: Environmental
-		ImGui::TextColored(ColorEnvironment, "--- Environmental ---");
-		ARC_IMGUI_DRAW_CONDITION(Blinded, ColorEnvironment)
-		ARC_IMGUI_DRAW_CONDITION(Suffocating, ColorEnvironment)
-		ARC_IMGUI_DRAW_CONDITION(Exhausted, ColorEnvironment)
-
-		if (!bHasAnyCondition)
+				const FArcConditionConfig* Config = ConfigsShared ? &ConfigsShared->Configs[Idx] : nullptr;
+				DrawConditionRow(ConditionTypeNamesAnsi[Idx], StatesFrag->States[Idx], Config,
+					Arcx::GameplayDebugger::Conditions::GetGroupColor(Idx));
+			}
+		}
+		else
 		{
 			ImGui::TextColored(ColorInactive, "No condition fragments on this entity.");
 		}
@@ -398,51 +372,40 @@ void FArcConditionImGuiDebugger::Draw()
 	{
 		FMassEntityHandle Entity = SelectedEntity;
 
-		// Per-condition row: name, drag amount, Add button, Remove button
-		#define ARC_IMGUI_APPLY_ROW(Name, EnumVal, GroupColor) \
-		{ \
-			ImGui::PushID(#Name); \
-			ImGui::PushStyleColor(ImGuiCol_Text, GroupColor); \
-			ImGui::Text("%-12s", #Name); \
-			ImGui::PopStyleColor(); \
-			ImGui::SameLine(100.f); \
-			ImGui::SetNextItemWidth(100.f); \
-			ImGui::DragFloat("##amt", &ApplyAmounts[static_cast<int32>(EArcConditionType::EnumVal)], 0.5f, 0.f, 100.f, "%.1f"); \
-			ImGui::SameLine(); \
-			if (ImGui::Button("Add")) \
-			{ \
-				CondSubsystem->ApplyCondition(Entity, EArcConditionType::EnumVal, ApplyAmounts[static_cast<int32>(EArcConditionType::EnumVal)]); \
-			} \
-			ImGui::SameLine(); \
-			if (ImGui::Button("Remove")) \
-			{ \
-				CondSubsystem->ApplyCondition(Entity, EArcConditionType::EnumVal, -ApplyAmounts[static_cast<int32>(EArcConditionType::EnumVal)]); \
-			} \
-			ImGui::PopID(); \
+		for (int32 Idx = 0; Idx < ArcConditionTypeCount; ++Idx)
+		{
+			const char* GroupLabel = Arcx::GameplayDebugger::Conditions::GetGroupLabel(Idx);
+			if (GroupLabel)
+			{
+				if (Idx > 0)
+				{
+					ImGui::Spacing();
+				}
+				ImGui::TextColored(Arcx::GameplayDebugger::Conditions::GetGroupColor(Idx), "%s", GroupLabel);
+			}
+
+			const ImVec4& GroupColor = Arcx::GameplayDebugger::Conditions::GetGroupColor(Idx);
+			const EArcConditionType CondType = static_cast<EArcConditionType>(Idx);
+
+			ImGui::PushID(Idx);
+			ImGui::PushStyleColor(ImGuiCol_Text, GroupColor);
+			ImGui::Text("%-12s", ConditionTypeNamesAnsi[Idx]);
+			ImGui::PopStyleColor();
+			ImGui::SameLine(100.f);
+			ImGui::SetNextItemWidth(100.f);
+			ImGui::DragFloat("##amt", &ApplyAmounts[Idx], 0.5f, 0.f, 100.f, "%.1f");
+			ImGui::SameLine();
+			if (ImGui::Button("Add"))
+			{
+				CondSubsystem->ApplyCondition(Entity, CondType, ApplyAmounts[Idx]);
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Remove"))
+			{
+				CondSubsystem->ApplyCondition(Entity, CondType, -ApplyAmounts[Idx]);
+			}
+			ImGui::PopID();
 		}
-
-		ImGui::TextColored(ColorHysteresis, "--- Hysteresis ---");
-		ARC_IMGUI_APPLY_ROW(Burning, Burning, ColorHysteresis)
-		ARC_IMGUI_APPLY_ROW(Bleeding, Bleeding, ColorHysteresis)
-		ARC_IMGUI_APPLY_ROW(Chilled, Chilled, ColorHysteresis)
-		ARC_IMGUI_APPLY_ROW(Shocked, Shocked, ColorHysteresis)
-		ARC_IMGUI_APPLY_ROW(Poisoned, Poisoned, ColorHysteresis)
-		ARC_IMGUI_APPLY_ROW(Diseased, Diseased, ColorHysteresis)
-		ARC_IMGUI_APPLY_ROW(Weakened, Weakened, ColorHysteresis)
-
-		ImGui::Spacing();
-		ImGui::TextColored(ColorLinear, "--- Linear ---");
-		ARC_IMGUI_APPLY_ROW(Oiled, Oiled, ColorLinear)
-		ARC_IMGUI_APPLY_ROW(Wet, Wet, ColorLinear)
-		ARC_IMGUI_APPLY_ROW(Corroded, Corroded, ColorLinear)
-
-		ImGui::Spacing();
-		ImGui::TextColored(ColorEnvironment, "--- Environmental ---");
-		ARC_IMGUI_APPLY_ROW(Blinded, Blinded, ColorEnvironment)
-		ARC_IMGUI_APPLY_ROW(Suffocating, Suffocating, ColorEnvironment)
-		ARC_IMGUI_APPLY_ROW(Exhausted, Exhausted, ColorEnvironment)
-
-		#undef ARC_IMGUI_APPLY_ROW
 	}
 	else
 	{
@@ -481,31 +444,42 @@ void FArcConditionImGuiDebugger::Draw()
 					ImGui::Text("%-12s  %-12s  %-12s  %s", "Condition", "Attr Sat", "Frag Sat", "Sync");
 					ImGui::Separator();
 
-					// Group A
-					ImGui::TextColored(ColorHysteresis, "--- Hysteresis ---");
-					ARC_IMGUI_ATTR_ROW(Burning)
-					ARC_IMGUI_ATTR_ROW(Bleeding)
-					ARC_IMGUI_ATTR_ROW(Chilled)
-					ARC_IMGUI_ATTR_ROW(Shocked)
-					ARC_IMGUI_ATTR_ROW(Poisoned)
-					ARC_IMGUI_ATTR_ROW(Diseased)
-					ARC_IMGUI_ATTR_ROW(Weakened)
+					const FArcConditionStatesFragment* StatesFrag =
+						EntityManager.GetFragmentDataPtr<FArcConditionStatesFragment>(Entity);
 
-					ImGui::Spacing();
+					UAbilitySystemComponent* ASC = ASCFrag->AbilitySystem.Get();
 
-					// Group B
-					ImGui::TextColored(ColorLinear, "--- Linear ---");
-					ARC_IMGUI_ATTR_ROW(Oiled)
-					ARC_IMGUI_ATTR_ROW(Wet)
-					ARC_IMGUI_ATTR_ROW(Corroded)
+					for (int32 Idx = 0; Idx < ArcConditionTypeCount; ++Idx)
+					{
+						const char* GroupLabel = Arcx::GameplayDebugger::Conditions::GetGroupLabel(Idx);
+						if (GroupLabel)
+						{
+							if (Idx > 0)
+							{
+								ImGui::Spacing();
+							}
+							ImGui::TextColored(Arcx::GameplayDebugger::Conditions::GetGroupColor(Idx), "%s", GroupLabel);
+						}
 
-					ImGui::Spacing();
-
-					// Group C
-					ImGui::TextColored(ColorEnvironment, "--- Environmental ---");
-					ARC_IMGUI_ATTR_ROW(Blinded)
-					ARC_IMGUI_ATTR_ROW(Suffocating)
-					ARC_IMGUI_ATTR_ROW(Exhausted)
+						FGameplayAttribute SatAttr = UArcConditionAttributeSet::GetSaturationAttributeByIndex(Idx);
+						float AttrSat = SatAttr.IsValid() ? ASC->GetNumericAttribute(SatAttr) : 0.f;
+						float FragSat = StatesFrag ? StatesFrag->States[Idx].Saturation : 0.f;
+						bool bMatch = FMath::IsNearlyEqual(AttrSat, FragSat, 0.1f);
+						ImGui::Text("%-12s", ConditionTypeNamesAnsi[Idx]);
+						ImGui::SameLine(100.f);
+						ImGui::Text("Attr: %5.1f", AttrSat);
+						ImGui::SameLine(200.f);
+						ImGui::Text("Frag: %5.1f", FragSat);
+						ImGui::SameLine(300.f);
+						if (bMatch)
+						{
+							ImGui::TextColored(ColorActive, "OK");
+						}
+						else
+						{
+							ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f), "MISMATCH");
+						}
+					}
 				}
 				else
 				{

@@ -6,7 +6,6 @@
 #include "Mass/EntityHandle.h"
 #include "MassEntityTypes.h"
 #include "MassEntityConcepts.h"
-#include "MassExecutionContext.h"
 
 #include "ArcConditionTypes.generated.h"
 
@@ -40,6 +39,23 @@ enum class EArcConditionType : uint8
 };
 
 static constexpr int32 ArcConditionTypeCount = static_cast<int32>(EArcConditionType::MAX);
+
+namespace ArcConditionHelpers
+{
+
+inline const TCHAR* GetConditionTypeName(EArcConditionType Type)
+{
+	static const TCHAR* Names[] = {
+		TEXT("Burning"), TEXT("Bleeding"), TEXT("Chilled"), TEXT("Shocked"),
+		TEXT("Poisoned"), TEXT("Diseased"), TEXT("Weakened"),
+		TEXT("Oiled"), TEXT("Wet"), TEXT("Corroded"),
+		TEXT("Blinded"), TEXT("Suffocating"), TEXT("Exhausted")
+	};
+	const int32 Idx = static_cast<int32>(Type);
+	return (Idx >= 0 && Idx < ArcConditionTypeCount) ? Names[Idx] : TEXT("Unknown");
+}
+
+} // namespace ArcConditionHelpers
 
 // ---------------------------------------------------------------------------
 // Condition Group — determines behavior rules
@@ -138,6 +154,40 @@ struct FArcConditionConfig
 	UPROPERTY(EditAnywhere, meta = (ClampMin = "0", ClampMax = "100"))
 	float BurnoutTargetSaturation = 0.f;
 };
+
+namespace ArcConditionDefaultConfigs
+{
+	inline FArcConditionConfig Make(EArcConditionGroup Group, float Threshold, float Decay, float OverloadDur, float BurnoutDur, float BurnoutMult, float BurnoutTarget)
+	{
+		FArcConditionConfig C;
+		C.Group                  = Group;
+		C.ActivationThreshold    = Threshold;
+		C.DecayRate              = Decay;
+		C.OverloadDuration       = OverloadDur;
+		C.BurnoutDuration        = BurnoutDur;
+		C.BurnoutDecayMultiplier = BurnoutMult;
+		C.BurnoutTargetSaturation = BurnoutTarget;
+		return C;
+	}
+}
+
+inline void InitDefaultConditionConfigs(FArcConditionConfig OutConfigs[ArcConditionTypeCount])
+{
+	using namespace ArcConditionDefaultConfigs;
+	OutConfigs[(int32)EArcConditionType::Burning]     = Make(EArcConditionGroup::GroupA_Hysteresis,   20.f, 3.f,   6.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Bleeding]    = Make(EArcConditionGroup::GroupA_Hysteresis,   25.f, 2.f,   8.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Chilled]     = Make(EArcConditionGroup::GroupA_Hysteresis,   30.f, 2.f,   5.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Shocked]     = Make(EArcConditionGroup::GroupA_Hysteresis,   30.f, 4.f,   5.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Poisoned]    = Make(EArcConditionGroup::GroupA_Hysteresis,   20.f, 1.f,   5.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Diseased]    = Make(EArcConditionGroup::GroupA_Hysteresis,   25.f, 0.5f, 10.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Weakened]    = Make(EArcConditionGroup::GroupA_Hysteresis,   20.f, 2.f,  10.f,  2.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Oiled]       = Make(EArcConditionGroup::GroupB_Linear,        0.f, 1.f,   0.f,  0.f, 1.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Wet]         = Make(EArcConditionGroup::GroupB_Linear,        0.f, 2.f,   0.f,  0.f, 1.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Corroded]    = Make(EArcConditionGroup::GroupB_Linear,        0.f, 0.5f,  0.f,  0.f, 1.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Blinded]     = Make(EArcConditionGroup::GroupC_Environmental,  0.f, 5.f,   4.f,  1.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Suffocating] = Make(EArcConditionGroup::GroupC_Environmental,  0.f, 10.f,  3.f,  1.f, 5.f, 0.f);
+	OutConfigs[(int32)EArcConditionType::Exhausted]   = Make(EArcConditionGroup::GroupC_Environmental,  0.f, 3.f,   0.f,  0.f, 1.f, 0.f);
+}
 
 // ---------------------------------------------------------------------------
 // Signals — per-condition
@@ -271,6 +321,14 @@ namespace ArcConditionHelpers
 		return Amount;
 	}
 
+	/** Apply a condition amount to state, respecting resistance and updating active flag. */
+	inline void ApplyGenericCondition(float Amount, FArcConditionState& State, const FArcConditionConfig& Config)
+	{
+		const float Effective = ApplyResistance(Amount, State.Resistance);
+		SetSaturationClamped(State, Config, State.Saturation + Effective);
+		UpdateActiveFlag(State, Config);
+	}
+
 	/** Tick decay/overload/burnout for a single condition. Sets out-params if state/overload changed. */
 	inline void TickCondition(FArcConditionState& State, const FArcConditionConfig& Config, float DeltaTime,
 		bool& bOutStateChanged, bool& bOutOverloadChanged)
@@ -326,37 +384,3 @@ namespace ArcConditionHelpers
 	}
 }
 
-namespace Arc::Condition
-{
-	template<typename ConfigType>
-	const FArcConditionConfig* GetOptionalConfig(FMassExecutionContext& Ctx)
-	{
-		const ConfigType* Cfg = Ctx.GetConstSharedFragmentPtr<ConfigType>();
-		return Cfg ? &Cfg->Config : nullptr;
-	}
-
-	inline void ApplyGenericCondition(float Amount, FArcConditionState* State, const FArcConditionConfig* Config)
-	{
-		if (!State || !Config) { return; }
-
-		const float Effective = ArcConditionHelpers::ApplyResistance(Amount, State->Resistance);
-		ArcConditionHelpers::SetSaturationClamped(*State, *Config, State->Saturation + Effective);
-		ArcConditionHelpers::UpdateActiveFlag(*State, *Config);
-	}
-	
-	template<typename FragmentType>
-	FArcConditionState* GetOptionalState(FMassExecutionContext& Ctx, int32 EntityIndex)
-	{
-		TArrayView<FragmentType> View = Ctx.GetMutableFragmentView<FragmentType>();
-		if (View.IsEmpty()) { return nullptr; }
-		return &View[EntityIndex].State;
-	}
-
-	template<typename FragmentType>
-	const FArcConditionState* GetOptionalStateConst(FMassExecutionContext& Ctx, int32 EntityIndex)
-	{
-		TConstArrayView<FragmentType> View = Ctx.GetFragmentView<FragmentType>();
-		if (View.IsEmpty()) { return nullptr; }
-		return &View[EntityIndex].State;
-	}
-}

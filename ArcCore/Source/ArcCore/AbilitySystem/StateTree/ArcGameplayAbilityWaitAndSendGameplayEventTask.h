@@ -21,7 +21,7 @@ struct FArcGameplayAbilityWaitAndSendGameplayEventTaskInstanceData
 
 	/** True when the wait time has elapsed and the event has been sent. */
 	UPROPERTY(EditAnywhere, Category = Output)
-	bool bWaitTimeOver;
+	bool bWaitTimeOver = false;
 
 	/** Time in seconds to wait before sending the gameplay event. */
 	UPROPERTY(EditAnywhere, Category = Parameter)

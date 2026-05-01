@@ -77,7 +77,8 @@ public class ArcGunEditor : ModuleRules
 				, "KismetCompiler"
 				, "StructUtilsEditor"
 				, "ArcGun"
-				//dependencies that you statically link with here ...	
+				, "AssetDefinition"
+				//dependencies that you statically link with here ...
 			}
 			);
 		

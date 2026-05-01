@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSContextProvider.h"
-#include "TargetQuery/Generators/ArcTQSGenerator_PerceivedEntities.h"
+#include "ArcTQSContextProvider.h"
+#include "Perception/ArcPerceptionTypes.h"
 #include "ArcTQSContextProvider_PerceivedEntities.generated.h"
 
 /**

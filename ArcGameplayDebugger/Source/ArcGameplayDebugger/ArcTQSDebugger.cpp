@@ -2,8 +2,8 @@
 
 #include "ArcTQSDebugger.h"
 #include "ArcTQSDebuggerDrawComponent.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSQuerySubsystem.h"
+#include "ArcTQSTypes.h"
 #include "imgui.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -161,6 +161,7 @@ void FArcTQSDebugger::Draw()
 	if (!ImGui::Begin("TQS Debugger", &bShow))
 	{
 		ImGui::End();
+		if (Impl->DrawComponent.IsValid()) { Impl->DrawComponent->ClearQueryData(); }
 		return;
 	}
 
@@ -691,7 +692,7 @@ void FArcTQSDebugger::FImpl::EnsureDrawActor(UWorld* World)
 		return;
 	}
 
-	NewActor->SetActorHiddenInGame(true);
+	// Note: do NOT call SetActorHiddenInGame — it hides the debug draw proxy too
 
 #if WITH_EDITOR
 	NewActor->SetActorLabel(TEXT("TQSDebuggerDraw"));

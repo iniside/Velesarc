@@ -5,6 +5,7 @@
 #include "Mass/ArcAreaAssignmentFragments.h"
 #include "MassEntitySubsystem.h"
 #include "MassEntityTypes.h"
+#include "SmartObjectSubsystem.h"
 #include "Engine/World.h"
 
 // ====================================================================
@@ -53,6 +54,26 @@ FArcAreaHandle UArcAreaSubsystem::RegisterArea(
 
 	// Initialize runtime slot state
 	Data.Slots.SetNum(Definition->Slots.Num());
+
+	// Copy ActivityTags from SmartObject slots into runtime area slots
+	if (SOHandle.IsValid())
+	{
+		USmartObjectSubsystem* SOSubsystem = GetWorld()->GetSubsystem<USmartObjectSubsystem>();
+		if (SOSubsystem)
+		{
+			TArray<FSmartObjectSlotHandle> SlotHandles;
+			SOSubsystem->GetAllSlots(SOHandle, SlotHandles);
+
+			const int32 NumToCopy = FMath::Min(SlotHandles.Num(), Data.Slots.Num());
+			for (int32 i = 0; i < NumToCopy; ++i)
+			{
+				SOSubsystem->ReadSlotData(SlotHandles[i], [&Data, i](FConstSmartObjectSlotView SlotView)
+				{
+					SlotView.GetActivityTags(Data.Slots[i].ActivityTags);
+				});
+			}
+		}
+	}
 
 	Areas.Add(Handle, MoveTemp(Data));
 

@@ -36,6 +36,7 @@
 #include "ArcCore/Items/ArcItemDefinition.h"
 #include "ArcCore/Items/ArcItemData.h"
 #include "ArcCore/Items/ArcItemsComponent.h"
+#include "Core/ArcCoreAssetManager.h"
 #include "Fragments/ArcItemFragment_SocketSlots.h"
 #include "Fragments/ArcItemFragment_Stacks.h"
 #include "Fragments/ArcItemFragment_Tags.h"
@@ -223,9 +224,77 @@ void UArcItemsStoreComponent::BeginPlay()
 int32 UArcItemsStoreComponent::SetupItem(int32 ItemIdx
 										 , const FArcItemId& OwnerItemId)
 {
-	ItemsArray[ItemIdx]->Initialize(this);
-	
-	PostAdd(ItemsArray[ItemIdx]);
+	FArcItemData* ItemPtr = ItemsArray[ItemIdx];
+	const FArcItemSpec& InSpec = ItemPtr->Spec;
+
+	const UArcItemDefinition* ItemDef = UArcCoreAssetManager::Get().GetAsset<UArcItemDefinition>(InSpec.GetItemDefinitionId());
+	if (ItemDef == nullptr)
+	{
+		ItemDef = InSpec.GetItemDefinition();
+	}
+
+	if (ItemDef != nullptr)
+	{
+		TArray<const FArcItemFragment_ItemInstanceBase*> InstancesToMake = ItemDef->GetFragmentsOfType<FArcItemFragment_ItemInstanceBase>();
+		for (const FArcItemFragment_ItemInstanceBase* IIB : InstancesToMake)
+		{
+			if (IIB->GetCreateItemInstance() == false)
+			{
+				continue;
+			}
+
+			if (UScriptStruct* InstanceType = IIB->GetItemInstanceType())
+			{
+				int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const FInstancedStruct& Other)
+				{
+					return Other.GetScriptStruct() == InstanceType;
+				});
+
+				FInstancedStruct NewInstance;
+				NewInstance.InitializeAs(InstanceType, nullptr);
+
+				if (InitialDataIdx != INDEX_NONE)
+				{
+					NewInstance = InSpec.InitialInstanceData[InitialDataIdx];
+				}
+
+				ItemPtr->ItemInstances.Data.Add(MoveTemp(NewInstance));
+			}
+		}
+	}
+
+	TArray<const FArcItemFragment_ItemInstanceBase*> SpecFragments = InSpec.GetSpecFragments();
+	for (const FArcItemFragment_ItemInstanceBase* Fragment : SpecFragments)
+	{
+		if (Fragment->GetCreateItemInstance() == false)
+		{
+			continue;
+		}
+
+		if (UScriptStruct* InstanceType = Fragment->GetItemInstanceType())
+		{
+			int32 InitialDataIdx = InSpec.InitialInstanceData.IndexOfByPredicate([InstanceType](const FInstancedStruct& Other)
+			{
+				return Other.GetScriptStruct() == InstanceType;
+			});
+
+			FInstancedStruct NewInstance;
+			NewInstance.InitializeAs(InstanceType, nullptr);
+
+			if (InitialDataIdx != INDEX_NONE)
+			{
+				NewInstance = InSpec.InitialInstanceData[InitialDataIdx];
+			}
+
+			ItemPtr->ItemInstances.Data.Add(MoveTemp(NewInstance));
+		}
+	}
+
+	ItemPtr->SetItemInstances(ItemPtr->ItemInstances);
+
+	ItemPtr->Initialize(this);
+
+	PostAdd(ItemPtr);
 
 	return ItemIdx;
 }
@@ -347,26 +416,28 @@ void UArcItemsStoreComponent::MoveItemFrom(const FArcItemId& ItemId, UArcItemsSt
 		return;
 	}
 
-	FArcItemDataInternal* InternalItem = FromItemsStore->ItemsArray.GetInternalItem(ItemId);
-	if (InternalItem == nullptr)
+	int32 ItemIdx = FromItemsStore->ItemsArray.IndexOf(ItemId);
+	if (ItemIdx == INDEX_NONE)
 	{
 		return;
 	}
 
+	FInstancedStruct MovedItem = MoveTemp(FromItemsStore->ItemsArray.GetItemArray()[ItemIdx].ItemData);
+
 	const TArray<FArcItemId>& AttachedItems = ItemDataToMove->GetAttachedItems();
-	TArray<FArcItemDataInternal*> InternalAttachedItems;
+	TArray<FInstancedStruct> MovedAttachedItems;
 	for (const FArcItemId& AttachedItemId : AttachedItems)
 	{
-		FArcItemDataInternal* InternalAttachedItem = FromItemsStore->ItemsArray.GetInternalItem(AttachedItemId);
-		if (InternalAttachedItem == nullptr)
+		int32 AttachIdx = FromItemsStore->ItemsArray.IndexOf(AttachedItemId);
+		if (AttachIdx == INDEX_NONE)
 		{
 			continue;
 		}
 
-		InternalAttachedItems.Add(InternalAttachedItem);
+		MovedAttachedItems.Add(MoveTemp(FromItemsStore->ItemsArray.GetItemArray()[AttachIdx].ItemData));
 	}
-	
-	ItemsArray.AddInternalItem(this, MoveTemp(*InternalItem), InternalAttachedItems);
+
+	ItemsArray.AddInternalItem(this, MoveTemp(MovedItem), MovedAttachedItems);
 	
 	FromItemsStore->ItemsArray.RemoveItem(ItemId);
 
@@ -501,20 +572,6 @@ FArcItemData* UArcItemsStoreComponent::GetItemPtr(const FArcItemId& Handle)
 	return ItemsArray[Handle];
 }
 
-const TWeakPtr<FArcItemData>& UArcItemsStoreComponent::GetWeakItemPtr(const FArcItemId& Handle) const
-{
-	return ItemsArray.GetWeakItem(Handle);
-}
-
-TWeakPtr<FArcItemData>& UArcItemsStoreComponent::GetWeakItemPtr(const FArcItemId& Handle)
-{
-	return ItemsArray.GetWeakItem(Handle);
-}
-
-const FArcItemDataInternal* UArcItemsStoreComponent::GetInternalItem(const FArcItemId& InItemId) const
-{
-	return ItemsArray.FindItemDataInternal(InItemId);
-}
 
 TArray<FArcItemCopyContainerHelper> UArcItemsStoreComponent::GetAllInternalItems() const
 {
@@ -535,19 +592,6 @@ FArcItemCopyContainerHelper UArcItemsStoreComponent::GetItemCopyHelper(const FAr
 	return ItemsArray.GetItemCopyHelper(InItemId);
 }
 
-const TSharedPtr<FArcItemData>& UArcItemsStoreComponent::GetItemSharedPtr(const FArcItemId& Handle) const
-{
-	for (const FArcItemDataInternalWrapper& Item : ItemsArray.Items)
-	{
-		if (Item.ToItem()->GetItemId() == Handle)
-		{
-			return Item.GetInternalItem()->GetItem();
-		}
-	}
-
-	static const TSharedPtr<FArcItemData> Invalid = nullptr;
-	return Invalid;
-}
 
 bool UArcItemsStoreComponent::Contains(const UArcItemDefinition* InItemDefinition) const
 {
@@ -854,10 +898,6 @@ const FArcItemData* UArcItemsStoreComponent::GetItemAttachedTo(const FArcItemId&
 	return nullptr;
 }
 
-TArray<const FArcItemDataInternal*> UArcItemsStoreComponent::GetInternalAttachtedItems(const FArcItemId& InItemId) const
-{
-	return ItemsArray.GetInternalItemsAttachedTo(InItemId);
-}
 
 TArray<const FArcItemData*> UArcItemsStoreComponent::GetAllItemsOnSlots() const
 {
@@ -895,34 +935,35 @@ void UArcItemsStoreComponent::BP_GetItems(TArray<FArcItemDataHandle>& OutItems)
 {
 	OutItems.Reserve(ItemsArray.Num());
 
-	for (FArcItemDataInternalWrapper& Item : ItemsArray.Items)
+	for (const FArcItemDataInternalWrapper& Wrapper : ItemsArray.GetItems())
 	{
-		OutItems.Add(Item.ToSharedPtr());
+		const FArcItemData* Data = Wrapper.ToItem();
+		if (Data)
+		{
+			OutItems.Add(FArcItemDataHandle(const_cast<FArcItemData*>(Data)));
+		}
 	}
 }
 
 bool UArcItemsStoreComponent::BP_GetItem(const FArcItemId& ItemId, FArcItemDataHandle& Item)
 {
-	TWeakPtr<FArcItemData>& ItemPtr = ItemsArray.GetWeakItem(ItemId);
-	
-	if (ItemPtr.IsValid())
+	FArcItemData* Data = GetItemPtr(ItemId);
+	if (Data)
 	{
-		Item = FArcItemDataHandle(ItemPtr);
+		Item = FArcItemDataHandle(Data);
 		return true;
 	}
-
 	return false;
 }
 
 bool UArcItemsStoreComponent::BP_GetItemFromSlot(const FGameplayTag& ItemSlotId
 	, FArcItemDataHandle& Item)
 {
-	TWeakPtr<FArcItemData>& ItemPtr = ItemsArray.GetWeakItemFromSlot(ItemSlotId);
-	if (ItemPtr.IsValid())
+	const FArcItemData* Data = ItemsArray.GetItemFromSlot(ItemSlotId);
+	if (Data)
 	{
-		Item = ItemPtr;
+		Item = FArcItemDataHandle(const_cast<FArcItemData*>(Data));
 		return true;
 	}
-
 	return false;
 }

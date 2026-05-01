@@ -82,6 +82,7 @@ public class ArcFrontend : ModuleRules
 				"UMG"
 				, "ModelViewViewModel"
 				, "FieldNotification"
+				, "StructUtils"
 			}
 		);
 		PublicDependencyModuleNames.AddRange(

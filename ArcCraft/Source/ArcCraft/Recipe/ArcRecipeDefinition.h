@@ -23,6 +23,7 @@
 
 #include "CoreMinimal.h"
 #include "ArcNamedPrimaryAssetId.h"
+#include "AssetRegistry/AssetBundleData.h"
 #include "AssetRegistry/AssetData.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
@@ -87,7 +88,7 @@ public:
 
 	/** Item definition to produce. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Output",
-		meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false))
+		meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false, AssetBundles = "Game"))
 	FArcNamedPrimaryAssetId OutputItemDefinition;
 
 	/** Number of output items produced per craft. */
@@ -127,7 +128,7 @@ public:
 	// ---- Quality ----
 
 	/** Quality tier table for evaluating ingredient quality. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Quality")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe|Quality", meta = (AssetBundles = "Game"))
 	TSoftObjectPtr<UArcQualityTierTable> QualityTierTable;
 
 	/** If true, output level is determined by average ingredient quality tier value. */
@@ -144,14 +145,24 @@ public:
 	/** Import data storing the source file path for reimport. */
 	UPROPERTY(VisibleAnywhere, Instanced, Category = "ImportSettings")
 	TObjectPtr<UAssetImportData> AssetImportData;
+
+	/** Asset Bundle data computed at save time. In cooked builds this is accessible from AssetRegistry. */
+	UPROPERTY()
+	FAssetBundleData AssetBundleData;
 #endif
 
 public:
 	virtual void PostInitProperties() override;
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 	virtual void PreSave(FObjectPreSaveContext SaveContext) override;
+	virtual void PostLoad() override;
 	virtual void PostDuplicate(EDuplicateMode::Type DuplicateMode) override;
 	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const override;
+
+#if WITH_EDITORONLY_DATA
+	/** Scans properties for asset bundles and resolves FPrimaryAssetId references into bundle data. */
+	virtual void UpdateAssetBundleData();
+#endif
 
 	/** Get the asset import data for reimport support. */
 	UAssetImportData* GetAssetImportData() const;

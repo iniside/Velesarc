@@ -23,7 +23,7 @@ struct FArcMassCooldownTaskInstanceData
 
 	/** Duration of the cooldown in seconds. The entity will be considered "on cooldown" for this tag until the duration elapses. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	float Duration;
+	float Duration = 0.f;
 };
 
 /**

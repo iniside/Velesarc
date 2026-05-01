@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Mass/EntityElementTypes.h"
-#include "MassExternalSubsystemTraits.h"
+#include "Mass/ExternalSubsystemTraits.h"
 #include "StructUtils/InstancedStruct.h"
 
 #include "ArcMassActionFragment.generated.h"

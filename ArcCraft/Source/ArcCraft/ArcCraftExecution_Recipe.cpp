@@ -98,6 +98,20 @@ bool FArcCraftExecution_Recipe::CheckAndConsumeRecipeItems(
 		return false;
 	}
 
+	// Free recipe — no ingredients required
+	if (InRecipe->Ingredients.Num() == 0)
+	{
+		if (OutMatchedIngredients)
+		{
+			OutMatchedIngredients->Reset();
+		}
+		if (OutQualityMultipliers)
+		{
+			OutQualityMultipliers->Reset();
+		}
+		return true;
+	}
+
 	UArcItemsStoreComponent* ItemsStore = GetItemsStore(InInstigator);
 	if (!ItemsStore)
 	{

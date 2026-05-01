@@ -38,6 +38,14 @@
 #include "Items/ArcItemsStoreComponent.h"
 #include "QuickBar/ArcQuickBarComponent.h"
 
+#include "Abilities/ArcMassAbilitySet.h"
+#include "Abilities/ArcAbilityFunctions.h"
+#include "Fragments/ArcAbilityCollectionFragment.h"
+#include "Player/ArcHeroComponentBase.h"
+#include "MassAgentComponent.h"
+#include "MassEntitySubsystem.h"
+#include "MassEntityView.h"
+
 void FArcPawnInitializationFragment_SetSkeletalMesh::Initialize(APawn* InCharacter
 																, AArcCorePlayerState* InPlayerState
 																, AArcCorePlayerController* InPlayerController) const
@@ -95,6 +103,46 @@ void FArcPawnDataFragment_AbilitySets::GiveFragment(APawn* InCharacter
 				AbilitySet.LoadSynchronous()->GiveToAbilitySystem(ASC
 					, nullptr);
 			}
+		}
+	}
+}
+
+void FArcPawnDataFragment_MassAbilitySets::GiveFragment(APawn* InCharacter
+														, AArcCorePlayerState* InPlayerState) const
+{
+	UArcCoreMassAgentComponent* MassAgentComponent = InCharacter->FindComponentByClass<UArcCoreMassAgentComponent>();
+	if (MassAgentComponent == nullptr)
+	{
+		UE_LOG(LogArcCore, Warning, TEXT("FArcPawnDataFragment_MassAbilitySets: Pawn %s has no UArcCoreMassAgentComponent"), *InCharacter->GetName());
+		return;
+	}
+
+	FMassEntityHandle EntityHandle = MassAgentComponent->GetEntityHandle();
+	UMassEntitySubsystem* MassEntitySubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InCharacter->GetWorld());
+	if (MassEntitySubsystem == nullptr)
+	{
+		return;
+	}
+
+	FMassEntityManager& EntityManager = MassEntitySubsystem->GetMutableEntityManager();
+	if (EntityManager.IsEntityValid(EntityHandle) == false)
+	{
+		UE_LOG(LogArcCore, Warning, TEXT("FArcPawnDataFragment_MassAbilitySets: Pawn %s has invalid Mass entity"), *InCharacter->GetName());
+		return;
+	}
+
+	FMassEntityView EntityView(EntityManager, EntityHandle);
+	if (EntityView.GetFragmentDataPtr<FArcAbilityCollectionFragment>() == nullptr)
+	{
+		UE_LOG(LogArcCore, Warning, TEXT("FArcPawnDataFragment_MassAbilitySets: Mass entity for pawn %s missing FArcAbilityCollectionFragment. Add UArcAbilityGrantTrait to entity config."), *InCharacter->GetName());
+		return;
+	}
+
+	for (const TSoftObjectPtr<UArcMassAbilitySet>& AbilitySet : MassAbilitySets)
+	{
+		if (AbilitySet.IsNull() == false)
+		{
+			ArcAbilities::GrantAbilitySet(EntityManager, EntityHandle, AbilitySet.LoadSynchronous());
 		}
 	}
 }

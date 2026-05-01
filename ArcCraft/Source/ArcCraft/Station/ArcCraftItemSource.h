@@ -29,7 +29,6 @@
 class UArcCraftStationComponent;
 class UArcRecipeDefinition;
 class UArcItemsStoreComponent;
-class UArcCraftVisEntityComponent;
 struct FArcCraftInputFragment;
 struct FMassEntityManager;
 struct FMassEntityHandle;
@@ -102,8 +101,8 @@ public:
 
 	virtual ~FArcCraftItemSource() = default;
 
-protected:
-	/** Shared logic: match and optionally consume recipe ingredients from a spec array.
+public:
+	/** Match and optionally consume recipe ingredients from a spec array.
 	 *  When bConsume is true, matched items are removed from the Items array. */
 	static bool MatchAndConsumeFromSpecs(
 		TArray<FArcItemSpec>& Items,
@@ -112,6 +111,7 @@ protected:
 		TArray<FArcItemSpec>* OutMatchedItems = nullptr,
 		TArray<float>* OutQualityMults = nullptr);
 
+protected:
 	/** Shared logic: match and optionally consume from an items store.
 	 *  Converts store items to specs, then delegates to MatchAndConsumeFromSpecs. */
 	static bool MatchAndConsumeFromStore(
@@ -263,7 +263,6 @@ public:
 	virtual ~FArcCraftItemSource_EntityStore() override = default;
 
 private:
-	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
 	FArcCraftInputFragment* GetInputFragment(const UArcCraftStationComponent* Station) const;
 	UArcItemsStoreComponent* GetMirrorInputStore(const UArcCraftStationComponent* Station) const;
 };

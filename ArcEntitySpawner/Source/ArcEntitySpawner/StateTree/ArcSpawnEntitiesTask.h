@@ -6,7 +6,7 @@
 #include "MassStateTreeTypes.h"
 #include "MassSpawnerTypes.h"
 #include "GameplayTagContainer.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSTypes.h"
 #include "ArcSpawnEntitiesTask.generated.h"
 
 class UMassEntityConfigAsset;

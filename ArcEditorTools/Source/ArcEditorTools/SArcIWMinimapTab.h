@@ -20,6 +20,12 @@ struct FArcIWMinimapPartitionBounds
 	TWeakObjectPtr<AActor> PartitionActor;
 };
 
+struct FArcIWMinimapGridCell
+{
+	FBox2D Bounds = FBox2D(ForceInit);
+	FLinearColor Color;
+};
+
 class SArcIWMinimapTab : public SCompoundWidget
 {
 public:
@@ -53,6 +59,7 @@ private:
 	void PaintBackground(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const;
 	void PaintGrid(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const;
 	void PaintPartitionBounds(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const;
+	void PaintGridCells(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const;
 	void PaintEntities(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const;
 	void PaintLegend(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const;
 	void HandleLeftClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
@@ -64,6 +71,7 @@ private:
 
 	TArray<FArcIWMinimapEntry> CachedEntities;
 	TArray<FArcIWMinimapPartitionBounds> CachedPartitionBounds;
+	TArray<FArcIWMinimapGridCell> CachedGridCells;
 	TMap<FString, FLinearColor> VisibleClassColors;
 	FTimerHandle RefreshTimerHandle;
 

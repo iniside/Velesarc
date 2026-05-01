@@ -23,15 +23,18 @@
 
 #include "SArcPropertyBinding.h"
 #include "SArcIWMinimapTab.h"
+#include "MassProcessorBrowser/SArcMassProcessorBrowser.h"
 
 #include "Widgets/Docking/SDockTab.h"
 #include "Framework/Docking/TabManager.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
+#include "ToolMenus.h"
 
 #define LOCTEXT_NAMESPACE "FArcEditorToolsModule"
 
 const FName FArcEditorToolsModule::MinimapTabId = FName(TEXT("ArcIWMinimap"));
+const FName FArcEditorToolsModule::MassProcessorBrowserTabId = FName(TEXT("ArcMassProcessorBrowser"));
 
 IArcEditorTools& IArcEditorTools::Get()
 {
@@ -44,11 +47,35 @@ void FArcEditorToolsModule::StartupModule()
 		FOnSpawnTab::CreateRaw(this, &FArcEditorToolsModule::SpawnMinimapTab))
 		.SetDisplayName(LOCTEXT("ArcIWMinimapTabTitle", "ArcIW Minimap"))
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory());
+
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(MassProcessorBrowserTabId,
+		FOnSpawnTab::CreateRaw(this, &FArcEditorToolsModule::SpawnMassProcessorBrowserTab))
+		.SetDisplayName(LOCTEXT("MassProcessorBrowserTitle", "Mass Processor Browser"))
+		.SetGroup(WorkspaceMenu::GetMenuStructure().GetEditOptions());
+
+	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]()
+	{
+		UToolMenu* EditMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Edit");
+		FToolMenuSection& Section = EditMenu->FindOrAddSection("Configuration");
+		Section.Label = LOCTEXT("ConfigurationSection", "Configuration");
+
+		Section.AddMenuEntry(
+			"MassProcessorBrowser",
+			LOCTEXT("MassProcessorBrowserMenuEntry", "Mass Processor Browser"),
+			LOCTEXT("MassProcessorBrowserMenuTooltip", "Browse and configure all Mass processors"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([]()
+			{
+				FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("ArcMassProcessorBrowser")));
+			}))
+		);
+	}));
 }
 
 void FArcEditorToolsModule::ShutdownModule()
 {
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MinimapTabId);
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MassProcessorBrowserTabId);
 }
 
 TSharedRef<SDockTab> FArcEditorToolsModule::SpawnMinimapTab(const FSpawnTabArgs& Args)
@@ -57,6 +84,15 @@ TSharedRef<SDockTab> FArcEditorToolsModule::SpawnMinimapTab(const FSpawnTabArgs&
 		.TabRole(NomadTab)
 		[
 			SNew(SArcIWMinimapTab)
+		];
+}
+
+TSharedRef<SDockTab> FArcEditorToolsModule::SpawnMassProcessorBrowserTab(const FSpawnTabArgs& Args)
+{
+	return SNew(SDockTab)
+		.TabRole(NomadTab)
+		[
+			SNew(SArcMassProcessorBrowser)
 		];
 }
 

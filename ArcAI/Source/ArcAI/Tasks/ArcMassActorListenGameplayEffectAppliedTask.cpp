@@ -13,7 +13,7 @@
 FArcMassActorListenGameplayEffectAppliedTask::FArcMassActorListenGameplayEffectAppliedTask()
 {
 	bShouldCallTick = true;
-	bShouldStateChangeOnReselect = true;
+	bShouldStateChangeOnReselect = false;
 }
 
 bool FArcMassActorListenGameplayEffectAppliedTask::Link(FStateTreeLinker& Linker)

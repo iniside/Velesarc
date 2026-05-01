@@ -6,7 +6,7 @@
 #include "IRewindDebugger.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
-#include "TargetQuery/Debugger/ArcTQSTrace.h" // for ArcTQSDebugChannel
+#include "Debugger/ArcTQSTrace.h" // for ArcTQSDebugChannel
 #include "Trace/Trace.inl"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcTQSPlayback, Log, All);

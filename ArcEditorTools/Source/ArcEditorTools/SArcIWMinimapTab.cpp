@@ -164,7 +164,7 @@ FReply SArcIWMinimapTab::OnMouseButtonDown(const FGeometry& MyGeometry, const FP
 		HandleLeftClick(MyGeometry, MouseEvent);
 		return FReply::Handled();
 	}
-	if (MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton)
+	if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
 		bIsPanning = true;
 		LastMousePos = MouseEvent.GetScreenSpacePosition();
@@ -175,7 +175,7 @@ FReply SArcIWMinimapTab::OnMouseButtonDown(const FGeometry& MyGeometry, const FP
 
 FReply SArcIWMinimapTab::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton && bIsPanning)
+	if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && bIsPanning)
 	{
 		bIsPanning = false;
 		return FReply::Handled().ReleaseMouseCapture();
@@ -189,7 +189,7 @@ FReply SArcIWMinimapTab::OnMouseMove(const FGeometry& MyGeometry, const FPointer
 	{
 		FVector2D CurrentMousePos = MouseEvent.GetScreenSpacePosition();
 		FVector2D Delta = CurrentMousePos - LastMousePos;
-		CameraCenter -= Delta * WorldUnitsPerPixel;
+		CameraCenter += Delta * WorldUnitsPerPixel;
 		LastMousePos = CurrentMousePos;
 		return FReply::Handled();
 	}
@@ -251,6 +251,7 @@ void SArcIWMinimapTab::RefreshEntityData()
 {
 	CachedEntities.Reset();
 	CachedPartitionBounds.Reset();
+	CachedGridCells.Reset();
 	VisibleClassColors.Reset();
 
 	UWorld* World = ArcIWMinimap::GetEditorWorld();
@@ -300,9 +301,9 @@ void SArcIWMinimapTab::RefreshEntityData()
 			}
 		}
 
+		// Entity-derived bounds
 		if (bHasTransforms)
 		{
-			// Generate a muted color from the actor name hash
 			uint32 NameHash = GetTypeHash(PartitionActor->GetFName());
 			FRandomStream ColorStream(NameHash);
 			float Hue = ColorStream.FRandRange(0.0f, 360.0f);
@@ -317,6 +318,20 @@ void SArcIWMinimapTab::RefreshEntityData()
 			PartitionBounds.Color = BoundsColor;
 			PartitionBounds.PartitionActor = PartitionActor;
 			CachedPartitionBounds.Add(PartitionBounds);
+		}
+
+		// Grid cell bounds from partition actor location and grid size
+		double GridCellSize = static_cast<double>(PartitionActor->GetGridSize());
+		if (GridCellSize > 0.0)
+		{
+			FVector ActorLocation = PartitionActor->GetActorLocation();
+			double CellX = FMath::FloorToDouble(ActorLocation.X / GridCellSize) * GridCellSize;
+			double CellY = FMath::FloorToDouble(ActorLocation.Y / GridCellSize) * GridCellSize;
+
+			FArcIWMinimapGridCell GridCell;
+			GridCell.Bounds = FBox2D(FVector2D(CellX, CellY), FVector2D(CellX + GridCellSize, CellY + GridCellSize));
+			GridCell.Color = FLinearColor(0.3f, 0.3f, 0.4f, 0.4f);
+			CachedGridCells.Add(GridCell);
 		}
 	}
 
@@ -423,6 +438,7 @@ int32 SArcIWMinimapTab::OnPaint(
 	int32 CurrentLayerId = LayerId + 1;
 	PaintBackground(AllottedGeometry, OutDrawElements, CurrentLayerId);
 	PaintGrid(AllottedGeometry, OutDrawElements, CurrentLayerId);
+	PaintGridCells(AllottedGeometry, OutDrawElements, CurrentLayerId);
 	PaintPartitionBounds(AllottedGeometry, OutDrawElements, CurrentLayerId);
 	if (bShowInstances)
 	{
@@ -507,6 +523,47 @@ void SArcIWMinimapTab::PaintGrid(const FGeometry& AllottedGeometry, FSlateWindow
 			Points,
 			ESlateDrawEffect::None,
 			GridColor,
+			true,
+			1.0f);
+	}
+
+	++LayerId;
+}
+
+void SArcIWMinimapTab::PaintGridCells(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32& LayerId) const
+{
+	if (!bShowBounds || CachedGridCells.Num() == 0)
+	{
+		return;
+	}
+
+	FVector2D Size = AllottedGeometry.GetLocalSize();
+	FVector2D Center = Size * 0.5;
+
+	for (const FArcIWMinimapGridCell& Cell : CachedGridCells)
+	{
+		FVector2D ScreenMin = WorldToScreen(Cell.Bounds.Min, Center);
+		FVector2D ScreenMax = WorldToScreen(Cell.Bounds.Max, Center);
+
+		float Left = FMath::Min(ScreenMin.X, ScreenMax.X);
+		float Right = FMath::Max(ScreenMin.X, ScreenMax.X);
+		float Top = FMath::Min(ScreenMin.Y, ScreenMax.Y);
+		float Bottom = FMath::Max(ScreenMin.Y, ScreenMax.Y);
+
+		TArray<FVector2d> Points;
+		Points.Add(FVector2d(Left, Top));
+		Points.Add(FVector2d(Right, Top));
+		Points.Add(FVector2d(Right, Bottom));
+		Points.Add(FVector2d(Left, Bottom));
+		Points.Add(FVector2d(Left, Top));
+
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId,
+			AllottedGeometry.ToPaintGeometry(),
+			Points,
+			ESlateDrawEffect::None,
+			Cell.Color,
 			true,
 			1.0f);
 	}

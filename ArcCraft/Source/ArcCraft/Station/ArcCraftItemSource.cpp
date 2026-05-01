@@ -24,7 +24,6 @@
 #include "ArcCoreUtils.h"
 #include "MassEntitySubsystem.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
-#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 #include "ArcCraft/Recipe/ArcRecipeQuality.h"
 #include "ArcCraft/Station/ArcCraftStationComponent.h"
@@ -91,6 +90,20 @@ bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
 	if (!Recipe)
 	{
 		return false;
+	}
+
+	// Free recipe — no ingredients required
+	if (Recipe->Ingredients.Num() == 0)
+	{
+		if (OutMatchedItems)
+		{
+			OutMatchedItems->Reset();
+		}
+		if (OutQualityMults)
+		{
+			OutQualityMults->Reset();
+		}
+		return true;
 	}
 
 	UArcQualityTierTable* TierTable = nullptr;
@@ -202,7 +215,26 @@ bool FArcCraftItemSource::MatchAndConsumeFromStore(
 	TArray<FArcItemSpec>* OutMatchedItems,
 	TArray<float>* OutQualityMults)
 {
-	if (!ItemsStore || !Recipe)
+	if (!Recipe)
+	{
+		return false;
+	}
+
+	// Free recipe — no ingredients required, no store needed
+	if (Recipe->Ingredients.Num() == 0)
+	{
+		if (OutMatchedItems)
+		{
+			OutMatchedItems->Reset();
+		}
+		if (OutQualityMults)
+		{
+			OutQualityMults->Reset();
+		}
+		return true;
+	}
+
+	if (!ItemsStore)
 	{
 		return false;
 	}
@@ -494,26 +526,15 @@ bool FArcCraftItemSource_StationStore::WithdrawItem(
 // FArcCraftItemSource_EntityStore
 // -------------------------------------------------------------------
 
-UArcCraftVisEntityComponent* FArcCraftItemSource_EntityStore::GetVisComponent(
-	const UArcCraftStationComponent* Station) const
-{
-	if (!Station || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
-}
-
 FArcCraftInputFragment* FArcCraftItemSource_EntityStore::GetInputFragment(
 	const UArcCraftStationComponent* Station) const
 {
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp)
+	if (!Station)
 	{
 		return nullptr;
 	}
 
-	const FMassEntityHandle Entity = VisComp->GetEntityHandle();
+	const FMassEntityHandle Entity = Station->GetEntityHandle();
 	if (!Entity.IsValid())
 	{
 		return nullptr;
@@ -543,21 +564,6 @@ FArcCraftInputFragment* FArcCraftItemSource_EntityStore::GetInputFragment(
 UArcItemsStoreComponent* FArcCraftItemSource_EntityStore::GetMirrorInputStore(
 	const UArcCraftStationComponent* Station) const
 {
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp || !VisComp->InputStoreClass || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-
-	TArray<UArcItemsStoreComponent*> Stores;
-	Station->GetOwner()->GetComponents<UArcItemsStoreComponent>(Stores);
-	for (UArcItemsStoreComponent* Store : Stores)
-	{
-		if (Store && Store->IsA(VisComp->InputStoreClass))
-		{
-			return Store;
-		}
-	}
 	return nullptr;
 }
 
@@ -578,6 +584,12 @@ bool FArcCraftItemSource_EntityStore::CanSatisfyRecipe(
 	const UArcRecipeDefinition* Recipe,
 	const UObject* Instigator) const
 {
+	// Free recipe — no ingredients required
+	if (Recipe && Recipe->Ingredients.Num() == 0)
+	{
+		return true;
+	}
+
 	const FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
 	if (!InputFrag)
 	{
@@ -596,6 +608,14 @@ bool FArcCraftItemSource_EntityStore::ConsumeIngredients(
 	TArray<FArcItemSpec>& OutMatchedItems,
 	TArray<float>& OutQualityMults) const
 {
+	// Free recipe — no ingredients to consume
+	if (Recipe && Recipe->Ingredients.Num() == 0)
+	{
+		OutMatchedItems.Reset();
+		OutQualityMults.Reset();
+		return true;
+	}
+
 	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
 	if (!InputFrag)
 	{

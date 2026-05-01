@@ -24,7 +24,6 @@
 #include "MassEntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
-#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "ArcCraft/Station/ArcRecipeLookup.h"
 #include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemSpec.h"
@@ -60,25 +59,6 @@ void UArcCraftStationComponent::BeginPlay()
 	Super::BeginPlay();
 
 	PrimaryComponentTick.TickInterval = TickInterval;
-
-	// Validate that the owning actor has UArcCraftVisEntityComponent for Mass entity access
-	if (GetOwner())
-	{
-		UArcCraftVisEntityComponent* CraftVisComp =
-			GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
-
-		if (!CraftVisComp)
-		{
-			UE_LOG(LogArcCraftStation, Error,
-				TEXT("UArcCraftStationComponent on %s requires UArcCraftVisEntityComponent "
-					 "for Mass entity access. Entity-backed features will not work."),
-				*GetOwner()->GetName());
-		}
-		else
-		{
-			CachedVisComponent = CraftVisComp;
-		}
-	}
 }
 
 void UArcCraftStationComponent::GetLifetimeReplicatedProps(
@@ -169,30 +149,9 @@ bool UArcCraftStationComponent::QueueRecipe(
 
 	CurrentInstigator = Instigator;
 
-	// Write to entity queue fragment if entity-backed
-	const bool bIsEntityBacked = CachedVisComponent.IsValid();
-	if (bIsEntityBacked)
-	{
-		FMassEntityManager* EntityMgr = GetEntityManager();
-		const FMassEntityHandle Entity = GetEntityHandle();
-		if (EntityMgr && Entity.IsValid() && EntityMgr->IsEntityValid(Entity))
-		{
-			FArcCraftQueueFragment* QueueFrag = EntityMgr->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
-			if (QueueFrag)
-			{
-				const int32 Idx = QueueFrag->Entries.Add(NewEntry);
-				QueueFrag->ActiveEntryIndex = INDEX_NONE; // Re-evaluate
-				OnQueueChanged.Broadcast(this, QueueFrag->Entries[Idx]);
-				return true;
-			}
-		}
-	}
-
 	const int32 Idx = CraftQueue.Entries.Add(NewEntry);
-	
-	// Enable actor tick for AutoTick mode, but only for non-entity-backed stations.
-	// Entity-backed AutoTick stations are processed by UArcCraftTickProcessor.
-	if (TimeMode == EArcCraftStationTimeMode::AutoTick && !bIsEntityBacked)
+
+	if (TimeMode == EArcCraftStationTimeMode::AutoTick)
 	{
 		PrimaryComponentTick.SetTickFunctionEnable(true);
 	}
@@ -293,29 +252,6 @@ bool UArcCraftStationComponent::CancelQueueEntry(const FGuid& EntryId)
 			if (Idx == ActiveEntryIndex)
 			{
 				ActiveEntryIndex = INDEX_NONE;
-			}
-
-			// Also remove from entity queue fragment
-			if (CachedVisComponent.IsValid())
-			{
-				FMassEntityManager* EntityMgr = GetEntityManager();
-				const FMassEntityHandle Entity = GetEntityHandle();
-				if (EntityMgr && Entity.IsValid() && EntityMgr->IsEntityValid(Entity))
-				{
-					FArcCraftQueueFragment* QueueFrag = EntityMgr->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
-					if (QueueFrag)
-					{
-						for (int32 EntityIdx = 0; EntityIdx < QueueFrag->Entries.Num(); ++EntityIdx)
-						{
-							if (QueueFrag->Entries[EntityIdx].EntryId == EntryId)
-							{
-								QueueFrag->Entries.RemoveAt(EntityIdx);
-								QueueFrag->ActiveEntryIndex = INDEX_NONE;
-								break;
-							}
-						}
-					}
-				}
 			}
 
 			OnQueueChanged.Broadcast(this, RemovedEntry);
@@ -510,19 +446,6 @@ const TArray<FArcCraftQueueEntry>& UArcCraftStationComponent::GetQueue() const
 
 TArray<FArcCraftQueueEntry> UArcCraftStationComponent::GetLiveQueue() const
 {
-	if (CachedVisComponent.IsValid())
-	{
-		FMassEntityManager* EntityMgr = GetEntityManager();
-		const FMassEntityHandle Entity = GetEntityHandle();
-		if (EntityMgr && Entity.IsValid() && EntityMgr->IsEntityValid(Entity))
-		{
-			const FArcCraftQueueFragment* QueueFrag = EntityMgr->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
-			if (QueueFrag)
-			{
-				return QueueFrag->Entries;
-			}
-		}
-	}
 	return CraftQueue.Entries;
 }
 
@@ -751,10 +674,6 @@ FArcItemSpec UArcCraftStationComponent::BuildOutputSpec(
 
 FMassEntityHandle UArcCraftStationComponent::GetEntityHandle() const
 {
-	if (CachedVisComponent.IsValid())
-	{
-		return CachedVisComponent->GetEntityHandle();
-	}
 	return FMassEntityHandle();
 }
 

@@ -183,11 +183,6 @@ public:
 	//virtual void OnItemInitialize(const FArcItemData* InItem) override;
 	//virtual void OnItemChanged(const FArcItemData* InItem) override;
 	
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_ItemStats::StaticStruct();
-	}
-	
 	virtual ~FArcItemInstance_ItemStats() override = default;
 
 	virtual bool Equals(const FArcItemInstance& Other) const override
@@ -233,7 +228,7 @@ public:
 	{
 		return FArcItemInstance_ItemStats::StaticStruct();
 	}
-	
+
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
 		return FArcItemFragment_ItemStats::StaticStruct();

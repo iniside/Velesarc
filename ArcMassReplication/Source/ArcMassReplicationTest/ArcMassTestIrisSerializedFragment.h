@@ -1,0 +1,28 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "MassEntityTypes.h"
+#include "ArcMassTestIrisSerializedFragment.generated.h"
+
+USTRUCT()
+struct FArcMassTestIrisSerializedFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	int32 Health = 0;
+
+	UPROPERTY()
+	float Speed = 0.f;
+
+	UPROPERTY()
+	int32 Armor = 0;
+};
+
+template<>
+struct TMassFragmentTraits<FArcMassTestIrisSerializedFragment> final
+{
+	enum { AuthorAcceptsItsNotTriviallyCopyable = true };
+};

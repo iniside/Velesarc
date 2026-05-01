@@ -3,7 +3,7 @@
 #include "ArcKnowledgeDebugger.h"
 
 #include "imgui.h"
-#include "DrawDebugHelpers.h"
+#include "ArcKnowledgeDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "ArcKnowledgeSubsystem.h"
@@ -226,6 +226,12 @@ void FArcKnowledgeDebugger::Initialize()
 
 void FArcKnowledgeDebugger::Uninitialize()
 {
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+		DrawActor.Reset();
+		DrawComponent.Reset();
+	}
 	CachedClaimableEntities.Reset();
 	CachedEntries.Reset();
 	SelectedEntryIndex = INDEX_NONE;
@@ -400,6 +406,10 @@ void FArcKnowledgeDebugger::Draw()
 	if (!ImGui::Begin("Knowledge Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearEntryData();
+		}
 		return;
 	}
 
@@ -917,6 +927,33 @@ void FArcKnowledgeDebugger::DrawMetadataSection(const FArcKnowledgeEntry& Entry)
 // World Visualization
 // ====================================================================
 
+void FArcKnowledgeDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("KnowledgeDebuggerDraw"));
+#endif
+
+	UArcKnowledgeDebuggerDrawComponent* NewComponent = NewObject<UArcKnowledgeDebuggerDrawComponent>(NewActor, UArcKnowledgeDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
 void FArcKnowledgeDebugger::DrawWorldVisualization()
 {
 	UWorld* World = GetDebugWorld();
@@ -925,77 +962,56 @@ void FArcKnowledgeDebugger::DrawWorldVisualization()
 		return;
 	}
 
-	UArcKnowledgeSubsystem* Sub = GetKnowledgeSubsystem();
-	if (!Sub)
+	if (CachedEntries.Num() == 0)
+	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearEntryData();
+		}
+		return;
+	}
+
+	EnsureDrawActor(World);
+	if (!DrawComponent.IsValid())
 	{
 		return;
 	}
 
-	constexpr float ZOffset = 80.f;
+	// Build lightweight draw entries from cached data
+	TArray<FArcKnowledgeDebugDrawEntry> DrawEntries;
+	DrawEntries.Reserve(CachedEntries.Num());
 
-	// Draw all entries as small markers
-	if (bDrawAllEntries)
+	UArcKnowledgeSubsystem* Sub = GetKnowledgeSubsystem();
+
+	for (int32 i = 0; i < CachedEntries.Num(); ++i)
 	{
-		for (int32 i = 0; i < CachedEntries.Num(); ++i)
+		const FKnowledgeListEntry& Src = CachedEntries[i];
+		FArcKnowledgeDebugDrawEntry& Dst = DrawEntries.AddDefaulted_GetRef();
+		Dst.Location = Src.Location;
+		Dst.Relevance = Src.Relevance;
+		Dst.bClaimed = Src.bClaimed;
+
+		// Short label for non-selected, detail label for selected
+		if (i == SelectedEntryIndex && Sub)
 		{
-			const FKnowledgeListEntry& Entry = CachedEntries[i];
-			const bool bIsSelected = (SelectedEntryIndex == i);
-
-			if (bIsSelected)
+			const FArcKnowledgeEntry* Entry = Sub->GetKnowledgeEntry(Src.Handle);
+			if (Entry)
 			{
-				continue; // Selected entry drawn separately with more detail
+				Dst.Label = FString::Printf(TEXT("H%u"), Src.Handle.GetValue());
+				if (Entry->Tags.Num() > 0)
+				{
+					Dst.Label += TEXT("\n") + Entry->Tags.ToStringSimple();
+				}
+				Dst.BroadcastRadius = Entry->SpatialBroadcastRadius;
 			}
-
-			FColor MarkerColor = Entry.bClaimed ? Arcx::GameplayDebugger::Knowledge::ClaimedColor : Arcx::GameplayDebugger::Knowledge::KnowledgeColor;
-			float Alpha = FMath::Clamp(Entry.Relevance, 0.3f, 1.0f);
-			MarkerColor.A = static_cast<uint8>(Alpha * 255.f);
-
-			DrawDebugPoint(World, Entry.Location + FVector(0, 0, ZOffset), 10.f, MarkerColor, false, -1.f);
-
-			if (bDrawLabels)
-			{
-				FString ShortLabel = FString::Printf(TEXT("H%u"), Entry.Handle.GetValue());
-				DrawDebugString(World, Entry.Location + FVector(0, 0, ZOffset + 30.f), ShortLabel, nullptr, MarkerColor, -1.f, true, 0.8f);
-			}
+		}
+		else
+		{
+			Dst.Label = FString::Printf(TEXT("H%u"), Src.Handle.GetValue());
 		}
 	}
 
-	// Draw selected entry with full detail
-	if (SelectedEntryIndex != INDEX_NONE && CachedEntries.IsValidIndex(SelectedEntryIndex))
-	{
-		const FKnowledgeListEntry& SelEntry = CachedEntries[SelectedEntryIndex];
-		const FArcKnowledgeEntry* Entry = Sub->GetKnowledgeEntry(SelEntry.Handle);
-		if (!Entry)
-		{
-			return;
-		}
-
-		const FVector& Loc = Entry->Location;
-
-		// Sphere marker
-		DrawDebugSphere(World, Loc + FVector(0, 0, ZOffset), 40.f, 12, Arcx::GameplayDebugger::Knowledge::SelectedColor, false, -1.f, 0, 2.f);
-
-		// Label with tags
-		FString DetailLabel = FString::Printf(TEXT("H%u"), SelEntry.Handle.GetValue());
-		if (Entry->Tags.Num() > 0)
-		{
-			DetailLabel += TEXT("\n") + Entry->Tags.ToStringSimple();
-		}
-		DrawDebugString(World, Loc + FVector(0, 0, ZOffset + 60.f), DetailLabel, nullptr, FColor::White, -1.f, true, 1.0f);
-
-		// Vertical line
-		DrawDebugLine(World, Loc, Loc + FVector(0, 0, ZOffset + 40.f), Arcx::GameplayDebugger::Knowledge::SelectedColor, false, -1.f, 0, 2.f);
-
-		// Draw bounding/broadcast radius
-		if (bDrawSelectedRadius)
-		{
-			float Radius = Entry->SpatialBroadcastRadius;
-			if (Radius > 0.f)
-			{
-				DrawDebugSphere(World, Loc, Radius, 32, Arcx::GameplayDebugger::Knowledge::RadiusColor, false, -1.f, 0, 1.f);
-			}
-		}
-	}
+	DrawComponent->UpdateEntryData(DrawEntries, SelectedEntryIndex, bDrawAllEntries, bDrawLabels, bDrawSelectedRadius);
 }
 
 // ====================================================================

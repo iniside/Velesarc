@@ -27,6 +27,11 @@ void UArcMobileVisEntityTrait::BuildTemplate(FMassEntityTemplateBuildContext& Bu
 
 	const FConstSharedStruct DistConfig = EntityManager.GetOrCreateConstSharedFragment(DistanceConfig);
 	BuildContext.AddConstSharedFragment(DistConfig);
+
+	FArcMobileVisTemplateIDFragment TemplateIDFrag;
+	TemplateIDFrag.TemplateID = BuildContext.GetTemplateID();
+	const FConstSharedStruct TemplateIDShared = EntityManager.GetOrCreateConstSharedFragment(TemplateIDFrag);
+	BuildContext.AddConstSharedFragment(TemplateIDShared);
 }
 
 // ---------------------------------------------------------------------------

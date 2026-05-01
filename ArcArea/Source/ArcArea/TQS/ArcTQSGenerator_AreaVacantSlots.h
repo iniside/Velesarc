@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "TargetQuery/ArcTQSGenerator.h"
+#include "ArcTQSGenerator.h"
 #include "ArcTQSGenerator_AreaVacantSlots.generated.h"
 
 /**

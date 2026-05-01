@@ -6,6 +6,8 @@
 #include "ArcPotentialEntity.h"
 #include "ArcSmartObjectPlanContainer.h"
 #include "ArcSmartObjectPlanRequest.h"
+#include "ArcSmartObjectPlanSensor.h"
+#include "ArcSmartObjectPlanDebugData.h"
 #include "GameplayDebuggerCategory.h"
 #include "Subsystems/WorldSubsystem.h"
 struct FArcSmartObjectPlanEvaluationContext;
@@ -42,6 +44,20 @@ public:
 		return DebugPlans.Find(EntityHandle);
 	}
 
+#if !UE_BUILD_SHIPPING
+	TMap<FMassEntityHandle, FArcSmartObjectPlanDebugData> DebugDiagnostics;
+
+	void SetDebugDiagnostics(FMassEntityHandle EntityHandle, FArcSmartObjectPlanDebugData&& Data)
+	{
+		DebugDiagnostics.Add(EntityHandle, MoveTemp(Data));
+	}
+
+	const FArcSmartObjectPlanDebugData* GetDebugDiagnostics(FMassEntityHandle EntityHandle) const
+	{
+		return DebugDiagnostics.Find(EntityHandle);
+	}
+#endif
+
 	// UTickableWorldSubsystem
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
@@ -51,9 +67,14 @@ public:
 	/** Time budget per tick in milliseconds. Default 1ms. */
 	float TimeBudgetMs = 1.0f;
 
-	void BuildAllPlans(
+	void BuildAllPlans(const FArcSmartObjectPlanRequest& Request);
+
+	static void RunSensors(
 		const FArcSmartObjectPlanRequest& Request,
-		TArray<FArcPotentialEntity>& AvailableEntities);
+		const FArcSmartObjectPlanEvaluationContext& Context,
+		TArray<FArcPotentialEntity>& OutCandidates);
+
+	static void DeduplicateCandidates(TArray<FArcPotentialEntity>& Candidates);
 
 	static bool BuildPlanRecursive(
 		TArray<FArcPotentialEntity>& AvailableEntities,
@@ -64,17 +85,21 @@ public:
 		TArray<FArcSmartObjectPlanContainer>& OutPlans,
 		TArray<bool>& UsedEntities,
 		int32 MaxPlans,
-		const FArcSmartObjectPlanEvaluationContext* Context = nullptr);
+		const FArcSmartObjectPlanEvaluationContext* Context = nullptr
+#if !UE_BUILD_SHIPPING
+		, FArcSmartObjectPlanDebugData* DebugData = nullptr
+#endif
+	);
 
 	static bool EvaluateCustomConditions(const FArcPotentialEntity& Entity,
-								const FArcSmartObjectPlanEvaluationContext& Context);
+								const FArcSmartObjectPlanEvaluationContext& Context
+#if !UE_BUILD_SHIPPING
+								, FString* OutFailedConditionName = nullptr
+#endif
+	);
 
 private:
 	TArray<FArcSmartObjectPlanRequest> RequestQueue;
-
-	void GatherCandidates(
-		const FArcSmartObjectPlanRequest& Request,
-		TArray<FArcPotentialEntity>& OutCandidates);
 };
 
 class FGameplayDebuggerCategory_SmartObjectPlanner : public FGameplayDebuggerCategory

@@ -53,11 +53,6 @@ protected:
 	FGameplayTag SlotId;
 	
 public:
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_GrantedPassiveAbilities::StaticStruct();
-	}
-	
 	const TArray<FGameplayAbilitySpecHandle>& GetGrantedPassiveAbilities() const
 	{
 		return GrantedPassiveAbilities;
@@ -96,7 +91,7 @@ public:
 	{
 		return FArcItemFragment_GrantedPassiveAbilities::StaticStruct();
 	}
-	
+
 	virtual void OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const override;
 	virtual void OnItemRemovedFromSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const override;
 

@@ -7,83 +7,70 @@
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
 
-// ---------------------------------------------------------------------------
-// Macro: Implements a per-condition tick processor.
-// All share identical logic — decay, overload, burnout, hysteresis.
-// ---------------------------------------------------------------------------
+UArcConditionTickProcessor::UArcConditionTickProcessor()
+    : EntityQuery{*this}
+{
+    bAutoRegisterWithProcessingPhases = true;
+    bRequiresGameThreadExecution = false;
+    ProcessingPhase = EMassProcessingPhase::DuringPhysics;
+    ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
+}
 
-#define ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Name) \
-	UArc##Name##ConditionTickProcessor::UArc##Name##ConditionTickProcessor() \
-		: EntityQuery{*this} \
-	{ \
-		bAutoRegisterWithProcessingPhases = true; \
-		bRequiresGameThreadExecution = false; \
-		ProcessingPhase = EMassProcessingPhase::DuringPhysics; \
-		ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone); \
-	} \
-	\
-	void UArc##Name##ConditionTickProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) \
-	{ \
-		EntityQuery.AddRequirement<FArc##Name##ConditionFragment>(EMassFragmentAccess::ReadWrite); \
-		EntityQuery.AddConstSharedRequirement<FArc##Name##ConditionConfig>(EMassFragmentPresence::All); \
-	} \
-	\
-	void UArc##Name##ConditionTickProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) \
-	{ \
-		const float DeltaTime = Context.GetDeltaTimeSeconds(); \
-		if (DeltaTime <= 0.f) { return; } \
-		\
-		TRACE_CPUPROFILER_EVENT_SCOPE(Arc##Name##ConditionTick); \
-		\
-		TArray<FMassEntityHandle> StateChangedEntities; \
-		TArray<FMassEntityHandle> OverloadChangedEntities; \
-		\
-		EntityQuery.ForEachEntityChunk(Context, \
-			[DeltaTime, &StateChangedEntities, &OverloadChangedEntities](FMassExecutionContext& Ctx) \
-			{ \
-				TArrayView<FArc##Name##ConditionFragment> Fragments = Ctx.GetMutableFragmentView<FArc##Name##ConditionFragment>(); \
-				const FArc##Name##ConditionConfig& SharedConfig = Ctx.GetConstSharedFragment<FArc##Name##ConditionConfig>(); \
-				\
-				for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt) \
-				{ \
-					FArc##Name##ConditionFragment& Fragment = Fragments[EntityIt]; \
-					bool bStateChanged = false; \
-					bool bOverloadChanged = false; \
-					ArcConditionHelpers::TickCondition(Fragment.State, SharedConfig.Config, DeltaTime, bStateChanged, bOverloadChanged); \
-					\
-					if (bStateChanged)    { StateChangedEntities.Add(Ctx.GetEntity(EntityIt)); } \
-					if (bOverloadChanged) { OverloadChangedEntities.Add(Ctx.GetEntity(EntityIt)); } \
-				} \
-			} \
-		); \
-		\
-		UWorld* World = EntityManager.GetWorld(); \
-		UMassSignalSubsystem* SignalSubsystem = World ? World->GetSubsystem<UMassSignalSubsystem>() : nullptr; \
-		if (SignalSubsystem) \
-		{ \
-			if (StateChangedEntities.Num() > 0) \
-			{ \
-				SignalSubsystem->SignalEntities(UE::ArcConditionEffects::Signals::ConditionStateChanged, StateChangedEntities); \
-			} \
-			if (OverloadChangedEntities.Num() > 0) \
-			{ \
-				SignalSubsystem->SignalEntities(UE::ArcConditionEffects::Signals::ConditionOverloadChanged, OverloadChangedEntities); \
-			} \
-		} \
-	}
+void UArcConditionTickProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
+{
+    EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadWrite);
+    EntityQuery.AddConstSharedRequirement<FArcConditionConfigsShared>(EMassFragmentPresence::All);
+}
 
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Burning)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Bleeding)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Chilled)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Shocked)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Poisoned)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Diseased)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Weakened)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Oiled)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Wet)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Corroded)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Blinded)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Suffocating)
-ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR(Exhausted)
+void UArcConditionTickProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
+{
+    const float DeltaTime = Context.GetDeltaTimeSeconds();
+    if (DeltaTime <= 0.f) { return; }
 
-#undef ARC_IMPLEMENT_CONDITION_TICK_PROCESSOR
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcConditionTick);
+
+    TArray<FMassEntityHandle> StateChangedEntities;
+    TArray<FMassEntityHandle> OverloadChangedEntities;
+
+    EntityQuery.ForEachEntityChunk(Context,
+        [DeltaTime, &StateChangedEntities, &OverloadChangedEntities](FMassExecutionContext& Ctx)
+        {
+            TArrayView<FArcConditionStatesFragment> Fragments = Ctx.GetMutableFragmentView<FArcConditionStatesFragment>();
+            const FArcConditionConfigsShared& SharedConfig = Ctx.GetConstSharedFragment<FArcConditionConfigsShared>();
+
+            for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+            {
+                FArcConditionStatesFragment& Fragment = Fragments[EntityIt];
+                bool bAnyStateChanged = false;
+                bool bAnyOverloadChanged = false;
+
+                for (int32 i = 0; i < ArcConditionTypeCount; ++i)
+                {
+                    bool bStateChanged = false;
+                    bool bOverloadChanged = false;
+                    ArcConditionHelpers::TickCondition(Fragment.States[i], SharedConfig.Configs[i], DeltaTime, bStateChanged, bOverloadChanged);
+
+                    bAnyStateChanged |= bStateChanged;
+                    bAnyOverloadChanged |= bOverloadChanged;
+                }
+
+                if (bAnyStateChanged)    { StateChangedEntities.Add(Ctx.GetEntity(EntityIt)); }
+                if (bAnyOverloadChanged) { OverloadChangedEntities.Add(Ctx.GetEntity(EntityIt)); }
+            }
+        }
+    );
+
+    UWorld* World = EntityManager.GetWorld();
+    UMassSignalSubsystem* SignalSubsystem = World ? World->GetSubsystem<UMassSignalSubsystem>() : nullptr;
+    if (SignalSubsystem)
+    {
+        if (StateChangedEntities.Num() > 0)
+        {
+            SignalSubsystem->SignalEntities(UE::ArcConditionEffects::Signals::ConditionStateChanged, StateChangedEntities);
+        }
+        if (OverloadChangedEntities.Num() > 0)
+        {
+            SignalSubsystem->SignalEntities(UE::ArcConditionEffects::Signals::ConditionOverloadChanged, OverloadChangedEntities);
+        }
+    }
+}

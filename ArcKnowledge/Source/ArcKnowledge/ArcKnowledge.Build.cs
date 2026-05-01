@@ -42,10 +42,10 @@ public class ArcKnowledge : ModuleRules
 				"GameplayStateTreeModule",
 				"ArcCore",
 				"ArcMass",
-				"ArcAI",
 				"StateTreeModule",
 				"MassAIBehavior",
-				"MassActors"
+				"MassActors",
+				"ArcTargetQuery"
 			}
 		);
 

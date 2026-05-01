@@ -173,17 +173,10 @@ public:
 	const FArcItemData* GetItemPtr(const FArcItemId& Handle) const;
 	FArcItemData* GetItemPtr(const FArcItemId& Handle);
 
-	const TWeakPtr<FArcItemData>& GetWeakItemPtr(const FArcItemId& Handle) const;
-	TWeakPtr<FArcItemData>& GetWeakItemPtr(const FArcItemId& Handle);
-	
-	const FArcItemDataInternal* GetInternalItem(const FArcItemId& InItemId) const;
-
 	TArray<FArcItemCopyContainerHelper> GetAllInternalItems() const;
 	FArcItemCopyContainerHelper GetItemCopyHelper(const FArcItemId& InItemId) const;
 	
 protected:
-	const TSharedPtr<FArcItemData>& GetItemSharedPtr(const FArcItemId& Handle) const;
-	
 	const UArcItemDefinition* GetItemDefinition(FArcItemId ItemId) const
 	{
 		return ItemsArray[ItemId]->GetItemDefinition();
@@ -205,8 +198,6 @@ public:
 	TArray<const FArcItemData*> GetItemsAttachedTo(const FArcItemId& InItemId) const;
 	const FArcItemData* GetItemAttachedTo(const FArcItemId& InOwnerItemId, const FGameplayTag& AttachSlot) const;
 
-	TArray<const FArcItemDataInternal*> GetInternalAttachtedItems(const FArcItemId& InItemId) const;
-	
 	TArray<const FArcItemData*> GetAllItemsOnSlots() const;
 	/*
 	 * Public. Need for some unit tests.

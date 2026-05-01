@@ -62,8 +62,7 @@ public:
 	const FArcItemData* GetItemPtr(const FArcItemId& InItemId) const;
 	FArcItemData* GetItemPtr(const FArcItemId& InItemId);
 
-	// Instanced items.
-	TMap<FArcItemId, TSharedPtr<FArcItemData>> ItemsMap;
+	TMap<FArcItemId, FInstancedStruct> ItemsMap;
 
 	TMap<FArcItemId, FArcItemDefinitionData> ItemDefinitionsMap;
 };

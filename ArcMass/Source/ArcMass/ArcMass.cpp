@@ -2,8 +2,11 @@
 
 #include "ArcMass.h"
 
-#include "ArcMass/Replication/ArcMassReplication.h"
-#include "Iris/ReplicationSystem/NetObjectFactoryRegistry.h"
+#include "ArcMass/Elements/SkMInstance/SkMInstanceElementData.h"
+#include "ArcMass/Elements/SkMInstance/SkMInstanceElementHierarchyInterface.h"
+#include "ArcMass/Elements/SkMInstance/SkMInstanceElementWorldInterface.h"
+#include "ArcMass/Elements/SkMInstance/SkMInstanceElementSelectionInterface.h"
+#include "Elements/Framework/TypedElementRegistry.h"
 
 #if WITH_EDITOR
 #include "MassEntityConfigAsset.h"
@@ -43,12 +46,6 @@ namespace UE::ArcMass::Persistence
 
 void FArcMassModule::StartupModule()
 {
-	// Register our custom Iris factory for replication proxies.
-	// Must be done before any ReplicationSystem is created.
-	UE::Net::FNetObjectFactoryRegistry::RegisterFactory(
-		UArcMassReplicationProxyFactory::StaticClass(),
-		UArcMassReplicationProxyFactory::GetFactoryName());
-
 #if WITH_EDITOR
 	UObject::FAssetRegistryTag::OnGetExtraObjectTagsWithContext.AddStatic(
 		&UE::ArcMass::Persistence::OnGetMassEntityConfigTags);
@@ -59,12 +56,19 @@ void FArcMassModule::StartupModule()
 	GameplayDebuggerModule.RegisterCategory("ArcMass", IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcMass::MakeInstance), EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
 	GameplayDebuggerModule.NotifyCategoriesChanged();
 #endif
+
+	UTypedElementRegistry* Registry = UTypedElementRegistry::GetInstance();
+	if (Registry)
+	{
+		Registry->RegisterElementType<FSkMInstanceElementData, true>(NAME_SkMInstance);
+		Registry->RegisterElementInterface<ITypedElementHierarchyInterface>(NAME_SkMInstance, NewObject<USkMInstanceElementHierarchyInterface>());
+		Registry->RegisterElementInterface<ITypedElementWorldInterface>(NAME_SkMInstance, NewObject<USkMInstanceElementWorldInterface>());
+		Registry->RegisterElementInterface<ITypedElementSelectionInterface>(NAME_SkMInstance, NewObject<USkMInstanceElementSelectionInterface>());
+	}
 }
 
 void FArcMassModule::ShutdownModule()
 {
-	UE::Net::FNetObjectFactoryRegistry::UnregisterFactory(UArcMassReplicationProxyFactory::GetFactoryName());
-
 #if WITH_GAMEPLAY_DEBUGGER
 	if (IGameplayDebugger::IsAvailable())
 	{

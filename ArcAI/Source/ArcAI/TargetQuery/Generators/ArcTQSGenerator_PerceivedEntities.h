@@ -3,20 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSGenerator.h"
+#include "ArcTQSGenerator.h"
+#include "Perception/ArcPerceptionTypes.h"
 #include "ArcTQSGenerator_PerceivedEntities.generated.h"
-
-/**
- * Which perception senses to read perceived entities from.
- */
-UENUM(BlueprintType)
-enum class EArcTQSPerceptionSense : uint8
-{
-	Sight,
-	Hearing,
-	/** Merge both sight and hearing results (deduplicates). */
-	Both
-};
 
 /**
  * Generator that produces target items from the querier entity's perception results.

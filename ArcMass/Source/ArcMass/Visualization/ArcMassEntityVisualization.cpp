@@ -5,6 +5,7 @@
 #include "ArcVisSettings.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkinnedAsset.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "MassEntityConfigAsset.h"
@@ -18,6 +19,9 @@
 #include "MassISMRenderStateHelper.h"
 #include "Mesh/MassEngineMeshFragments.h"
 #include "Mesh/MassEngineMeshUtils.h"
+#include "ArcMass/SkinnedMeshVisualization/ArcMassSkinnedMeshFragments.h"
+#include "ArcMass/SkinnedMeshVisualization/ArcMassInstancedSkinnedMeshRenderStateHelper.h"
+#include "InstancedSkinnedMeshSceneProxyDesc.h"
 
 TAutoConsoleVariable<bool> CVarArcDebugDrawVisualizationGrid(
 	TEXT("arc.mass.DebugDrawVisualizationGrid"),
@@ -78,6 +82,25 @@ void UArcEntityVisualizationSubsystem::PreDeinitialize()
 				}
 			}
 		}
+
+		for (TPair<FIntVector, TMap<FArcVisSkinnedISMHolderKey, FMassEntityHandle>>& CellPair : CellSkinnedISMHolders)
+		{
+			for (TPair<FArcVisSkinnedISMHolderKey, FMassEntityHandle>& HolderPair : CellPair.Value)
+			{
+				FMassEntityHandle HolderEntity = HolderPair.Value;
+				if (HolderEntity.IsValid() && EntityManager.IsEntityValid(HolderEntity))
+				{
+					FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
+					if (RenderState)
+					{
+						RenderState->GetRenderStateHelper().DestroyRenderState(nullptr);
+						FArcMassInstancedSkinnedMeshRenderStateHelper* SkinnedHelper =
+							static_cast<FArcMassInstancedSkinnedMeshRenderStateHelper*>(&RenderState->GetRenderStateHelper());
+						SkinnedHelper->DestroyMeshObject();
+					}
+				}
+			}
+		}
 	}
 
 	Super::PreDeinitialize();
@@ -86,6 +109,7 @@ void UArcEntityVisualizationSubsystem::PreDeinitialize()
 void UArcEntityVisualizationSubsystem::Deinitialize()
 {
 	CellISMHolders.Empty();
+	CellSkinnedISMHolders.Empty();
 	MeshGrid.Clear();
 	PhysicsGrid.Clear();
 	Super::Deinitialize();
@@ -423,6 +447,290 @@ void UArcEntityVisualizationSubsystem::BatchActivateISMEntities(
 
 			int32 InstanceIndex = Subsystem->AddISMInstance(
 				HolderEntity, Activation.WorldTransform, EntityManager);
+
+			EntityManager.AddFragmentToEntity(
+				Activation.SourceEntity,
+				FArcVisISMInstanceFragment::StaticStruct(),
+				[HolderEntity, InstanceIndex](void* Fragment, const UScriptStruct&)
+			{
+				FArcVisISMInstanceFragment* ISMFrag = static_cast<FArcVisISMInstanceFragment*>(Fragment);
+				ISMFrag->HolderEntity = HolderEntity;
+				ISMFrag->InstanceIndex = InstanceIndex;
+			});
+		}
+	});
+}
+
+// --- Skinned ISM Holders ---
+
+void UArcEntityVisualizationSubsystem::InitializeSkinnedISMHolderArchetypes(FMassEntityManager& EntityManager)
+{
+	if (bSkinnedISMHolderArchetypesInitialized)
+	{
+		return;
+	}
+
+	FMassElementBitSet Composition;
+	Composition.Add<FTransformFragment>();
+	Composition.Add<FMassRenderStateFragment>();
+	Composition.Add<FMassRenderPrimitiveFragment>();
+	Composition.Add<FArcMassRenderISMSkinnedFragment>();
+	SkinnedISMHolderArchetype = EntityManager.CreateArchetype(Composition, FMassArchetypeCreationParams{TEXT("ArcVisSkinnedISMHolder")});
+
+	FMassElementBitSet CompositionWithMats = Composition;
+	CompositionWithMats.Add<FMassOverrideMaterialsFragment>();
+	SkinnedISMHolderArchetypeWithMats = EntityManager.CreateArchetype(CompositionWithMats, FMassArchetypeCreationParams{TEXT("ArcVisSkinnedISMHolderMats")});
+
+	bSkinnedISMHolderArchetypesInitialized = true;
+}
+
+FMassEntityHandle UArcEntityVisualizationSubsystem::FindOrCreateSkinnedISMHolder(
+	const FIntVector& Cell,
+	const FArcMassSkinnedMeshFragment& SkinnedMeshFrag,
+	const FArcMassVisualizationMeshConfigFragment& VisMeshConfigFrag,
+	const FMassOverrideMaterialsFragment* OverrideMats,
+	FMassEntityManager& EntityManager)
+{
+	InitializeSkinnedISMHolderArchetypes(EntityManager);
+
+	FArcVisSkinnedISMHolderKey Key;
+	Key.SkinnedAsset = SkinnedMeshFrag.SkinnedAsset;
+	Key.bCastShadow = VisMeshConfigFrag.CastShadow;
+	Key.bHasOverrideMaterials = OverrideMats != nullptr;
+
+	TMap<FArcVisSkinnedISMHolderKey, FMassEntityHandle>& CellHolders = CellSkinnedISMHolders.FindOrAdd(Cell);
+
+	FMassEntityHandle* ExistingHolder = CellHolders.Find(Key);
+	if (ExistingHolder && ExistingHolder->IsValid() && EntityManager.IsEntityValid(*ExistingHolder))
+	{
+		return *ExistingHolder;
+	}
+
+	FMassArchetypeHandle Archetype = OverrideMats ? SkinnedISMHolderArchetypeWithMats : SkinnedISMHolderArchetype;
+
+	FMassArchetypeSharedFragmentValues SharedValues;
+	SharedValues.Add(FConstSharedStruct::Make(SkinnedMeshFrag));
+	FMassVisualizationMeshFragment VisMeshFrag = ArcMass::Visualization::ToEngineFragment(VisMeshConfigFrag);
+	SharedValues.Add(FConstSharedStruct::Make(VisMeshFrag));
+	if (OverrideMats)
+	{
+		SharedValues.Add(FConstSharedStruct::Make(*OverrideMats));
+	}
+	SharedValues.Sort();
+
+	TArray<FMassEntityHandle> CreatedEntities;
+	TSharedRef<FMassObserverManager::FCreationContext> CreationContext =
+		EntityManager.BatchCreateEntities(Archetype, SharedValues, 1, CreatedEntities);
+
+	if (CreatedEntities.IsEmpty())
+	{
+		return FMassEntityHandle();
+	}
+
+	FMassEntityHandle HolderEntity = CreatedEntities[0];
+	FMassEntityView EntityView(EntityManager, HolderEntity);
+
+	FTransformFragment& TransformFrag = EntityView.GetFragmentData<FTransformFragment>();
+	TransformFrag.SetTransform(FTransform::Identity);
+
+	FArcMassRenderISMSkinnedFragment& SkinnedISMFrag = EntityView.GetFragmentData<FArcMassRenderISMSkinnedFragment>();
+	FMassRenderPrimitiveFragment& PrimFrag = EntityView.GetFragmentData<FMassRenderPrimitiveFragment>();
+	PrimFrag.bIsVisible = true;
+
+	TSharedPtr<FInstancedSkinnedMeshSceneProxyDesc> SceneProxyDesc = MakeShared<FInstancedSkinnedMeshSceneProxyDesc>();
+	SceneProxyDesc->SkinnedAsset = SkinnedMeshFrag.SkinnedAsset;
+	SceneProxyDesc->TransformProvider = SkinnedMeshFrag.TransformProvider;
+	SceneProxyDesc->CastShadow = VisMeshConfigFrag.CastShadow;
+	SceneProxyDesc->bCastShadowAsTwoSided = VisMeshConfigFrag.CastShadowAsTwoSided;
+	SceneProxyDesc->bCastHiddenShadow = VisMeshConfigFrag.CastHiddenShadow;
+	SceneProxyDesc->bCastFarShadow = VisMeshConfigFrag.CastFarShadow;
+	SceneProxyDesc->bCastInsetShadow = VisMeshConfigFrag.CastInsetShadow;
+	SceneProxyDesc->bCastContactShadow = VisMeshConfigFrag.CastContactShadow;
+	SceneProxyDesc->bReceivesDecals = VisMeshConfigFrag.ReceivesDecals;
+	SceneProxyDesc->bRenderCustomDepth = VisMeshConfigFrag.RenderCustomDepth;
+	SceneProxyDesc->CustomDepthStencilValue = static_cast<int32>(VisMeshConfigFrag.CustomDepthStencilValue);
+	SceneProxyDesc->TranslucencySortPriority = VisMeshConfigFrag.TranslucencySortPriority;
+	SceneProxyDesc->bAffectDynamicIndirectLighting = VisMeshConfigFrag.AffectDynamicIndirectLighting;
+	SceneProxyDesc->bAffectIndirectLightingWhileHidden = VisMeshConfigFrag.AffectIndirectLightingWhileHidden;
+	if (VisMeshConfigFrag.NeverDistanceCull)
+	{
+		SceneProxyDesc->CachedMaxDrawDistance = 0.0f;
+	}
+	SkinnedISMFrag.SceneProxyDesc = SceneProxyDesc;
+
+	FMassRenderStateFragment& RenderState = EntityView.GetFragmentData<FMassRenderStateFragment>();
+	RenderState.CreateRenderStateHelper<FArcMassInstancedSkinnedMeshRenderStateHelper>(
+		HolderEntity, &EntityManager, PrimFrag, OverrideMats);
+
+	CellHolders.Add(Key, HolderEntity);
+	return HolderEntity;
+}
+
+int32 UArcEntityVisualizationSubsystem::AddSkinnedISMInstance(
+	FMassEntityHandle HolderEntity,
+	const FTransform& WorldTransform,
+	uint32 AnimationIndex,
+	FMassEntityManager& EntityManager)
+{
+	FArcMassRenderISMSkinnedFragment* SkinnedISMFrag = EntityManager.GetFragmentDataPtr<FArcMassRenderISMSkinnedFragment>(HolderEntity);
+	FMassRenderPrimitiveFragment* PrimFrag = EntityManager.GetFragmentDataPtr<FMassRenderPrimitiveFragment>(HolderEntity);
+	FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
+
+	if (!SkinnedISMFrag || !PrimFrag || !RenderState)
+	{
+		return INDEX_NONE;
+	}
+
+	FArcSkinnedMeshInstanceData InstanceData;
+	InstanceData.Transform = FTransform3f(WorldTransform);
+	InstanceData.AnimationIndex = AnimationIndex;
+	int32 SparseIdx = SkinnedISMFrag->PerInstanceData.Add(InstanceData);
+
+	const FArcMassSkinnedMeshFragment& SkinnedMeshFrag = EntityManager.GetConstSharedFragmentDataChecked<FArcMassSkinnedMeshFragment>(HolderEntity);
+	USkinnedAsset* Asset = SkinnedMeshFrag.SkinnedAsset.Get();
+	if (Asset)
+	{
+		FBoxSphereBounds AssetBounds = Asset->GetBounds();
+		FBox AccumulatedBounds(ForceInit);
+		for (const FArcSkinnedMeshInstanceData& Inst : SkinnedISMFrag->PerInstanceData)
+		{
+			FTransform InstTransform(Inst.Transform);
+			FBox TransformedBox = AssetBounds.GetBox().TransformBy(InstTransform);
+			AccumulatedBounds += TransformedBox;
+		}
+		PrimFrag->LocalBounds = FBoxSphereBounds(AccumulatedBounds);
+		PrimFrag->WorldBounds = FBoxSphereBounds(AccumulatedBounds);
+	}
+
+	PrimFrag->bIsVisible = true;
+	RenderState->GetRenderStateHelper().MarkRenderStateDirty();
+
+	return SparseIdx;
+}
+
+void UArcEntityVisualizationSubsystem::RemoveSkinnedISMInstance(
+	FMassEntityHandle HolderEntity,
+	int32 InstanceIndex,
+	const FIntVector& Cell,
+	FMassEntityManager& EntityManager)
+{
+	if (!HolderEntity.IsValid() || !EntityManager.IsEntityValid(HolderEntity))
+	{
+		return;
+	}
+
+	FArcMassRenderISMSkinnedFragment* SkinnedISMFrag = EntityManager.GetFragmentDataPtr<FArcMassRenderISMSkinnedFragment>(HolderEntity);
+	FMassRenderPrimitiveFragment* PrimFrag = EntityManager.GetFragmentDataPtr<FMassRenderPrimitiveFragment>(HolderEntity);
+	FMassRenderStateFragment* RenderState = EntityManager.GetFragmentDataPtr<FMassRenderStateFragment>(HolderEntity);
+
+	if (!SkinnedISMFrag || !PrimFrag || !RenderState)
+	{
+		return;
+	}
+
+	if (SkinnedISMFrag->PerInstanceData.Num() == 0)
+	{
+		return;
+	}
+
+	if (SkinnedISMFrag->PerInstanceData.IsValidIndex(InstanceIndex))
+	{
+		SkinnedISMFrag->PerInstanceData.RemoveAt(InstanceIndex);
+	}
+
+	if (SkinnedISMFrag->PerInstanceData.Num() == 0)
+	{
+		RenderState->GetRenderStateHelper().DestroyRenderState(nullptr);
+
+		FArcMassInstancedSkinnedMeshRenderStateHelper* SkinnedHelper =
+			static_cast<FArcMassInstancedSkinnedMeshRenderStateHelper*>(&RenderState->GetRenderStateHelper());
+		SkinnedHelper->DestroyMeshObject();
+
+		EntityManager.Defer().DestroyEntity(HolderEntity);
+
+		TMap<FArcVisSkinnedISMHolderKey, FMassEntityHandle>* CellHolders = CellSkinnedISMHolders.Find(Cell);
+		if (CellHolders)
+		{
+			for (auto It = CellHolders->CreateIterator(); It; ++It)
+			{
+				if (It->Value == HolderEntity)
+				{
+					It.RemoveCurrent();
+					break;
+				}
+			}
+			if (CellHolders->IsEmpty())
+			{
+				CellSkinnedISMHolders.Remove(Cell);
+			}
+		}
+	}
+	else
+	{
+		const FArcMassSkinnedMeshFragment& SkinnedMeshFrag = EntityManager.GetConstSharedFragmentDataChecked<FArcMassSkinnedMeshFragment>(HolderEntity);
+		USkinnedAsset* Asset = SkinnedMeshFrag.SkinnedAsset.Get();
+		if (Asset)
+		{
+			FBoxSphereBounds AssetBounds = Asset->GetBounds();
+			FBox AccumulatedBounds(ForceInit);
+			for (const FArcSkinnedMeshInstanceData& Inst : SkinnedISMFrag->PerInstanceData)
+			{
+				FTransform InstTransform(Inst.Transform);
+				FBox TransformedBox = AssetBounds.GetBox().TransformBy(InstTransform);
+				AccumulatedBounds += TransformedBox;
+			}
+			PrimFrag->LocalBounds = FBoxSphereBounds(AccumulatedBounds);
+			PrimFrag->WorldBounds = FBoxSphereBounds(AccumulatedBounds);
+		}
+
+		RenderState->GetRenderStateHelper().MarkRenderStateDirty();
+	}
+}
+
+void UArcEntityVisualizationSubsystem::BatchActivateSkinnedISMEntities(
+	TArray<FArcPendingSkinnedISMActivation>&& PendingActivations,
+	FMassExecutionContext& Context)
+{
+	if (PendingActivations.IsEmpty())
+	{
+		return;
+	}
+
+	TWeakObjectPtr<UArcEntityVisualizationSubsystem> WeakThis(this);
+	Context.Defer().PushCommand<FMassDeferredCreateCommand>(
+		[WeakThis, Pending = MoveTemp(PendingActivations)]
+		(FMassEntityManager& EntityManager) mutable
+	{
+		UArcEntityVisualizationSubsystem* Subsystem = WeakThis.Get();
+		if (!Subsystem)
+		{
+			return;
+		}
+
+		for (FArcPendingSkinnedISMActivation& Activation : Pending)
+		{
+			if (!EntityManager.IsEntityValid(Activation.SourceEntity))
+			{
+				continue;
+			}
+
+			const FMassOverrideMaterialsFragment* OverrideMatsPtr =
+				Activation.bHasOverrideMats ? &Activation.OverrideMats : nullptr;
+
+			FMassEntityHandle HolderEntity = Subsystem->FindOrCreateSkinnedISMHolder(
+				Activation.Cell,
+				Activation.SkinnedMeshFrag,
+				Activation.VisMeshConfigFrag,
+				OverrideMatsPtr,
+				EntityManager);
+
+			if (!HolderEntity.IsValid())
+			{
+				continue;
+			}
+
+			int32 InstanceIndex = Subsystem->AddSkinnedISMInstance(
+				HolderEntity, Activation.WorldTransform, 0, EntityManager);
 
 			EntityManager.AddFragmentToEntity(
 				Activation.SourceEntity,

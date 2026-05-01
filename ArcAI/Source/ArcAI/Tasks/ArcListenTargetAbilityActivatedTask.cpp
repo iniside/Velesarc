@@ -9,6 +9,7 @@
 FArcListenTargetAbilityActivatedTask::FArcListenTargetAbilityActivatedTask()
 {
 	bShouldCallTick = false;
+	bShouldStateChangeOnReselect = false;
 }
 
 bool FArcListenTargetAbilityActivatedTask::Link(FStateTreeLinker& Linker)

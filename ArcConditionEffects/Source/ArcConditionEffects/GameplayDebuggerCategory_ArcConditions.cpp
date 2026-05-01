@@ -211,39 +211,35 @@ void FGameplayDebuggerCategory_ArcConditions::CollectData(APlayerController* Own
 
 	AddTextLine(FString::Printf(TEXT("{white}Entity: {yellow}%s"), *CachedEntity.DebugGetDescription()));
 
-	// Collect all present conditions via macro
-	// Each macro call checks if the fragment exists on the entity and collects it.
+	const FArcConditionStatesFragment* CondFrag = EntityManager.GetFragmentDataPtr<FArcConditionStatesFragment>(CachedEntity);
+	const FArcConditionConfigsShared* CondCfg = EntityManager.GetConstSharedFragmentDataPtr<FArcConditionConfigsShared>(CachedEntity);
 
-#define ARC_COLLECT_CONDITION(Name) \
-	if (const FArc##Name##ConditionFragment* Frag = EntityManager.GetFragmentDataPtr<FArc##Name##ConditionFragment>(CachedEntity)) \
-	{ \
-		const FArc##Name##ConditionConfig* Cfg = EntityManager.GetConstSharedFragmentDataPtr<FArc##Name##ConditionConfig>(CachedEntity); \
-		CollectConditionLine(EntityManager, TEXT(#Name), Frag->State, Cfg ? &Cfg->Config : nullptr); \
+	if (!CondFrag)
+	{
+		AddTextLine(TEXT("{grey}No condition fragment."));
+		return;
 	}
 
-	// Group A: Hysteresis
 	AddTextLine(TEXT("{red}--- Hysteresis ---"));
-	ARC_COLLECT_CONDITION(Burning)
-	ARC_COLLECT_CONDITION(Bleeding)
-	ARC_COLLECT_CONDITION(Chilled)
-	ARC_COLLECT_CONDITION(Shocked)
-	ARC_COLLECT_CONDITION(Poisoned)
-	ARC_COLLECT_CONDITION(Diseased)
-	ARC_COLLECT_CONDITION(Weakened)
+	for (int32 i = 0; i <= (int32)EArcConditionType::Weakened; ++i)
+	{
+		CollectConditionLine(EntityManager, ArcConditionHelpers::GetConditionTypeName(static_cast<EArcConditionType>(i)),
+			CondFrag->States[i], CondCfg ? &CondCfg->Configs[i] : nullptr);
+	}
 
-	// Group B: Linear
 	AddTextLine(TEXT("{yellow}--- Linear ---"));
-	ARC_COLLECT_CONDITION(Oiled)
-	ARC_COLLECT_CONDITION(Wet)
-	ARC_COLLECT_CONDITION(Corroded)
+	for (int32 i = (int32)EArcConditionType::Oiled; i <= (int32)EArcConditionType::Corroded; ++i)
+	{
+		CollectConditionLine(EntityManager, ArcConditionHelpers::GetConditionTypeName(static_cast<EArcConditionType>(i)),
+			CondFrag->States[i], CondCfg ? &CondCfg->Configs[i] : nullptr);
+	}
 
-	// Group C: Environmental
 	AddTextLine(TEXT("{cyan}--- Environmental ---"));
-	ARC_COLLECT_CONDITION(Blinded)
-	ARC_COLLECT_CONDITION(Suffocating)
-	ARC_COLLECT_CONDITION(Exhausted)
-
-#undef ARC_COLLECT_CONDITION
+	for (int32 i = (int32)EArcConditionType::Blinded; i <= (int32)EArcConditionType::Exhausted; ++i)
+	{
+		CollectConditionLine(EntityManager, ArcConditionHelpers::GetConditionTypeName(static_cast<EArcConditionType>(i)),
+			CondFrag->States[i], CondCfg ? &CondCfg->Configs[i] : nullptr);
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -35,7 +35,7 @@ public class ArcArea : ModuleRules
 				"SmartObjectsModule",
 				"ArcCore",
 				"ArcKnowledge",
-				"ArcAI"
+				"ArcTargetQuery"
 			}
 		);
 

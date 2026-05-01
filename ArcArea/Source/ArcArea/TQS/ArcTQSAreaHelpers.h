@@ -3,7 +3,7 @@
 #pragma once
 
 #include "ArcAreaTypes.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSTypes.h"
 
 namespace ArcTQS::Area
 {

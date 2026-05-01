@@ -37,7 +37,7 @@ public:
 
 	/** Optional world-space location passed in the ability's event data (e.g., for targeted abilities). */
 	UPROPERTY(EditAnywhere, Category = "Parameter")
-	FVector Location;
+	FVector Location = FVector::ZeroVector;
 
 	/** Additional gameplay tags required for ability activation. The ability must match these tags to activate. */
 	UPROPERTY(EditAnywhere, Category = "Parameter")

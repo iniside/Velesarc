@@ -10,10 +10,12 @@
 #include "MassMovementFragments.h"
 #include "MassNavMeshNavigationFragments.h"
 #include "Steering/MassSteeringFragments.h"
-#include "DrawDebugHelpers.h"
+#include "ArcPathDebuggerDrawComponent.h"
 #include "NavigationPath.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "NavigationSystem.h"
+#include "NavMesh/RecastNavMesh.h"
 
 namespace ArcPathDebuggerLocal
 {
@@ -64,6 +66,7 @@ void FArcPathDebugger::Initialize()
 
 void FArcPathDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	CachedEntities.Reset();
 	SelectedEntityIndex = INDEX_NONE;
 }
@@ -122,6 +125,7 @@ void FArcPathDebugger::Draw()
 	if (!ImGui::Begin("Path Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -170,6 +174,14 @@ void FArcPathDebugger::Draw()
 	ImGui::Checkbox("ShortPath", &bDrawShortPath);
 	ImGui::SameLine();
 	ImGui::Checkbox("Avoidance", &bDrawAvoidance);
+	ImGui::SameLine();
+	ImGui::Checkbox("NavMesh", &bDrawNavMesh);
+	if (bDrawNavMesh)
+	{
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(80.f);
+		ImGui::DragFloat("Z##NavMeshZ", &NavMeshZOffset, 1.f, 0.f, 200.f, "%.0f");
+	}
 
 	ImGui::Separator();
 
@@ -547,20 +559,43 @@ void FArcPathDebugger::DrawEntityDetailPanel()
 void FArcPathDebugger::DrawPathInWorld()
 {
 #if WITH_MASSENTITY_DEBUG
-	if (SelectedEntityIndex == INDEX_NONE || !CachedEntities.IsValidIndex(SelectedEntityIndex))
-	{
-		return;
-	}
-
 	UWorld* World = ArcPathDebuggerLocal::GetDebugWorld();
 	if (!World)
 	{
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
+		return;
+	}
+
+	const bool bHasSelectedEntity = SelectedEntityIndex != INDEX_NONE && CachedEntities.IsValidIndex(SelectedEntityIndex);
+	const bool bNeedsDraw = bHasSelectedEntity || bDrawNavMesh;
+
+	if (!bNeedsDraw)
+	{
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
+		return;
+	}
+
+	FArcPathDebugDrawData Data;
+
+	// --- NavMesh overlay (independent of entity selection) ---
+	if (bDrawNavMesh)
+	{
+		DrawNavMeshOverlay(World, Data);
+	}
+
+	// --- Entity-specific drawing ---
+	if (!bHasSelectedEntity)
+	{
+		EnsureDrawActor(World);
+		if (DrawComponent.IsValid()) { DrawComponent->UpdatePathData(Data); }
 		return;
 	}
 
 	FMassEntityManager* Manager = ArcPathDebuggerLocal::GetEntityManager();
 	if (!Manager)
 	{
+		EnsureDrawActor(World);
+		if (DrawComponent.IsValid()) { DrawComponent->UpdatePathData(Data); }
 		return;
 	}
 
@@ -569,12 +604,16 @@ void FArcPathDebugger::DrawPathInWorld()
 
 	if (!Manager->IsEntityActive(Entity))
 	{
+		EnsureDrawActor(World);
+		if (DrawComponent.IsValid()) { DrawComponent->UpdatePathData(Data); }
 		return;
 	}
 
 	const FTransformFragment* TransformFrag = Manager->GetFragmentDataPtr<FTransformFragment>(Entity);
 	if (!TransformFrag)
 	{
+		EnsureDrawActor(World);
+		if (DrawComponent.IsValid()) { DrawComponent->UpdatePathData(Data); }
 		return;
 	}
 
@@ -583,9 +622,8 @@ void FArcPathDebugger::DrawPathInWorld()
 	constexpr float ZOffset = 50.f;
 	const FVector BasePos = EntityLoc + FVector(0, 0, ZOffset);
 
-	// Draw entity marker
-	DrawDebugSphere(World, BasePos, 25.f, 12, FColor::Cyan, false, -1.f, 0, 2.f);
-	DrawDebugDirectionalArrow(World, BasePos, BasePos + EntityForward * 80.f, 20.f, FColor::Cyan, false, -1.f, 0, 2.f);
+	Data.BasePos = BasePos;
+	Data.EntityForward = EntityForward;
 
 	// --- Move Target ---
 	if (bDrawMoveTarget)
@@ -593,26 +631,13 @@ void FArcPathDebugger::DrawPathInWorld()
 		const FMassMoveTargetFragment* MoveTarget = Manager->GetFragmentDataPtr<FMassMoveTargetFragment>(Entity);
 		if (MoveTarget)
 		{
-			FVector TargetPos = MoveTarget->Center + FVector(0, 0, ZOffset);
-
-			// Draw move target sphere
-			DrawDebugSphere(World, TargetPos, 20.f, 8, FColor(255, 0, 200), false, -1.f, 0, 2.f); // Magenta
-			// Draw forward direction at move target
-			DrawDebugDirectionalArrow(World, TargetPos, TargetPos + MoveTarget->Forward * 60.f, 15.f, FColor(255, 0, 200), false, -1.f, 0, 2.f);
-			// Draw line from entity to move target
-			DrawDebugLine(World, BasePos, TargetPos, FColor(255, 140, 0), false, -1.f, 0, 2.f); // Orange line
-
-			// Draw slack radius
-			if (MoveTarget->SlackRadius > 0.f)
-			{
-				DrawDebugCircle(World, TargetPos, MoveTarget->SlackRadius, 24, FColor(255, 0, 200, 80), false, -1.f, 0, 1.f, FVector(0, 1, 0), FVector(1, 0, 0), false);
-			}
-
-			// Text label
-			FString MoveLabel = FString::Printf(TEXT("Dist: %.0f | Spd: %.0f | %s"),
+			Data.bDrawMoveTarget = true;
+			Data.MoveTargetPos = MoveTarget->Center + FVector(0, 0, ZOffset);
+			Data.MoveTargetForward = MoveTarget->Forward;
+			Data.MoveTargetSlackRadius = MoveTarget->SlackRadius;
+			Data.MoveTargetLabel = FString::Printf(TEXT("Dist: %.0f | Spd: %.0f | %s"),
 				MoveTarget->DistanceToGoal, (float)MoveTarget->DesiredSpeed.Get(),
 				*ArcPathDebuggerLocal::GetMovementActionName(MoveTarget->GetCurrentAction()));
-			DrawDebugString(World, TargetPos + FVector(0, 0, 30.f), MoveLabel, nullptr, FColor::White, -1.f, true, 0.9f);
 		}
 	}
 
@@ -622,7 +647,8 @@ void FArcPathDebugger::DrawPathInWorld()
 		const FMassVelocityFragment* Velocity = Manager->GetFragmentDataPtr<FMassVelocityFragment>(Entity);
 		if (Velocity && !Velocity->Value.IsNearlyZero())
 		{
-			DrawDebugDirectionalArrow(World, BasePos + FVector(0, 0, 2), BasePos + FVector(0, 0, 2) + Velocity->Value, 15.f, FColor::Yellow, false, -1.f, 0, 2.5f);
+			Data.bDrawVelocity = true;
+			Data.Velocity = Velocity->Value;
 		}
 	}
 
@@ -632,14 +658,16 @@ void FArcPathDebugger::DrawPathInWorld()
 		const FMassSteeringFragment* Steering = Manager->GetFragmentDataPtr<FMassSteeringFragment>(Entity);
 		if (Steering && !Steering->DesiredVelocity.IsNearlyZero())
 		{
-			DrawDebugDirectionalArrow(World, BasePos + FVector(0, 0, 4), BasePos + FVector(0, 0, 4) + Steering->DesiredVelocity, 12.f, FColor(255, 105, 180), false, -1.f, 0, 2.f); // Pink
+			Data.bDrawSteering = true;
+			Data.DesiredVelocity = Steering->DesiredVelocity;
 		}
 
 		const FMassStandingSteeringFragment* StandingSteering = Manager->GetFragmentDataPtr<FMassStandingSteeringFragment>(Entity);
 		if (StandingSteering)
 		{
-			FVector StandTarget = StandingSteering->TargetLocation + FVector(0, 0, ZOffset);
-			DrawDebugSphere(World, StandTarget, 15.f, 8, FColor::Orange, false, -1.f, 0, 1.5f);
+			Data.bDrawSteering = true;
+			Data.bHasStandTarget = true;
+			Data.StandTarget = StandingSteering->TargetLocation + FVector(0, 0, ZOffset);
 		}
 	}
 
@@ -649,11 +677,12 @@ void FArcPathDebugger::DrawPathInWorld()
 		const FMassForceFragment* Force = Manager->GetFragmentDataPtr<FMassForceFragment>(Entity);
 		if (Force && !Force->Value.IsNearlyZero())
 		{
-			DrawDebugDirectionalArrow(World, BasePos + FVector(0, 0, 6), BasePos + FVector(0, 0, 6) + Force->Value, 10.f, FColor::Red, false, -1.f, 0, 2.f);
+			Data.bDrawForces = true;
+			Data.ForceValue = Force->Value;
 		}
 	}
 
-	// --- Avoidance (Ghost) ---
+	// --- Ghost + Avoidance Collider ---
 	if (bDrawAvoidance)
 	{
 		const FMassGhostLocationFragment* Ghost = Manager->GetFragmentDataPtr<FMassGhostLocationFragment>(Entity);
@@ -662,28 +691,27 @@ void FArcPathDebugger::DrawPathInWorld()
 			const FMassMoveTargetFragment* MoveTarget = Manager->GetFragmentDataPtr<FMassMoveTargetFragment>(Entity);
 			if (MoveTarget && Ghost->IsValid(MoveTarget->GetCurrentActionID()))
 			{
-				FVector GhostPos = Ghost->Location + FVector(0, 0, ZOffset);
-				DrawDebugSphere(World, GhostPos, 15.f, 8, FColor(180, 180, 180), false, -1.f, 0, 1.5f); // Light grey
-				if (!Ghost->Velocity.IsNearlyZero())
-				{
-					DrawDebugDirectionalArrow(World, GhostPos, GhostPos + Ghost->Velocity, 10.f, FColor(180, 180, 180), false, -1.f, 0, 1.5f);
-				}
+				Data.bHasGhost = true;
+				Data.GhostPos = Ghost->Location + FVector(0, 0, ZOffset);
+				Data.GhostVelocity = Ghost->Velocity;
 			}
 		}
 
 		const FMassAvoidanceColliderFragment* Collider = Manager->GetFragmentDataPtr<FMassAvoidanceColliderFragment>(Entity);
 		if (Collider)
 		{
+			Data.bDrawAvoidance = true;
 			if (Collider->Type == EMassColliderType::Circle)
 			{
-				float Radius = Collider->GetCircleCollider().Radius;
-				DrawDebugCircle(World, BasePos + FVector(0, 0, 1), Radius, 24, FColor::Blue, false, -1.f, 0, 1.f, FVector(0, 1, 0), FVector(1, 0, 0), false);
+				Data.ColliderShape = FArcPathDebugDrawData::EColliderShape::Circle;
+				Data.ColliderRadius = Collider->GetCircleCollider().Radius;
 			}
 			else if (Collider->Type == EMassColliderType::Pill)
 			{
-				FMassPillCollider Pill = Collider->GetPillCollider();
-				DrawDebugCircle(World, BasePos + EntityForward * Pill.HalfLength + FVector(0, 0, 1), Pill.Radius, 24, FColor::Blue, false, -1.f, 0, 1.f, FVector(0, 1, 0), FVector(1, 0, 0), false);
-				DrawDebugCircle(World, BasePos - EntityForward * Pill.HalfLength + FVector(0, 0, 1), Pill.Radius, 24, FColor::Blue, false, -1.f, 0, 1.f, FVector(0, 1, 0), FVector(1, 0, 0), false);
+				const FMassPillCollider Pill = Collider->GetPillCollider();
+				Data.ColliderShape = FArcPathDebugDrawData::EColliderShape::Pill;
+				Data.ColliderRadius = Pill.Radius;
+				Data.PillHalfLength = Pill.HalfLength;
 			}
 		}
 	}
@@ -694,58 +722,114 @@ void FArcPathDebugger::DrawPathInWorld()
 		const FMassNavMeshShortPathFragment* ShortPath = Manager->GetFragmentDataPtr<FMassNavMeshShortPathFragment>(Entity);
 		if (ShortPath && ShortPath->bInitialized && ShortPath->NumPoints > 0)
 		{
-			FColor PathColor = ShortPath->bDone ? FColor::Green : FColor(0, 255, 100);
-			FColor CorridorColor = FColor(255, 255, 0, 180); // Yellow
+			Data.bDrawShortPath = true;
+			Data.PathZOffset = ZOffset;
+			Data.PathPoints.Reserve(ShortPath->NumPoints);
 
-			// Determine corridor color based on path source
-			const FMassNavMeshCachedPathFragment* CachedPath = Manager->GetFragmentDataPtr<FMassNavMeshCachedPathFragment>(Entity);
-			if (CachedPath)
-			{
-				switch (CachedPath->PathSource)
-				{
-				case EMassNavigationPathSource::NavMesh: CorridorColor = FColor::Cyan; break;
-				case EMassNavigationPathSource::Spline: CorridorColor = FColor::Blue; break;
-				default: CorridorColor = FColor(100, 100, 100); break;
-				}
-			}
-
-			// Draw path segments
-			for (uint8 i = 0; i < ShortPath->NumPoints - 1; ++i)
-			{
-				const FMassNavMeshPathPoint& Curr = ShortPath->Points[i];
-				const FMassNavMeshPathPoint& Next = ShortPath->Points[i + 1];
-
-				FVector CurrPos = Curr.Position + FVector(0, 0, ZOffset);
-				FVector NextPos = Next.Position + FVector(0, 0, ZOffset);
-
-				// Center path line
-				DrawDebugLine(World, CurrPos, NextPos, PathColor, false, -1.f, 0, 3.f);
-
-				// Corridor edges
-				DrawDebugLine(World, Curr.Left + FVector(0, 0, ZOffset), Next.Left + FVector(0, 0, ZOffset), CorridorColor, false, -1.f, 0, 1.5f);
-				DrawDebugLine(World, Curr.Right + FVector(0, 0, ZOffset), Next.Right + FVector(0, 0, ZOffset), CorridorColor, false, -1.f, 0, 1.5f);
-			}
-
-			// Draw path points and tangents
 			for (uint8 i = 0; i < ShortPath->NumPoints; ++i)
 			{
-				const FMassNavMeshPathPoint& Point = ShortPath->Points[i];
-				FVector PointPos = Point.Position + FVector(0, 0, ZOffset);
-
-				DrawDebugSphere(World, PointPos, 10.f, 6, PathColor, false, -1.f, 0, 1.5f);
-
-				// Tangent direction
-				FVector Tangent = Point.Tangent.GetVector();
-				DrawDebugDirectionalArrow(World, PointPos, PointPos + Tangent * 50.f, 8.f, FColor(200, 200, 200), false, -1.f, 0, 1.f);
-
-				// Point index label
-				FString PointLabel = FString::Printf(TEXT("%d (%.0f)"), i, (float)Point.Distance.Get());
-				DrawDebugString(World, PointPos + FVector(0, 0, 15.f), PointLabel, nullptr, FColor::White, -1.f, true, 0.7f);
-
-				// Draw corridor cross-lines at each point
-				DrawDebugLine(World, Point.Left + FVector(0, 0, ZOffset), Point.Right + FVector(0, 0, ZOffset), CorridorColor, false, -1.f, 0, 1.f);
+				const FMassNavMeshPathPoint& SrcPoint = ShortPath->Points[i];
+				FArcPathDebugNavPoint& DstPoint = Data.PathPoints.AddDefaulted_GetRef();
+				DstPoint.Position = SrcPoint.Position + FVector(0, 0, ZOffset);
+				DstPoint.Tangent = SrcPoint.Tangent.GetVector();
+				DstPoint.Left = SrcPoint.Left;
+				DstPoint.Right = SrcPoint.Right;
+				DstPoint.Label = FString::Printf(TEXT("%d (%.0f)"), i, (float)SrcPoint.Distance.Get());
 			}
 		}
 	}
+
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
+	{
+		DrawComponent->UpdatePathData(Data);
+	}
 #endif
+}
+
+void FArcPathDebugger::DrawNavMeshOverlay(UWorld* World, FArcPathDebugDrawData& OutData)
+{
+	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	if (!NavSys)
+	{
+		return;
+	}
+
+	ARecastNavMesh* RecastNavMesh = Cast<ARecastNavMesh>(NavSys->GetDefaultNavDataInstance());
+	if (!RecastNavMesh)
+	{
+		return;
+	}
+
+	TArray<FNavTileRef> TileRefs;
+	RecastNavMesh->GetAllNavMeshTiles(TileRefs);
+
+	const FVector ZOff(0.0, 0.0, NavMeshZOffset);
+
+	TArray<FNavPoly> TilePolys;
+	TArray<FVector> PolyVerts;
+
+	for (const FNavTileRef& TileRef : TileRefs)
+	{
+		TilePolys.Reset();
+		if (!RecastNavMesh->GetPolysInTile(TileRef, TilePolys))
+		{
+			continue;
+		}
+
+		for (const FNavPoly& Poly : TilePolys)
+		{
+			PolyVerts.Reset();
+			if (!RecastNavMesh->GetPolyVerts(Poly.Ref, PolyVerts) || PolyVerts.Num() < 3)
+			{
+				continue;
+			}
+
+			FArcPathDebugDrawData::FNavMeshPoly& OutPoly = OutData.NavMeshPolys.AddDefaulted_GetRef();
+			OutPoly.Verts.Reserve(PolyVerts.Num());
+			for (const FVector& Vert : PolyVerts)
+			{
+				OutPoly.Verts.Add(Vert + ZOff);
+			}
+		}
+	}
+
+	OutData.bDrawNavMesh = OutData.NavMeshPolys.Num() > 0;
+}
+
+void FArcPathDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("PathDebuggerDraw"));
+#endif
+
+	UArcPathDebuggerDrawComponent* NewComponent = NewObject<UArcPathDebuggerDrawComponent>(NewActor, UArcPathDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcPathDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

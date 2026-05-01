@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "TargetQuery/ArcTQSContextProvider.h"
+#include "ArcTQSContextProvider.h"
 #include "ArcTQSContextProvider_Areas.generated.h"
 
 /**

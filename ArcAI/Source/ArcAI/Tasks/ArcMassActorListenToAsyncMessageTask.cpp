@@ -15,7 +15,7 @@
 FArcMassActorListenToAsyncMessageTask::FArcMassActorListenToAsyncMessageTask()
 {
 	bShouldCallTick = true;
-	bShouldStateChangeOnReselect = true;
+	bShouldStateChangeOnReselect = false;
 }
 
 bool FArcMassActorListenToAsyncMessageTask::Link(FStateTreeLinker& Linker)

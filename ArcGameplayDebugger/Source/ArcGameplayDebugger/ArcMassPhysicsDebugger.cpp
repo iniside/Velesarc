@@ -3,15 +3,19 @@
 #include "ArcMassPhysicsDebugger.h"
 
 #include "imgui.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
 #include "ArcMass/Physics/ArcMassPhysicsEntityLink.h"
 #include "ArcMass/Physics/ArcMassPhysicsForce.h"
 #include "ArcMass/Physics/ArcMassPhysicsSimulation.h"
 #include "MassCommonFragments.h"
+#include "MassEntityQuery.h"
 #include "MassEntitySubsystem.h"
 #include "MassEntityView.h"
-#include "DrawDebugHelpers.h"
+#include "MassExecutionContext.h"
+#include "ArcMassPhysicsDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "GameFramework/Actor.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -76,6 +80,7 @@ void FArcMassPhysicsDebugger::Uninitialize()
 	DetectedEntity = FMassEntityHandle();
 	DetectedBody = nullptr;
 	bHasHit = false;
+	DestroyDrawActor();
 }
 
 void FArcMassPhysicsDebugger::PerformLineTrace()
@@ -269,6 +274,107 @@ void FArcMassPhysicsDebugger::DrawVisualizationToggles()
 	ImGui::Checkbox("Draw Hit Line", &bDrawHitLine);
 	ImGui::Checkbox("Draw Bounds", &bDrawBounds);
 	ImGui::Checkbox("Draw Collision Shapes", &bDrawCollisionShapes);
+	ImGui::Checkbox("Draw All Physics Bodies", &bDrawAllBodies);
+}
+
+void FArcMassPhysicsDebugger::CollectBodyShapes(FBodyInstance* Body, FColor Color, FArcMassPhysicsDebugDrawData& OutData)
+{
+	if (!Body)
+	{
+		return;
+	}
+
+	UBodySetup* BodySetup = Body->GetBodySetup();
+	if (!BodySetup)
+	{
+		return;
+	}
+
+	const FKAggregateGeom& AggGeom = BodySetup->AggGeom;
+	const FTransform BodyTransform = Body->GetUnrealWorldTransform();
+
+	for (const FKSphereElem& Sphere : AggGeom.SphereElems)
+	{
+		FTransform ShapeTransform = Sphere.GetTransform() * BodyTransform;
+		FArcMassPhysicsDebugDrawData::FShapeSphere ShapeSphere;
+		ShapeSphere.Center = ShapeTransform.GetLocation();
+		ShapeSphere.Radius = Sphere.Radius;
+		ShapeSphere.Color = Color;
+		OutData.CollisionSpheres.Add(ShapeSphere);
+	}
+
+	for (const FKBoxElem& Box : AggGeom.BoxElems)
+	{
+		FTransform ShapeTransform = Box.GetTransform() * BodyTransform;
+		FArcMassPhysicsDebugDrawData::FShapeBox ShapeBox;
+		ShapeBox.Center = ShapeTransform.GetLocation();
+		ShapeBox.Extent = FVector(Box.X, Box.Y, Box.Z);
+		ShapeBox.Rotation = ShapeTransform.GetRotation();
+		ShapeBox.Color = Color;
+		OutData.CollisionBoxes.Add(ShapeBox);
+	}
+
+	for (const FKSphylElem& Capsule : AggGeom.SphylElems)
+	{
+		FTransform ShapeTransform = Capsule.GetTransform() * BodyTransform;
+		FQuat CapsuleRot = ShapeTransform.GetRotation();
+		FArcMassPhysicsDebugDrawData::FShapeCapsule ShapeCapsule;
+		ShapeCapsule.Center = ShapeTransform.GetLocation();
+		ShapeCapsule.HalfHeight = Capsule.Length * 0.5f + Capsule.Radius;
+		ShapeCapsule.Radius = Capsule.Radius;
+		ShapeCapsule.X = CapsuleRot.GetAxisX();
+		ShapeCapsule.Y = CapsuleRot.GetAxisY();
+		ShapeCapsule.Z = CapsuleRot.GetAxisZ();
+		ShapeCapsule.Color = Color;
+		OutData.CollisionCapsules.Add(ShapeCapsule);
+	}
+
+	for (const FKConvexElem& Convex : AggGeom.ConvexElems)
+	{
+		const TArray<FVector>& Vertices = Convex.VertexData;
+		if (Vertices.Num() < 2)
+		{
+			continue;
+		}
+
+		for (int32 i = 0; i < Vertices.Num(); ++i)
+		{
+			FArcMassPhysicsDebugDrawData::FShapeLine Line;
+			Line.Start = BodyTransform.TransformPosition(Vertices[i]);
+			Line.End = BodyTransform.TransformPosition(Vertices[(i + 1) % Vertices.Num()]);
+			Line.Color = Color;
+			OutData.ConvexLines.Add(Line);
+		}
+	}
+}
+
+void FArcMassPhysicsDebugger::CollectAllPhysicsBodies(FArcMassPhysicsDebugDrawData& OutData)
+{
+	namespace MP = Arcx::GameplayDebugger::MassPhysics;
+
+	FMassEntityManager* Manager = MP::GetEntityManager();
+	if (!Manager)
+	{
+		return;
+	}
+
+	FMassExecutionContext ExecContext(*Manager);
+	FMassEntityQuery Query(Manager->AsShared());
+	Query.AddRequirement<FArcMassPhysicsBodyFragment>(EMassFragmentAccess::ReadOnly);
+
+	const FColor AllBodiesColor(180, 180, 50);
+
+	Query.ForEachEntityChunk(ExecContext,
+		[this, &OutData, AllBodiesColor](FMassExecutionContext& Ctx)
+		{
+			TConstArrayView<FArcMassPhysicsBodyFragment> Bodies = Ctx.GetFragmentView<FArcMassPhysicsBodyFragment>();
+
+			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
+			{
+				const FArcMassPhysicsBodyFragment& BodyFrag = Bodies[EntityIt];
+				CollectBodyShapes(BodyFrag.Body, AllBodiesColor, OutData);
+			}
+		});
 }
 
 void FArcMassPhysicsDebugger::DrawWorldVisualization()
@@ -281,100 +387,99 @@ void FArcMassPhysicsDebugger::DrawWorldVisualization()
 		return;
 	}
 
-	if (!bHasHit)
+	if (!bHasHit && !bDrawAllBodies)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
-	FVector HitPoint = CachedHitResult.ImpactPoint;
+	FArcMassPhysicsDebugDrawData Data;
 
-	if (bDrawHitLine)
+	if (bDrawAllBodies)
 	{
-		FVector ViewLocation;
-		FVector ViewDirection;
-		if (MP::GetPlayerViewPoint(ViewLocation, ViewDirection))
-		{
-			DrawDebugLine(World, ViewLocation, HitPoint, FColor::Yellow, false, -1.f, 0, 1.f);
-		}
-
-		FColor SphereColor = DetectedEntity.IsValid() ? FColor::Green : FColor::Red;
-		DrawDebugSphere(World, HitPoint, 15.f, 8, SphereColor, false, -1.f, 0, 1.5f);
+		CollectAllPhysicsBodies(Data);
 	}
 
-	if (DetectedEntity.IsValid())
+	if (bHasHit)
 	{
-		FMassEntityManager* Manager = MP::GetEntityManager();
-		if (Manager && Manager->IsEntityActive(DetectedEntity))
-		{
-			const FTransformFragment* TransformFrag = Manager->GetFragmentDataPtr<FTransformFragment>(DetectedEntity);
-			if (TransformFrag)
-			{
-				FVector EntityLoc = TransformFrag->GetTransform().GetLocation();
+		FVector HitPoint = CachedHitResult.ImpactPoint;
+		Data.HitPoint = HitPoint;
+		Data.HitSphereColor = DetectedEntity.IsValid() ? FColor::Green : FColor::Red;
 
-				if (bDrawBounds)
+		if (bDrawHitLine)
+		{
+			FVector ViewLocation;
+			FVector ViewDirection;
+			if (MP::GetPlayerViewPoint(ViewLocation, ViewDirection))
+			{
+				Data.bDrawHitLine = true;
+				Data.ViewLocation = ViewLocation;
+			}
+		}
+
+		if (DetectedEntity.IsValid())
+		{
+			FMassEntityManager* Manager = MP::GetEntityManager();
+			if (Manager && Manager->IsEntityActive(DetectedEntity))
+			{
+				const FTransformFragment* TransformFrag = Manager->GetFragmentDataPtr<FTransformFragment>(DetectedEntity);
+				if (TransformFrag && bDrawBounds)
 				{
-					DrawDebugBox(World, EntityLoc, FVector(50.f), FColor::Cyan, false, -1.f, 0, 2.f);
+					Data.bDrawBounds = true;
+					Data.EntityLocation = TransformFrag->GetTransform().GetLocation();
 				}
 			}
 		}
+
+		if (bDrawCollisionShapes && DetectedBody)
+		{
+			CollectBodyShapes(DetectedBody, FColor(100, 200, 255), Data);
+		}
 	}
 
-	if (bDrawCollisionShapes && DetectedBody)
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
 	{
-		FTransform BodyTransform = DetectedBody->GetUnrealWorldTransform();
-		DrawCollisionShapes(World, BodyTransform);
+		DrawComponent->UpdatePhysicsDebug(Data);
 	}
 }
 
-void FArcMassPhysicsDebugger::DrawCollisionShapes(UWorld* World, const FTransform& BodyTransform)
+void FArcMassPhysicsDebugger::EnsureDrawActor(UWorld* World)
 {
-	UBodySetup* BodySetup = DetectedBody->GetBodySetup();
-	if (!BodySetup)
+	if (DrawActor.IsValid())
 	{
 		return;
 	}
 
-	const FKAggregateGeom& AggGeom = BodySetup->AggGeom;
-	const FColor ShapeColor = FColor::Magenta;
-
-	for (const FKSphereElem& Sphere : AggGeom.SphereElems)
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
 	{
-		FTransform ShapeTransform = Sphere.GetTransform() * BodyTransform;
-		FVector Center = ShapeTransform.GetLocation();
-		DrawDebugSphere(World, Center, Sphere.Radius, 16, ShapeColor, false, -1.f, 0, 1.f);
+		return;
 	}
 
-	for (const FKBoxElem& Box : AggGeom.BoxElems)
-	{
-		FTransform ShapeTransform = Box.GetTransform() * BodyTransform;
-		FVector Center = ShapeTransform.GetLocation();
-		FQuat Rot = ShapeTransform.GetRotation();
-		FVector Extent(Box.X, Box.Y, Box.Z);
-		DrawDebugBox(World, Center, Extent, Rot, ShapeColor, false, -1.f, 0, 1.f);
-	}
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("MassPhysicsDebuggerDraw"));
+#endif
 
-	for (const FKSphylElem& Capsule : AggGeom.SphylElems)
-	{
-		FTransform ShapeTransform = Capsule.GetTransform() * BodyTransform;
-		FVector Center = ShapeTransform.GetLocation();
-		FQuat Rot = ShapeTransform.GetRotation();
-		DrawDebugCapsule(World, Center, Capsule.Length * 0.5f + Capsule.Radius, Capsule.Radius, Rot, ShapeColor, false, -1.f, 0, 1.f);
-	}
+	UArcMassPhysicsDebuggerDrawComponent* NewComponent = NewObject<UArcMassPhysicsDebuggerDrawComponent>(NewActor, UArcMassPhysicsDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
 
-	for (const FKConvexElem& Convex : AggGeom.ConvexElems)
-	{
-		const TArray<FVector>& Vertices = Convex.VertexData;
-		if (Vertices.Num() < 2)
-		{
-			continue;
-		}
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
 
-		// Draw convex hull edges as wireframe approximation
-		for (int32 i = 0; i < Vertices.Num(); ++i)
-		{
-			FVector V0 = BodyTransform.TransformPosition(Vertices[i]);
-			FVector V1 = BodyTransform.TransformPosition(Vertices[(i + 1) % Vertices.Num()]);
-			DrawDebugLine(World, V0, V1, ShapeColor, false, -1.f, 0, 1.f);
-		}
+void FArcMassPhysicsDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
 	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

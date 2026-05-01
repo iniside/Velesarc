@@ -33,10 +33,10 @@ struct FArcGameplayAbilityWaitInputTaskInstanceData
 	FStateTreeDelegateDispatcher OnInputTriggered;
 
 	UPROPERTY()
-	int32 InputHandle;
+	int32 InputHandle = INDEX_NONE;
 
 	UPROPERTY()
-	int32 ReleasedHandle;
+	int32 ReleasedHandle = INDEX_NONE;
 };
 
 /**

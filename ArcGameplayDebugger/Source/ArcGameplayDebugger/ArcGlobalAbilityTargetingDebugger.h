@@ -1,5 +1,10 @@
 ﻿#pragma once
 
+#include "UObject/WeakObjectPtrTemplates.h"
+
+class AActor;
+class UArcGlobalAbilityTargetingDebuggerDrawComponent;
+
 class FArcGlobalAbilityTargetingDebugger
 {
 public:
@@ -17,4 +22,11 @@ public:
 		TArray<bool> bDrawTargetingTask;
 	};
 	TArray<DrawState> DebugDraw;
+
+private:
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcGlobalAbilityTargetingDebuggerDrawComponent> DrawComponent;
 };

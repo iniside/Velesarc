@@ -90,7 +90,7 @@ AArcItemsTestActor::AArcItemsTestActor()
 	ItemsStore2->SetNetAddressable();
 
 	ItemsStoreNotReplicated = CreateDefaultSubobject<UArcTestItemsStoreComponent>(TEXT("ItemsStoreNotReplicated"));
-	ItemsStoreNotReplicated->bUseSubsystemForItemStore = true;
+	ItemsStoreNotReplicated->bUseSubsystemForItemStore = false;
 	ItemsStoreNotReplicated->SetIsReplicated(false);
 
 	QuickBarComponent = CreateDefaultSubobject<UArcQuickBarComponent>(TEXT("QuickBarComponent"));

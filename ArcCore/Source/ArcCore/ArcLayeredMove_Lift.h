@@ -22,19 +22,19 @@ struct ARCCORE_API FArcLayeredMove_Lift : public FLayeredMoveBase
 
 	// How Long target will stay lift when it reached TargetLocation. Must be smaller than Move Duration
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Mover)
-	float LiftDurationMs;
+	float LiftDurationMs = 0;
 	
 	// Location to Start the MoveTo move from
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Mover)
-	FVector StartLocation;
+	FVector StartLocation = FVector::ZeroVector;
 	
 	// Location to move towards
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Mover)
-	FVector TargetLocation;
+	FVector TargetLocation = FVector::ZeroVector;
 
 	// if true, will restrict speed to where the actor is expected to be (in regard to start, end and duration)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Mover)
-	bool bRestrictSpeedToExpected;
+	bool bRestrictSpeedToExpected = true;
 	
 	// Optional CurveVector used to offset the actor from the path
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Mover)

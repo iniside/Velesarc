@@ -30,6 +30,11 @@
 
 #include "Items/ArcItemsStoreComponent.h"
 
+bool FArcItemStackMethod::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	return false;
+}
+
 FArcItemId FArcItemStackMethod_CanNotStack::StackCheck(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const
 {
 	return FArcItemId::InvalidId;
@@ -43,6 +48,11 @@ bool FArcItemStackMethod_CanNotStack::CanStack(UArcItemsStoreComponent* Owner, c
 bool FArcItemStackMethod_CanNotStack::CanAdd(UArcItemsStoreComponent* Owner, const FArcItemSpec& InSpec) const
 {
 	return true;
+}
+
+bool FArcItemStackMethod_CanNotStack::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	return false;
 }
 
 ///////////////////////////////
@@ -69,6 +79,67 @@ bool FArcItemStackMethod_CanNotStackUnique::CanAdd(UArcItemsStoreComponent* Owne
 	}
 
 	return true;
+}
+
+bool FArcItemStackMethod_CanNotStackUnique::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	const FPrimaryAssetId InDefId = InSpec.GetItemDefinitionId();
+	for (const FArcItemSpec& Existing : ExistingSpecs)
+	{
+		if (Existing.GetItemDefinitionId() == InDefId)
+		{
+			// Duplicate of unique item — reject silently
+			return true;
+		}
+	}
+	return false;
+}
+
+namespace ArcItemStackMethodInternal
+{
+	bool MergeSpecIntoArray(
+		TArray<FArcItemSpec>& ExistingSpecs,
+		FArcItemSpec&& InSpec,
+		int32 MaxStacks)
+	{
+		const FPrimaryAssetId InDefId = InSpec.GetItemDefinitionId();
+		bool bFoundMatch = false;
+		int32 RemainingAmount = static_cast<int32>(InSpec.Amount);
+
+		for (int32 i = 0; i < ExistingSpecs.Num() && RemainingAmount > 0; ++i)
+		{
+			if (ExistingSpecs[i].GetItemDefinitionId() != InDefId)
+			{
+				continue;
+			}
+
+			bFoundMatch = true;
+
+			const int32 CurrentAmount = static_cast<int32>(ExistingSpecs[i].Amount);
+			if (CurrentAmount >= MaxStacks)
+			{
+				continue;
+			}
+
+			const int32 Space = MaxStacks - CurrentAmount;
+			const int32 ToAdd = FMath::Min(Space, RemainingAmount);
+			ExistingSpecs[i].Amount = static_cast<uint16>(CurrentAmount + ToAdd);
+			RemainingAmount -= ToAdd;
+		}
+
+		if (!bFoundMatch)
+		{
+			return false;
+		}
+
+		if (RemainingAmount > 0)
+		{
+			InSpec.Amount = static_cast<uint16>(RemainingAmount);
+			ExistingSpecs.Add(MoveTemp(InSpec));
+		}
+
+		return true;
+	}
 }
 
 ///////////////////////////////
@@ -116,4 +187,10 @@ bool FArcItemStackMethod_StackByType::CanAdd(UArcItemsStoreComponent* Owner, con
 	}
 
 	return true;
+}
+
+bool FArcItemStackMethod_StackByType::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	const int32 Max = FMath::FloorToInt(MaxStacks.GetValue());
+	return ArcItemStackMethodInternal::MergeSpecIntoArray(ExistingSpecs, MoveTemp(InSpec), Max);
 }

@@ -7,6 +7,7 @@
 #include "ArcPlacedEntityEditorMode.generated.h"
 
 class AArcPlacedEntityPartitionActor;
+class AArcAlwaysLoadedEntityActor;
 
 UCLASS()
 class UArcPlacedEntityEditorMode : public UEdMode
@@ -27,14 +28,14 @@ public:
 
 	virtual void BindCommands();
 
-	void SetEditTarget(AArcPlacedEntityPartitionActor* InTarget);
-	AArcPlacedEntityPartitionActor* GetEditTarget() const;
+	void SetEditTarget(AActor* InTarget);
+	AActor* GetEditTarget() const;
 
-	static void EnterEditMode(AArcPlacedEntityPartitionActor* InTarget);
+	static void EnterEditMode(AActor* InTarget);
 	static void ExitEditMode();
 
 private:
 	void ExitModeCommand();
 
-	TWeakObjectPtr<AArcPlacedEntityPartitionActor> EditTarget;
+	TWeakObjectPtr<AActor> EditTarget;
 };

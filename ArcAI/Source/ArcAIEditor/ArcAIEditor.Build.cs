@@ -10,7 +10,8 @@ public class ArcAIEditor : ModuleRules
             new string[]
             {
                 "Core",
-                "ArcAI"
+                "ArcAI",
+                "ArcTargetQuery"
             }
         );
 

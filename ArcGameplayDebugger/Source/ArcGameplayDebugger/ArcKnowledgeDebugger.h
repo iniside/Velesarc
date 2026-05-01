@@ -7,6 +7,7 @@
 #include "GameplayTagContainer.h"
 
 class UArcKnowledgeSubsystem;
+class UArcKnowledgeDebuggerDrawComponent;
 
 class FArcKnowledgeDebugger
 {
@@ -52,6 +53,7 @@ private:
 	void DrawEntryListPanel();
 	void DrawEntryDetailPanel();
 	void DrawWorldVisualization();
+	void EnsureDrawActor(UWorld* World);
 
 	// --- Entry detail sub-sections ---
 	void DrawTagsSection(const FArcKnowledgeEntry& Entry, FArcKnowledgeHandle Handle);
@@ -101,4 +103,8 @@ private:
 	bool bShowClaimPopup = false;
 	TArray<FClaimableEntityEntry> CachedClaimableEntities;
 	char ClaimEntityFilterBuf[256] = {};
+
+	// Draw component
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcKnowledgeDebuggerDrawComponent> DrawComponent;
 };

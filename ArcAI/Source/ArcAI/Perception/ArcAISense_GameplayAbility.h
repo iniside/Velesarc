@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ArcAITypes.h"
 #include "GameplayTagContainer.h"
 #include "Perception/AISense.h"
 #include "Perception/AISenseEvent.h"
@@ -11,11 +12,7 @@
 class IAIPerceptionListenerInterface;
 class UAISenseEvent;
 
-USTRUCT(BlueprintType)
-struct ARCAI_API FArcAIBaseEvent
-{
-	GENERATED_BODY()
-};
+
 USTRUCT(BlueprintType)
 struct ARCAI_API FArcAIGameplayAbilityEvent : public FArcAIBaseEvent
 {	

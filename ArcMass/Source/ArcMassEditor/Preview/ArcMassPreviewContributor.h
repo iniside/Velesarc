@@ -6,6 +6,7 @@
 #include "UObject/ObjectPtr.h"
 #include "PhysicsEngine/AggregateGeom.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "HitProxies.h"
 
 class AActor;
@@ -13,6 +14,7 @@ class FAdvancedPreviewScene;
 class FPrimitiveDrawInterface;
 class UArcMeshEntityVisualizationTrait;
 class UMassEntityTraitBase;
+class UArcSkinnedMeshEntityVisualizationTrait;
 
 struct HArcMassPreviewHitProxy : public HHitProxy
 {
@@ -97,5 +99,49 @@ public:
 private:
 	TObjectPtr<UStaticMeshComponent> PreviewComponent = nullptr;
 	TObjectPtr<UArcMeshEntityVisualizationTrait> CachedTrait = nullptr;
+};
+
+class UArcFastGeoVisualizationTrait;
+
+class FArcFastGeoVisualizationPreviewContributor : public IArcMassPreviewContributor
+{
+public:
+	virtual bool CanContribute(const UMassEntityTraitBase* Trait) const override;
+	virtual void Apply(const UMassEntityTraitBase* Trait, FAdvancedPreviewScene& Scene, AActor* PreviewActor) override;
+	virtual void Clear(FAdvancedPreviewScene& Scene) override;
+	virtual FBox GetBounds() const override;
+
+	virtual int32 GetSelectableCount() const override;
+	virtual FTransform GetSelectableTransform(int32 Index) const override;
+	virtual void SetSelectableTransform(int32 Index, const FTransform& NewTransform) override;
+	virtual UObject* GetMutableTraitObject() const override;
+	virtual int32 GetPreviewPrimitiveCount() const override { return PreviewComponent ? 1 : 0; }
+	virtual UPrimitiveComponent* GetPreviewPrimitive(int32 Index) const override { return (Index == 0) ? PreviewComponent.Get() : nullptr; }
+
+private:
+	TObjectPtr<UStaticMeshComponent> PreviewComponent = nullptr;
+	TObjectPtr<UArcFastGeoVisualizationTrait> CachedTrait = nullptr;
+};
+
+class FArcSkinnedMeshVisualizationPreviewContributor : public IArcMassPreviewContributor
+{
+public:
+	virtual bool CanContribute(const UMassEntityTraitBase* Trait) const override;
+	virtual void Apply(const UMassEntityTraitBase* Trait, FAdvancedPreviewScene& Scene, AActor* PreviewActor) override;
+	virtual void Clear(FAdvancedPreviewScene& Scene) override;
+	virtual FBox GetBounds() const override;
+
+	virtual int32 GetSelectableCount() const override;
+	virtual FTransform GetSelectableTransform(int32 Index) const override;
+	virtual void SetSelectableTransform(int32 Index, const FTransform& NewTransform) override;
+	virtual UObject* GetMutableTraitObject() const override;
+	virtual int32 GetPreviewPrimitiveCount() const override { return PreviewComponent ? 1 : 0; }
+	virtual UPrimitiveComponent* GetPreviewPrimitive(int32 Index) const override { return (Index == 0) ? PreviewComponent.Get() : nullptr; }
+
+	USkeletalMeshComponent* GetPreviewComponent() const { return PreviewComponent; }
+
+private:
+	TObjectPtr<USkeletalMeshComponent> PreviewComponent = nullptr;
+	TObjectPtr<UArcSkinnedMeshEntityVisualizationTrait> CachedTrait = nullptr;
 };
 

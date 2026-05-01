@@ -46,11 +46,6 @@ public:
 		return CurrentAmmo;
 	}
 
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_GunMagazineAmmo::StaticStruct();
-	}
-
 	virtual bool Equals(const FArcItemInstance& Other) const override
 	{
 		const FArcItemInstance_GunMagazineAmmo& OtherInstance = static_cast<const FArcItemInstance_GunMagazineAmmo&>(Other);
@@ -77,4 +72,5 @@ public:
 	{
 		return FArcItemFragment_GunMagazineAmmo::StaticStruct();
 	}
+
 };

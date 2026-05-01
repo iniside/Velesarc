@@ -50,7 +50,6 @@
 #endif
 DEFINE_LOG_CATEGORY(LogItemEntry);
 
-FArcGenericItemIdDelegate FArcItemDataInternal::OnItemRemovedDelegate = FArcGenericItemIdDelegate();
 
 FArcItemData::FArcItemData()
 	: OwnerComponent(nullptr)
@@ -91,13 +90,19 @@ float FArcItemData::GetValueWithLevel(const FArcScalableCurveFloat& InScalableFl
 
 const TArray<const FArcItemData*>& FArcItemData::GetItemsInSockets() const
 {
+	if (OwnerComponent == nullptr)
+	{
+		UE_LOG(LogItemEntry, Warning, TEXT("GetItemsInSockets() called on FArcItemData with no OwnerComponent (Mass context). ItemId=%s"), *ItemId.ToString());
+		return ItemsInSockets;
+	}
+
 	if (ItemsInSockets.Num() != AttachedItems.Num())
 	{
 		ItemsInSockets.Empty();
 		ItemsInSockets.Reserve(AttachedItems.Num());
 		TArray<const FArcItemData*> Attached = GetItemsStoreComponent()->GetItemsAttachedTo(GetItemId());
 		ItemsInSockets.Append(Attached);
-		
+
 	}
 	return ItemsInSockets;
 }
@@ -109,20 +114,25 @@ const FArcItemSpec* FArcItemData::GetSpecPtr() const
 
 const FArcItemData* FArcItemData::GetOwnerPtr() const
 {
-	if (OwnerItemWeakPtr.IsValid())
+	if (OwnerComponent == nullptr)
 	{
-		return OwnerItemWeakPtr.Pin().Get();
+		UE_LOG(LogItemEntry, Warning, TEXT("GetOwnerPtr() called on FArcItemData with no OwnerComponent (Mass context). ItemId=%s"), *ItemId.ToString());
+		return nullptr;
+	}
+
+	if (OwnerItemCachedPtr)
+	{
+		return OwnerItemCachedPtr;
 	}
 
 	if (OwnerId.IsValid() == false)
 	{
-		OwnerItemWeakPtr.Reset();
+		OwnerItemCachedPtr = nullptr;
 		return nullptr;
 	}
 
-	OwnerItemWeakPtr = GetItemsStoreComponent()->GetItemSharedPtr(OwnerId);
-
-	return OwnerItemWeakPtr.Pin().Get();
+	OwnerItemCachedPtr = GetItemsStoreComponent()->GetItemPtr(OwnerId);
+	return OwnerItemCachedPtr;
 }
 
 void FArcItemData::SetItemSpec(const FArcItemSpec& InSpec)
@@ -130,60 +140,39 @@ void FArcItemData::SetItemSpec(const FArcItemSpec& InSpec)
 	Spec = InSpec;
 }
 
-TSharedPtr<FArcItemData> FArcItemData::NewFromSpec(const FArcItemSpec& InSpec)
+FInstancedStruct FArcItemData::NewFromSpec(const FArcItemSpec& InSpec)
 {
-	TSharedPtr<FArcItemData> NewEntry = MakeShareable(new FArcItemData);
+	FInstancedStruct Result = FInstancedStruct::Make<FArcItemData>();
+	FArcItemData* NewEntry = Result.GetMutablePtr<FArcItemData>();
 
 	if (InSpec.ItemId.IsValid() == false)
 	{
-		NewEntry->ItemId = FArcItemId::Generate();	
+		NewEntry->ItemId = FArcItemId::Generate();
 	}
 	else
 	{
-		NewEntry->ItemId = InSpec.ItemId;	
+		NewEntry->ItemId = InSpec.ItemId;
 	}
-	
+
 	NewEntry->ItemDefinition = InSpec.GetItemDefinition();
 	NewEntry->Level = InSpec.Level;
 
-	return NewEntry;
+	return Result;
 }
 
-TSharedPtr<FArcItemData> FArcItemData::Duplicate(UArcItemsStoreComponent* InItemsStore
-											    , const FArcItemData* From
-											    , const bool bPreserveItemId)
+FInstancedStruct FArcItemData::Duplicate(UArcItemsStoreComponent* InItemsStore
+											, const FArcItemData* From
+											, const bool bPreserveItemId)
 {
-	TSharedPtr<FArcItemData> Copy = MakeShareable(new FArcItemData());
+	FInstancedStruct Result = FInstancedStruct::Make<FArcItemData>(*From);
+	FArcItemData* Copy = Result.GetMutablePtr<FArcItemData>();
 
-	const UScriptStruct* DstScriptStruct = Copy->GetScriptStruct();
-	const UScriptStruct* SrcScriptStruct = From->GetScriptStruct();
-
-	const FArcItemData* SrcPolymorphicStruct = From;
-	if (SrcPolymorphicStruct)
-	{
-		CA_ASSUME(SrcScriptStruct != nullptr);
-		FArcItemData* const DstPolymorphicStruct = Copy.Get();
-		if (DstPolymorphicStruct == SrcPolymorphicStruct)
-		{
-			UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal operator= Deep Copy ItemEntry"))
-			SrcScriptStruct->CopyScriptStruct(DstPolymorphicStruct, SrcPolymorphicStruct);
-		}
-		else
-		{
-			if (DstPolymorphicStruct && SrcPolymorphicStruct)
-			{
-				SrcScriptStruct->CopyScriptStruct(DstPolymorphicStruct, SrcPolymorphicStruct);
-				UE_LOG(LogItemArray, Log, TEXT("FArcItemDataInternal operator= Copy Src to Dest %s"), *GetNameSafe(DstPolymorphicStruct->GetItemDefinition()))
-			}
-		}
-	}
-	
 	Copy->ScalableFloatFragments = From->ScalableFloatFragments;
-	
+
 	Copy->AttachedToSlot = FGameplayTag::EmptyTag;
 	Copy->OldAttachedToSlot = FGameplayTag::EmptyTag;
-	
-	return Copy;
+
+	return Result;
 }
 
 void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
@@ -240,9 +229,18 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 		ItemAggregatedTags.AppendTags(Tags->ItemTags);
 	}
 
-	for (const FArcItemInstanceInternal& Inst : ItemInstances.Data)
+	for (FInstancedStruct& Inst : ItemInstances.Data)
 	{
-		InstancedData.Add(Inst.Data->GetScriptStruct()->GetFName(), Inst.Data);
+		if (Inst.IsValid())
+		{
+			FArcItemInstance* Instance = Inst.GetMutablePtr<FArcItemInstance>();
+			if (Instance)
+			{
+				Instance->IC = OwnerComponent;
+				Instance->OwningItem = OwnerItemCachedPtr;
+				InstancedData.Add(Inst.GetScriptStruct(), FStructView(Inst));
+			}
+		}
 	}
 }
 
@@ -312,9 +310,19 @@ const uint8* FArcItemData::FindFragment(UScriptStruct* InStructType) const
 
 void FArcItemData::SetItemInstances(const FArcItemInstanceArray& InInstances)
 {
-	for (const FArcItemInstanceInternal& Inst : InInstances.Data)
+	InstancedData.Reset();
+	for (FInstancedStruct& Inst : ItemInstances.Data)
 	{
-		InstancedData.Add(Inst.Data->GetScriptStruct()->GetFName(), Inst.Data);
+		if (Inst.IsValid())
+		{
+			FArcItemInstance* Instance = Inst.GetMutablePtr<FArcItemInstance>();
+			if (Instance)
+			{
+				Instance->IC = OwnerComponent;
+				Instance->OwningItem = OwnerItemCachedPtr;
+				InstancedData.Add(Inst.GetScriptStruct(), FStructView(Inst));
+			}
+		}
 	}
 }
 
@@ -657,7 +665,7 @@ void FArcItemData::DetachFromItem()
 		}
 	}
 
-	OwnerItemWeakPtr.Reset();
+	OwnerItemCachedPtr = nullptr;
 }
 
 void FArcItemData::PreReplicatedRemove(const FArcItemsArray& InArraySerializer)
@@ -776,7 +784,6 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 	
 	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(OwnerComponent);
 
-	FArcItemData* PreChangeItem = InArraySerializer.ChangedItems.Find(GetItemId());
 	// Clear up old attachment if old owner is valid.
 	if (OldOwnerId.IsValid())
 	{
@@ -858,8 +865,6 @@ void FArcItemData::PostReplicatedChange(const FArcItemsArray& InArraySerializer)
 	}
 	
 	OnItemChanged();
-
-	InArraySerializer.ChangedItems.Remove(ItemId);
 }
 
 const FPrimaryAssetId& FArcItemData::GetItemDefinitionId() const

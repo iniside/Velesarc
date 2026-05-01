@@ -302,17 +302,17 @@ TEST_CLASS(ArcItemSerialization_PersistentInstances, "ArcCore.Persistence")
 		Helper.ItemId = Helper.Item.ItemId;
 
 		// Add a Stacks persistent instance
-		TSharedPtr<FArcItemInstance_Stacks> StacksInstance = ArcItems::AllocateInstance<FArcItemInstance_Stacks>();
-		StacksInstance->SetStacks(10);
-		Helper.Item.InitialInstanceData.Add(StacksInstance);
+		FInstancedStruct StacksInstance = FInstancedStruct::Make<FArcItemInstance_Stacks>();
+		StacksInstance.GetMutablePtr<FArcItemInstance_Stacks>()->SetStacks(10);
+		Helper.Item.InitialInstanceData.Add(MoveTemp(StacksInstance));
 
 		TArray<FArcItemCopyContainerHelper> Loaded = RoundTrip(Source);
 
 		ASSERT_THAT(AreEqual(Loaded.Num(), 1));
 		ASSERT_THAT(AreEqual(Loaded[0].Item.InitialInstanceData.Num(), 1));
-		ASSERT_THAT(IsNotNull(Loaded[0].Item.InitialInstanceData[0].Get()));
+		ASSERT_THAT(IsTrue(Loaded[0].Item.InitialInstanceData[0].IsValid()));
 		ASSERT_THAT(IsTrue(
-			Loaded[0].Item.InitialInstanceData[0]->GetScriptStruct() ==
+			Loaded[0].Item.InitialInstanceData[0].GetScriptStruct() ==
 			FArcItemInstance_Stacks::StaticStruct()));
 	}
 
@@ -338,8 +338,8 @@ TEST_CLASS(ArcItemSerialization_PersistentInstances, "ArcCore.Persistence")
 		Helper.ItemId = Helper.Item.ItemId;
 
 		// Add a base FArcItemInstance which has ShouldPersist() = false
-		TSharedPtr<FArcItemInstance> BaseInstance = ArcItems::AllocateInstance<FArcItemInstance>();
-		Helper.Item.InitialInstanceData.Add(BaseInstance);
+		FInstancedStruct BaseInstance = FInstancedStruct::Make<FArcItemInstance>();
+		Helper.Item.InitialInstanceData.Add(MoveTemp(BaseInstance));
 
 		TArray<FArcItemCopyContainerHelper> Loaded = RoundTrip(Source);
 
@@ -359,18 +359,18 @@ TEST_CLASS(ArcItemSerialization_PersistentInstances, "ArcCore.Persistence")
 		Helper.ItemId = Helper.Item.ItemId;
 
 		// Non-persistent base instance
-		Helper.Item.InitialInstanceData.Add(ArcItems::AllocateInstance<FArcItemInstance>());
+		Helper.Item.InitialInstanceData.Add(FInstancedStruct::Make<FArcItemInstance>());
 		// Persistent stacks instance
-		TSharedPtr<FArcItemInstance_Stacks> Stacks = ArcItems::AllocateInstance<FArcItemInstance_Stacks>();
-		Stacks->SetStacks(5);
-		Helper.Item.InitialInstanceData.Add(Stacks);
+		FInstancedStruct Stacks = FInstancedStruct::Make<FArcItemInstance_Stacks>();
+		Stacks.GetMutablePtr<FArcItemInstance_Stacks>()->SetStacks(5);
+		Helper.Item.InitialInstanceData.Add(MoveTemp(Stacks));
 
 		TArray<FArcItemCopyContainerHelper> Loaded = RoundTrip(Source);
 
 		ASSERT_THAT(AreEqual(Loaded.Num(), 1));
 		ASSERT_THAT(AreEqual(Loaded[0].Item.InitialInstanceData.Num(), 1));
 		ASSERT_THAT(IsTrue(
-			Loaded[0].Item.InitialInstanceData[0]->GetScriptStruct() ==
+			Loaded[0].Item.InitialInstanceData[0].GetScriptStruct() ==
 			FArcItemInstance_Stacks::StaticStruct()));
 	}
 };
@@ -456,9 +456,9 @@ TEST_CLASS(ArcItemSerialization_DataIntegrity, "ArcCore.Persistence")
 			Potion.Item.Level = 1;
 			Potion.ItemId = Potion.Item.ItemId;
 
-			TSharedPtr<FArcItemInstance_Stacks> Stacks = ArcItems::AllocateInstance<FArcItemInstance_Stacks>();
-			Stacks->SetStacks(20);
-			Potion.Item.InitialInstanceData.Add(Stacks);
+			FInstancedStruct Stacks = FInstancedStruct::Make<FArcItemInstance_Stacks>();
+			Stacks.GetMutablePtr<FArcItemInstance_Stacks>()->SetStacks(20);
+			Potion.Item.InitialInstanceData.Add(MoveTemp(Stacks));
 		}
 
 		// Item 3: simple material

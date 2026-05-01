@@ -5,7 +5,6 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Actor.h"
-#include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassEntityTemplateRegistry.h"
 #include "Mesh/MassEngineMeshFragments.h"
@@ -28,7 +27,6 @@
 void UArcEntityVisualizationTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {
 	BuildContext.RequireFragment<FTransformFragment>();
-	BuildContext.RequireFragment<FMassActorFragment>();
 
 	BuildContext.AddFragment<FArcVisRepresentationFragment>();
 	BuildContext.AddTag<FArcVisEntityTag>();
@@ -38,14 +36,6 @@ void UArcEntityVisualizationTrait::BuildTemplate(FMassEntityTemplateBuildContext
 	// Vis config (const shared)
 	const FConstSharedStruct ConfigFragment = EntityManager.GetOrCreateConstSharedFragment(VisualizationConfig);
 	BuildContext.AddConstSharedFragment(ConfigFragment);
-
-	// Actor config (const shared, optional)
-	if (ActorClass)
-	{
-		FArcVisActorConfigFragment ActorConfig;
-		ActorConfig.ActorClass = ActorClass;
-		BuildContext.AddConstSharedFragment(EntityManager.GetOrCreateConstSharedFragment(ActorConfig));
-	}
 
 	if (!bExtractionValid)
 	{

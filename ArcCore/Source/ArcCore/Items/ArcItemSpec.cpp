@@ -27,14 +27,6 @@
 
 #include "Core/ArcCoreAssetManager.h"
 
-#include "Iris/Serialization/PolymorphicNetSerializerImpl.h"
-#include "Iris/ReplicationSystem/ReplicationSystem.h"
-#include "Iris/ReplicationSystem/ReplicationSystemInternal.h"
-#include "Iris/Serialization/InternalNetSerializationContext.h"
-#include "Iris/ReplicationState/PropertyNetSerializerInfoRegistry.h"
-#include "Iris/Serialization/NetReferenceCollector.h"
-#include "Net/UnrealNetwork.h"
-#include "Iris/ReplicationSystem/ReplicationFragmentUtil.h"
 
 DEFINE_LOG_CATEGORY(LogArcItemSpec);
 
@@ -44,7 +36,7 @@ const UArcItemDefinition* FArcItemSpec::GetItemDefinition() const
 	{
 		return ItemDefinition;
 	}
-	const UArcItemDefinition* Item = UArcCoreAssetManager::Get().GetAssetWithBundles<UArcItemDefinition>(ItemDefinitionId, false);
+	const UArcItemDefinition* Item = UArcCoreAssetManager::Get().GetAsset<UArcItemDefinition>(ItemDefinitionId, false);
 	ItemDefinition = Item;
 	return Item;
 }
@@ -57,6 +49,11 @@ FArcItemSpec FArcItemSpec::NewItem(const UArcItemDefinition* NewItem
 	NewEntry.ItemId = FArcItemId::Generate();
 	NewEntry.Level = Level;
 	NewEntry.Amount = Amount;
+	if (NewItem)
+	{
+		NewEntry.ItemDefinition = NewItem;
+		NewEntry.ItemDefinitionId = NewItem->GetPrimaryAssetId();
+	}
 	return NewEntry;
 }
 
@@ -72,80 +69,3 @@ FArcItemSpec FArcItemSpec::NewItem(const FPrimaryAssetId& NewItem, uint8 Level, 
 	return NewEntry;
 }
 
-namespace UE::Net
-{
-	struct FArcItemSpecFragmentInstancesNetSerializer : public TPolymorphicArrayStructNetSerializerImpl<FArcItemSpecFragmentInstances, FArcItemFragment_ItemInstanceBase, FArcItemSpecFragmentInstances::GetArray, FArcItemSpecFragmentInstances::SetArrayNum>
-	{
-		using InternalNetSerializerType = TPolymorphicArrayStructNetSerializerImpl<FArcItemSpecFragmentInstances, FArcItemFragment_ItemInstanceBase, FArcItemSpecFragmentInstances::GetArray, FArcItemSpecFragmentInstances::SetArrayNum>;
-
-		static const uint32 Version = 0;
-		static const ConfigType DefaultConfig;
-
-	private:
-		class FNetSerializerRegistryDelegates final : private UE::Net::FNetSerializerRegistryDelegates
-		{
-		public:
-			FNetSerializerRegistryDelegates();
-			virtual ~FNetSerializerRegistryDelegates();
-
-		private:
-			virtual void OnPreFreezeNetSerializerRegistry() override;
-			virtual void OnPostFreezeNetSerializerRegistry() override;
-			virtual void OnLoadedModulesUpdated() override;
-		};
-
-		static FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates NetSerializerRegistryDelegates;
-		static bool bIsPostFreezeCalled;
-
-	public:
-		static void InitTypeCache();
-	};
-	bool FArcItemSpecFragmentInstancesNetSerializer::bIsPostFreezeCalled = false;
-	FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates FArcItemSpecFragmentInstancesNetSerializer::NetSerializerRegistryDelegates;
-	static const FName PropertyNetSerializerRegistry_NAME_ArcItemSpecFragmentInstances(TEXT("ArcItemSpecFragmentInstances"));
-	UE_NET_IMPLEMENT_NAMED_STRUCT_NETSERIALIZER_INFO(PropertyNetSerializerRegistry_NAME_ArcItemSpecFragmentInstances, FArcItemSpecFragmentInstancesNetSerializer);
-
-	const FArcItemSpecFragmentInstancesNetSerializer::ConfigType FArcItemSpecFragmentInstancesNetSerializer::DefaultConfig;
-
-	UE_NET_IMPLEMENT_SERIALIZER(FArcItemSpecFragmentInstancesNetSerializer);
-	
-	void InitArcItemSpecFragmentInstancesNetSerializerNetSerializerTypeCache()
-	{
-		UE::Net::FArcItemSpecFragmentInstancesNetSerializer::InitTypeCache();
-	}
-
-	void FArcItemSpecFragmentInstancesNetSerializer::InitTypeCache()
-	{
-		// When post freeze is called we expect all custom serializers to have been registered
-		// so that the type cache will get the appropriate serializer when creating the ReplicationStateDescriptor.
-		if (bIsPostFreezeCalled)
-		{
-			InternalNetSerializerType::InitTypeCache<FArcItemSpecFragmentInstancesNetSerializer>();
-		}
-	}
-
-	FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates::FNetSerializerRegistryDelegates()
-		: UE::Net::FNetSerializerRegistryDelegates(EFlags::ShouldBindLoadedModulesUpdatedDelegate)
-	{
-	}
-
-	FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates::~FNetSerializerRegistryDelegates()
-	{
-		UE_NET_UNREGISTER_NETSERIALIZER_INFO(PropertyNetSerializerRegistry_NAME_ArcItemSpecFragmentInstances);
-	}
-
-	void FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates::OnPreFreezeNetSerializerRegistry()
-	{
-		UE_NET_REGISTER_NETSERIALIZER_INFO(PropertyNetSerializerRegistry_NAME_ArcItemSpecFragmentInstances);
-	}
-
-	void FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates::OnPostFreezeNetSerializerRegistry()
-	{
-		bIsPostFreezeCalled = true;
-	}
-
-	void FArcItemSpecFragmentInstancesNetSerializer::FNetSerializerRegistryDelegates::OnLoadedModulesUpdated()
-	{
-		InitArcItemSpecFragmentInstancesNetSerializerNetSerializerTypeCache();
-	}
-}

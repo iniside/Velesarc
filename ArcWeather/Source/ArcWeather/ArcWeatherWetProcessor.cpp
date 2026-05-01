@@ -21,7 +21,7 @@ void UArcWeatherWetProcessor::ConfigureQueries(const TSharedRef<FMassEntityManag
 {
 	EntityQuery.Initialize(EntityManager);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	EntityQuery.AddRequirement<FArcWetConditionFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadOnly);
 	
 	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddSubsystemRequirement<UArcWeatherSubsystem>(EMassFragmentAccess::ReadWrite);

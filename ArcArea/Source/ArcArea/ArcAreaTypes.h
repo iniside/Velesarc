@@ -94,6 +94,10 @@ struct ARCAREA_API FArcAreaSlotRuntime
 
 	UPROPERTY()
 	FMassEntityHandle AssignedEntity;
+
+	/** Copied from the corresponding SmartObject slot's ActivityTags at registration time. */
+	UPROPERTY()
+	FGameplayTagContainer ActivityTags;
 };
 
 /** Runtime per-area data, owned by the subsystem. Single source of truth for area state. */

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "ArcKnowledgeTypes.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSTypes.h"
 
 namespace ArcTQS::Knowledge
 {

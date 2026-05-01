@@ -1,0 +1,35 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1",
+  "FriendlyName": "ArcEconomy",
+  "Description": "Economy simulation system",
+  "Category": "ArcX",
+  "CreatedBy": "Lukasz Baran",
+  "Modules": [
+    {
+      "Name": "ArcEconomy",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "ArcEconomyEditor",
+      "Type": "UncookedOnly",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    { "Name": "ArcCore", "Enabled": true },
+    { "Name": "ArcCraft", "Enabled": true },
+    { "Name": "ArcKnowledge", "Enabled": true },
+    { "Name": "ArcMass", "Enabled": true },
+    { "Name": "ArcAI", "Enabled": true },
+    { "Name": "ArcArea", "Enabled": true },
+    { "Name": "ArcTargetQuery", "Enabled": true },
+    { "Name": "ArcNeeds", "Enabled": true },
+    { "Name": "ArcGameplayInteraction", "Enabled": true },
+    { "Name": "StateTree", "Enabled": true },
+    { "Name": "LearningAgents", "Enabled": true },
+    { "Name": "LearningCore", "Enabled": true }
+  ]
+}

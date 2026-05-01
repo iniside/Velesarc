@@ -2,7 +2,6 @@
 
 #include "ArcMeshEntityVisualizationTrait.h"
 
-#include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassEntityTemplateRegistry.h"
 #include "Mesh/MassEngineMeshFragments.h"
@@ -15,7 +14,6 @@
 void UArcMeshEntityVisualizationTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {
 	BuildContext.RequireFragment<FTransformFragment>();
-	BuildContext.RequireFragment<FMassActorFragment>();
 
 	BuildContext.AddFragment<FArcVisRepresentationFragment>();
 	BuildContext.AddTag<FArcVisEntityTag>();

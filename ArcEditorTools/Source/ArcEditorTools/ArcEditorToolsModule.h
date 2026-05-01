@@ -80,5 +80,7 @@ public:
 
 private:
 	TSharedRef<SDockTab> SpawnMinimapTab(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnMassProcessorBrowserTab(const FSpawnTabArgs& Args);
 	static const FName MinimapTabId;
+	static const FName MassProcessorBrowserTabId;
 };

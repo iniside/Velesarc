@@ -56,15 +56,15 @@ public:
 	FActiveGameplayEffectHandle AppliedEffectHandle;
 
 public:
-	virtual void OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const;
-	virtual void OnItemRemovedFromSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const;
-
-	virtual ~FArcItemFragment_AttributeModifier() override = default;
-
 	virtual UScriptStruct* GetScriptStruct() const override
 	{
 		return FArcItemFragment_AttributeModifier::StaticStruct();
 	}
+
+	virtual void OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const;
+	virtual void OnItemRemovedFromSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const;
+
+	virtual ~FArcItemFragment_AttributeModifier() override = default;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(const UArcItemDefinition* ItemDefinition, class FDataValidationContext& Context) const override;

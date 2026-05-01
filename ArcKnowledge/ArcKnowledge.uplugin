@@ -29,6 +29,6 @@
 		{"Name": "MassGameplay", "Enabled": true},
 		{"Name": "ArcCore", "Enabled": true},
 		{"Name": "ArcMass", "Enabled": true},
-		{"Name": "ArcAI", "Enabled": true}
+		{"Name": "ArcTargetQuery", "Enabled": true}
 	]
 }

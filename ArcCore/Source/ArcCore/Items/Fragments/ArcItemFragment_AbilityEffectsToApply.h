@@ -92,11 +92,6 @@ public:
 		return DefaultEffectSpecs.SpecsArray;
 	}
 	
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_EffectToApply::StaticStruct();
-	}
-	
 	// This should prevent replication at all, since it is always true;
 	virtual bool Equals(const FArcItemInstance& Other) const override
 	{
@@ -133,7 +128,7 @@ public:
 	{
 		return FArcItemFragment_AbilityEffectsToApply::StaticStruct();
 	}
-	
+
 	virtual ~FArcItemFragment_AbilityEffectsToApply() override = default;
 	
 	virtual void OnItemInitialize(const FArcItemData* InItem) const override;

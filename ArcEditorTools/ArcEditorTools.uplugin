@@ -45,6 +45,14 @@
 		{
 			"Name": "ArcInstancedWorld",
 			"Enabled": true
+		},
+		{
+			"Name": "MeshPartition",
+			"Enabled": true
+		},
+		{
+			"Name": "ZoneGraph",
+			"Enabled": true
 		}
 	]
 }

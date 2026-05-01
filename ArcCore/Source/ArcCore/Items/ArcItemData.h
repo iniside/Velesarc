@@ -21,6 +21,8 @@
 
 #pragma once
 #include "ArcItemInstance.h"
+#include "StructUtils/InstancedStruct.h"
+#include "StructUtils/StructView.h"
 #include "ArcMapAbilityEffectSpecContainer.h"
 #include "GameplayTagContainer.h"
 #include "UObject/NoExportTypes.h"
@@ -29,9 +31,6 @@
 #include "Items/ArcItemTypes.h"
 #include "Items/ArcItemSpec.h"
 #include "Items/Fragments/ArcItemFragment.h"
-#include "Iris/ReplicationState/Private/IrisFastArraySerializerInternal.h"
-#include "Iris/Serialization/NetSerializer.h"
-
 #include "ArcItemData.generated.h"
 
 class UScriptStruct;
@@ -61,7 +60,6 @@ struct ARCCORE_API FArcItemData
 	GENERATED_BODY()
 	
 	friend struct FArcItemDataInternalWrapper;
-	friend struct FArcItemDataInternal;
 	friend struct FArcItemsArray;
 	friend struct ArcItemsHelper;
 
@@ -83,7 +81,7 @@ public:
 	UPROPERTY(SaveGame)
 	TArray<FArcItemId> AttachedItems;
 	
-	TMap<FName, TSharedPtr<FArcItemInstance>> InstancedData;
+	TMap<const UScriptStruct*, FStructView> InstancedData;
 	/**
 	 * Items Store component, which currently owns this item.
 	 * Can change over time as Item is moved between components.
@@ -157,7 +155,7 @@ public:
 	/** Handle is valid we item is replicated but it's owner is not. */
 	FDelegateHandle WaitOwnerItemAdded;
 
-	mutable TWeakPtr<FArcItemData> OwnerItemWeakPtr;
+	mutable FArcItemData* OwnerItemCachedPtr = nullptr;
 
 public:
 	FArcItemData& operator=(const FArcItemData& Other)
@@ -209,7 +207,7 @@ public:
 		ItemInstances = MoveTemp(Other.ItemInstances);
 	}
 	
-	virtual ~FArcItemData();
+	~FArcItemData();
 
 	UScriptStruct* GetScriptStruct() const;
 
@@ -240,6 +238,10 @@ public:
 
 	UArcItemsStoreComponent* GetItemsStoreComponent() const
 	{
+		if (OwnerComponent == nullptr)
+		{
+			UE_LOG(LogItemEntry, Warning, TEXT("GetItemsStoreComponent() called on FArcItemData with no OwnerComponent (Mass context). ItemId=%s"), *ItemId.ToString());
+		}
 		return OwnerComponent;
 	}
 	
@@ -257,9 +259,9 @@ public:
 		return AttachedItems;
 	}
 	
-	static TSharedPtr<FArcItemData> NewFromSpec(const FArcItemSpec& InSpec);
-	
-	static TSharedPtr<FArcItemData> Duplicate(UArcItemsStoreComponent* InItemsStore
+	static FInstancedStruct NewFromSpec(const FArcItemSpec& InSpec);
+
+	static FInstancedStruct Duplicate(UArcItemsStoreComponent* InItemsStore
 									   , const FArcItemData* From
 									   , const bool bPreserveItemId);
 	
@@ -295,26 +297,6 @@ public:
 				&& OwnerComponent == Other.OwnerComponent
 				&& ItemDefinition == Other.ItemDefinition
 				&& AttachedItems == Other.AttachedItems;
-	}
-
-	bool operator==(const TSharedPtr<FArcItemData>& Other) const
-	{
-		return *this == *Other.Get();
-	}
-	
-	bool operator!=(const FArcItemData* Other) const
-	{
-		return *this != *Other;
-	}
-	
-	bool operator==(const FArcItemData* Other) const
-	{
-		return *this == *Other;
-	}
-
-	bool operator!=(const TSharedPtr<FArcItemData>& Other) const
-	{
-		return *this != *Other.Get();
 	}
 
 	bool IsValid() const
@@ -461,70 +443,22 @@ struct ARCCORE_API FArcItemDataHandle
 	GENERATED_BODY()
 
 private:
-	TWeakPtr<FArcItemData> ItemData;
+	FArcItemData* ItemData = nullptr;
 
 public:
 	FArcItemDataHandle() = default;
-	FArcItemDataHandle(TSharedPtr<FArcItemData>& InItemData)
+	explicit FArcItemDataHandle(FArcItemData* InItemData)
+		: ItemData(InItemData)
 	{
-		ItemData = InItemData;
 	}
 
-	FArcItemDataHandle(TWeakPtr<FArcItemData>& InItemData)
-	{
-		ItemData = InItemData;
-	}
-	
-	const FArcItemData* operator()() const
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
+	const FArcItemData* Get() const { return ItemData; }
+	FArcItemData* Get() { return ItemData; }
 
-	const FArcItemData* Get() const
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
+	bool IsValid() const { return ItemData != nullptr; }
 
-	FArcItemData* operator()()
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
-
-	FArcItemData* Get()
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
-
-	FArcItemDataHandle& operator=(const FArcItemDataHandle& Other)
-	{
-		ItemData = Other.ItemData;
-		return *this;
-	}
-
-	bool IsValid() const
-	{
-		return ItemData.IsValid();
-	}
-
-	FArcItemData* operator->()
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
-
-	const FArcItemData* operator->() const
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
-	
-	FArcItemData* operator*()
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
-	
-	const FArcItemData* operator*() const
-	{
-		return ItemData.IsValid() ? ItemData.Pin().Get() : nullptr;
-	}
+	const FArcItemData* operator->() const { return ItemData; }
+	FArcItemData* operator->() { return ItemData; }
 };
 
 template <>
@@ -537,8 +471,3 @@ struct TStructOpsTypeTraits<FArcItemDataHandle>
 	};
 };
 
-
-namespace Arcx::Net
-{
-	struct FArcItemDataInternalNetSerializer;
-}

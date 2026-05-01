@@ -22,11 +22,17 @@
 #include "ArcFrontendMVVMModelComponent.h"
 
 #include "ArcCoreGameplayTags.h"
+#include "MVVMGameSubsystem.h"
 #include "MVVMViewModelBase.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/GameFrameworkComponentManager.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/PlayerState.h"
+#include "Pawn/ArcPawnExtensionComponent.h"
 #include "Player/ArcHeroComponentBase.h"
+#include "StructUtils/InstancedStruct.h"
+#include "Types/MVVMViewModelCollection.h"
+#include "Types/MVVMViewModelContext.h"
 
 UObject* UArcFrontendMVVMComponentResolver::CreateInstance(const UClass* ExpectedType
 														   , const UUserWidget* UserWidget
@@ -103,6 +109,67 @@ UWorld* UArcFrontendMVVMModel::GetWorld() const
 	return Comp->GetWorld();
 }
 
+void FArcFrontendMVVMStructModel::CreateViewModels(UArcFrontendMVVMModelComponent& Component)
+{
+	UMVVMViewModelCollectionObject* Collection = Component.GetGlobalViewModelCollection();
+	if (!Collection)
+	{
+		return;
+	}
+
+	for (const FArcViewModelSpec& Spec : ViewModelSpecs)
+	{
+		if (Spec.ContextName.IsNone() || !Spec.ViewModelClass)
+		{
+			continue;
+		}
+
+		UMVVMViewModelBase* VM = NewObject<UMVVMViewModelBase>(&Component, Spec.ViewModelClass);
+
+		FMVVMViewModelContext Context;
+		Context.ContextClass = Spec.ViewModelClass;
+		Context.ContextName = Spec.ContextName;
+		Collection->AddViewModelInstance(Context, VM);
+
+		CachedViewModels.Add(Spec.ContextName, VM);
+	}
+}
+
+void FArcFrontendMVVMStructModel::Initialize(UArcFrontendMVVMModelComponent& Component)
+{
+}
+
+void FArcFrontendMVVMStructModel::Tick(float DeltaTime, UArcFrontendMVVMModelComponent& Component)
+{
+}
+
+void FArcFrontendMVVMStructModel::Deinitialize(UArcFrontendMVVMModelComponent& Component)
+{
+}
+
+UMVVMViewModelBase* FArcFrontendMVVMStructModel::FindCachedViewModel(FName ContextName) const
+{
+	const TObjectPtr<UMVVMViewModelBase>* Found = CachedViewModels.Find(ContextName);
+	return Found ? *Found : nullptr;
+}
+
+UMVVMViewModelCollectionObject* UArcFrontendMVVMModelComponent::GetGlobalViewModelCollection() const
+{
+	UGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
+	if (!GI)
+	{
+		return nullptr;
+	}
+
+	UMVVMGameSubsystem* MVVMSubsystem = GI->GetSubsystem<UMVVMGameSubsystem>();
+	if (!MVVMSubsystem)
+	{
+		return nullptr;
+	}
+
+	return MVVMSubsystem->GetViewModelCollection();
+}
+
 UArcFrontendMVVMModelComponent::UArcFrontendMVVMModelComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -126,8 +193,17 @@ void UArcFrontendMVVMModelComponent::BeginPlay()
 
 void UArcFrontendMVVMModelComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	for (FInstancedStruct& Entry : StructModels)
+	{
+		FArcFrontendMVVMStructModel* StructModel = Entry.GetMutablePtr<FArcFrontendMVVMStructModel>();
+		if (StructModel)
+		{
+			StructModel->Deinitialize(*this);
+		}
+	}
+
 	RequestHandle.Reset();
-	
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -168,17 +244,67 @@ void UArcFrontendMVVMModelComponent::HandleOnGameplayReady(AActor* Actor, FName 
 		
 		if (ModelInstance->bTickForLocalOnly)
 		{
-			ModelTickForAll.Add(ModelInstance);
+			ModelTickLocal.Add(ModelInstance);
 		}
 	}
 
-	if (ModelTickForAll.IsEmpty() && ModelTickLocal.IsEmpty())
+	for (int32 Idx = 0; Idx < StructModels.Num(); ++Idx)
 	{
-		SetComponentTickEnabled(false);
+		FInstancedStruct& Entry = StructModels[Idx];
+		FArcFrontendMVVMStructModel* StructModel = Entry.GetMutablePtr<FArcFrontendMVVMStructModel>();
+		if (!StructModel)
+		{
+			continue;
+		}
+
+		StructModel->CreateViewModels(*this);
+		StructModel->Initialize(*this);
+
+		if (StructModel->bTickForAll)
+		{
+			StructTickForAllIndices.Add(Idx);
+		}
+		if (StructModel->bTickForLocalOnly)
+		{
+			StructTickLocalIndices.Add(Idx);
+		}
 	}
-	else
+
+	bool bNeedsTick = !ModelTickForAll.IsEmpty()
+		|| !ModelTickLocal.IsEmpty()
+		|| !StructTickForAllIndices.IsEmpty()
+		|| !StructTickLocalIndices.IsEmpty();
+	SetComponentTickEnabled(bNeedsTick);
+	
+	bIsDataReady = true;
+	
+	UArcPawnExtensionComponent* PawnExtensionComponent = GetOwner()->FindComponentByClass<UArcPawnExtensionComponent>();
+	if (!PawnExtensionComponent)
 	{
-		SetComponentTickEnabled(true);
+		if (APlayerState* PS = GetOwner<APlayerState>())
+		{
+			APawn* Pawn = PS->GetPawn();
+			if (Pawn)
+			{
+				PawnExtensionComponent = Pawn->FindComponentByClass<UArcPawnExtensionComponent>();
+			}
+		}
+		if (!PawnExtensionComponent)
+		{
+			if (APlayerController* PC = GetOwner<APlayerController>())
+			{
+				APawn* Pawn = PC->GetPawn();
+				if (Pawn)
+				{
+					PawnExtensionComponent = Pawn->FindComponentByClass<UArcPawnExtensionComponent>();
+				}
+			}	
+		}
+	}
+	
+	if (PawnExtensionComponent)
+	{
+		//PawnExtensionComponent->CheckDefaultInitialization();
 	}
 }
 
@@ -199,6 +325,30 @@ void UArcFrontendMVVMModelComponent::TickComponent(float DeltaTime, enum ELevelT
 	for (UArcFrontendMVVMModel* Model : ModelTickForAll)
 	{
 		Model->Tick(DeltaTime);
+	}
+
+	if (APlayerState* StructPS = GetOwner<APlayerState>())
+	{
+		if (StructPS->GetPlayerController())
+		{
+			for (int32 Idx : StructTickLocalIndices)
+			{
+				FArcFrontendMVVMStructModel* StructModel = StructModels[Idx].GetMutablePtr<FArcFrontendMVVMStructModel>();
+				if (StructModel)
+				{
+					StructModel->Tick(DeltaTime, *this);
+				}
+			}
+		}
+	}
+
+	for (int32 Idx : StructTickForAllIndices)
+	{
+		FArcFrontendMVVMStructModel* StructModel = StructModels[Idx].GetMutablePtr<FArcFrontendMVVMStructModel>();
+		if (StructModel)
+		{
+			StructModel->Tick(DeltaTime, *this);
+		}
 	}
 }
 

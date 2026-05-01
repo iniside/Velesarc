@@ -1,0 +1,30 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "0.1",
+    "FriendlyName": "ArcMassReplication",
+    "Description": "Mass-native entity replication through Iris",
+    "Category": "ArcX",
+    "CreatedBy": "Lukasz Baran",
+    "CanContainContent": false,
+    "IsExperimentalVersion": true,
+    "Installed": false,
+    "EditorCustomVirtualPath": "Arcx",
+    "Modules": [
+        {
+            "Name": "ArcMassReplicationRuntime",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        },
+        {
+            "Name": "ArcMassReplicationTest",
+            "Type": "Runtime",
+            "LoadingPhase": "Default",
+            "TargetAllowList": [ "Editor" ]
+        }
+    ],
+    "Plugins": [
+        { "Name": "MassGameplay", "Enabled": true },
+        { "Name": "StructUtils", "Enabled": true }
+    ]
+}

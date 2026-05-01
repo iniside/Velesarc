@@ -3,10 +3,11 @@
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeFilter.h"
 #include "ArcKnowledgeScorer.h"
+#include "ArcKnowledgeQueryCandidate.h"
 #include "ArcKnowledgeQueryDefinition.h"
 #include "ArcKnowledgeEntryDefinition.h"
 #include "AsyncMessageWorldSubsystem.h"
-#include "Mass/EntityHandle.h"
+#include "Mass/EntityFragments.h"
 #include "Engine/World.h"
 
 DECLARE_STATS_GROUP(TEXT("ArcKnowledge"), STATGROUP_ArcKnowledge, STATCAT_Advanced);
@@ -31,10 +32,12 @@ void UArcKnowledgeSubsystem::Deinitialize()
 {
 	EventBroadcaster.Shutdown();
 
+	StaticRTree.Clear();
 	SpatialHash.Clear();
 	Entries.Empty();
 	TagIndex.Empty();
 	SourceEntityIndex.Empty();
+	ClaimerIndex.Empty();
 
 	Super::Deinitialize();
 }
@@ -57,7 +60,7 @@ void UArcKnowledgeSubsystem::Tick(float DeltaTime)
 	const double CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	TArray<FArcKnowledgeHandle> ToRemove;
 
-	for (const auto& Pair : Entries)
+	for (const TPair<FArcKnowledgeHandle, FArcKnowledgeEntry>& Pair : Entries)
 	{
 		if (Pair.Value.Lifetime > 0.0f && (CurrentTime - Pair.Value.Timestamp) >= static_cast<double>(Pair.Value.Lifetime))
 		{
@@ -189,6 +192,18 @@ void UArcKnowledgeSubsystem::RemoveKnowledgeInternal(FArcKnowledgeHandle Handle)
 			if (SourceEntries->IsEmpty())
 			{
 				SourceEntityIndex.Remove(Entry->SourceEntity);
+			}
+		}
+	}
+
+	if (Entry->bClaimed && Entry->ClaimedBy.IsValid())
+	{
+		if (TArray<FArcKnowledgeHandle>* ClaimerEntries = ClaimerIndex.Find(Entry->ClaimedBy))
+		{
+			ClaimerEntries->Remove(Handle);
+			if (ClaimerEntries->IsEmpty())
+			{
+				ClaimerIndex.Remove(Entry->ClaimedBy);
 			}
 		}
 	}
@@ -456,7 +471,7 @@ void UArcKnowledgeSubsystem::GatherCandidates(const FGameplayTagQuery& TagQuery,
 
 	// Tag-only query — iterate all entries and check tags
 	OutCandidates.Reserve(Entries.Num());
-	for (const auto& Pair : Entries)
+	for (const TPair<FArcKnowledgeHandle, FArcKnowledgeEntry>& Pair : Entries)
 	{
 		if (TagQuery.Matches(Pair.Value.Tags))
 		{
@@ -502,9 +517,9 @@ void UArcKnowledgeSubsystem::ExecuteQuery(
 		return;
 	}
 
-	// Phase 2: Filter
-	TArray<FArcKnowledgeQueryResult> ScoredResults;
-	ScoredResults.Reserve(Candidates.Num());
+	// Phase 2: Build candidates from entries
+	TArray<FArcKnowledgeQueryCandidate> QueryCandidates;
+	QueryCandidates.Reserve(Candidates.Num());
 
 	for (const FArcKnowledgeHandle& Handle : Candidates)
 	{
@@ -513,32 +528,105 @@ void UArcKnowledgeSubsystem::ExecuteQuery(
 		{
 			continue;
 		}
+		QueryCandidates.Add(FArcKnowledgeQueryCandidate::FromEntry(*Entry));
+	}
 
-		bool bPassedFilters = true;
-		for (const FInstancedStruct& FilterStruct : Filters)
+	// Phase 2b: Static tier — R-tree spatial acceleration for entries already in TMap
+	if (StaticRTree.GetEntryCount() > 0)
+	{
+		const bool bHasSpatialHint = SpatialRadiusHint > 0.0f && !Context.QueryOrigin.IsZero();
+
+		TArray<FArcKnowledgeRTreeLeafEntry> StaticEntries;
+		if (bHasSpatialHint)
 		{
-			if (const FArcKnowledgeFilter* Filter = FilterStruct.GetPtr<FArcKnowledgeFilter>())
+			StaticRTree.QuerySphere(Context.QueryOrigin, SpatialRadiusHint, FArcKnowledgeTagBitmask(), StaticEntries);
+		}
+		else
+		{
+			FArcKnowledgeRTreeBounds WorldBounds;
+			WorldBounds.Min = FVector(-1e10);
+			WorldBounds.Max = FVector(1e10);
+			StaticRTree.QueryBox(WorldBounds, FArcKnowledgeTagBitmask(), StaticEntries);
+		}
+
+		// Dedup against Phase 1 candidates
+		TSet<FArcKnowledgeHandle> AlreadyGathered;
+		AlreadyGathered.Reserve(Candidates.Num());
+		for (const FArcKnowledgeHandle& Handle : Candidates)
+		{
+			AlreadyGathered.Add(Handle);
+		}
+
+		for (const FArcKnowledgeRTreeLeafEntry& LeafEntry : StaticEntries)
+		{
+			if (!LeafEntry.Handle.IsValid() || AlreadyGathered.Contains(LeafEntry.Handle))
 			{
-				if (!Filter->PassesFilter(*Entry, Context))
+				continue;
+			}
+
+			const FArcKnowledgeEntry* Entry = Entries.Find(LeafEntry.Handle);
+			if (!Entry)
+			{
+				continue;
+			}
+
+			if (!TagQuery.IsEmpty() && !TagQuery.Matches(Entry->Tags))
+			{
+				continue;
+			}
+
+			QueryCandidates.Add(FArcKnowledgeQueryCandidate::FromEntry(*Entry));
+		}
+	}
+
+	if (QueryCandidates.IsEmpty())
+	{
+		return;
+	}
+
+	// Phase 3: Filter — two-pass: mark then remove from end
+	{
+		TArray<int32> IndicesToRemove;
+		for (int32 Index = 0; Index < QueryCandidates.Num(); ++Index)
+		{
+			const FArcKnowledgeQueryCandidate& Candidate = QueryCandidates[Index];
+			for (const FInstancedStruct& FilterStruct : Filters)
+			{
+				if (const FArcKnowledgeFilter* Filter = FilterStruct.GetPtr<FArcKnowledgeFilter>())
 				{
-					bPassedFilters = false;
-					break;
+					if (!Filter->PassesFilter(Candidate, Context))
+					{
+						IndicesToRemove.Add(Index);
+						break;
+					}
 				}
 			}
 		}
 
-		if (!bPassedFilters)
+		// Remove from end to preserve indices
+		for (int32 i = IndicesToRemove.Num() - 1; i >= 0; --i)
 		{
-			continue;
+			QueryCandidates.RemoveAtSwap(IndicesToRemove[i]);
 		}
+	}
 
-		// Phase 3: Score
+	if (QueryCandidates.IsEmpty())
+	{
+		return;
+	}
+
+	// Phase 4: Score
+	TArray<FArcKnowledgeQueryResult> ScoredResults;
+	ScoredResults.Reserve(QueryCandidates.Num());
+
+	for (const FArcKnowledgeQueryCandidate& Candidate : QueryCandidates)
+	{
 		float FinalScore = 1.0f;
 		for (const FInstancedStruct& ScorerStruct : Scorers)
 		{
 			if (const FArcKnowledgeScorer* Scorer = ScorerStruct.GetPtr<FArcKnowledgeScorer>())
 			{
-				float RawScore = FMath::Clamp(Scorer->Score(*Entry, Context), 0.0f, 1.0f);
+				float RawScore = FMath::Clamp(Scorer->Score(Candidate, Context), 0.0f, 1.0f);
 
 				// Apply weight exponent (compensatory scoring)
 				if (Scorer->Weight != 1.0f)
@@ -552,9 +640,13 @@ void UArcKnowledgeSubsystem::ExecuteQuery(
 
 		if (FinalScore > 0.0f)
 		{
-			FArcKnowledgeQueryResult& Result = ScoredResults.AddDefaulted_GetRef();
-			Result.Entry = *Entry;
-			Result.Score = FinalScore;
+			const FArcKnowledgeEntry* Entry = Entries.Find(Candidate.Handle);
+			if (Entry)
+			{
+				FArcKnowledgeQueryResult& Result = ScoredResults.AddDefaulted_GetRef();
+				Result.Score = FinalScore;
+				Result.Entry = *Entry;
+			}
 		}
 	}
 
@@ -563,7 +655,7 @@ void UArcKnowledgeSubsystem::ExecuteQuery(
 		return;
 	}
 
-	// Phase 4: Selection
+	// Phase 5: Selection
 	switch (SelectionMode)
 	{
 	case EArcKnowledgeSelectionMode::HighestScore:
@@ -636,6 +728,7 @@ bool UArcKnowledgeSubsystem::ClaimAdvertisement(FArcKnowledgeHandle Handle, FMas
 
 	Entry->bClaimed = true;
 	Entry->ClaimedBy = Claimer;
+	ClaimerIndex.FindOrAdd(Claimer).Add(Handle);
 
 	BroadcastKnowledgeEvent(EArcKnowledgeEventType::AdvertisementClaimed, *Entry);
 
@@ -650,12 +743,23 @@ void UArcKnowledgeSubsystem::CompleteAdvertisement(FArcKnowledgeHandle Handle)
 		return;
 	}
 
+	// Clean up claimer index before removal or persistence
+	if (Entry->bClaimed && Entry->ClaimedBy.IsValid())
+	{
+		if (TArray<FArcKnowledgeHandle>* ClaimerEntries = ClaimerIndex.Find(Entry->ClaimedBy))
+		{
+			ClaimerEntries->Remove(Handle);
+			if (ClaimerEntries->IsEmpty())
+			{
+				ClaimerIndex.Remove(Entry->ClaimedBy);
+			}
+		}
+	}
+
 	BroadcastKnowledgeEvent(EArcKnowledgeEventType::AdvertisementCompleted, *Entry);
 
 	if (Entry->bPersistent)
 	{
-		// Persistent entries stay with their claim state intact.
-		// Poster or manager must explicitly unclaim to make available again.
 		return;
 	}
 
@@ -670,9 +774,30 @@ bool UArcKnowledgeSubsystem::CancelAdvertisement(FArcKnowledgeHandle Handle)
 		return false;
 	}
 
+	if (Entry->ClaimedBy.IsValid())
+	{
+		if (TArray<FArcKnowledgeHandle>* ClaimerEntries = ClaimerIndex.Find(Entry->ClaimedBy))
+		{
+			ClaimerEntries->Remove(Handle);
+			if (ClaimerEntries->IsEmpty())
+			{
+				ClaimerIndex.Remove(Entry->ClaimedBy);
+			}
+		}
+	}
+
 	Entry->bClaimed = false;
 	Entry->ClaimedBy = FMassEntityHandle();
 	return true;
+}
+
+void UArcKnowledgeSubsystem::GetAdvertisementsClaimedBy(FMassEntityHandle Claimer, TArray<FArcKnowledgeHandle>& OutHandles) const
+{
+	OutHandles.Reset();
+	if (const TArray<FArcKnowledgeHandle>* Handles = ClaimerIndex.Find(Claimer))
+	{
+		OutHandles = *Handles;
+	}
 }
 
 // ====================================================================

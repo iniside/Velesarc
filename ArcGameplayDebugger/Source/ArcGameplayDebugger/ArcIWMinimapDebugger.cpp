@@ -3,7 +3,7 @@
 #include "ArcIWMinimapDebugger.h"
 
 #include "imgui.h"
-#include "DrawDebugHelpers.h"
+#include "ArcIWMinimapDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "ArcInstancedWorld/Visualization/ArcIWVisualizationSubsystem.h"
@@ -121,6 +121,7 @@ void FArcIWMinimapDebugger::Initialize()
 
 void FArcIWMinimapDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 }
 
 // ====================================================================
@@ -179,6 +180,7 @@ void FArcIWMinimapDebugger::Draw()
 	if (!ImGui::Begin("ArcIW Minimap", &bShow, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -645,14 +647,8 @@ void FArcIWMinimapDebugger::DrawEntities()
 		}
 
 		// Determine entity state — skip Game (0) since pass 1 already drew those
-		// 1=Mesh, 2=MeshPhysics, 3=Actor, 4=ActorKeepHydrated,
-		// 5=SimpleMesh, 6=SkinnedMesh, 7=SkinnedMeshPhysics, 8=SimpleSkinnedMesh
+		// 1=Mesh, 2=MeshPhysics, 5=SimpleMesh, 6=SkinnedMesh, 7=SkinnedMeshPhysics, 8=SimpleSkinnedMesh
 		int32 EntityState = 0;
-		if (InstanceFrag->bIsActorRepresentation)
-		{
-			EntityState = InstanceFrag->bKeepHydrated ? 4 : 3;
-		}
-		else
 		{
 			bool bHasActiveISM = false;
 			for (int32 Id : InstanceFrag->ISMInstanceIds)
@@ -927,8 +923,14 @@ void FArcIWMinimapDebugger::DrawViewportOverlay(UWorld* World)
 	FMassEntityManager* EntityManager = GetEntityManager();
 	if (!VisSub || !EntityManager || !World)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
+
+	TArray<FArcIWMinimapDebugDrawEntry> DebugEntries;
 
 	for (TActorIterator<AArcIWMassISMPartitionActor> It(World); It; ++It)
 	{
@@ -954,11 +956,6 @@ void FArcIWMinimapDebugger::DrawViewportOverlay(UWorld* World)
 		const FArcIWInstanceFragment* InstanceFrag = EntityManager->GetFragmentDataPtr<FArcIWInstanceFragment>(Entity);
 		if (InstanceFrag)
 		{
-			if (InstanceFrag->bIsActorRepresentation)
-			{
-				DebugColor = InstanceFrag->bKeepHydrated ? FColor::Magenta : FColor::Blue;
-			}
-			else
 			{
 				bool bHasActiveISM = false;
 				for (int32 Id : InstanceFrag->ISMInstanceIds)
@@ -1033,10 +1030,53 @@ void FArcIWMinimapDebugger::DrawViewportOverlay(UWorld* World)
 			continue;
 		}
 
-		DrawDebugPoint(World, Position, 8.0f, DebugColor, false, -1.0f);
-
-		// Draw small upward line to make points visible in 3D
-		DrawDebugLine(World, Position, Position + FVector(0, 0, 100.0f), DebugColor, false, -1.0f, 0, 1.0f);
+		FArcIWMinimapDebugDrawEntry DebugEntry;
+		DebugEntry.Position = Position;
+		DebugEntry.Color = DebugColor;
+		DebugEntries.Add(DebugEntry);
 	}
 	} // TActorIterator
+
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
+	{
+		DrawComponent->UpdateEntities(DebugEntries);
+	}
+}
+
+void FArcIWMinimapDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("IWMinimapDebuggerDraw"));
+#endif
+
+	UArcIWMinimapDebuggerDrawComponent* NewComponent = NewObject<UArcIWMinimapDebuggerDrawComponent>(NewActor, UArcIWMinimapDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcIWMinimapDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

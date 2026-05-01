@@ -5,7 +5,9 @@
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include "ArcKnowledgeSubsystem.h"
+#include "ArcKnowledgeRTree.h"
 #include "ArcKnowledgeEntry.h"
+#include "GameFramework/Actor.h"
 #include "Engine/World.h"
 
 namespace ArcKnowledgeDebug
@@ -47,44 +49,71 @@ void FGameplayDebuggerCategory_ArcKnowledge::CollectData(APlayerController* Owne
 		return;
 	}
 
-	// Query all knowledge entries (empty tag query matches everything)
-	FArcKnowledgeQuery AllQuery;
-	AllQuery.MaxResults = 500;
-
-	FArcKnowledgeQueryContext QueryContext;
-	QueryContext.QueryOrigin = FVector::ZeroVector;
-	QueryContext.World = const_cast<UWorld*>(World);
-	QueryContext.CurrentTime = World->GetTimeSeconds();
-
-	TArray<FArcKnowledgeQueryResult> AllResults;
-	Subsystem->QueryKnowledge(AllQuery, QueryContext, AllResults);
-
-	// Count claimed entries
-	int32 ClaimedCount = 0;
-	for (const FArcKnowledgeQueryResult& Result : AllResults)
+	// Get debug center for spatial queries
+	FVector DebugCenter = FVector::ZeroVector;
+	if (DebugActor)
 	{
-		if (Result.Entry.bClaimed)
+		DebugCenter = DebugActor->GetActorLocation();
+	}
+
+	constexpr float DebugRadius = 10000.0f;
+	constexpr int32 MaxDebugEntries = 500;
+
+	// ---- Dynamic entries: query via radius to avoid triggering Phase 2b promotion ----
+	TArray<FArcKnowledgeHandle> DynamicHandles;
+	Subsystem->QueryKnowledgeInRadius(DebugCenter, DebugRadius, DynamicHandles, FGameplayTagQuery());
+
+	int32 ClaimedCount = 0;
+	int32 DynamicDrawn = 0;
+	for (const FArcKnowledgeHandle& Handle : DynamicHandles)
+	{
+		const FArcKnowledgeEntry* Entry = Subsystem->GetKnowledgeEntry(Handle);
+		if (!Entry)
+		{
+			continue;
+		}
+
+		if (Entry->bClaimed)
 		{
 			ClaimedCount++;
 		}
+
+		if (DynamicDrawn < MaxDebugEntries)
+		{
+			const FColor EntryColor = Entry->bClaimed
+				? FColor(180, 80, 80)
+				: ArcKnowledgeDebug::TagsToColor(Entry->Tags);
+
+			AddShape(FGameplayDebuggerShape::MakePoint(
+				Entry->Location + FVector(0, 0, 30.0f),
+				10.0f, EntryColor));
+			DynamicDrawn++;
+		}
+	}
+
+	// ---- Static entries: query R-tree directly, no promotion ----
+	const int32 StaticRTreeCount = Subsystem->GetStaticRTree().GetEntryCount();
+	TArray<FArcKnowledgeRTreeLeafEntry> StaticLeafEntries;
+	Subsystem->GetStaticRTree().QuerySphere(DebugCenter, DebugRadius, FArcKnowledgeTagBitmask(), StaticLeafEntries);
+
+	int32 StaticDrawn = 0;
+	for (const FArcKnowledgeRTreeLeafEntry& LeafEntry : StaticLeafEntries)
+	{
+		if (StaticDrawn >= MaxDebugEntries)
+		{
+			break;
+		}
+
+		AddShape(FGameplayDebuggerShape::MakePoint(
+			LeafEntry.Position + FVector(0, 0, 30.0f),
+			6.0f, FColor(80, 180, 80)));
+		StaticDrawn++;
 	}
 
 	// ---- Header ----
 	AddTextLine(FString::Printf(TEXT("{white}Arc Knowledge Debug")));
-	AddTextLine(FString::Printf(TEXT("{white}Total entries: {yellow}%d"), AllResults.Num()));
-	AddTextLine(FString::Printf(TEXT("{white}Claimed advertisements: {yellow}%d"), ClaimedCount));
-
-	// ---- Draw all knowledge entry locations ----
-	for (const FArcKnowledgeQueryResult& Result : AllResults)
-	{
-		const FColor EntryColor = Result.Entry.bClaimed
-			? FColor(180, 80, 80)  // Red-ish for claimed
-			: ArcKnowledgeDebug::TagsToColor(Result.Entry.Tags);
-
-		AddShape(FGameplayDebuggerShape::MakePoint(
-			Result.Entry.Location + FVector(0, 0, 30.0f),
-			10.0f, EntryColor));
-	}
+	AddTextLine(FString::Printf(TEXT("{white}Dynamic nearby: {yellow}%d  {white}Claimed: {yellow}%d"), DynamicHandles.Num(), ClaimedCount));
+	AddTextLine(FString::Printf(TEXT("{white}Static nearby: {green}%d  {white}R-tree total: {green}%d"), StaticLeafEntries.Num(), StaticRTreeCount));
 }
 
 void FGameplayDebuggerCategory_ArcKnowledge::DrawData(

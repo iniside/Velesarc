@@ -4,9 +4,7 @@
 
 #include "ArcMassEntityVisualization.h"
 #include "ArcVisLifecycle.h"
-#include "ArcVisSettings.h"
 #include "DrawDebugHelpers.h"
-#include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassCommands.h"
 #include "MassExecutionContext.h"
@@ -22,6 +20,7 @@
 #include "ArcMass/Physics/ArcMassPhysicsBody.h"
 #include "ArcMass/Physics/ArcMassPhysicsEntityLink.h"
 #include "ArcMass/Physics/ArcMassPhysicsSimulation.h"
+#include "ArcVisProcessorUtils.h"
 // ---------------------------------------------------------------------------
 // UArcVisPlayerCellTrackingProcessor
 // ---------------------------------------------------------------------------
@@ -399,7 +398,6 @@ void UArcVisMeshActivateProcessor::ConfigureQueries(const TSharedRef<FMassEntity
 {
 	EntityQuery.AddRequirement<FArcVisRepresentationFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	EntityQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddConstSharedRequirement<FArcMassVisualizationMeshConfigFragment>(EMassFragmentPresence::All);
@@ -408,7 +406,6 @@ void UArcVisMeshActivateProcessor::ConfigureQueries(const TSharedRef<FMassEntity
 	EntityQuery.AddRequirement<FArcVisISMInstanceFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::None);
 	EntityQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	EntityQuery.AddConstSharedRequirement<FArcVisComponentTransformFragment>(EMassFragmentPresence::Optional);
 }
 
@@ -435,7 +432,6 @@ void UArcVisMeshActivateProcessor::SignalEntities(FMassEntityManager& EntityMana
 		{
 			TArrayView<FArcVisRepresentationFragment> Reps = Ctx.GetMutableFragmentView<FArcVisRepresentationFragment>();
 			TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
-			TArrayView<FMassActorFragment> ActorFrags = Ctx.GetMutableFragmentView<FMassActorFragment>();
 
 			const FArcVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
 			const FArcMassStaticMeshConfigFragment& StaticMeshConfigFrag = Ctx.GetConstSharedFragment<FArcMassStaticMeshConfigFragment>();
@@ -444,7 +440,6 @@ void UArcVisMeshActivateProcessor::SignalEntities(FMassEntityManager& EntityMana
 
 			const FArcVisLifecycleConfigFragment* LifecycleConfig = Ctx.GetConstSharedFragmentPtr<FArcVisLifecycleConfigFragment>();
 			TConstArrayView<FArcVisLifecycleFragment> LifecycleFrags = Ctx.GetFragmentView<FArcVisLifecycleFragment>();
-			TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFrags = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
 			const FArcVisComponentTransformFragment* CompTransformPtr = Ctx.GetConstSharedFragmentPtr<FArcVisComponentTransformFragment>();
 
 			const bool bHasLifecycle = LifecycleFrags.Num() > 0;
@@ -591,15 +586,12 @@ void UArcVisEntityInitObserver::ConfigureQueries(const TSharedRef<FMassEntityMan
 {
 	ObserverQuery.AddRequirement<FArcVisRepresentationFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	ObserverQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddConstSharedRequirement<FArcMassStaticMeshConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddConstSharedRequirement<FArcMassVisualizationMeshConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddConstSharedRequirement<FMassOverrideMaterialsFragment>(EMassFragmentPresence::Optional);
 	ObserverQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
-	ObserverQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	ObserverQuery.AddConstSharedRequirement<FArcMassPhysicsBodyConfigFragment>(EMassFragmentPresence::Optional);
-	ObserverQuery.AddConstSharedRequirement<FArcVisActorConfigFragment>(EMassFragmentPresence::Optional);
 }
 
 void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -616,7 +608,6 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 		return;
 	}
 
-	const bool bEnableActorSwapping = GetDefault<UArcVisSettings>()->bEnableActorSwapping;
 	UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
 
 	TRACE_CPUPROFILER_EVENT_SCOPE(ArcVisEntityInit);
@@ -625,21 +616,15 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 	TArray<FMassEntityHandle> PhysicsActivateEntities;
 
 	ObserverQuery.ForEachEntityChunk(Context,
-		[&EntityManager, Subsystem, World, bEnableActorSwapping, &ActivateEntities, &PhysicsActivateEntities](FMassExecutionContext& Ctx)
+		[&EntityManager, Subsystem, World, &ActivateEntities, &PhysicsActivateEntities](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcVisRepresentationFragment> Reps = Ctx.GetMutableFragmentView<FArcVisRepresentationFragment>();
 			TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
-			TArrayView<FMassActorFragment> ActorFrags = Ctx.GetMutableFragmentView<FMassActorFragment>();
 
 			const FArcVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
-			const FArcVisActorConfigFragment* ActorConfigPtr = Ctx.GetConstSharedFragmentPtr<FArcVisActorConfigFragment>();
-			TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFrags = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
-			const bool bHasPrePlaced = PrePlacedFrags.Num() > 0;
-			const FArcVisualizationGrid& MeshGrid = Subsystem->GetMeshGrid();
 
 			const FArcMassPhysicsBodyConfigFragment* PhysicsConfigPtr = Ctx.GetConstSharedFragmentPtr<FArcMassPhysicsBodyConfigFragment>();
 			const bool bHasPhysicsConfig = PhysicsConfigPtr && PhysicsConfigPtr->BodySetup;
-			const FArcVisualizationGrid& PhysicsGrid = Subsystem->GetPhysicsGrid();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -647,50 +632,10 @@ void UArcVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMass
 				const FTransformFragment& TransformFrag = Transforms[EntityIt];
 				FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
-				// 1. Register in mesh grid
 				const FVector WorldPos = TransformFrag.GetTransform().GetLocation();
-				Rep.MeshGridCoords = MeshGrid.WorldToCell(WorldPos);
-				Subsystem->RegisterMeshEntity(Entity, WorldPos);
+				ArcMass::Visualization::RegisterEntityInGrids(*Subsystem, Entity, WorldPos, Rep, bHasPhysicsConfig);
 
-				// 2. Register in physics grid (if entity has physics config)
-				if (bHasPhysicsConfig)
-				{
-					Rep.PhysicsGridCoords = PhysicsGrid.WorldToCell(WorldPos);
-					Subsystem->RegisterPhysicsEntity(Entity, WorldPos);
-				}
-
-				// 3. Handle pre-placed actors
-				if (bHasPrePlaced)
-				{
-					const FArcVisPrePlacedActorFragment& PrePlaced = PrePlacedFrags[EntityIt];
-					AActor* PrePlacedActor = PrePlaced.PrePlacedActor.Get();
-					if (PrePlacedActor)
-					{
-						if (bEnableActorSwapping && ActorConfigPtr && ActorConfigPtr->ActorClass)
-						{
-							// Actor-tier enabled: hide for now, will be shown on activate
-							PrePlacedActor->SetActorHiddenInGame(true);
-							PrePlacedActor->SetActorEnableCollision(false);
-						}
-						else
-						{
-							// Actor-tier disabled: destroy immediately
-							PrePlacedActor->Destroy();
-						}
-					}
-				}
-
-				// 4. If in active mesh cell, queue for activation
-				if (Subsystem->IsMeshActiveCellCoord(Rep.MeshGridCoords))
-				{
-					ActivateEntities.Add(Entity);
-				}
-
-				// 5. If in active physics cell, queue for physics activation
-				if (bHasPhysicsConfig && Subsystem->IsPhysicsActiveCellCoord(Rep.PhysicsGridCoords))
-				{
-					PhysicsActivateEntities.Add(Entity);
-				}
+				ArcMass::Visualization::CollectActivationSignals(*Subsystem, Rep, Entity, bHasPhysicsConfig, ActivateEntities, PhysicsActivateEntities);
 			}
 		});
 
@@ -722,11 +667,9 @@ void UArcVisEntityDeinitObserver::ConfigureQueries(const TSharedRef<FMassEntityM
 {
 	ObserverQuery.AddRequirement<FArcVisRepresentationFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	ObserverQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcVisEntityTag>(EMassFragmentPresence::All);
 	ObserverQuery.AddRequirement<FArcVisISMInstanceFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	ObserverQuery.AddRequirement<FArcVisPrePlacedActorFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 	ObserverQuery.AddConstSharedRequirement<FArcMassPhysicsBodyConfigFragment>(EMassFragmentPresence::Optional);
 	ObserverQuery.AddRequirement<FArcMassPhysicsBodyFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
 }
@@ -751,9 +694,7 @@ void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMa
 		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcVisRepresentationFragment> Reps = Ctx.GetMutableFragmentView<FArcVisRepresentationFragment>();
-			TArrayView<FMassActorFragment> ActorFrags = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			TConstArrayView<FArcVisISMInstanceFragment> ISMInstanceFrags = Ctx.GetFragmentView<FArcVisISMInstanceFragment>();
-			TConstArrayView<FArcVisPrePlacedActorFragment> PrePlacedFrags = Ctx.GetFragmentView<FArcVisPrePlacedActorFragment>();
 
 			const FArcMassPhysicsBodyConfigFragment* PhysicsConfigPtr = Ctx.GetConstSharedFragmentPtr<FArcMassPhysicsBodyConfigFragment>();
 			const bool bHasPhysicsConfig = PhysicsConfigPtr && PhysicsConfigPtr->BodySetup;
@@ -761,7 +702,6 @@ void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMa
 			const bool bHasPhysicsBody = PhysicsBodyFrags.Num() > 0;
 
 			const bool bHasISMInstance = ISMInstanceFrags.Num() > 0;
-			const bool bHasPrePlaced = PrePlacedFrags.Num() > 0;
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -779,26 +719,7 @@ void UArcVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManager, FMa
 					}
 				}
 
-				// 2. Actor cleanup
-				if (Rep.bIsActorRepresentation)
-				{
-					FMassActorFragment& ActorFrag = ActorFrags[EntityIt];
-					AActor* Actor = ActorFrag.GetMutable();
-					if (Actor && ActorFrag.IsOwnedByMass())
-					{
-						Actor->Destroy();
-					}
-					ActorFrag.ResetAndUpdateHandleMap();
-				}
-
-				// 3. Unregister from mesh grid
-				Subsystem->UnregisterMeshEntity(Entity, Rep.MeshGridCoords);
-
-				// 4. Unregister from physics grid and terminate physics body
-				if (bHasPhysicsConfig)
-				{
-					Subsystem->UnregisterPhysicsEntity(Entity, Rep.PhysicsGridCoords);
-				}
+				ArcMass::Visualization::UnregisterEntityFromGrids(*Subsystem, Entity, Rep, bHasPhysicsConfig);
 
 				if (bHasPhysicsBody)
 				{

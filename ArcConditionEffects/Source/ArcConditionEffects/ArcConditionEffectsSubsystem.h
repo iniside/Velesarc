@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "ArcConditionTypes.h"
 #include "ArcConditionEffectsConfig.h"
+#include "ArcConditionMassEffectsConfig.h"
 #include "Subsystems/WorldSubsystem.h"
 
 #include "ArcConditionEffectsSubsystem.generated.h"
@@ -63,6 +64,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcConditions")
 	UArcConditionEffectsConfig* GetEffectsConfig() const { return EffectsConfig; }
 
+	UFUNCTION(BlueprintCallable, Category = "ArcConditions")
+	void SetMassEffectsConfig(UArcConditionMassEffectsConfig* Config);
+
+	UFUNCTION(BlueprintCallable, Category = "ArcConditions")
+	UArcConditionMassEffectsConfig* GetMassEffectsConfig() const { return MassEffectsConfig; }
+
 	// -- Delegates ------------------------------------------------------------
 
 	UPROPERTY(BlueprintAssignable, Category = "ArcConditions")
@@ -89,4 +96,7 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UArcConditionEffectsConfig> EffectsConfig;
+
+	UPROPERTY()
+	TObjectPtr<UArcConditionMassEffectsConfig> MassEffectsConfig;
 };

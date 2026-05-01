@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include "ArcSmartObjectPlanRequestHandle.h"
+#include "ArcSmartObjectPlanSensor.h"
 #include "GameplayTagContainer.h"
 #include "Mass/EntityHandle.h"
+#include "StructUtils/InstancedStruct.h"
 #include "StructUtils/StructView.h"
 
 #include "ArcSmartObjectPlanRequest.generated.h"
@@ -24,7 +26,9 @@ public:
 	FMassEntityHandle RequestingEntity;
 	
 	TArray<FConstStructView> CustomConditionsArray;
-	
+
+	TArray<TInstancedStruct<FArcSmartObjectPlanSensor>> SensorsArray;
+
 	FGameplayTagContainer InitialTags;
 	
 	UPROPERTY()

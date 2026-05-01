@@ -10,13 +10,6 @@
 
 namespace
 {
-	template<typename ConfigType>
-	const FArcConditionConfig* GetOptionalConfig(FMassExecutionContext& Ctx)
-	{
-		const ConfigType* Cfg = Ctx.GetConstSharedFragmentPtr<ConfigType>();
-		return Cfg ? &Cfg->Config : nullptr;
-	}
-
 	// -----------------------------------------------------------------------
 	// Bleeding Application — blocked by Burning and Frozen
 	// -----------------------------------------------------------------------
@@ -116,22 +109,8 @@ void UArcBiologicalConditionProcessor::InitializeInternal(UObject& Owner, const 
 
 void UArcBiologicalConditionProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	// Biological conditions
-	EntityQuery.AddRequirement<FArcBleedingConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcPoisonedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcDiseasedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcWeakenedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-
-	// Cross-domain reads (thermal state affects biological application)
-	EntityQuery.AddRequirement<FArcBurningConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcChilledConditionFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-
-	// Configs
-	EntityQuery.AddConstSharedRequirement<FArcBleedingConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcPoisonedConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcDiseasedConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcWeakenedConditionConfig>(EMassFragmentPresence::Optional);
-	
+	EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddConstSharedRequirement<FArcConditionConfigsShared>(EMassFragmentPresence::All);
 	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
@@ -173,19 +152,8 @@ void UArcBiologicalConditionProcessor::SignalEntities(FMassEntityManager& Entity
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityRequestMap, &StateChangedEntities, &OverloadChangedEntities](FMassExecutionContext& Ctx)
 		{
-			TArrayView<FArcBleedingConditionFragment> BleedingFrags = Ctx.GetMutableFragmentView<FArcBleedingConditionFragment>();
-			TArrayView<FArcPoisonedConditionFragment> PoisonedFrags = Ctx.GetMutableFragmentView<FArcPoisonedConditionFragment>();
-			TArrayView<FArcDiseasedConditionFragment> DiseasedFrags = Ctx.GetMutableFragmentView<FArcDiseasedConditionFragment>();
-			TArrayView<FArcWeakenedConditionFragment> WeakenedFrags = Ctx.GetMutableFragmentView<FArcWeakenedConditionFragment>();
-
-			// Cross-domain reads
-			TConstArrayView<FArcBurningConditionFragment> BurningFrags = Ctx.GetFragmentView<FArcBurningConditionFragment>();
-			TConstArrayView<FArcChilledConditionFragment> ChilledFrags = Ctx.GetFragmentView<FArcChilledConditionFragment>();
-
-			const FArcConditionConfig* BleedingCfg = GetOptionalConfig<FArcBleedingConditionConfig>(Ctx);
-			const FArcConditionConfig* PoisonedCfg = GetOptionalConfig<FArcPoisonedConditionConfig>(Ctx);
-			const FArcConditionConfig* DiseasedCfg = GetOptionalConfig<FArcDiseasedConditionConfig>(Ctx);
-			const FArcConditionConfig* WeakenedCfg = GetOptionalConfig<FArcWeakenedConditionConfig>(Ctx);
+			TArrayView<FArcConditionStatesFragment> CondFrags = Ctx.GetMutableFragmentView<FArcConditionStatesFragment>();
+			const FArcConditionConfigsShared& Configs = Ctx.GetConstSharedFragment<FArcConditionConfigsShared>();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -193,15 +161,19 @@ void UArcBiologicalConditionProcessor::SignalEntities(FMassEntityManager& Entity
 				TArray<FArcConditionApplicationRequest*>* Requests = EntityRequestMap.Find(Entity);
 				if (!Requests) { continue; }
 
-				const int32 Idx = *EntityIt;
+				FArcConditionStatesFragment& Frag = CondFrags[EntityIt];
+				FArcConditionState* Bleeding = &Frag.States[(int32)EArcConditionType::Bleeding];
+				FArcConditionState* Poisoned = &Frag.States[(int32)EArcConditionType::Poisoned];
+				FArcConditionState* Diseased = &Frag.States[(int32)EArcConditionType::Diseased];
+				FArcConditionState* Weakened = &Frag.States[(int32)EArcConditionType::Weakened];
 
-				FArcConditionState* Bleeding = !BleedingFrags.IsEmpty() ? &BleedingFrags[Idx].State : nullptr;
-				FArcConditionState* Poisoned = !PoisonedFrags.IsEmpty() ? &PoisonedFrags[Idx].State : nullptr;
-				FArcConditionState* Diseased = !DiseasedFrags.IsEmpty() ? &DiseasedFrags[Idx].State : nullptr;
-				FArcConditionState* Weakened = !WeakenedFrags.IsEmpty() ? &WeakenedFrags[Idx].State : nullptr;
+				const FArcConditionState* Burning = &Frag.States[(int32)EArcConditionType::Burning];
+				const FArcConditionState* Chilled = &Frag.States[(int32)EArcConditionType::Chilled];
 
-				const FArcConditionState* Burning = !BurningFrags.IsEmpty() ? &BurningFrags[Idx].State : nullptr;
-				const FArcConditionState* Chilled = !ChilledFrags.IsEmpty() ? &ChilledFrags[Idx].State : nullptr;
+				const FArcConditionConfig* BleedingCfg = &Configs.Configs[(int32)EArcConditionType::Bleeding];
+				const FArcConditionConfig* PoisonedCfg = &Configs.Configs[(int32)EArcConditionType::Poisoned];
+				const FArcConditionConfig* DiseasedCfg = &Configs.Configs[(int32)EArcConditionType::Diseased];
+				const FArcConditionConfig* WeakenedCfg = &Configs.Configs[(int32)EArcConditionType::Weakened];
 
 				// Snapshot
 				auto Snapshot = [](const FArcConditionState* S) -> TPair<bool, EArcConditionOverloadPhase>

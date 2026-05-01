@@ -2,7 +2,6 @@
 
 #include "PlacedEntities/ArcPlacedEntityEditorMode.h"
 
-#include "ArcMass/PlacedEntities/ArcPlacedEntityPartitionActor.h"
 #include "EditorModeManager.h"
 #include "EditorModes.h"
 #include "LevelEditor.h"
@@ -64,17 +63,17 @@ void UArcPlacedEntityEditorMode::ExitModeCommand()
 	ExitEditMode();
 }
 
-void UArcPlacedEntityEditorMode::SetEditTarget(AArcPlacedEntityPartitionActor* InTarget)
+void UArcPlacedEntityEditorMode::SetEditTarget(AActor* InTarget)
 {
 	EditTarget = InTarget;
 }
 
-AArcPlacedEntityPartitionActor* UArcPlacedEntityEditorMode::GetEditTarget() const
+AActor* UArcPlacedEntityEditorMode::GetEditTarget() const
 {
 	return EditTarget.Get();
 }
 
-void UArcPlacedEntityEditorMode::EnterEditMode(AArcPlacedEntityPartitionActor* InTarget)
+void UArcPlacedEntityEditorMode::EnterEditMode(AActor* InTarget)
 {
 	if (!InTarget)
 	{

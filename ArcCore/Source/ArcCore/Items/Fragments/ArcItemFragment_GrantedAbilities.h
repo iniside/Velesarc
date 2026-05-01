@@ -65,16 +65,6 @@ protected:
 	FGameplayTag SlotId;
 	
 public:
-	virtual TSharedPtr<FArcItemInstance> Duplicate() const override
-	{
-		return ArcItems::AllocateInstance<FArcItemInstance_GrantedAbilities>();
-	}
-
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_GrantedAbilities::StaticStruct();
-	}
-
 	const TArray<FGameplayAbilitySpecHandle> GetGrantedAbilities() const
 	{
 		return GrantedAbilities;
@@ -138,7 +128,7 @@ public:
 	{
 		return FArcItemFragment_GrantedAbilities::StaticStruct();
 	}
-	
+
 public:
 	virtual void OnItemAddedToSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const override;
 	virtual void OnItemRemovedFromSlot(const FArcItemData* InItem, const FGameplayTag& InSlotId) const override;

@@ -14,6 +14,14 @@
 		{
 			"Name": "ArcMass",
 			"Enabled": true
+		},
+		{
+			"Name": "StructUtils",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassAbilities",
+			"Enabled": true
 		}
 	],
 	"Modules": [
@@ -21,6 +29,12 @@
 			"Name": "ArcConditionEffects",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcConditionEffectsTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
 		}
 	]
 }

@@ -52,6 +52,11 @@ public class ArcMassEditor : ModuleRules
                 , "LevelEditor"
                 , "InteractiveToolsFramework"
                 , "EditorInteractiveToolsFramework"
+                , "EditorSubsystem"
+                , "TypedElementRuntime"
+                , "TypedElementFramework"
+                , "WorkspaceMenuStructure"
+                , "PCG"
             }
         );
     }

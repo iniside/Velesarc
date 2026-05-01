@@ -11,6 +11,7 @@
 #include "MassSpawnerSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
 #include "ArcMass/Persistence/ArcMassPersistence.h"
+#include "ArcMass/ArcMassFragments.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcSpawnEntitiesTask)
 
@@ -64,7 +65,16 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 	}
 
 	const int32 NumLocations = Locations.Num();
-	const int32 SpawnCount = InstanceData.Count;
+	int32 SpawnCount = InstanceData.Count;
+
+	if (NumLocations > 0 && SpawnCount > NumLocations)
+	{
+		UE_LOG(LogArcEntitySpawner, Warning,
+			TEXT("FArcSpawnEntitiesTask: Requested %d entities but only %d spawn locations available — clamping. "
+				 "Configure the query to return enough results (e.g. TopN or AllPassing mode)."),
+			SpawnCount, NumLocations);
+		SpawnCount = NumLocations;
+	}
 
 	// Read spawner's PersistenceGuid for stamping on spawned entities
 	FGuid SpawnerPersistenceGuid;
@@ -87,9 +97,18 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 
 		if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntity))
 		{
-			if (NumLocations > 0)
+			if (i < NumLocations)
 			{
-				TransformFrag->GetMutableTransform().SetLocation(Locations[i % NumLocations]);
+				FVector SpawnLocation = Locations[i];
+
+				const FArcAgentCapsuleFragment* CapsuleFrag =
+					EntityManager.GetFragmentDataPtr<FArcAgentCapsuleFragment>(SpawnedEntity);
+				if (CapsuleFrag)
+				{
+					SpawnLocation.Z += CapsuleFrag->HalfHeight;
+				}
+
+				TransformFrag->GetMutableTransform().SetLocation(SpawnLocation);
 			}
 		}
 

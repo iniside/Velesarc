@@ -32,7 +32,7 @@ struct ARCCORE_API FArcInteractionAcquiredMessage
 	FMassEntityHandle EntityHandle;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
-	FVector Location;
+	FVector Location = FVector::ZeroVector;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
 	FInteractionQueryResults QueryResults;

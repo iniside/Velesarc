@@ -22,6 +22,7 @@
 #include "ArcCraft/Recipe/ArcRecipeDefinition.h"
 
 #include "ArcJsonIncludes.h"
+#include "Engine/AssetManager.h"
 #include "GameplayEffect.h"
 #include "Abilities/GameplayAbility.h"
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
@@ -280,8 +281,58 @@ void UArcRecipeDefinition::PreSave(FObjectPreSaveContext SaveContext)
 		RecipeId = FGuid::NewGuid();
 	}
 
+#if WITH_EDITORONLY_DATA
+	UpdateAssetBundleData();
+
+	if (UAssetManager::IsInitialized())
+	{
+		UAssetManager::Get().RefreshAssetData(this);
+	}
+#endif
+
 	Super::PreSave(SaveContext);
 }
+
+void UArcRecipeDefinition::PostLoad()
+{
+	Super::PostLoad();
+
+#if WITH_EDITORONLY_DATA
+	FAssetBundleData OldData = AssetBundleData;
+	UpdateAssetBundleData();
+
+	if (UAssetManager::IsInitialized() && OldData != AssetBundleData)
+	{
+		UAssetManager::Get().RefreshAssetData(this);
+	}
+#endif
+}
+
+#if WITH_EDITORONLY_DATA
+void UArcRecipeDefinition::UpdateAssetBundleData()
+{
+	if (!UAssetManager::IsInitialized())
+	{
+		return;
+	}
+
+	UAssetManager& Manager = UAssetManager::Get();
+
+	AssetBundleData.Reset();
+	Manager.InitializeAssetBundlesFromMetadata(this, AssetBundleData);
+
+	// Manually resolve OutputItemDefinition (FPrimaryAssetId) into the "Game" bundle.
+	// InitializeAssetBundlesFromMetadata only scans TSoftObjectPtr/TSoftClassPtr properties.
+	if (OutputItemDefinition.IsValid())
+	{
+		FSoftObjectPath OutputPath = Manager.GetPrimaryAssetPath(OutputItemDefinition.AssetId);
+		if (!OutputPath.IsNull())
+		{
+			AssetBundleData.AddBundleAsset(FName(TEXT("Game")), OutputPath.GetAssetPath());
+		}
+	}
+}
+#endif
 
 void UArcRecipeDefinition::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 {

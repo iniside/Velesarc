@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "MassEntityTraitBase.h"
 #include "Mass/EntityElementTypes.h"
-#include "MassExternalSubsystemTraits.h"
+#include "Mass/ExternalSubsystemTraits.h"
 #include "MassObserverProcessor.h"
 #include "StructUtils/InstancedStruct.h"
 
@@ -69,7 +69,7 @@ class ARCMASS_API UArcMassActionTrait : public UMassEntityTraitBase
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Actions")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Actions", meta = (ForceInlineRow))
 	TMap<FName, FArcMassActionTraitEntry> ActionMap;
 
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;

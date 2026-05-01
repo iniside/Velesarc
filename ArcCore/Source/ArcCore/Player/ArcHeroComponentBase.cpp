@@ -59,6 +59,7 @@
 
 #include "UI/ArcHUDBase.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
+#include "Abilities/ArcAbilityFunctions.h"
 
 DEFINE_LOG_CATEGORY(LogArcHero)
 
@@ -199,6 +200,30 @@ bool UArcHeroComponentBase::CanChangeInitState(UGameFrameworkComponentManager* M
 			}
 		}
 
+		TArray<UActorComponent*> PSComponents =  ArcPS->GetComponentsByInterface(UArcComponentInitStateInterface::StaticClass());
+		for (UActorComponent* PSComponent : PSComponents)
+		{
+			IArcComponentInitStateInterface* InitStateInterface = Cast<IArcComponentInitStateInterface>(PSComponent);
+			if (InitStateInterface && !InitStateInterface->IsDataReady())
+			{
+				return false;
+			}
+		}
+		
+		if (AArcCorePlayerController* ArcPC = GetController<AArcCorePlayerController>())
+		{
+			TArray<UActorComponent*> PCComponents =  ArcPC->GetComponentsByInterface(UArcComponentInitStateInterface::StaticClass());
+			for (UActorComponent* PCComponent : PCComponents)
+			{
+				IArcComponentInitStateInterface* InitStateInterface = Cast<IArcComponentInitStateInterface>(PCComponent);
+				if (InitStateInterface && !InitStateInterface->IsDataReady())
+				{
+					return false;
+				}
+			}	
+		}
+		
+		
 		LOG_ARC_NET(LogPawnExtenstionComponent
 			, "UArcHeroComponentBase::CanChangeInitState [CurrentState %s] [DesiredState %s] Success"
 			, *CurrentState.ToString()
@@ -332,7 +357,21 @@ void UArcHeroComponentBase::HandleChangeInitState(UGameFrameworkComponentManager
 			PawnComponent->OnPawnReady();
 		}
 
+		ArcPS->GetArcAbilitySystemComponent()->PostAbilitySystemInit();
 		APlayerController* PC = GetController<APlayerController>();
+		
+		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APlayerController*>(PC), NAME_PlayerHeroCharacterInitialized);
+		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APawn*>(Pawn), NAME_PlayerHeroCharacterInitialized);
+
+		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APlayerController*>(PC), NAME_PlayerHeroPlayerStateInitialized);
+		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(ArcPS, NAME_PlayerHeroPlayerStateInitialized);
+
+		for (TComponentIterator<UArcPawnComponent> It(Pawn); It; ++It)
+		{
+			It->OnPawnReady();
+		}
+
+		
 		if (PC && bIsLocallyControlled)
 		{
 			AArcHUDBase* Old = Cast<AArcHUDBase>(PC->GetHUD());
@@ -351,19 +390,6 @@ void UArcHeroComponentBase::HandleChangeInitState(UGameFrameworkComponentManager
 					H->MakeWidgets();
 				}
 			}
-		}
-
-		ArcPS->GetArcAbilitySystemComponent()->PostAbilitySystemInit();
-		
-		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APlayerController*>(PC), NAME_PlayerHeroCharacterInitialized);
-		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APawn*>(Pawn), NAME_PlayerHeroCharacterInitialized);
-
-		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APlayerController*>(PC), NAME_PlayerHeroPlayerStateInitialized);
-		UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(ArcPS, NAME_PlayerHeroPlayerStateInitialized);
-
-		for (TComponentIterator<UArcPawnComponent> It(Pawn); It; ++It)
-		{
-			It->OnPawnReady();
 		}
 		
 		OnPawnInitialized();
@@ -675,6 +701,20 @@ void UArcHeroComponentBase::Input_AbilityInputTagPressed(FGameplayTag InputTag)
 			SfxASC->AbilityInputTagPressed(InputTag);
 		}
 	}
+
+	if (UArcCoreMassAgentComponent* MassAgent = Pawn->FindComponentByClass<UArcCoreMassAgentComponent>())
+	{
+		UMassEntitySubsystem* MassEntitySubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(Pawn->GetWorld());
+		if (MassEntitySubsystem)
+		{
+			FMassEntityManager& EntityManager = MassEntitySubsystem->GetMutableEntityManager();
+			FMassEntityHandle Entity = MassAgent->GetEntityHandle();
+			if (EntityManager.IsEntityValid(Entity))
+			{
+				ArcAbilities::PushInput(EntityManager, Entity, InputTag);
+			}
+		}
+	}
 }
 
 void UArcHeroComponentBase::Input_AbilityInputTagTriggered(FGameplayTag InputTag)
@@ -699,6 +739,20 @@ void UArcHeroComponentBase::Input_AbilityInputTagReleased(FGameplayTag InputTag)
 		if (UArcCoreAbilitySystemComponent* ArcASC = PawnExtComp->GetArcAbilitySystemComponent())
 		{
 			ArcASC->AbilityInputTagReleased(InputTag);
+		}
+	}
+
+	if (UArcCoreMassAgentComponent* MassAgent = Pawn->FindComponentByClass<UArcCoreMassAgentComponent>())
+	{
+		UMassEntitySubsystem* MassEntitySubsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(Pawn->GetWorld());
+		if (MassEntitySubsystem)
+		{
+			FMassEntityManager& EntityManager = MassEntitySubsystem->GetMutableEntityManager();
+			FMassEntityHandle Entity = MassAgent->GetEntityHandle();
+			if (EntityManager.IsEntityValid(Entity))
+			{
+				ArcAbilities::ReleaseInput(EntityManager, Entity, InputTag);
+			}
 		}
 	}
 }

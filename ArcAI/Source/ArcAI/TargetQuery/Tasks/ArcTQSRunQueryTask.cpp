@@ -6,9 +6,9 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeAsyncExecutionContext.h"
-#include "TargetQuery/ArcTQSQueryDefinition.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
-#include "TargetQuery/ArcTQSQueryInstance.h"
+#include "ArcTQSQueryDefinition.h"
+#include "ArcTQSQuerySubsystem.h"
+#include "ArcTQSQueryInstance.h"
 
 FArcTQSRunQueryTask::FArcTQSRunQueryTask()
 {

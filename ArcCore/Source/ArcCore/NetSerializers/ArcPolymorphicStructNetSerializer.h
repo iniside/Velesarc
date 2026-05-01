@@ -256,7 +256,7 @@ namespace Arcx::Net
 
 		TPolymorphicStructNetSerializerImpl()
 		{
-			FArcItemDataInternal::OnItemRemovedDelegate.AddRaw(this
+			FArcItemDataInternalWrapper::OnItemRemovedDelegate.AddRaw(this
 				, &TPolymorphicStructNetSerializerImpl::OnItemRemoved);
 		}
 

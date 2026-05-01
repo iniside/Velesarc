@@ -5,8 +5,6 @@
 #include "ArcVisLifecycle.h"
 #include "ArcMassEntityVisualization.h"
 #include "ArcMass/Lifecycle/ArcMassLifecycle.h"
-#include "ArcVisEntityComponent.h"
-#include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
 #include "MassCommonTypes.h"
 #include "MassExecutionContext.h"
@@ -61,7 +59,7 @@ void UArcVisLifecycleInitObserver::Execute(FMassEntityManager& EntityManager, FM
 UArcVisLifecycleTickProcessor::UArcVisLifecycleTickProcessor()
 	: EntityQuery{*this}
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::SyncWorldToMass);
@@ -281,7 +279,6 @@ void UArcVisLifecycleVisSwitchProcessor::ConfigureQueries(const TSharedRef<FMass
 {
 	EntityQuery.AddRequirement<FArcVisLifecycleFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FArcVisRepresentationFragment>(EMassFragmentAccess::ReadOnly);
-	EntityQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddConstSharedRequirement<FArcVisLifecycleConfigFragment>(EMassFragmentPresence::All);
@@ -307,7 +304,6 @@ void UArcVisLifecycleVisSwitchProcessor::SignalEntities(FMassEntityManager& Enti
 		TConstArrayView<FArcVisLifecycleFragment> LifecycleFragments = Ctx.GetFragmentView<FArcVisLifecycleFragment>();
 		TConstArrayView<FArcVisRepresentationFragment> RepFragments = Ctx.GetFragmentView<FArcVisRepresentationFragment>();
 		TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
-		TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 		TArrayView<FArcVisISMInstanceFragment> ISMInstanceFragments = Ctx.GetMutableFragmentView<FArcVisISMInstanceFragment>();
 
 		const FArcVisConfigFragment& BaseConfig = Ctx.GetConstSharedFragment<FArcVisConfigFragment>();
@@ -324,39 +320,7 @@ void UArcVisLifecycleVisSwitchProcessor::SignalEntities(FMassEntityManager& Enti
 			const FArcVisLifecycleFragment& Lifecycle = LifecycleFragments[EntityIt];
 			const FArcVisRepresentationFragment& Rep = RepFragments[EntityIt];
 
-			if (Rep.bIsActorRepresentation)
-			{
-				// Actor-mode: swap actor class if the phase has an override (unchanged)
-				const FArcVisLifecyclePhaseVisuals& PhaseVisuals = LCConfig.GetPhaseVisuals(Lifecycle.CurrentPhase);
-				if (PhaseVisuals.HasActorOverride())
-				{
-					const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
-					FMassActorFragment& ActorFrag = ActorFragments[EntityIt];
-					AActor* CurrentActor = ActorFrag.GetMutable();
-
-					if (CurrentActor && ActorFrag.IsOwnedByMass())
-					{
-						CurrentActor->Destroy();
-						ActorFrag.ResetAndUpdateHandleMap();
-					}
-
-					UWorld* ActorWorld = EntityManager.GetWorld();
-					if (ActorWorld)
-					{
-						const FTransformFragment& TransformFrag = TransformFragments[EntityIt];
-						FActorSpawnParameters SpawnParams;
-						SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-						AActor* NewActor = ActorWorld->SpawnActor<AActor>(PhaseVisuals.ActorClassOverride, TransformFrag.GetTransform(), SpawnParams);
-						if (NewActor)
-						{
-							ActorFrag.SetAndUpdateHandleMap(Entity, NewActor, /*bIsOwnedByMass=*/true);
-						}
-					}
-				}
-				// If no actor override, the existing actor stays and UArcLifecycleActorNotifyProcessor
-				// handles notification via IArcLifecycleObserverInterface.
-			}
-			else if (Rep.bHasMeshRendering && bHasISMInstance && Subsystem)
+			if (Rep.bHasMeshRendering && bHasISMInstance && Subsystem)
 			{
 				// Mesh-mode: swap ISM instance to different holder if mesh changed
 				UStaticMesh* NewMesh = LCConfig.ResolveMesh(Lifecycle.CurrentPhase, StaticMeshConfigFrag);

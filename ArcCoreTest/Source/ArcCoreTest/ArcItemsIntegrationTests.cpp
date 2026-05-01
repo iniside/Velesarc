@@ -15,14 +15,15 @@
 #include "Items/Fragments/ArcItemFragment_AbilityEffectsToApply.h"
 #include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
 #include "Items/Fragments/ArcItemFragment_ItemStats.h"
+#include "Items/Fragments/ArcItemFragment_SocketSlots.h"
 #include "Items/Fragments/ArcItemFragment_Stacks.h"
 #include "Commands/ArcMoveItemBetweenStoresCommand.h"
 #include "Components/ActorTestSpawner.h"
 #include "Items/ArcItemsStoreSubsystem.h"
 
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationSlot_01, "QuickSlotId.ArcCoreTest.01");
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationSlot_02, "QuickSlotId.ArcCoreTest.02");
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationSlot_03, "QuickSlotId.ArcCoreTest.03");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationSlot_01, "SlotId.ArcCoreTest.01");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationSlot_02, "SlotId.ArcCoreTest.02");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationSlot_03, "SlotId.ArcCoreTest.03");
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_IntegrationEffectSpec_01, "GameplayEffect.Test.EffectToApply.01");
 
@@ -171,7 +172,7 @@ TEST_CLASS(ArcItemsIntegration_Slots, "ArcCore.Integration")
 
 		const FArcItemData* ItemPtr = Actor.ItemsStoreNotReplicated->GetItemFromSlot(TAG_IntegrationSlot_01);
 		ASSERT_THAT(IsNotNull(ItemPtr, TEXT("Item should be retrievable from slot")));
-		ASSERT_THAT(AreEqual(ItemPtr->GetSlotId(), TAG_IntegrationSlot_01));
+		ASSERT_THAT(IsTrue(ItemPtr->GetSlotId() == TAG_IntegrationSlot_01, TEXT("Item slot should be QuickSlotId.ArcCoreTest.01")));
 	}
 
 	TEST_METHOD(RemoveItemFromSlot_Basic)
@@ -218,7 +219,7 @@ TEST_CLASS(ArcItemsIntegration_Slots, "ArcCore.Integration")
 
 		const FArcItemData* NewSlot = Actor.ItemsStoreNotReplicated->GetItemFromSlot(TAG_IntegrationSlot_02);
 		ASSERT_THAT(IsNotNull(NewSlot, TEXT("Item should be in new slot")));
-		ASSERT_THAT(AreEqual(NewSlot->GetSlotId(), TAG_IntegrationSlot_02));
+		ASSERT_THAT(IsTrue(NewSlot->GetSlotId() == TAG_IntegrationSlot_02, TEXT("Item slot should be QuickSlotId.ArcCoreTest.02")));
 	}
 };
 
@@ -420,8 +421,8 @@ TEST_CLASS(ArcItemsIntegration_MoveBetweenStores, "ArcCore.Integration")
 		FArcItemId AttachedItemId = Actor.ItemsStoreNotReplicated->AddItem(AttachedSpec, FArcItemId::InvalidId);
 		Actor.ItemsStoreNotReplicated->InternalAttachToItem(OwnerItemId, AttachedItemId, TAG_IntegrationSlot_02);
 
-		const FArcItemDataInternal* InternalItem = Actor.ItemsStoreNotReplicated->GetInternalItem(OwnerItemId);
-		FArcItemCopyContainerHelper Copy = FArcItemCopyContainerHelper::New(Actor.ItemsStoreNotReplicated, *InternalItem);
+		const FArcItemData* OwnerItemPtr = Actor.ItemsStoreNotReplicated->GetItemPtr(OwnerItemId);
+		FArcItemCopyContainerHelper Copy = FArcItemCopyContainerHelper::New(Actor.ItemsStoreNotReplicated, OwnerItemPtr);
 		TArray<FArcItemId> NewIds = Actor.ItemsStore2->AddItemDataInternal(Copy);
 
 		Actor.ItemsStoreNotReplicated->DestroyItem(OwnerItemId);
@@ -500,18 +501,42 @@ TEST_CLASS(ArcItemsIntegration_CopyContainerHelper, "ArcCore.Integration")
 		FArcItemSpec OwnerSpec;
 		OwnerSpec.SetItemDefinition(Settings->ItemWithAttachmentSlots).SetAmount(1).SetItemLevel(1);
 		FArcItemId OwnerItemId = Actor.ItemsStoreNotReplicated->AddItem(OwnerSpec, FArcItemId::InvalidId);
+
+		const FArcItemData* OwnerPtr = Actor.ItemsStoreNotReplicated->GetItemPtr(OwnerItemId);
+		ASSERT_THAT(IsTrue(OwnerPtr != nullptr, TEXT("Owner item should exist after AddItem")));
+		ASSERT_THAT(IsTrue(OwnerPtr->GetItemDefinition() != nullptr, TEXT("Owner item definition should be loaded")));
+
+		const FArcItemFragment_SocketSlots* Sockets = ArcItemsHelper::GetFragment<FArcItemFragment_SocketSlots>(OwnerPtr);
+		ASSERT_THAT(IsTrue(Sockets != nullptr, TEXT("ItemWithAttachmentSlots should have FArcItemFragment_SocketSlots")));
+
+		const TArray<FArcSocketSlot>& SlotArray = Sockets->GetSocketSlots();
+		ASSERT_THAT(IsTrue(SlotArray.Num() > 0, TEXT("SocketSlots should have at least one slot configured")));
+
+		bool bHasSlot02 = false;
+		for (const FArcSocketSlot& Slot : SlotArray)
+		{
+			if (Slot.SlotId == TAG_IntegrationSlot_02)
+			{
+				bHasSlot02 = true;
+				break;
+			}
+		}
+		ASSERT_THAT(IsTrue(bHasSlot02, TEXT("SocketSlots should contain QuickSlotId.ArcCoreTest.02")));
+
 		Actor.ItemsStoreNotReplicated->AddItemToSlot(OwnerItemId, TAG_IntegrationSlot_01);
 
 		FArcItemSpec AttachedSpec;
 		AttachedSpec.SetItemDefinition(Settings->SimpleBaseItem).SetAmount(1).SetItemLevel(1);
 		FArcItemId AttachedItemId = Actor.ItemsStoreNotReplicated->AddItem(AttachedSpec, FArcItemId::InvalidId);
-		Actor.ItemsStoreNotReplicated->InternalAttachToItem(OwnerItemId, AttachedItemId, TAG_IntegrationSlot_02);
+
+		FArcItemId ResultId = Actor.ItemsStoreNotReplicated->InternalAttachToItem(OwnerItemId, AttachedItemId, TAG_IntegrationSlot_02);
+		ASSERT_THAT(IsTrue(ResultId.IsValid(), TEXT("InternalAttachToItem should return valid id")));
 
 		FArcItemCopyContainerHelper Copy = Actor.ItemsStoreNotReplicated->GetItemCopyHelper(OwnerItemId);
 
 		ASSERT_THAT(AreEqual(Copy.ItemAttachments.Num(), 1));
-		ASSERT_THAT(AreEqual(Copy.SlotId, TAG_IntegrationSlot_01));
-		ASSERT_THAT(AreEqual(Copy.ItemAttachments[0].SlotId, TAG_IntegrationSlot_02));
+		ASSERT_THAT(IsTrue(Copy.SlotId == TAG_IntegrationSlot_01, TEXT("Copy SlotId should be QuickSlotId.ArcCoreTest.01")));
+		ASSERT_THAT(IsTrue(Copy.ItemAttachments[0].SlotId == TAG_IntegrationSlot_02, TEXT("Attachment SlotId should be QuickSlotId.ArcCoreTest.02")));
 	}
 
 	TEST_METHOD(CopyHelper_New_FromItemData)
@@ -815,8 +840,8 @@ TEST_CLASS(ArcItemsIntegration_GrantedAbilities, "ArcCore.Integration")
 
 		FGameplayAbilitySpecHandle AbilitySpecHandle = Instance->GetGrantedAbilities()[0];
 
-		const FArcItemDataInternal* InternalItem = Actor.ItemsStoreNotReplicated->GetInternalItem(OwnerItemId);
-		FArcItemCopyContainerHelper Copy = FArcItemCopyContainerHelper::New(Actor.ItemsStoreNotReplicated, *InternalItem);
+		const FArcItemData* OwnerItemPtr = Actor.ItemsStoreNotReplicated->GetItemPtr(OwnerItemId);
+		FArcItemCopyContainerHelper Copy = FArcItemCopyContainerHelper::New(Actor.ItemsStoreNotReplicated, OwnerItemPtr);
 		TArray<FArcItemId> NewIds = Actor.ItemsStore2->AddItemDataInternal(Copy);
 
 		Actor.ItemsStoreNotReplicated->DestroyItem(OwnerItemId);
@@ -894,8 +919,8 @@ TEST_CLASS(ArcItemsIntegration_EffectsToApply, "ArcCore.Integration")
 		Spec.SetItemDefinition(Settings->ItemWithEffectToApply).SetAmount(1).SetItemLevel(1);
 		FArcItemId Id = Actor.ItemsStoreNotReplicated->AddItem(Spec, FArcItemId::InvalidId);
 
-		const FArcItemDataInternal* InternalItem = Actor.ItemsStoreNotReplicated->GetInternalItem(Id);
-		FArcItemCopyContainerHelper Copy = FArcItemCopyContainerHelper::New(Actor.ItemsStoreNotReplicated, *InternalItem);
+		const FArcItemData* ItemPtr = Actor.ItemsStoreNotReplicated->GetItemPtr(Id);
+		FArcItemCopyContainerHelper Copy = FArcItemCopyContainerHelper::New(Actor.ItemsStoreNotReplicated, ItemPtr);
 		TArray<FArcItemId> CopyIds = Actor.ItemsStore2->AddItemDataInternal(Copy);
 
 		ASSERT_THAT(AreEqual(CopyIds.Num(), 1));

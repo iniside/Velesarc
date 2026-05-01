@@ -32,6 +32,7 @@
 #include "ArcPawnData.generated.h"
 
 class USkeletalMesh;
+class UArcMassAbilitySet;
 
 USTRUCT()
 struct ARCCORE_API FArcDefaultItem
@@ -190,6 +191,24 @@ public:
 							  , class AArcCorePlayerState* InPlayerState) const override;
 
 	virtual ~FArcPawnDataFragment_AbilitySets() override
+	{
+	}
+};
+
+USTRUCT(BlueprintType, meta = (DisplayName = "Mass Ability Sets"))
+struct ARCCORE_API FArcPawnDataFragment_MassAbilitySets : public FArcPawnDataFragment
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Abilities")
+	TArray<TSoftObjectPtr<UArcMassAbilitySet>> MassAbilitySets;
+
+public:
+	virtual void GiveFragment(class APawn* InCharacter
+							  , class AArcCorePlayerState* InPlayerState) const override;
+
+	virtual ~FArcPawnDataFragment_MassAbilitySets() override
 	{
 	}
 };

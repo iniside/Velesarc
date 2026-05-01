@@ -50,27 +50,30 @@ void FArcItemStoreSerializer::SaveItemSpec(const FArcItemSpec& Spec, const FGame
 
 void FArcItemStoreSerializer::SavePersistentInstances(const FArcItemSpec& Spec, FArcSaveArchive& Ar)
 {
-	// Collect all valid persistent instances first to get an accurate count
-	TArray<const FArcItemInstance*> ToWrite;
-	for (const TSharedPtr<FArcItemInstance>& Instance : Spec.InitialInstanceData)
+	TArray<TPair<const UScriptStruct*, const FArcItemInstance*>> ToWrite;
+	for (const FInstancedStruct& Instance : Spec.InitialInstanceData)
 	{
-		if (Instance.IsValid() && Instance->ShouldPersist() && Instance->GetScriptStruct())
+		if (Instance.IsValid())
 		{
-			ToWrite.Add(Instance.Get());
+			const FArcItemInstance* Ptr = Instance.GetPtr<FArcItemInstance>();
+			if (Ptr && Ptr->ShouldPersist() && Instance.GetScriptStruct())
+			{
+				ToWrite.Add(TPair<const UScriptStruct*, const FArcItemInstance*>(Instance.GetScriptStruct(), Ptr));
+			}
 		}
 	}
 
 	Ar.BeginArray(FName(TEXT("Instances")), ToWrite.Num());
 	for (int32 i = 0; i < ToWrite.Num(); ++i)
 	{
-		const FArcItemInstance* Instance = ToWrite[i];
-		UScriptStruct* StructType = Instance->GetScriptStruct();
+		const UScriptStruct* StructType = ToWrite[i].Key;
+		const FArcItemInstance* Instance = ToWrite[i].Value;
 
 		Ar.BeginArrayElement(i);
 		Ar.WriteProperty(FName(TEXT("StructType")), StructType->GetPathName());
 
 		Ar.BeginStruct(FName(TEXT("Data")));
-		FArcReflectionSerializer::Save(StructType, Instance, Ar);
+		FArcReflectionSerializer::Save(const_cast<UScriptStruct*>(StructType), Instance, Ar);
 		Ar.EndStruct();
 
 		Ar.EndArrayElement();
@@ -222,12 +225,13 @@ void FArcItemStoreSerializer::LoadPersistentInstances(FArcItemSpec& Spec, FArcLo
 			continue;
 		}
 
-		TSharedPtr<FArcItemInstance> Instance = ArcItems::AllocateInstance(StructType);
+		FInstancedStruct Instance;
+		Instance.InitializeAs(StructType, nullptr);
 		if (Instance.IsValid())
 		{
 			if (Ar.BeginStruct(FName(TEXT("Data"))))
 			{
-				FArcReflectionSerializer::Load(StructType, Instance.Get(), Ar);
+				FArcReflectionSerializer::Load(StructType, Instance.GetMutableMemory(), Ar);
 				Ar.EndStruct();
 			}
 
@@ -270,22 +274,16 @@ void FArcItemStoreSerializer::LoadInstanceData(FArcItemSpec& Spec, FArcLoadArchi
 			continue;
 		}
 
-		void* Mem = FMemory::Malloc(StructType->GetCppStructOps()->GetSize(), StructType->GetCppStructOps()->GetAlignment());
-		StructType->GetCppStructOps()->Construct(Mem);
-		auto* Fragment = static_cast<FArcItemFragment_ItemInstanceBase*>(Mem);
+		FInstancedStruct FragmentInstance;
+		FragmentInstance.InitializeAs(StructType, nullptr);
 
 		if (Ar.BeginStruct(FName(TEXT("Data"))))
 		{
-			FArcReflectionSerializer::Load(StructType, Fragment, Ar);
+			FArcReflectionSerializer::Load(StructType, FragmentInstance.GetMutableMemory(), Ar);
 			Ar.EndStruct();
 		}
 
-		TSharedPtr<FArcItemFragment_ItemInstanceBase> SharedPtr(Fragment, [StructType](FArcItemFragment_ItemInstanceBase* Ptr)
-		{
-			StructType->GetCppStructOps()->Destruct(Ptr);
-			FMemory::Free(Ptr);
-		});
-		Spec.InstanceData.Add(MoveTemp(SharedPtr));
+		Spec.InstanceData.Add(FragmentInstance);
 
 		Ar.EndArrayElement();
 	}

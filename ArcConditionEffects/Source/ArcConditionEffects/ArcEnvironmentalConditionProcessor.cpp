@@ -36,18 +36,8 @@ void UArcEnvironmentalConditionProcessor::InitializeInternal(UObject& Owner, con
 
 void UArcEnvironmentalConditionProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	EntityQuery.AddRequirement<FArcBlindedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcSuffocatingConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcExhaustedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcCorrodedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-	EntityQuery.AddRequirement<FArcShockedConditionFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
-
-	EntityQuery.AddConstSharedRequirement<FArcBlindedConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcSuffocatingConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcExhaustedConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcCorrodedConditionConfig>(EMassFragmentPresence::Optional);
-	EntityQuery.AddConstSharedRequirement<FArcShockedConditionConfig>(EMassFragmentPresence::Optional);
-	
+	EntityQuery.AddRequirement<FArcConditionStatesFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddConstSharedRequirement<FArcConditionConfigsShared>(EMassFragmentPresence::All);
 	EntityQuery.AddSubsystemRequirement<UArcConditionEffectsSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
@@ -90,17 +80,8 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityRequestMap, &StateChangedEntities, &OverloadChangedEntities](FMassExecutionContext& Ctx)
 		{
-			TArrayView<FArcBlindedConditionFragment>     BlindedFrags     = Ctx.GetMutableFragmentView<FArcBlindedConditionFragment>();
-			TArrayView<FArcSuffocatingConditionFragment>  SuffocatingFrags = Ctx.GetMutableFragmentView<FArcSuffocatingConditionFragment>();
-			TArrayView<FArcExhaustedConditionFragment>    ExhaustedFrags   = Ctx.GetMutableFragmentView<FArcExhaustedConditionFragment>();
-			TArrayView<FArcCorrodedConditionFragment>     CorrodedFrags    = Ctx.GetMutableFragmentView<FArcCorrodedConditionFragment>();
-			TArrayView<FArcShockedConditionFragment>      ShockedFrags     = Ctx.GetMutableFragmentView<FArcShockedConditionFragment>();
-
-			const FArcConditionConfig* BlindedCfg     = Arc::Condition::GetOptionalConfig<FArcBlindedConditionConfig>(Ctx);
-			const FArcConditionConfig* SuffocatingCfg = Arc::Condition::GetOptionalConfig<FArcSuffocatingConditionConfig>(Ctx);
-			const FArcConditionConfig* ExhaustedCfg   = Arc::Condition::GetOptionalConfig<FArcExhaustedConditionConfig>(Ctx);
-			const FArcConditionConfig* CorrodedCfg    = Arc::Condition::GetOptionalConfig<FArcCorrodedConditionConfig>(Ctx);
-			const FArcConditionConfig* ShockedCfg     = Arc::Condition::GetOptionalConfig<FArcShockedConditionConfig>(Ctx);
+			TArrayView<FArcConditionStatesFragment> CondFrags = Ctx.GetMutableFragmentView<FArcConditionStatesFragment>();
+			const FArcConditionConfigsShared& Configs = Ctx.GetConstSharedFragment<FArcConditionConfigsShared>();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -108,13 +89,18 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 				TArray<FArcConditionApplicationRequest*>* Requests = EntityRequestMap.Find(Entity);
 				if (!Requests) { continue; }
 
-				const int32 Idx = *EntityIt;
+				FArcConditionStatesFragment& Frag = CondFrags[EntityIt];
+				FArcConditionState* Blinded     = &Frag.States[(int32)EArcConditionType::Blinded];
+				FArcConditionState* Suffocating = &Frag.States[(int32)EArcConditionType::Suffocating];
+				FArcConditionState* Exhausted   = &Frag.States[(int32)EArcConditionType::Exhausted];
+				FArcConditionState* Corroded    = &Frag.States[(int32)EArcConditionType::Corroded];
+				FArcConditionState* Shocked     = &Frag.States[(int32)EArcConditionType::Shocked];
 
-				FArcConditionState* Blinded     = !BlindedFrags.IsEmpty()     ? &BlindedFrags[Idx].State     : nullptr;
-				FArcConditionState* Suffocating = !SuffocatingFrags.IsEmpty() ? &SuffocatingFrags[Idx].State : nullptr;
-				FArcConditionState* Exhausted   = !ExhaustedFrags.IsEmpty()   ? &ExhaustedFrags[Idx].State   : nullptr;
-				FArcConditionState* Corroded    = !CorrodedFrags.IsEmpty()    ? &CorrodedFrags[Idx].State    : nullptr;
-				FArcConditionState* Shocked     = !ShockedFrags.IsEmpty()     ? &ShockedFrags[Idx].State     : nullptr;
+				const FArcConditionConfig* BlindedCfg     = &Configs.Configs[(int32)EArcConditionType::Blinded];
+				const FArcConditionConfig* SuffocatingCfg = &Configs.Configs[(int32)EArcConditionType::Suffocating];
+				const FArcConditionConfig* ExhaustedCfg   = &Configs.Configs[(int32)EArcConditionType::Exhausted];
+				const FArcConditionConfig* CorrodedCfg    = &Configs.Configs[(int32)EArcConditionType::Corroded];
+				const FArcConditionConfig* ShockedCfg     = &Configs.Configs[(int32)EArcConditionType::Shocked];
 
 				// Snapshot for change detection
 				auto Snapshot = [](const FArcConditionState* S) -> TPair<bool, EArcConditionOverloadPhase>
@@ -150,7 +136,7 @@ void UArcEnvironmentalConditionProcessor::SignalEntities(FMassEntityManager& Ent
 						}
 						else
 						{
-							Arc::Condition::ApplyGenericCondition(Req->Amount, Target, Cfg);
+							ArcConditionHelpers::ApplyGenericCondition(Req->Amount, *Target, *Cfg);
 						}
 						ArcConditionHelpers::UpdateActiveFlag(*Target, *Cfg);
 					}

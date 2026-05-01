@@ -15,6 +15,9 @@
 #include "PhysicsEngine/BoxElem.h"
 #include "PhysicsEngine/SphylElem.h"
 #include "PhysicsEngine/ConvexElem.h"
+#include "ArcMass/Visualization/ArcSkinnedMeshEntityVisualizationTrait.h"
+#include "ArcMass/Visualization/ArcFastGeoVisualizationTrait.h"
+#include "Components/SkeletalMeshComponent.h"
 
 namespace ArcMassPreviewContributor
 {
@@ -264,4 +267,162 @@ UObject* FArcMeshVisualizationPreviewContributor::GetMutableTraitObject() const
 	return CachedTrait;
 }
 
+// ---- FastGeo Visualization Contributor ----
 
+bool FArcFastGeoVisualizationPreviewContributor::CanContribute(const UMassEntityTraitBase* Trait) const
+{
+	const UArcFastGeoVisualizationTrait* FastGeoTrait = Cast<UArcFastGeoVisualizationTrait>(Trait);
+	return FastGeoTrait && FastGeoTrait->IsValid();
+}
+
+void FArcFastGeoVisualizationPreviewContributor::Apply(const UMassEntityTraitBase* Trait, FAdvancedPreviewScene& Scene, AActor* PreviewActor)
+{
+	CachedTrait = const_cast<UArcFastGeoVisualizationTrait*>(CastChecked<UArcFastGeoVisualizationTrait>(Trait));
+
+	if (!PreviewComponent)
+	{
+		PreviewComponent = NewObject<UStaticMeshComponent>(PreviewActor);
+		PreviewActor->AddOwnedComponent(PreviewComponent);
+		Scene.AddComponent(PreviewComponent, CachedTrait->GetComponentTransform());
+	}
+
+	PreviewComponent->SetStaticMesh(CachedTrait->GetMesh());
+	PreviewComponent->SetRelativeTransform(CachedTrait->GetComponentTransform());
+
+	const TArray<TObjectPtr<UMaterialInterface>>& Materials = CachedTrait->GetMaterialOverrides();
+	for (int32 Idx = 0; Idx < Materials.Num(); ++Idx)
+	{
+		PreviewComponent->SetMaterial(Idx, Materials[Idx]);
+	}
+
+	PreviewComponent->MarkRenderStateDirty();
+}
+
+void FArcFastGeoVisualizationPreviewContributor::Clear(FAdvancedPreviewScene& Scene)
+{
+	if (PreviewComponent)
+	{
+		Scene.RemoveComponent(PreviewComponent);
+		PreviewComponent = nullptr;
+	}
+	CachedTrait = nullptr;
+}
+
+FBox FArcFastGeoVisualizationPreviewContributor::GetBounds() const
+{
+	if (PreviewComponent && PreviewComponent->GetStaticMesh())
+	{
+		return PreviewComponent->Bounds.GetBox();
+	}
+	return FBox(ForceInit);
+}
+
+int32 FArcFastGeoVisualizationPreviewContributor::GetSelectableCount() const
+{
+	return (PreviewComponent && PreviewComponent->GetStaticMesh()) ? 1 : 0;
+}
+
+FTransform FArcFastGeoVisualizationPreviewContributor::GetSelectableTransform(int32 Index) const
+{
+	if (Index == 0 && PreviewComponent)
+	{
+		return PreviewComponent->GetRelativeTransform();
+	}
+	return FTransform::Identity;
+}
+
+void FArcFastGeoVisualizationPreviewContributor::SetSelectableTransform(int32 Index, const FTransform& NewTransform)
+{
+	if (Index == 0 && CachedTrait && PreviewComponent)
+	{
+		CachedTrait->SetComponentTransform(NewTransform);
+		CachedTrait->MarkPackageDirty();
+		PreviewComponent->SetRelativeTransform(NewTransform);
+		PreviewComponent->MarkRenderStateDirty();
+	}
+}
+
+UObject* FArcFastGeoVisualizationPreviewContributor::GetMutableTraitObject() const
+{
+	return CachedTrait;
+}
+
+// ---- Skinned Mesh Visualization Contributor ----
+
+bool FArcSkinnedMeshVisualizationPreviewContributor::CanContribute(const UMassEntityTraitBase* Trait) const
+{
+	const UArcSkinnedMeshEntityVisualizationTrait* SkinnedTrait = Cast<UArcSkinnedMeshEntityVisualizationTrait>(Trait);
+	return SkinnedTrait && SkinnedTrait->IsValid();
+}
+
+void FArcSkinnedMeshVisualizationPreviewContributor::Apply(const UMassEntityTraitBase* Trait, FAdvancedPreviewScene& Scene, AActor* PreviewActor)
+{
+	CachedTrait = const_cast<UArcSkinnedMeshEntityVisualizationTrait*>(CastChecked<UArcSkinnedMeshEntityVisualizationTrait>(Trait));
+
+	if (!PreviewComponent)
+	{
+		PreviewComponent = NewObject<USkeletalMeshComponent>(PreviewActor);
+		PreviewActor->AddOwnedComponent(PreviewComponent);
+		Scene.AddComponent(PreviewComponent, CachedTrait->GetComponentTransform());
+	}
+
+	PreviewComponent->SetSkinnedAssetAndUpdate(CachedTrait->GetSkinnedAsset());
+	PreviewComponent->SetRelativeTransform(CachedTrait->GetComponentTransform());
+
+	const TArray<TObjectPtr<UMaterialInterface>>& Materials = CachedTrait->GetMaterialOverrides();
+	for (int32 Idx = 0; Idx < Materials.Num(); ++Idx)
+	{
+		PreviewComponent->SetMaterial(Idx, Materials[Idx]);
+	}
+
+	PreviewComponent->MarkRenderStateDirty();
+}
+
+void FArcSkinnedMeshVisualizationPreviewContributor::Clear(FAdvancedPreviewScene& Scene)
+{
+	if (PreviewComponent)
+	{
+		Scene.RemoveComponent(PreviewComponent);
+		PreviewComponent = nullptr;
+	}
+	CachedTrait = nullptr;
+}
+
+FBox FArcSkinnedMeshVisualizationPreviewContributor::GetBounds() const
+{
+	if (PreviewComponent && PreviewComponent->GetSkinnedAsset())
+	{
+		return PreviewComponent->Bounds.GetBox();
+	}
+	return FBox(ForceInit);
+}
+
+int32 FArcSkinnedMeshVisualizationPreviewContributor::GetSelectableCount() const
+{
+	return (PreviewComponent && PreviewComponent->GetSkinnedAsset()) ? 1 : 0;
+}
+
+FTransform FArcSkinnedMeshVisualizationPreviewContributor::GetSelectableTransform(int32 Index) const
+{
+	if (Index == 0 && PreviewComponent)
+	{
+		return PreviewComponent->GetRelativeTransform();
+	}
+	return FTransform::Identity;
+}
+
+void FArcSkinnedMeshVisualizationPreviewContributor::SetSelectableTransform(int32 Index, const FTransform& NewTransform)
+{
+	if (Index == 0 && CachedTrait && PreviewComponent)
+	{
+		CachedTrait->SetComponentTransform(NewTransform);
+		CachedTrait->MarkPackageDirty();
+		PreviewComponent->SetRelativeTransform(NewTransform);
+		PreviewComponent->MarkRenderStateDirty();
+	}
+}
+
+UObject* FArcSkinnedMeshVisualizationPreviewContributor::GetMutableTraitObject() const
+{
+	return CachedTrait;
+}

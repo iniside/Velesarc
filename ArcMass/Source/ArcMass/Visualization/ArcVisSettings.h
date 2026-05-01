@@ -15,10 +15,6 @@ public:
 	virtual FName GetCategoryName() const override { return FName("ArcMass"); }
 	virtual FName GetSectionName() const override { return FName("Visualization"); }
 
-	/** Global toggle for Actor representation on cell activation. Disabled by default. */
-	UPROPERTY(config, EditAnywhere, Category = "Visualization")
-	bool bEnableActorSwapping = false;
-
 	// --- Mesh Grid ---
 
 	/** Grid cell size for mesh (ISM) activation in world units. */

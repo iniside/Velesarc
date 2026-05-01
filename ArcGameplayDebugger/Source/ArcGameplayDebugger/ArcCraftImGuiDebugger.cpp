@@ -37,9 +37,11 @@
 #include "ArcCraft/Commands/ArcDepositItemToCraftStationCommand.h"
 #include "ArcCraft/Commands/ArcWithdrawItemFromCraftStationCommand.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
-#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
 #include "MassEntitySubsystem.h"
+#include "MassDebugger.h"
 #include "Commands/ArcReplicatedCommandHelpers.h"
+#include "ArcCraftDebuggerDrawComponent.h"
+#include "Mass/EntityFragments.h"
 
 // -------------------------------------------------------------------
 // Helpers
@@ -58,12 +60,31 @@ void FArcCraftImGuiDebugger::FilterNames(const TArray<FString>& Source, const ch
 	}
 }
 
+namespace Arcx::GameplayDebugger::Craft
+{
+	FMassEntityManager* GetEntityManager()
+	{
+		UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
+		if (!World)
+		{
+			return nullptr;
+		}
+		UMassEntitySubsystem* MassSub = World->GetSubsystem<UMassEntitySubsystem>();
+		if (!MassSub)
+		{
+			return nullptr;
+		}
+		return &MassSub->GetMutableEntityManager();
+	}
+} // namespace Arcx::GameplayDebugger::Craft
+
 void FArcCraftImGuiDebugger::Initialize()
 {
 }
 
 void FArcCraftImGuiDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	CachedStations.Reset();
 	CachedStationRecipes.Reset();
 	CachedRecipeDefinitions.Reset();
@@ -77,6 +98,98 @@ void FArcCraftImGuiDebugger::Uninitialize()
 	CachedPendingModifiers.Reset();
 	bMaterialRecipesCached = false;
 	bStationRecipesCached = false;
+	CachedMassStations.Reset();
+	SelectedMassStationIndex = -1;
+}
+
+void FArcCraftImGuiDebugger::EnsureDrawActor(UWorld* InWorld)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = InWorld->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("CraftDebuggerDraw"));
+#endif
+
+	UArcCraftDebuggerDrawComponent* NewComponent = NewObject<UArcCraftDebuggerDrawComponent>(NewActor, UArcCraftDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcCraftImGuiDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
+}
+
+void FArcCraftImGuiDebugger::UpdateDrawComponent()
+{
+	APlayerController* PC = GetLocalPlayerController();
+	UWorld* DebugWorld = PC ? PC->GetWorld() : nullptr;
+	if (!DebugWorld)
+	{
+		return;
+	}
+
+	EnsureDrawActor(DebugWorld);
+	if (!DrawComponent.IsValid())
+	{
+		return;
+	}
+
+	FArcCraftDebugDrawData Data;
+
+	// Resolve selected station location
+	if (SelectedStationIndex >= 0 && SelectedStationIndex < CachedStations.Num() && CachedStations[SelectedStationIndex].IsValid())
+	{
+		AActor* Owner = CachedStations[SelectedStationIndex]->GetOwner();
+		if (Owner)
+		{
+			Data.bHasSelectedStation = true;
+			Data.SelectedStationLocation = Owner->GetActorLocation();
+		}
+	}
+#if WITH_MASSENTITY_DEBUG
+	else if (SelectedMassStationIndex >= 0 && SelectedMassStationIndex < CachedMassStations.Num())
+	{
+		FMassEntityManager* Manager = Arcx::GameplayDebugger::Craft::GetEntityManager();
+		if (Manager && Manager->IsEntityValid(CachedMassStations[SelectedMassStationIndex].Entity))
+		{
+			const FTransformFragment* Transform = Manager->GetFragmentDataPtr<FTransformFragment>(CachedMassStations[SelectedMassStationIndex].Entity);
+			if (Transform)
+			{
+				Data.bHasSelectedStation = true;
+				Data.SelectedStationLocation = Transform->GetTransform().GetLocation();
+			}
+		}
+	}
+#endif
+
+	// Player location
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (Pawn)
+	{
+		Data.PlayerLocation = Pawn->GetActorLocation();
+	}
+
+	DrawComponent->UpdateData(Data);
 }
 
 void FArcCraftImGuiDebugger::RefreshStations()
@@ -102,6 +215,53 @@ void FArcCraftImGuiDebugger::RefreshStations()
 			CachedStations.Add(Comp);
 		}
 	}
+
+	// --- Mass entity craft stations ---
+	CachedMassStations.Reset();
+	SelectedMassStationIndex = -1;
+
+#if WITH_MASSENTITY_DEBUG
+	FMassEntityManager* Manager = Arcx::GameplayDebugger::Craft::GetEntityManager();
+	if (Manager)
+	{
+		const UScriptStruct* QueueType = FArcCraftQueueFragment::StaticStruct();
+
+		TArray<FMassArchetypeHandle> Archetypes = FMassDebugger::GetAllArchetypes(*Manager);
+		for (const FMassArchetypeHandle& Archetype : Archetypes)
+		{
+			FMassArchetypeCompositionDescriptor Composition = FMassDebugger::GetArchetypeComposition(Archetype);
+			if (!Composition.Contains(QueueType))
+			{
+				continue;
+			}
+
+			TArray<FMassEntityHandle> Entities = FMassDebugger::GetEntitiesOfArchetype(Archetype);
+			for (const FMassEntityHandle& Entity : Entities)
+			{
+				FArcCraftMassStationEntry& Entry = CachedMassStations.AddDefaulted_GetRef();
+				Entry.Entity = Entity;
+
+				const FArcCraftStationConfigFragment* Config =
+					Manager->GetConstSharedFragmentDataPtr<FArcCraftStationConfigFragment>(Entity);
+				if (Config)
+				{
+					Entry.StationTags = Config->StationTags;
+					Entry.Label = Config->StationTags.ToStringSimple();
+				}
+				else
+				{
+					Entry.Label = FString::Printf(TEXT("Entity_%d"), Entity.Index);
+				}
+
+				const FArcCraftQueueFragment* Queue = Manager->GetFragmentDataPtr<FArcCraftQueueFragment>(Entity);
+				if (Queue)
+				{
+					Entry.QueueSize = Queue->Entries.Num();
+				}
+			}
+		}
+	}
+#endif
 }
 
 void FArcCraftImGuiDebugger::RefreshRecipeDefinitions()
@@ -402,17 +562,20 @@ void FArcCraftImGuiDebugger::DrawStationsTab()
 		DrawStationDetail();
 	}
 	ImGui::EndChild();
+
+	// --- Debug drawing ---
+	UpdateDrawComponent();
 }
 
 void FArcCraftImGuiDebugger::DrawStationList()
 {
-	if (CachedStations.Num() == 0)
+	if (CachedStations.Num() == 0 && CachedMassStations.Num() == 0)
 	{
 		ImGui::TextWrapped("No stations found. Click 'Refresh Stations'.");
 		return;
 	}
 
-	if (ImGui::BeginTable("StationsTable", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+	if (CachedStations.Num() > 0 && ImGui::BeginTable("StationsTable", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
 	{
 		ImGui::TableSetupColumn("Owner", ImGuiTableColumnFlags_WidthStretch);
 		ImGui::TableSetupColumn("Queue", ImGuiTableColumnFlags_WidthFixed, 60.f);
@@ -439,6 +602,7 @@ void FArcCraftImGuiDebugger::DrawStationList()
 					SelectedStationIndex = i;
 					bStationRecipesCached = false;
 					bShowTransferPanel = false;
+					SelectedMassStationIndex = -1;
 				}
 			}
 
@@ -448,10 +612,55 @@ void FArcCraftImGuiDebugger::DrawStationList()
 
 		ImGui::EndTable();
 	}
+
+	// --- Mass entity stations ---
+	if (CachedMassStations.Num() > 0)
+	{
+		ImGui::Spacing();
+		ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Mass Entity Stations (%d)", CachedMassStations.Num());
+
+		if (ImGui::BeginTable("MassStationsTable", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+		{
+			ImGui::TableSetupColumn("Station", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Queue", ImGuiTableColumnFlags_WidthFixed, 60.f);
+			ImGui::TableHeadersRow();
+
+			for (int32 i = 0; i < CachedMassStations.Num(); ++i)
+			{
+				const FArcCraftMassStationEntry& Entry = CachedMassStations[i];
+
+				ImGui::PushID(i);
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+
+				bool bSelected = (SelectedMassStationIndex == i);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*Entry.Label), bSelected, ImGuiSelectableFlags_SpanAllColumns))
+				{
+					SelectedMassStationIndex = i;
+					// Deselect actor station when selecting a Mass station
+					SelectedStationIndex = -1;
+					bStationRecipesCached = false;
+				}
+
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text("%d", Entry.QueueSize);
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+	}
 }
 
 void FArcCraftImGuiDebugger::DrawStationDetail()
 {
+	// Mass entity station selected — draw Mass detail instead
+	if (SelectedMassStationIndex >= 0 && SelectedMassStationIndex < CachedMassStations.Num())
+	{
+		DrawMassStationDetail();
+		return;
+	}
+
 	if (SelectedStationIndex < 0 || SelectedStationIndex >= CachedStations.Num() ||
 		!CachedStations[SelectedStationIndex].IsValid())
 	{
@@ -481,11 +690,133 @@ void FArcCraftImGuiDebugger::DrawStationDetail()
 	DrawCraftableDiscovery(Station);
 }
 
+static void DrawItemSpecTable(const char* TableId, const TArray<FArcItemSpec>& Items);
+
+void FArcCraftImGuiDebugger::DrawMassStationDetail()
+{
+#if WITH_MASSENTITY_DEBUG
+	const FArcCraftMassStationEntry& Entry = CachedMassStations[SelectedMassStationIndex];
+
+	FMassEntityManager* Manager = Arcx::GameplayDebugger::Craft::GetEntityManager();
+	if (!Manager || !Manager->IsEntityValid(Entry.Entity))
+	{
+		ImGui::TextDisabled("Entity no longer valid");
+		return;
+	}
+
+	// --- Header ---
+	ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "(Mass Entity)");
+	ImGui::Text("Entity Index: %d", Entry.Entity.Index);
+
+	// --- Config ---
+	const FArcCraftStationConfigFragment* Config =
+		Manager->GetConstSharedFragmentDataPtr<FArcCraftStationConfigFragment>(Entry.Entity);
+	if (Config)
+	{
+		ImGui::Text("Station Tags: %s", TCHAR_TO_ANSI(*Config->StationTags.ToStringSimple()));
+		ImGui::Text("Time Mode: %s", Config->TimeMode == EArcCraftStationTimeMode::AutoTick ? "AutoTick" : "InteractionCheck");
+		ImGui::Text("Tick Interval: %.2f", Config->TickInterval);
+		ImGui::Text("Max Queue: %d", Config->MaxQueueSize);
+	}
+
+	ImGui::Spacing();
+
+	// --- Queue ---
+	ImGui::SeparatorText("Craft Queue");
+
+	const FArcCraftQueueFragment* Queue = Manager->GetFragmentDataPtr<FArcCraftQueueFragment>(Entry.Entity);
+	if (Queue && Queue->Entries.Num() > 0)
+	{
+		ImGui::Text("Active Entry: %d", Queue->ActiveEntryIndex);
+
+		if (ImGui::BeginTable("MassQueueTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+		{
+			ImGui::TableSetupColumn("Recipe", ImGuiTableColumnFlags_WidthFixed, 150.f);
+			ImGui::TableSetupColumn("Progress", ImGuiTableColumnFlags_WidthFixed, 100.f);
+			ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 80.f);
+			ImGui::TableHeadersRow();
+
+			for (int32 i = 0; i < Queue->Entries.Num(); ++i)
+			{
+				const FArcCraftQueueEntry& QEntry = Queue->Entries[i];
+
+				ImGui::TableNextRow();
+
+				ImGui::TableSetColumnIndex(0);
+				FString RecipeName = QEntry.Recipe ? QEntry.Recipe->RecipeName.ToString() : TEXT("Unknown");
+				bool bActive = (i == Queue->ActiveEntryIndex);
+				if (bActive)
+				{
+					ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "%s", TCHAR_TO_ANSI(*RecipeName));
+				}
+				else
+				{
+					ImGui::Text("%s", TCHAR_TO_ANSI(*RecipeName));
+				}
+
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text("%d / %d", QEntry.CompletedAmount, QEntry.Amount);
+
+				ImGui::TableSetColumnIndex(2);
+				if (QEntry.Recipe)
+				{
+					float CraftTime = QEntry.Recipe->CraftTime;
+					float Progress = (CraftTime > 0.0f) ? FMath::Clamp(QEntry.ElapsedTickTime / CraftTime, 0.0f, 1.0f) : 1.0f;
+					ImGui::ProgressBar(Progress, ImVec2(-FLT_MIN, 0.f));
+				}
+				else
+				{
+					ImGui::Text("-");
+				}
+			}
+
+			ImGui::EndTable();
+		}
+	}
+	else
+	{
+		ImGui::TextDisabled("(empty)");
+	}
+
+	ImGui::Spacing();
+
+	// --- Input Items ---
+	ImGui::SeparatorText("Input Items");
+
+	const FArcCraftInputFragment* InputFrag = Manager->GetFragmentDataPtr<FArcCraftInputFragment>(Entry.Entity);
+	if (InputFrag && InputFrag->InputItems.Num() > 0)
+	{
+		DrawItemSpecTable("MassInputItems", InputFrag->InputItems);
+	}
+	else
+	{
+		ImGui::TextDisabled("(empty)");
+	}
+
+	ImGui::Spacing();
+
+	// --- Output Items ---
+	ImGui::SeparatorText("Output Items");
+
+	const FArcCraftOutputFragment* OutputFrag = Manager->GetFragmentDataPtr<FArcCraftOutputFragment>(Entry.Entity);
+	if (OutputFrag && OutputFrag->OutputItems.Num() > 0)
+	{
+		DrawItemSpecTable("MassOutputItems", OutputFrag->OutputItems);
+	}
+	else
+	{
+		ImGui::TextDisabled("(empty)");
+	}
+#else
+	ImGui::TextDisabled("Mass debug not available (WITH_MASSENTITY_DEBUG)");
+#endif
+}
+
 void FArcCraftImGuiDebugger::DrawCraftQueue(UArcCraftStationComponent* Station)
 {
 	ImGui::SeparatorText("Craft Queue");
 
-	const bool bEntityBacked = Station->IsEntityBacked();
+	const bool bEntityBacked = false;
 	if (bEntityBacked)
 	{
 		ImGui::SameLine();
@@ -610,7 +941,7 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 {
 	ImGui::SeparatorText("Stored Items");
 
-	const bool bEntityBacked = Station->IsEntityBacked();
+	const bool bEntityBacked = false;
 
 	// --- Withdraw target store selector ---
 	ImGui::Text("Withdraw Target:");
@@ -673,39 +1004,6 @@ void FArcCraftImGuiDebugger::DrawStationStoredItems(UArcCraftStationComponent* S
 	TArray<FArcItemSpec> EntityInputItems;
 	TArray<FArcItemSpec> EntityOutputItems;
 
-	if (bEntityBacked)
-	{
-		UArcCraftVisEntityComponent* VisComp =
-			Station->GetOwner() ? Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>() : nullptr;
-
-		if (VisComp)
-		{
-			const FMassEntityHandle Entity = VisComp->GetEntityHandle();
-			UWorld* StationWorld = Station->GetWorld();
-			UMassEntitySubsystem* MassSubsystem = StationWorld ? StationWorld->GetSubsystem<UMassEntitySubsystem>() : nullptr;
-
-			if (MassSubsystem && Entity.IsValid())
-			{
-				FMassEntityManager& EntityMgr = MassSubsystem->GetMutableEntityManager();
-				if (EntityMgr.IsEntityValid(Entity))
-				{
-					const FArcCraftInputFragment* InputFrag = EntityMgr.GetFragmentDataPtr<FArcCraftInputFragment>(Entity);
-					if (InputFrag)
-					{
-						EntityInputItems = InputFrag->InputItems;
-						bReadInputFromEntity = true;
-					}
-
-					const FArcCraftOutputFragment* OutputFrag = EntityMgr.GetFragmentDataPtr<FArcCraftOutputFragment>(Entity);
-					if (OutputFrag)
-					{
-						EntityOutputItems = OutputFrag->OutputItems;
-						bReadOutputFromEntity = true;
-					}
-				}
-			}
-		}
-	}
 
 	// --- Input Ingredients ---
 	if (bReadInputFromEntity)

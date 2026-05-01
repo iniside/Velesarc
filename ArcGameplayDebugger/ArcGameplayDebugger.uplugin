@@ -75,6 +75,18 @@
 		{
 			"Name": "ArcInstancedWorld",
 			"Enabled": true
+		},
+		{
+			"Name": "ArcTargetQuery",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcEconomy",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassItems",
+			"Enabled": true
 		}
 	]
 }

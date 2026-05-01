@@ -25,7 +25,10 @@
 #include "Components/ActorComponent.h"
 #include "Components/GameFrameworkComponentDelegates.h"
 #include "Components/GameFrameworkComponentManager.h"
+#include "Player/ArcHeroComponentBase.h"
 #include "View/MVVMViewModelContextResolver.h"
+#include "StructUtils/InstancedStruct.h"
+#include "MVVMViewModelBase.h"
 #include "ArcFrontendMVVMModelComponent.generated.h"
 
 UCLASS(Blueprintable, EditInlineNew)
@@ -39,6 +42,20 @@ public:
 	
 public:
 	virtual UObject* CreateInstance(const UClass* ExpectedType, const UUserWidget* UserWidget, const UMVVMView* View) const override;
+};
+
+class UArcFrontendMVVMModelComponent;
+
+USTRUCT(BlueprintType)
+struct ARCFRONTEND_API FArcViewModelSpec
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	FName ContextName;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<UMVVMViewModelBase> ViewModelClass;
 };
 
 UCLASS(BlueprintType, Blueprintable, Within=ArcFrontendMVVMModelComponent)
@@ -81,8 +98,36 @@ public:
 	virtual UWorld* GetWorld() const override;
 
 	virtual bool NeedsLoadForServer() const override { return false; };
-	
+
 };
+
+USTRUCT(BlueprintType)
+struct ARCFRONTEND_API FArcFrontendMVVMStructModel
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	TArray<FArcViewModelSpec> ViewModelSpecs;
+
+	UPROPERTY(EditAnywhere, Category = "Ticking")
+	bool bTickForAll = false;
+
+	UPROPERTY(EditAnywhere, Category = "Ticking")
+	bool bTickForLocalOnly = false;
+
+	TMap<FName, TObjectPtr<UMVVMViewModelBase>> CachedViewModels;
+
+	virtual ~FArcFrontendMVVMStructModel() = default;
+
+	virtual void CreateViewModels(UArcFrontendMVVMModelComponent& Component);
+	virtual void Initialize(UArcFrontendMVVMModelComponent& Component);
+	virtual void Tick(float DeltaTime, UArcFrontendMVVMModelComponent& Component);
+	virtual void Deinitialize(UArcFrontendMVVMModelComponent& Component);
+
+	UMVVMViewModelBase* FindCachedViewModel(FName ContextName) const;
+};
+
+class UMVVMViewModelCollectionObject;
 
 UCLASS(Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent), DefaultToInstanced)
 class ARCFRONTEND_API UArcFrontendMVVMModelComponent : public UActorComponent
@@ -105,8 +150,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Categories = "ViewModel"))
 	TMap<FGameplayTag, TObjectPtr<UMVVMViewModelBase>> ViewModels;
 
+	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcFrontend.ArcFrontendMVVMStructModel"))
+	TArray<FInstancedStruct> StructModels;
+
+	TArray<int32> StructTickLocalIndices;
+	TArray<int32> StructTickForAllIndices;
+
+	UMVVMViewModelCollectionObject* GetGlobalViewModelCollection() const;
+
 	FDelegateHandle DelegateHandle;
 	TSharedPtr<FComponentRequestHandle> RequestHandle;
+	
+	bool bIsDataReady = false;
 	
 	UArcFrontendMVVMModelComponent();
 	

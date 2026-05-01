@@ -45,13 +45,7 @@ struct ARCMASS_API FArcVisLifecyclePhaseVisuals
 	UPROPERTY(EditAnywhere, Category = "Visualization")
 	TArray<TObjectPtr<UMaterialInterface>> MaterialOverrides;
 
-	/** Optional actor class override for actor representation.
-	  * nullptr = keep current actor and notify via IArcLifecycleObserverInterface. */
-	UPROPERTY(EditAnywhere, Category = "Visualization")
-	TSubclassOf<AActor> ActorClassOverride;
-
 	bool HasMeshOverride() const { return StaticMesh != nullptr; }
-	bool HasActorOverride() const { return ActorClassOverride != nullptr; }
 };
 
 // ---------------------------------------------------------------------------
@@ -95,9 +89,6 @@ struct ARCMASS_API FArcVisLifecycleConfigFragment : public FMassConstSharedFragm
 
 	/** Resolve materials for a phase, falling back to base config materials. */
 	const TArray<TObjectPtr<UMaterialInterface>>& ResolveMaterials(uint8 Phase, const FArcVisConfigFragment& BaseConfig) const;
-
-	/** Resolve actor class for a phase, falling back to base config actor class. */
-	TSubclassOf<AActor> ResolveActorClass(uint8 Phase, const FArcVisActorConfigFragment& BaseActorConfig) const;
 };
 
 template<>

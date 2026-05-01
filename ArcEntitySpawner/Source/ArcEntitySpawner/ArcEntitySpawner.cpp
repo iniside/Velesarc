@@ -12,12 +12,13 @@
 #include "MassEntitySubsystem.h"
 #include "MassSimulationSubsystem.h"
 #include "MassSpawnerSubsystem.h"
-#include "TargetQuery/ArcTQSQueryDefinition.h"
-#include "TargetQuery/ArcTQSQueryInstance.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSQueryDefinition.h"
+#include "ArcTQSQueryInstance.h"
+#include "ArcTQSQuerySubsystem.h"
+#include "ArcTQSTypes.h"
 #include "ArcEntitySpawnerSubsystem.h"
 #include "ArcMass/Persistence/ArcMassPersistence.h"
+#include "ArcMass/ArcMassFragments.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcEntitySpawner)
 
@@ -143,8 +144,11 @@ void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		ActiveTQSQueryId = INDEX_NONE;
 	}
 
-	DoDespawning();
-
+	if (EndPlayReason != EEndPlayReason::EndPlayInEditor)
+	{
+		DoDespawning();	
+	}
+	
 	if (UArcEntitySpawnerSubsystem* SpawnerSub = UWorld::GetSubsystem<UArcEntitySpawnerSubsystem>(GetWorld()))
 	{
 		SpawnerSub->UnregisterActorSpawner(SpawnerGuid);
@@ -155,7 +159,7 @@ void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AArcEntitySpawner::BeginDestroy()
 {
-	DoDespawning();
+	//DoDespawning();
 
 	if (StreamingHandle.IsValid() && StreamingHandle->IsActive())
 	{
@@ -283,7 +287,18 @@ void AArcEntitySpawner::SpawnEntitiesFromResults(TConstArrayView<FArcTQSTargetIt
 		Locations.Add(Item.Location);
 	}
 
-	SpawnEntitiesAtLocations(GetSpawnCount(), Locations);
+	const int32 DesiredCount = GetSpawnCount();
+	const int32 ClampedCount = FMath::Min(DesiredCount, Locations.Num());
+
+	if (ClampedCount < DesiredCount)
+	{
+		UE_LOG(LogArcEntitySpawner, Warning,
+			TEXT("%s: TQS query returned %d results but spawn count is %d — clamping to %d. "
+				 "Configure the query to return enough results (e.g. TopN or AllPassing mode)."),
+			*GetName(), Locations.Num(), DesiredCount, ClampedCount);
+	}
+
+	SpawnEntitiesAtLocations(ClampedCount, Locations);
 }
 
 void AArcEntitySpawner::SpawnEntitiesAtLocations(int32 InCount, TConstArrayView<FVector> Locations)
@@ -341,16 +356,26 @@ void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations
 			SpawnerSystem->SpawnEntities(EntityTemplate.GetTemplateID(), SpawnCount,
 				FConstStructView(), nullptr, SpawnedEntities.Entities);
 
-		// Set transforms from location array while creation context is alive
+		// Set transforms from location array while creation context is alive (strict 1:1)
 		FMassEntityManager& EntityManager = SpawnerSystem->GetEntityManagerChecked();
 		for (int32 i = 0; i < SpawnedEntities.Entities.Num(); ++i)
 		{
-			if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntities.Entities[i]))
+			const FMassEntityHandle& Entity = SpawnedEntities.Entities[i];
+
+			if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity))
 			{
-				const FVector& Location = (NumLocations > 0)
-					? Locations[i % NumLocations]
+				FVector SpawnLocation = (i < NumLocations)
+					? Locations[i]
 					: GetActorLocation();
-				TransformFrag->GetMutableTransform().SetLocation(Location);
+
+				const FArcAgentCapsuleFragment* CapsuleFrag =
+					EntityManager.GetFragmentDataPtr<FArcAgentCapsuleFragment>(Entity);
+				if (CapsuleFrag)
+				{
+					SpawnLocation.Z += CapsuleFrag->HalfHeight;
+				}
+
+				TransformFrag->GetMutableTransform().SetLocation(SpawnLocation);
 			}
 		}
 
