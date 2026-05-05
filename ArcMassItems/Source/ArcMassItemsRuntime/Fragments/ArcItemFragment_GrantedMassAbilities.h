@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ArcCore/Items/Fragments/ArcItemFragment.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Items/ArcItemInstance.h"
 #include "Abilities/ArcAbilityHandle.h"
 #include "GameplayTagContainer.h"
@@ -9,7 +9,7 @@
 class UArcAbilityDefinition;
 
 USTRUCT(meta = (ToolTip = "A single Mass ability entry with definition and optional input binding tag."))
-struct ARCCORE_API FArcMassAbilityEntry
+struct ARCMASSITEMSRUNTIME_API FArcMassAbilityEntry
 {
 	GENERATED_BODY()
 
@@ -21,7 +21,7 @@ struct ARCCORE_API FArcMassAbilityEntry
 };
 
 USTRUCT(meta = (ToolTip = "Mutable instance data tracking Mass ability handles granted by the item."))
-struct ARCCORE_API FArcItemInstance_GrantedMassAbilities : public FArcItemInstance_ItemData
+struct ARCMASSITEMSRUNTIME_API FArcItemInstance_GrantedMassAbilities : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
 
@@ -38,7 +38,7 @@ struct ARCCORE_API FArcItemInstance_GrantedMassAbilities : public FArcItemInstan
 
 USTRUCT(BlueprintType, meta = (DisplayName = "Granted Mass Abilities", Category = "Mass Abilities",
 	ToolTip = "Grants Mass abilities to the owning actor's Mass entity when the item is equipped to a slot, and removes them when unequipped."))
-struct ARCCORE_API FArcItemFragment_GrantedMassAbilities : public FArcItemFragment_ItemInstanceBase
+struct ARCMASSITEMSRUNTIME_API FArcItemFragment_GrantedMassAbilities : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
 

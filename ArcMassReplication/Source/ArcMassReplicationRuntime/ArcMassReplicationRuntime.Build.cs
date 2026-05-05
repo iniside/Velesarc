@@ -33,7 +33,8 @@ public class ArcMassReplicationRuntime : ModuleRules
                 "MassCore",
                 "MassEntity",
                 "MassSpawner",
-                "MassSignals"
+                "MassSignals",
+                "AssetRegistry"
             }
         );
 

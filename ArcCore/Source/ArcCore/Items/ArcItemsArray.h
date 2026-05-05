@@ -203,7 +203,7 @@ struct TStructOpsTypeTraits<FArcItemDataInternalWrapper>
 
 
 USTRUCT(BlueprintType)
-struct FArcItemsArray
+struct ARCCORE_API FArcItemsArray
 	: public FIrisFastArraySerializer
 {
 	GENERATED_BODY()

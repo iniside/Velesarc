@@ -63,6 +63,7 @@ void FArcIrisEntityArray::MarkFragmentDirty(int32 EntityIndex, int32 FragmentSlo
 {
 	if (!Entities.IsValidIndex(EntityIndex))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("FArcIrisEntityArray::MarkFragmentDirty invalid EntityIndex=%d (Entities.Num=%d)"), EntityIndex, Entities.Num());
 		return;
 	}
 
@@ -72,6 +73,8 @@ void FArcIrisEntityArray::MarkFragmentDirty(int32 EntityIndex, int32 FragmentSlo
 	{
 		DirtyEntities[EntityIndex] = true;
 	}
+	UE_LOG(LogTemp, Log, TEXT("FArcIrisEntityArray::MarkFragmentDirty EntityIndex=%d Slot=%d DirtyMask=0x%X RepKey=%u DirtyBits=%d"),
+		EntityIndex, FragmentSlot, Entities[EntityIndex].FragmentDirtyMask, Entities[EntityIndex].ReplicationKey, DirtyEntities.CountSetBits());
 }
 
 void FArcIrisEntityArray::MarkEntityDirty(int32 EntityIndex)
@@ -107,11 +110,7 @@ bool FArcIrisEntityArray::HasDirtyEntities() const
 		return true;
 	}
 
-	for (TConstSetBitIterator<> It(DirtyEntities); It; ++It)
-	{
-		return true;
-	}
-	return false;
+	return DirtyEntities.CountSetBits() > 0;
 }
 
 void FArcIrisEntityArray::PreReplicatedRemove(FArcMassNetId NetId)

@@ -2,32 +2,24 @@
 
 #include "Replication/ArcIrisReplicatedArray.h"
 
-void FArcIrisReplicatedArray::MarkItemDirtyByIndex(int32& OutReplicationKey, int32 Index)
+void FArcIrisReplicatedArray::MarkItemDirtyByIndex(int32& OutReplicationKey, int32 Index, int32 IrisRepID)
 {
 	++OutReplicationKey;
-	if (DirtyItems.IsValidIndex(Index))
-	{
-		DirtyItems[Index] = true;
-	}
+	ReceivedChangedIDs.Add(IrisRepID);
 }
 
-void FArcIrisReplicatedArray::ClearDirtyState(int32 ItemCount)
+void FArcIrisReplicatedArray::ClearDirtyState()
 {
 	PendingRemovals.Reset();
-	DirtyItems.Init(false, ItemCount);
+	ReceivedAddedIDs.Reset();
+	ReceivedChangedIDs.Reset();
 }
 
 bool FArcIrisReplicatedArray::HasDirtyItems() const
 {
-	if (PendingRemovals.Num() > 0)
-	{
-		return true;
-	}
-	for (TConstSetBitIterator<> It(DirtyItems); It; ++It)
-	{
-		return true;
-	}
-	return false;
+	return PendingRemovals.Num() > 0
+		|| ReceivedAddedIDs.Num() > 0
+		|| ReceivedChangedIDs.Num() > 0;
 }
 
 int32 FArcIrisReplicatedArray::FindIndexByIrisRepID(const FArcIrisReplicatedArrayItem* ItemsData, int32 ItemCount, int32 RepID) const

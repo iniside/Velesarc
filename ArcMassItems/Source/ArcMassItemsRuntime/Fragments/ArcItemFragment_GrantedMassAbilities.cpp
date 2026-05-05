@@ -1,20 +1,24 @@
-#include "Items/Fragments/ArcItemFragment_GrantedMassAbilities.h"
-#include "Items/Fragments/ArcItemMassHelpers.h"
+#include "Fragments/ArcItemFragment_GrantedMassAbilities.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Abilities/ArcAbilityFunctions.h"
 #include "Abilities/ArcAbilityDefinition.h"
 #include "MassAbilities/ArcAbilitySourceData_Item.h"
+#include "Engine/World.h"
+#include "MassEntitySubsystem.h"
 #include "MassEntityManager.h"
 
 void FArcItemFragment_GrantedMassAbilities::OnItemAddedToSlot(const FArcItemData* InItem,
                                                                const FGameplayTag& InSlotId) const
 {
-	FMassEntityManager* EntityManager = nullptr;
-	FMassEntityHandle Entity;
-	if (!ArcItemMassHelpers::GetMassEntity(InItem, EntityManager, Entity))
-	{
+	if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
 		return;
-	}
+	UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+	if (!Subsystem)
+		return;
+	FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+	const FMassEntityHandle Entity = InItem->MassEntityHandle;
+	if (!EntityManager.IsEntityValid(Entity))
+		return;
 
 	FArcItemInstance_GrantedMassAbilities* Instance =
 		ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedMassAbilities>(InItem);
@@ -35,7 +39,7 @@ void FArcItemFragment_GrantedMassAbilities::OnItemAddedToSlot(const FArcItemData
 		ItemSourceData.SlotId = InSlotId;
 
 		TOptional<FArcAbilityHandle> Handle = ArcAbilities::TryGrantAbilitySafe(
-			*EntityManager, Entity, Entry.AbilityDefinition, Entry.InputTag,
+			EntityManager, Entity, Entry.AbilityDefinition, Entry.InputTag,
 			Entity, SourceData);
 
 		if (Handle.IsSet())
@@ -48,19 +52,22 @@ void FArcItemFragment_GrantedMassAbilities::OnItemAddedToSlot(const FArcItemData
 void FArcItemFragment_GrantedMassAbilities::OnItemRemovedFromSlot(const FArcItemData* InItem,
                                                                     const FGameplayTag& InSlotId) const
 {
-	FMassEntityManager* EntityManager = nullptr;
-	FMassEntityHandle Entity;
-	if (!ArcItemMassHelpers::GetMassEntity(InItem, EntityManager, Entity))
-	{
+	if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
 		return;
-	}
+	UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+	if (!Subsystem)
+		return;
+	FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+	const FMassEntityHandle Entity = InItem->MassEntityHandle;
+	if (!EntityManager.IsEntityValid(Entity))
+		return;
 
 	FArcItemInstance_GrantedMassAbilities* Instance =
 		ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedMassAbilities>(InItem);
 
 	for (const FArcAbilityHandle& Handle : Instance->GrantedAbilities)
 	{
-		ArcAbilities::TryRemoveAbilitySafe(*EntityManager, Entity, Handle);
+		ArcAbilities::TryRemoveAbilitySafe(EntityManager, Entity, Handle);
 	}
 	Instance->GrantedAbilities.Empty();
 }

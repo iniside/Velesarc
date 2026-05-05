@@ -3,7 +3,7 @@
 #include "Processors/ArcMassReplicationFilterProcessor.h"
 #include "Fragments/ArcMassReplicationSourceTag.h"
 #include "Fragments/ArcMassReplicationSourceFragment.h"
-#include "Subsystem/ArcMassEntityReplicationSubsystem.h"
+#include "Subsystem/ArcMassEntityReplicationProxySubsystem.h"
 #include "Spatial/ArcMassSpatialGrid.h"
 #include "MassExecutionContext.h"
 #include "MassSignalSubsystem.h"
@@ -48,7 +48,7 @@ void UArcMassReplicationFilterProcessor::SignalEntities(FMassEntityManager& Enti
 		return;
 	}
 
-	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+	UArcMassEntityReplicationProxySubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 	if (!Subsystem)
 	{
 		return;
@@ -61,7 +61,7 @@ void UArcMassReplicationFilterProcessor::SignalEntities(FMassEntityManager& Enti
 
 	for (uint32 ConnectionId : SourceConnections)
 	{
-		const UArcMassEntityReplicationSubsystem::FSourceState* SourceState = Subsystem->GetSourceState(ConnectionId);
+		const UArcMassEntityReplicationProxySubsystem::FSourceState* SourceState = Subsystem->GetSourceState(ConnectionId);
 		if (!SourceState)
 		{
 			continue;
@@ -69,9 +69,9 @@ void UArcMassReplicationFilterProcessor::SignalEntities(FMassEntityManager& Enti
 
 		FIntVector2 SourceCell = SourceState->Cell;
 
-		const TMap<UArcMassEntityReplicationSubsystem::FArchetypeKey, FArcMassSpatialGrid>& Grids = Subsystem->GetArchetypeGrids();
+		const TMap<UArcMassEntityReplicationProxySubsystem::FArchetypeKey, FArcMassSpatialGrid>& Grids = Subsystem->GetArchetypeGrids();
 
-		for (const TPair<UArcMassEntityReplicationSubsystem::FArchetypeKey, FArcMassSpatialGrid>& GridPair : Grids)
+		for (const TPair<UArcMassEntityReplicationProxySubsystem::FArchetypeKey, FArcMassSpatialGrid>& GridPair : Grids)
 		{
 			const FArcMassSpatialGrid& Grid = GridPair.Value;
 

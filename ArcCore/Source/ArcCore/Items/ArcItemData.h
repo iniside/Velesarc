@@ -26,6 +26,7 @@
 #include "ArcMapAbilityEffectSpecContainer.h"
 #include "GameplayTagContainer.h"
 #include "UObject/NoExportTypes.h"
+#include "Mass/EntityHandle.h"
 
 #include "ArcScalableFloat.h"
 #include "Items/ArcItemTypes.h"
@@ -37,6 +38,7 @@ class UScriptStruct;
 class UGameplayEffect;
 class UArcItemsStoreComponent;
 class UArcItemDefinition;
+class UWorld;
 struct FArcItemInstance;
 struct FArcItemSpec;
 struct FArcItemsArray;
@@ -82,9 +84,18 @@ public:
 	TArray<FArcItemId> AttachedItems;
 	
 	TMap<const UScriptStruct*, FStructView> InstancedData;
+
+	/** World context. Available in both ActorComponent and Mass entity contexts. @see InitializeMass */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<UWorld> World;
+
+	/** Mass entity that owns this item. Valid only in Mass-native context (OwnerComponent is null). Do NOT add to comparison operators — transient context, not identity. */
+	FMassEntityHandle MassEntityHandle;
+
 	/**
 	 * Items Store component, which currently owns this item.
 	 * Can change over time as Item is moved between components.
+	 * May be null in Mass entity context — use World for world access.
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UArcItemsStoreComponent> OwnerComponent = nullptr;
@@ -355,6 +366,9 @@ public:
 	void PostReplicatedChange(const FArcItemsArray& InArraySerializer);
 
 	void Initialize(UArcItemsStoreComponent* ItemsStoreComponent);
+
+	/** Mass-native initialization. Does everything Initialize+SetupItem do except subsystem broadcasts and OnItemAdded. */
+	void InitializeMass(UWorld* InWorld);
 
 	void OnItemAdded();
 	void OnItemChanged();

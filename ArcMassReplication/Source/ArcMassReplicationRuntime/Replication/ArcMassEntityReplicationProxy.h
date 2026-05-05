@@ -9,6 +9,7 @@
 #include "StructUtils/InstancedStruct.h"
 #include "Replication/ArcIrisEntityArray.h"
 #include "Replication/ArcMassReplicationDescriptorSet.h"
+#include "Net/Core/PushModel/PushModel.h"
 #include "ArcMassEntityReplicationProxy.generated.h"
 
 class UMassEntityConfigAsset;
@@ -38,6 +39,57 @@ public:
 	int32 FindItemIndexByNetId(FArcMassNetId NetId) const { return ReplicatedEntities.FindIndexByNetId(NetId); }
 
 	const ArcMassReplication::FArcMassReplicationDescriptorSet& GetDescriptorSet();
+
+	template<typename T>
+	T* GetFragment(FArcMassNetId NetId)
+	{
+		EnsureDescriptorSet();
+		const int32 EntityIndex = ReplicatedEntities.FindIndexByNetId(NetId);
+		if (EntityIndex == INDEX_NONE)
+		{
+			return nullptr;
+		}
+		FArcIrisReplicatedEntity& Entity = ReplicatedEntities.Entities[EntityIndex];
+		for (int32 SlotIdx = 0; SlotIdx < DescriptorSet.FragmentTypes.Num(); ++SlotIdx)
+		{
+			if (DescriptorSet.FragmentTypes[SlotIdx] == T::StaticStruct())
+			{
+				return Entity.FragmentSlots.IsValidIndex(SlotIdx)
+					? Entity.FragmentSlots[SlotIdx].GetMutablePtr<T>()
+					: nullptr;
+			}
+		}
+		return nullptr;
+	}
+
+	template<typename T>
+	void MarkFragmentDirty(FArcMassNetId NetId)
+	{
+		EnsureDescriptorSet();
+		const int32 EntityIndex = ReplicatedEntities.FindIndexByNetId(NetId);
+		UE_LOG(LogTemp, Log, TEXT("ArcProxy::MarkFragmentDirty<%s> NetId=%u EntityIndex=%d"),
+			*T::StaticStruct()->GetName(), NetId.GetValue(), EntityIndex);
+		if (EntityIndex == INDEX_NONE)
+		{
+			return;
+		}
+		for (int32 SlotIdx = 0; SlotIdx < DescriptorSet.FragmentTypes.Num(); ++SlotIdx)
+		{
+			if (DescriptorSet.FragmentTypes[SlotIdx] == T::StaticStruct())
+			{
+				ReplicatedEntities.MarkFragmentDirty(EntityIndex, SlotIdx);
+				MARK_PROPERTY_DIRTY_FROM_NAME(AArcMassEntityReplicationProxy, ReplicatedEntities, this);
+				UE_LOG(LogTemp, Log, TEXT("ArcProxy::MarkFragmentDirty<%s> NetId=%u SlotIdx=%d done (DirtyEntities=%d HasDirty=%d ReplicationKey=%u)"),
+					*T::StaticStruct()->GetName(), NetId.GetValue(), SlotIdx,
+					ReplicatedEntities.DirtyEntities.CountSetBits(),
+					ReplicatedEntities.HasDirtyEntities() ? 1 : 0,
+					ReplicatedEntities.Entities.IsValidIndex(EntityIndex) ? ReplicatedEntities.Entities[EntityIndex].ReplicationKey : 0u);
+				return;
+			}
+		}
+		UE_LOG(LogTemp, Warning, TEXT("ArcProxy::MarkFragmentDirty<%s> NetId=%u: fragment type not in DescriptorSet (FragmentTypes=%d)"),
+			*T::StaticStruct()->GetName(), NetId.GetValue(), DescriptorSet.FragmentTypes.Num());
+	}
 
 protected:
 	UPROPERTY(Replicated)

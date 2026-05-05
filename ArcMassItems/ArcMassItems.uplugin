@@ -27,6 +27,7 @@
 		{ "Name": "MassGameplay", "Enabled": true },
 		{ "Name": "StructUtils", "Enabled": true },
 		{ "Name": "ArcCore", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
 		{ "Name": "ArcMassReplication", "Enabled": true }
 	]
 }

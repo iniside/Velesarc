@@ -5,7 +5,7 @@
 #include "Components/PIENetworkComponent.h"
 #include "Replication/ArcMassEntityReplicationProxy.h"
 #include "Replication/ArcMassReplicationDescriptorSet.h"
-#include "Subsystem/ArcMassEntityReplicationSubsystem.h"
+#include "Subsystem/ArcMassEntityReplicationProxySubsystem.h"
 #include "Fragments/ArcMassNetId.h"
 #include "StructUtils/InstancedStruct.h"
 #include "ArcMassTestPayloadFragment.h"
@@ -33,6 +33,9 @@
 // FMassEntityHandle NetSerializer — round-trip replication test
 // ---------------------------------------------------------------------------
 
+// Disabled: crashes editor with EXCEPTION_ACCESS_VIOLATION 0x0 (likely in serialize path).
+// User direction: skip, do not fix.
+#if 0
 NETWORK_TEST_CLASS(ArcMassEntityHandleReplication, "ArcMassReplication.EntityHandle")
 {
 	struct FHandleTestState : public FBasePIENetworkComponentState
@@ -77,14 +80,14 @@ NETWORK_TEST_CLASS(ArcMassEntityHandleReplication, "ArcMassReplication.EntityHan
 		Network
 			.ThenServer(TEXT("Create entity, replicate via proxy, spawn handle actor"), [this](FHandleTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ServerState.World);
 
 				FMassFragmentBitSet FragmentBitSet;
-				FragmentBitSet.Add(*FArcMassTestPayloadFragment::StaticStruct());
+				FragmentBitSet.Add(FArcMassTestPayloadFragment::StaticStruct());
 				FMassArchetypeHandle Archetype = EntityManager.CreateArchetype(FragmentBitSet, {});
 				FMassEntityHandle Entity = EntityManager.CreateEntity(Archetype);
 				ServerState.ServerEntity = Entity;
@@ -110,8 +113,8 @@ NETWORK_TEST_CLASS(ArcMassEntityHandleReplication, "ArcMassReplication.EntityHan
 			})
 			.UntilClients(TEXT("Wait for entity to replicate to client"), [](FHandleTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -150,6 +153,7 @@ NETWORK_TEST_CLASS(ArcMassEntityHandleReplication, "ArcMassReplication.EntityHan
 			});
 	}
 };
+#endif // disabled ArcMassEntityHandleReplication
 
 // ---------------------------------------------------------------------------
 // Sparse fragment replication test
@@ -200,14 +204,14 @@ NETWORK_TEST_CLASS(ArcMassSparseFragmentReplication, "ArcMassReplication.SparseF
 		Network
 			.ThenServer(TEXT("Create entity with sparse fragment, replicate via proxy"), [this](FSparseTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ServerState.World);
 
 				FMassFragmentBitSet FragmentBitSet;
-				FragmentBitSet.Add(*FArcMassTestPayloadFragment::StaticStruct());
+				FragmentBitSet.Add(FArcMassTestPayloadFragment::StaticStruct());
 				FMassArchetypeHandle Archetype = EntityManager.CreateArchetype(FragmentBitSet, {});
 				FMassEntityHandle Entity = EntityManager.CreateEntity(Archetype);
 				ServerState.ServerEntity = Entity;
@@ -233,8 +237,8 @@ NETWORK_TEST_CLASS(ArcMassSparseFragmentReplication, "ArcMassReplication.SparseF
 			})
 			.UntilClients(TEXT("Wait for entity on client"), [](FSparseTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -245,8 +249,8 @@ NETWORK_TEST_CLASS(ArcMassSparseFragmentReplication, "ArcMassReplication.SparseF
 			})
 			.ThenClients(TEXT("Verify sparse fragment data on client"), [this](FSparseTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
@@ -332,8 +336,8 @@ NETWORK_TEST_CLASS(ArcMassConfigBasedReplication, "ArcMassReplication.ConfigAsse
 		Network
 			.ThenClients(TEXT("Call OnClientEntityAdded with config asset, verify full template"), [this](FConfigTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				TArray<const UScriptStruct*> FragmentTypes;
@@ -416,8 +420,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 		Network
 			.ThenServer(TEXT("Spawn proxy, set single-property fragment"), [this](FIrisTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestPayloadProxy>();
@@ -434,8 +438,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for entity on client"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -446,8 +450,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.ThenClients(TEXT("Verify fragment value"), [this](FIrisTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
@@ -468,8 +472,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 		Network
 			.ThenServer(TEXT("Spawn proxy, set multi-property fragment"), [this](FIrisTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestStatsProxy>();
@@ -488,8 +492,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for entity on client"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -506,8 +510,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.ThenClients(TEXT("Verify all properties"), [this](FIrisTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -525,8 +529,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 		Network
 			.ThenServer(TEXT("Spawn proxy, set initial values"), [this](FIrisTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestStatsProxy>();
@@ -545,8 +549,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for initial data"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -574,8 +578,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for updated data"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -592,8 +596,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.ThenClients(TEXT("Verify updated values"), [this](FIrisTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -613,8 +617,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 		Network
 			.ThenServer(TEXT("Spawn proxy with two fragments"), [this](FIrisTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestMultiFragmentProxy>();
@@ -637,16 +641,16 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for entity"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				return Entity.IsSet();
 			})
 			.ThenClients(TEXT("Verify both fragments"), [this](FIrisTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -670,8 +674,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 		Network
 			.ThenServer(TEXT("Spawn proxy, add 3 entities"), [this](FIrisTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestPayloadProxy>();
@@ -691,8 +695,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for all 3 entities"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -712,8 +716,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for entity 2 change"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -730,8 +734,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.ThenClients(TEXT("Verify entity 2 changed, others unchanged"), [this](FIrisTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 
 				FMassEntityHandle Entity1 = Subsystem->FindEntityByNetId(FArcMassNetId(1));
@@ -759,8 +763,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 		Network
 			.ThenServer(TEXT("Spawn proxy and add entity"), [this](FIrisTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestPayloadProxy>();
@@ -775,8 +779,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for entity to arrive"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				return Subsystem->FindEntityByNetId(FArcMassNetId(1)).IsSet();
 			})
@@ -786,15 +790,15 @@ NETWORK_TEST_CLASS(ArcIrisEntityArrayReplication, "ArcMassReplication.IrisEntity
 			})
 			.UntilClients(TEXT("Wait for entity removal"), [](FIrisTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				return !Subsystem->FindEntityByNetId(FArcMassNetId(1)).IsSet();
 			})
 			.ThenClients(TEXT("Verify entity is gone"), [this](FIrisTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				ASSERT_THAT(IsFalse(Entity.IsSet()));
 			});
@@ -845,8 +849,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 		Network
 			.ThenServer(TEXT("Spawn proxy, set fragment with TArray items"), [this](FItemTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestItemProxy>();
@@ -870,8 +874,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 			})
 			.UntilClients(TEXT("Wait for entity on client"), [](FItemTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem)
 				{
 					return false;
@@ -881,8 +885,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 			})
 			.ThenClients(TEXT("Verify TArray items replicated correctly"), [this](FItemTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -903,8 +907,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 		Network
 			.ThenServer(TEXT("Spawn proxy with initial items"), [this](FItemTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestItemProxy>();
@@ -924,8 +928,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 			})
 			.UntilClients(TEXT("Wait for initial data"), [](FItemTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				if (!Entity.IsSet()) return false;
@@ -952,8 +956,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 			})
 			.UntilClients(TEXT("Wait for updated data"), [](FItemTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				if (!Entity.IsSet()) return false;
@@ -964,8 +968,8 @@ NETWORK_TEST_CLASS(ArcIrisItemArrayReplication, "ArcMassReplication.ItemArray")
 			})
 			.ThenClients(TEXT("Verify updated items"), [this](FItemTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -1026,8 +1030,8 @@ NETWORK_TEST_CLASS(ArcIrisNestedItemReplication, "ArcMassReplication.NestedItemA
 		Network
 			.ThenServer(TEXT("Spawn proxy with nested struct items"), [this](FNestedTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestNestedItemProxy>();
@@ -1057,16 +1061,16 @@ NETWORK_TEST_CLASS(ArcIrisNestedItemReplication, "ArcMassReplication.NestedItemA
 			})
 			.UntilClients(TEXT("Wait for entity on client"), [](FNestedTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				return Entity.IsSet();
 			})
 			.ThenClients(TEXT("Verify nested struct fields replicated"), [this](FNestedTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -1096,6 +1100,9 @@ NETWORK_TEST_CLASS(ArcIrisNestedItemReplication, "ArcMassReplication.NestedItemA
 // FMassEntityHandle item replication — verifies custom Iris net serializer on item field
 // ---------------------------------------------------------------------------
 
+// Disabled: EntityHandleItem_ReplicatesToClient crashes editor with EXCEPTION_ACCESS_VIOLATION 0x0
+// (likely same serialize-path null deref as the other entity-handle test). User direction: skip.
+#if 0
 NETWORK_TEST_CLASS(ArcIrisEntityHandleItemReplication, "ArcMassReplication.EntityHandleItemArray")
 {
 	struct FHandleItemTestState : public FBasePIENetworkComponentState
@@ -1137,8 +1144,8 @@ NETWORK_TEST_CLASS(ArcIrisEntityHandleItemReplication, "ArcMassReplication.Entit
 		Network
 			.ThenServer(TEXT("Spawn proxy with entity handle items"), [this](FHandleItemTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestEntityHandleItemProxy>();
@@ -1159,16 +1166,16 @@ NETWORK_TEST_CLASS(ArcIrisEntityHandleItemReplication, "ArcMassReplication.Entit
 			})
 			.UntilClients(TEXT("Wait for entity on client"), [](FHandleItemTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				return Entity.IsSet();
 			})
 			.ThenClients(TEXT("Verify entity handle item replicated"), [this](FHandleItemTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -1182,6 +1189,7 @@ NETWORK_TEST_CLASS(ArcIrisEntityHandleItemReplication, "ArcMassReplication.Entit
 			});
 	}
 };
+#endif // disabled ArcIrisEntityHandleItemReplication
 
 // ---------------------------------------------------------------------------
 // Delta replication — only changed items replicate, verified via callback counters
@@ -1227,8 +1235,8 @@ NETWORK_TEST_CLASS(ArcIrisDeltaReplication, "ArcMassReplication.DeltaItemArray")
 		Network
 			.ThenServer(TEXT("Add 3 items"), [this](FDeltaTestState& ServerState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ServerState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				ASSERT_THAT(IsNotNull(Subsystem));
 
 				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestItemProxy>();
@@ -1259,8 +1267,8 @@ NETWORK_TEST_CLASS(ArcIrisDeltaReplication, "ArcMassReplication.DeltaItemArray")
 			})
 			.UntilClients(TEXT("Wait for all 3 items on client"), [](FDeltaTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				if (!Entity.IsSet()) return false;
@@ -1271,8 +1279,8 @@ NETWORK_TEST_CLASS(ArcIrisDeltaReplication, "ArcMassReplication.DeltaItemArray")
 			})
 			.ThenClients(TEXT("Log initial state and reset counters"), [this](FDeltaTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -1290,31 +1298,23 @@ NETWORK_TEST_CLASS(ArcIrisDeltaReplication, "ArcMassReplication.DeltaItemArray")
 			})
 			.ThenServer(TEXT("Modify only item 2"), [this](FDeltaTestState& ServerState)
 			{
-				FArcMassTestItemFragment Frag;
-
-				FArcMassTestReplicatedItem Item1;
-				Item1.ItemId = 1;
-				Item1.Value = 100;
-				Frag.ReplicatedItems.AddItem(MoveTemp(Item1));
-
-				FArcMassTestReplicatedItem Item2;
-				Item2.ItemId = 2;
-				Item2.Value = 999;
-				Frag.ReplicatedItems.AddItem(MoveTemp(Item2));
-
-				FArcMassTestReplicatedItem Item3;
-				Item3.ItemId = 3;
-				Item3.Value = 300;
-				Frag.ReplicatedItems.AddItem(MoveTemp(Item3));
-
-				TArray<FInstancedStruct> Slots;
-				Slots.Add(FInstancedStruct::Make(Frag));
-				ServerState.Proxy->SetEntityFragments(ServerState.AllocatedNetId, Slots);
+				FArcMassTestItemFragment* Frag = ServerState.Proxy->GetFragment<FArcMassTestItemFragment>(ServerState.AllocatedNetId);
+				ASSERT_THAT(IsNotNull(Frag));
+				for (FArcMassTestReplicatedItem& Item : Frag->ReplicatedItems.Items)
+				{
+					if (Item.ItemId == 2)
+					{
+						Item.Value = 999;
+						Frag->ReplicatedItems.MarkItemDirty(Item);
+						break;
+					}
+				}
+				ServerState.Proxy->MarkFragmentDirty<FArcMassTestItemFragment>(ServerState.AllocatedNetId);
 			})
 			.UntilClients(TEXT("Wait for item 2 update"), [](FDeltaTestState& ClientState) -> bool
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				if (!Subsystem) return false;
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				if (!Entity.IsSet()) return false;
@@ -1330,8 +1330,8 @@ NETWORK_TEST_CLASS(ArcIrisDeltaReplication, "ArcMassReplication.DeltaItemArray")
 			})
 			.ThenClients(TEXT("Verify only 1 change callback, no extra adds"), [this](FDeltaTestState& ClientState)
 			{
-				UArcMassEntityReplicationSubsystem* Subsystem =
-					ClientState.World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
 				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
 				FMassEntityView EntityView(EntityManager, Entity);
@@ -1438,6 +1438,479 @@ NETWORK_TEST_CLASS(ArcIrisDirectArrayReplication, "ArcMassReplication.DirectArra
 
 				ASSERT_THAT(AreEqual(ClientState.Actor->ReplicatedItems.AddCallbackCount, 2));
 				ASSERT_THAT(AreEqual(ClientState.Actor->ReplicatedItems.ChangeCallbackCount, 0));
+			});
+	}
+};
+
+// ---------------------------------------------------------------------------
+// FInstancedStruct item replication — verifies polymorphic FInstancedStruct
+// field inside FArcIrisReplicatedArray item replicates correctly
+// ---------------------------------------------------------------------------
+
+NETWORK_TEST_CLASS(ArcIrisInstancedStructItemReplication, "ArcMassReplication.InstancedStructItemArray")
+{
+	struct FInstancedStructTestState : public FBasePIENetworkComponentState
+	{
+		AArcMassTestInstancedStructItemProxy* Proxy = nullptr;
+		FArcMassNetId AllocatedNetId;
+	};
+
+	FPIENetworkComponent<FInstancedStructTestState> Network{ TestRunner, TestCommandBuilder, bInitializing };
+
+	inline static TSharedPtr<FScopedTestEnvironment> TestEnvironment{ nullptr };
+	BEFORE_ALL()
+	{
+		TestEnvironment = FScopedTestEnvironment::Get();
+		TestEnvironment->SetConsoleVariableValue(TEXT("net.Iris.UseIrisReplication"), TEXT("1"));
+	}
+
+	BEFORE_EACH()
+	{
+		TestRunner->AddExpectedError(TEXT("FMassEntityQuery::CacheArchetypes"), EAutomationExpectedErrorFlags::Contains, -1);
+		TestRunner->AddExpectedError(TEXT("SendRPC"), EAutomationExpectedErrorFlags::Contains, -1);
+
+		FNetworkComponentBuilder<FInstancedStructTestState>()
+			.WithClients(1)
+			.AsDedicatedServer()
+			.WithGameInstanceClass(UGameInstance::StaticClass())
+			.WithGameMode(AGameModeBase::StaticClass())
+			.Build(Network);
+	}
+
+	AFTER_ALL()
+	{
+		TestEnvironment = nullptr;
+	}
+
+	TEST_METHOD(InstancedStruct_InItemArray_ReplicatesToClient)
+	{
+		Network
+			.ThenServer(TEXT("Spawn proxy with instanced-struct item"), [this](FInstancedStructTestState& ServerState)
+			{
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ServerState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
+				ASSERT_THAT(IsNotNull(Subsystem));
+
+				ServerState.AllocatedNetId = Subsystem->AllocateNetId();
+
+				ServerState.Proxy = Subsystem->SpawnProxyOfClass<AArcMassTestInstancedStructItemProxy>();
+				ASSERT_THAT(IsNotNull(ServerState.Proxy));
+
+				FArcMassTestInstancedStructItemFragment Frag;
+
+				FArcMassTestInstancedStructItem Item;
+				Item.ItemId = 42;
+				FArcMassTestNestedData Data;
+				Data.Position = FVector(1.0, 2.0, 3.0);
+				Data.Health = 55.5f;
+				Data.Tag = FName(TEXT("TestTag"));
+				Item.Payload = FInstancedStruct::Make(Data);
+				Frag.ReplicatedItems.AddItem(MoveTemp(Item));
+
+				TArray<FInstancedStruct> Slots;
+				Slots.Add(FInstancedStruct::Make(Frag));
+				ServerState.Proxy->SetEntityFragments(ServerState.AllocatedNetId, Slots);
+			})
+			.UntilClients(TEXT("Wait for entity on client"), [](FInstancedStructTestState& ClientState) -> bool
+			{
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
+				if (!Subsystem) return false;
+				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
+				return Entity.IsSet();
+			})
+			.ThenClients(TEXT("Verify instanced struct item replicated correctly"), [this](FInstancedStructTestState& ClientState)
+			{
+				UArcMassEntityReplicationProxySubsystem* Subsystem =
+					ClientState.World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
+				FMassEntityHandle Entity = Subsystem->FindEntityByNetId(FArcMassNetId(1));
+				FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*ClientState.World);
+				FMassEntityView EntityView(EntityManager, Entity);
+
+				const FArcMassTestInstancedStructItemFragment* Frag =
+					EntityView.GetFragmentDataPtr<FArcMassTestInstancedStructItemFragment>();
+				ASSERT_THAT(IsNotNull(Frag));
+				ASSERT_THAT(AreEqual(Frag->ReplicatedItems.Items.Num(), 1));
+
+				const FArcMassTestInstancedStructItem& Item = Frag->ReplicatedItems.Items[0];
+				ASSERT_THAT(AreEqual(Item.ItemId, 42));
+				ASSERT_THAT(IsTrue(Item.Payload.IsValid()));
+
+				const FArcMassTestNestedData* Data = Item.Payload.GetPtr<FArcMassTestNestedData>();
+				ASSERT_THAT(IsNotNull(Data));
+				ASSERT_THAT(IsNear(Data->Position.X, 1.0, 0.1));
+				ASSERT_THAT(IsNear(Data->Health, 55.5f, 0.01f));
+				ASSERT_THAT(AreEqual(Data->Tag, FName(TEXT("TestTag"))));
+			});
+	}
+};
+
+// ---------------------------------------------------------------------------
+// Wrapper around FArcMassTestReplicatedItemArray as direct UPROPERTY — verifies
+// FastArray-style callbacks still fire when the array is nested inside another
+// USTRUCT replicated as a top-level actor property.
+// ---------------------------------------------------------------------------
+
+NETWORK_TEST_CLASS(ArcIrisWrappedArrayDirectReplication, "ArcMassReplication.WrappedArrayDirect")
+{
+	struct FWrappedDirectTestState : public FBasePIENetworkComponentState
+	{
+		AArcMassTestWrappedArrayActor* Actor = nullptr;
+	};
+
+	FPIENetworkComponent<FWrappedDirectTestState> Network{ TestRunner, TestCommandBuilder, bInitializing };
+
+	inline static TSharedPtr<FScopedTestEnvironment> TestEnvironment{ nullptr };
+	BEFORE_ALL()
+	{
+		TestEnvironment = FScopedTestEnvironment::Get();
+		TestEnvironment->SetConsoleVariableValue(TEXT("net.Iris.UseIrisReplication"), TEXT("1"));
+	}
+
+	BEFORE_EACH()
+	{
+		TestRunner->AddExpectedError(TEXT("FMassEntityQuery::CacheArchetypes"), EAutomationExpectedErrorFlags::Contains, -1);
+		TestRunner->AddExpectedError(TEXT("SendRPC"), EAutomationExpectedErrorFlags::Contains, -1);
+
+		FNetworkComponentBuilder<FWrappedDirectTestState>()
+			.WithClients(1)
+			.AsDedicatedServer()
+			.WithGameInstanceClass(UGameInstance::StaticClass())
+			.WithGameMode(AGameModeBase::StaticClass())
+			.Build(Network);
+	}
+
+	AFTER_ALL()
+	{
+		TestEnvironment = nullptr;
+	}
+
+	TEST_METHOD(WrappedDirectProperty_ReplicatesWithCallbacks)
+	{
+		Network
+			.ThenServer(TEXT("Spawn actor, add 2 items into wrapped array"), [this](FWrappedDirectTestState& ServerState)
+			{
+				ServerState.Actor = ServerState.World->SpawnActor<AArcMassTestWrappedArrayActor>();
+				ASSERT_THAT(IsNotNull(ServerState.Actor));
+
+				FArcMassTestReplicatedItem Item1;
+				Item1.ItemId = 10;
+				Item1.Value = 100;
+				ServerState.Actor->Wrapper.Inner.AddItem(MoveTemp(Item1));
+
+				FArcMassTestReplicatedItem Item2;
+				Item2.ItemId = 20;
+				Item2.Value = 200;
+				ServerState.Actor->Wrapper.Inner.AddItem(MoveTemp(Item2));
+			})
+			.UntilClients(TEXT("Wait for actor on client with items"), [](FWrappedDirectTestState& ClientState) -> bool
+			{
+				for (TActorIterator<AArcMassTestWrappedArrayActor> It(ClientState.World); It; ++It)
+				{
+					if (It->Wrapper.Inner.Items.Num() == 2)
+					{
+						ClientState.Actor = *It;
+						return true;
+					}
+				}
+				return false;
+			})
+			.ThenClients(TEXT("Verify items and callbacks"), [this](FWrappedDirectTestState& ClientState)
+			{
+				ASSERT_THAT(IsNotNull(ClientState.Actor));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.Items.Num(), 2));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.Items[0].ItemId, 10));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.Items[0].Value, 100));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.Items[1].ItemId, 20));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.Items[1].Value, 200));
+
+				UE_LOG(LogTemp, Warning, TEXT("WrappedDirect test: Items=%d AddCb=%d ChangeCb=%d RemoveCb=%d"),
+					ClientState.Actor->Wrapper.Inner.Items.Num(),
+					ClientState.Actor->Wrapper.Inner.AddCallbackCount,
+					ClientState.Actor->Wrapper.Inner.ChangeCallbackCount,
+					ClientState.Actor->Wrapper.Inner.RemoveCallbackCount);
+
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.AddCallbackCount, 2));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.ChangeCallbackCount, 0));
+			});
+	}
+};
+
+// ---------------------------------------------------------------------------
+// Wrapper inside a replicated TArray<FInstancedStruct> — verifies callbacks
+// still fire when the wrapper is delivered through polymorphic FInstancedStruct.
+// ---------------------------------------------------------------------------
+
+NETWORK_TEST_CLASS(ArcIrisWrappedArrayInstancedStructReplication, "ArcMassReplication.WrappedArrayInstancedStruct")
+{
+	struct FWrappedInstancedTestState : public FBasePIENetworkComponentState
+	{
+		AArcMassTestInstancedStructWrappedArrayActor* Actor = nullptr;
+	};
+
+	FPIENetworkComponent<FWrappedInstancedTestState> Network{ TestRunner, TestCommandBuilder, bInitializing };
+
+	inline static TSharedPtr<FScopedTestEnvironment> TestEnvironment{ nullptr };
+	BEFORE_ALL()
+	{
+		TestEnvironment = FScopedTestEnvironment::Get();
+		TestEnvironment->SetConsoleVariableValue(TEXT("net.Iris.UseIrisReplication"), TEXT("1"));
+	}
+
+	BEFORE_EACH()
+	{
+		TestRunner->AddExpectedError(TEXT("FMassEntityQuery::CacheArchetypes"), EAutomationExpectedErrorFlags::Contains, -1);
+		TestRunner->AddExpectedError(TEXT("SendRPC"), EAutomationExpectedErrorFlags::Contains, -1);
+
+		FNetworkComponentBuilder<FWrappedInstancedTestState>()
+			.WithClients(1)
+			.AsDedicatedServer()
+			.WithGameInstanceClass(UGameInstance::StaticClass())
+			.WithGameMode(AGameModeBase::StaticClass())
+			.Build(Network);
+	}
+
+	AFTER_ALL()
+	{
+		TestEnvironment = nullptr;
+	}
+
+	TEST_METHOD(WrappedInInstancedStructArray_ReplicatesWithCallbacks)
+	{
+		Network
+			.ThenServer(TEXT("Spawn actor, add wrapper-with-2-items as FInstancedStruct slot"), [this](FWrappedInstancedTestState& ServerState)
+			{
+				ServerState.Actor = ServerState.World->SpawnActor<AArcMassTestInstancedStructWrappedArrayActor>();
+				ASSERT_THAT(IsNotNull(ServerState.Actor));
+
+				FArcMassTestReplicatedItemArrayWrapper Wrapper;
+
+				FArcMassTestReplicatedItem Item1;
+				Item1.ItemId = 10;
+				Item1.Value = 100;
+				Wrapper.Inner.AddItem(MoveTemp(Item1));
+
+				FArcMassTestReplicatedItem Item2;
+				Item2.ItemId = 20;
+				Item2.Value = 200;
+				Wrapper.Inner.AddItem(MoveTemp(Item2));
+
+				ServerState.Actor->Slots.Add(FInstancedStruct::Make(Wrapper));
+			})
+			.UntilClients(TEXT("Wait for actor on client with wrapper slot"), [](FWrappedInstancedTestState& ClientState) -> bool
+			{
+				for (TActorIterator<AArcMassTestInstancedStructWrappedArrayActor> It(ClientState.World); It; ++It)
+				{
+					if (It->Slots.Num() != 1)
+					{
+						continue;
+					}
+					const FArcMassTestReplicatedItemArrayWrapper* W = It->Slots[0].GetPtr<FArcMassTestReplicatedItemArrayWrapper>();
+					if (W && W->Inner.Items.Num() == 2)
+					{
+						ClientState.Actor = *It;
+						return true;
+					}
+				}
+				return false;
+			})
+			.ThenClients(TEXT("Verify items and callbacks on the wrapped array"), [this](FWrappedInstancedTestState& ClientState)
+			{
+				ASSERT_THAT(IsNotNull(ClientState.Actor));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Slots.Num(), 1));
+
+				const FArcMassTestReplicatedItemArrayWrapper* W = ClientState.Actor->Slots[0].GetPtr<FArcMassTestReplicatedItemArrayWrapper>();
+				ASSERT_THAT(IsNotNull(W));
+				ASSERT_THAT(AreEqual(W->Inner.Items.Num(), 2));
+				ASSERT_THAT(AreEqual(W->Inner.Items[0].ItemId, 10));
+				ASSERT_THAT(AreEqual(W->Inner.Items[0].Value, 100));
+				ASSERT_THAT(AreEqual(W->Inner.Items[1].ItemId, 20));
+				ASSERT_THAT(AreEqual(W->Inner.Items[1].Value, 200));
+
+				UE_LOG(LogTemp, Warning, TEXT("WrappedInstanced test: Items=%d AddCb=%d ChangeCb=%d RemoveCb=%d"),
+					W->Inner.Items.Num(),
+					W->Inner.AddCallbackCount,
+					W->Inner.ChangeCallbackCount,
+					W->Inner.RemoveCallbackCount);
+
+				ASSERT_THAT(AreEqual(W->Inner.AddCallbackCount, 2));
+				ASSERT_THAT(AreEqual(W->Inner.ChangeCallbackCount, 0));
+			});
+	}
+};
+
+// ---------------------------------------------------------------------------
+// Real engine FFastArraySerializer — top-level UPROPERTY (sanity baseline).
+// ---------------------------------------------------------------------------
+
+NETWORK_TEST_CLASS(EngineFastArrayDirectReplication, "ArcMassReplication.EngineFastArrayDirect")
+{
+	struct FEngineFastDirectState : public FBasePIENetworkComponentState
+	{
+		AArcMassTestEngineFastArrayDirectActor* Actor = nullptr;
+	};
+
+	FPIENetworkComponent<FEngineFastDirectState> Network{ TestRunner, TestCommandBuilder, bInitializing };
+
+	inline static TSharedPtr<FScopedTestEnvironment> TestEnvironment{ nullptr };
+	BEFORE_ALL()
+	{
+		TestEnvironment = FScopedTestEnvironment::Get();
+		TestEnvironment->SetConsoleVariableValue(TEXT("net.Iris.UseIrisReplication"), TEXT("1"));
+	}
+
+	BEFORE_EACH()
+	{
+		TestRunner->AddExpectedError(TEXT("FMassEntityQuery::CacheArchetypes"), EAutomationExpectedErrorFlags::Contains, -1);
+		TestRunner->AddExpectedError(TEXT("SendRPC"), EAutomationExpectedErrorFlags::Contains, -1);
+
+		FNetworkComponentBuilder<FEngineFastDirectState>()
+			.WithClients(1)
+			.AsDedicatedServer()
+			.WithGameInstanceClass(UGameInstance::StaticClass())
+			.WithGameMode(AGameModeBase::StaticClass())
+			.Build(Network);
+	}
+
+	AFTER_ALL()
+	{
+		TestEnvironment = nullptr;
+	}
+
+	TEST_METHOD(EngineFastArrayDirect_ReplicatesWithCallbacks)
+	{
+		Network
+			.ThenServer(TEXT("Spawn actor, add 2 items"), [this](FEngineFastDirectState& ServerState)
+			{
+				ServerState.Actor = ServerState.World->SpawnActor<AArcMassTestEngineFastArrayDirectActor>();
+				ASSERT_THAT(IsNotNull(ServerState.Actor));
+
+				FArcMassTestEngineFastItem Item1;
+				Item1.ItemId = 10;
+				Item1.Value = 100;
+				ServerState.Actor->ReplicatedItems.Items.Add(Item1);
+				ServerState.Actor->ReplicatedItems.MarkItemDirty(ServerState.Actor->ReplicatedItems.Items.Last());
+
+				FArcMassTestEngineFastItem Item2;
+				Item2.ItemId = 20;
+				Item2.Value = 200;
+				ServerState.Actor->ReplicatedItems.Items.Add(Item2);
+				ServerState.Actor->ReplicatedItems.MarkItemDirty(ServerState.Actor->ReplicatedItems.Items.Last());
+			})
+			.UntilClients(TEXT("Wait for actor on client with items"), [](FEngineFastDirectState& ClientState) -> bool
+			{
+				for (TActorIterator<AArcMassTestEngineFastArrayDirectActor> It(ClientState.World); It; ++It)
+				{
+					if (It->ReplicatedItems.Items.Num() == 2)
+					{
+						ClientState.Actor = *It;
+						return true;
+					}
+				}
+				return false;
+			})
+			.ThenClients(TEXT("Verify items and callbacks"), [this](FEngineFastDirectState& ClientState)
+			{
+				ASSERT_THAT(IsNotNull(ClientState.Actor));
+				ASSERT_THAT(AreEqual(ClientState.Actor->ReplicatedItems.Items.Num(), 2));
+
+				UE_LOG(LogTemp, Warning, TEXT("EngineFastDirect: Items=%d AddCb=%d ChangeCb=%d RemoveCb=%d"),
+					ClientState.Actor->ReplicatedItems.Items.Num(),
+					ClientState.Actor->ReplicatedItems.AddCallbackCount,
+					ClientState.Actor->ReplicatedItems.ChangeCallbackCount,
+					ClientState.Actor->ReplicatedItems.RemoveCallbackCount);
+
+				ASSERT_THAT(AreEqual(ClientState.Actor->ReplicatedItems.AddCallbackCount, 2));
+				ASSERT_THAT(AreEqual(ClientState.Actor->ReplicatedItems.ChangeCallbackCount, 0));
+			});
+	}
+};
+
+// ---------------------------------------------------------------------------
+// Real engine FFastArraySerializer — nested inside a single-member wrapper.
+// User hypothesis: this fails (engine FastArray callbacks don't propagate
+// when nested inside another USTRUCT, even with Members.Num() == 1).
+// ---------------------------------------------------------------------------
+
+NETWORK_TEST_CLASS(EngineFastArrayWrappedReplication, "ArcMassReplication.EngineFastArrayWrapped")
+{
+	struct FEngineFastWrappedState : public FBasePIENetworkComponentState
+	{
+		AArcMassTestEngineFastArrayWrappedActor* Actor = nullptr;
+	};
+
+	FPIENetworkComponent<FEngineFastWrappedState> Network{ TestRunner, TestCommandBuilder, bInitializing };
+
+	inline static TSharedPtr<FScopedTestEnvironment> TestEnvironment{ nullptr };
+	BEFORE_ALL()
+	{
+		TestEnvironment = FScopedTestEnvironment::Get();
+		TestEnvironment->SetConsoleVariableValue(TEXT("net.Iris.UseIrisReplication"), TEXT("1"));
+	}
+
+	BEFORE_EACH()
+	{
+		TestRunner->AddExpectedError(TEXT("FMassEntityQuery::CacheArchetypes"), EAutomationExpectedErrorFlags::Contains, -1);
+		TestRunner->AddExpectedError(TEXT("SendRPC"), EAutomationExpectedErrorFlags::Contains, -1);
+
+		FNetworkComponentBuilder<FEngineFastWrappedState>()
+			.WithClients(1)
+			.AsDedicatedServer()
+			.WithGameInstanceClass(UGameInstance::StaticClass())
+			.WithGameMode(AGameModeBase::StaticClass())
+			.Build(Network);
+	}
+
+	AFTER_ALL()
+	{
+		TestEnvironment = nullptr;
+	}
+
+	TEST_METHOD(EngineFastArrayWrapped_ReplicatesWithCallbacks)
+	{
+		Network
+			.ThenServer(TEXT("Spawn actor, add 2 items into wrapped FastArray"), [this](FEngineFastWrappedState& ServerState)
+			{
+				ServerState.Actor = ServerState.World->SpawnActor<AArcMassTestEngineFastArrayWrappedActor>();
+				ASSERT_THAT(IsNotNull(ServerState.Actor));
+
+				FArcMassTestEngineFastItem Item1;
+				Item1.ItemId = 10;
+				Item1.Value = 100;
+				ServerState.Actor->Wrapper.Inner.Items.Add(Item1);
+				ServerState.Actor->Wrapper.Inner.MarkItemDirty(ServerState.Actor->Wrapper.Inner.Items.Last());
+
+				FArcMassTestEngineFastItem Item2;
+				Item2.ItemId = 20;
+				Item2.Value = 200;
+				ServerState.Actor->Wrapper.Inner.Items.Add(Item2);
+				ServerState.Actor->Wrapper.Inner.MarkItemDirty(ServerState.Actor->Wrapper.Inner.Items.Last());
+			})
+			.UntilClients(TEXT("Wait for actor on client with items"), [](FEngineFastWrappedState& ClientState) -> bool
+			{
+				for (TActorIterator<AArcMassTestEngineFastArrayWrappedActor> It(ClientState.World); It; ++It)
+				{
+					if (It->Wrapper.Inner.Items.Num() == 2)
+					{
+						ClientState.Actor = *It;
+						return true;
+					}
+				}
+				return false;
+			})
+			.ThenClients(TEXT("Verify items and callbacks"), [this](FEngineFastWrappedState& ClientState)
+			{
+				ASSERT_THAT(IsNotNull(ClientState.Actor));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.Items.Num(), 2));
+
+				UE_LOG(LogTemp, Warning, TEXT("EngineFastWrapped: Items=%d AddCb=%d ChangeCb=%d RemoveCb=%d"),
+					ClientState.Actor->Wrapper.Inner.Items.Num(),
+					ClientState.Actor->Wrapper.Inner.AddCallbackCount,
+					ClientState.Actor->Wrapper.Inner.ChangeCallbackCount,
+					ClientState.Actor->Wrapper.Inner.RemoveCallbackCount);
+
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.AddCallbackCount, 2));
+				ASSERT_THAT(AreEqual(ClientState.Actor->Wrapper.Inner.ChangeCallbackCount, 0));
 			});
 	}
 };

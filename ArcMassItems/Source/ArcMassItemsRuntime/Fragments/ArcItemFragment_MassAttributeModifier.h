@@ -1,13 +1,13 @@
 #pragma once
 
-#include "ArcCore/Items/Fragments/ArcItemFragment.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Items/ArcItemInstance.h"
 #include "Modifiers/ArcDirectModifier.h"
 #include "Attributes/ArcAggregator.h"
 #include "ArcItemFragment_MassAttributeModifier.generated.h"
 
 USTRUCT(meta = (ToolTip = "Mutable instance data tracking applied Mass modifier handles for removal on unequip."))
-struct ARCCORE_API FArcItemInstance_MassAttributeModifiers : public FArcItemInstance_ItemData
+struct ARCMASSITEMSRUNTIME_API FArcItemInstance_MassAttributeModifiers : public FArcItemInstance_ItemData
 {
     GENERATED_BODY()
 
@@ -23,7 +23,7 @@ struct ARCCORE_API FArcItemInstance_MassAttributeModifiers : public FArcItemInst
 
 USTRUCT(BlueprintType, meta = (DisplayName = "Mass Attribute Modifier", Category = "Mass Abilities",
     ToolTip = "Directly modifies Mass entity attributes when equipped. No backing effect required — modifiers are applied as infinite-duration aggregator entries and removed on unequip."))
-struct ARCCORE_API FArcItemFragment_MassAttributeModifier : public FArcItemFragment_ItemInstanceBase
+struct ARCMASSITEMSRUNTIME_API FArcItemFragment_MassAttributeModifier : public FArcItemFragment_ItemInstanceBase
 {
     GENERATED_BODY()
 

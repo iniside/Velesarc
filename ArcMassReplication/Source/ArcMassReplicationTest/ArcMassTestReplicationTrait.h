@@ -286,3 +286,37 @@ public:
 		LocalEntityConfigAsset = Config;
 	}
 };
+
+UCLASS()
+class UArcMassTestInstancedStructItemReplicationTrait : public UArcMassEntityReplicationTrait
+{
+	GENERATED_BODY()
+public:
+	UArcMassTestInstancedStructItemReplicationTrait()
+	{
+		FArcMassReplicatedFragmentEntry Entry;
+		Entry.FragmentType = FArcMassTestInstancedStructItemFragment::StaticStruct();
+		ReplicatedFragments.Add(Entry);
+	}
+
+	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext,
+		const UWorld& World) const override
+	{
+		BuildContext.AddFragment<FArcMassTestInstancedStructItemFragment>();
+		Super::BuildTemplate(BuildContext, World);
+	}
+};
+
+UCLASS()
+class AArcMassTestInstancedStructItemProxy : public AArcMassEntityReplicationProxy
+{
+	GENERATED_BODY()
+public:
+	AArcMassTestInstancedStructItemProxy()
+	{
+		UMassEntityConfigAsset* Config = NewObject<UMassEntityConfigAsset>(this, TEXT("InstancedStructItemConfig"));
+		UArcMassTestInstancedStructItemReplicationTrait* Trait = NewObject<UArcMassTestInstancedStructItemReplicationTrait>(Config);
+		Config->GetMutableConfig().AddTrait(*Trait);
+		LocalEntityConfigAsset = Config;
+	}
+};

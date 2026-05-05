@@ -23,6 +23,7 @@ public class ArcMassItemsRuntime : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
+				"GameplayAbilities",
 				"GameplayTags",
 				"StructUtils",
 				"MassCore",
@@ -30,7 +31,16 @@ public class ArcMassItemsRuntime : ModuleRules
 				"MassSignals",
 				"MassSpawner",
 				"ArcCore",
+				"ArcMassAbilities",
 				"ArcMassReplicationRuntime"
+			}
+		);
+
+		PrivateDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"StateTreeModule",
+				"MassActors"
 			}
 		);
 

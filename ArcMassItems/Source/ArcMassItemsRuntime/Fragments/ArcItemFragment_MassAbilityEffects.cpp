@@ -1,7 +1,11 @@
-#include "Items/Fragments/ArcItemFragment_MassAbilityEffects.h"
+#include "Fragments/ArcItemFragment_MassAbilityEffects.h"
 
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemsHelpers.h"
+#include "ArcLogs.h"
+#include "Engine/World.h"
+#include "MassEntitySubsystem.h"
+#include "MassEntityManager.h"
 
 TArray<const FArcMassEffectSpecItem*> FArcItemInstance_MassAbilityEffects::GetSpecsByTag(const FGameplayTag& InTag) const
 {
@@ -47,6 +51,16 @@ namespace ArcMassAbilityEffectsInternal
 
 void FArcItemFragment_MassAbilityEffects::OnItemInitialize(const FArcItemData* InItem) const
 {
+	if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
+		return;
+	UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+	if (!Subsystem)
+		return;
+	FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+	const FMassEntityHandle Entity = InItem->MassEntityHandle;
+	if (!EntityManager.IsEntityValid(Entity))
+		return;
+
 	FArcItemInstance_MassAbilityEffects* Instance =
 		ArcItemsHelper::FindMutableInstance<FArcItemInstance_MassAbilityEffects>(InItem);
 	if (Instance == nullptr)
@@ -56,7 +70,7 @@ void FArcItemFragment_MassAbilityEffects::OnItemInitialize(const FArcItemData* I
 
 	if (ArcMassAbilityEffectsInternal::HasSpecsForItem(Instance, InItem->GetItemId()))
 	{
-		UE_LOG(LogItemEntry
+		UE_LOG(LogArcCore
 			, Log
 			, TEXT("%s Mass effect spec already initialized.")
 			, *InItem->GetItemDefinition()->GetName());
@@ -68,6 +82,26 @@ void FArcItemFragment_MassAbilityEffects::OnItemInitialize(const FArcItemData* I
 
 void FArcItemFragment_MassAbilityEffects::OnItemChanged(const FArcItemData* InItem) const
 {
+	if (!InItem->OwnerComponent)
+	{
+		// Mass context: effect spec caching is handled at OnItemInitialize time.
+		// Reconciliation of CachedSpecs isn't needed here because:
+		//   1. The Effects fragment data is immutable at runtime
+		//   2. Mass ops (AddItem/RemoveItem/Attach/Detach) manage lifecycle via
+		//      Mass-specific paths, not through FArcItemData::OnItemChanged
+		//   3. Tag-based filtering of specs happens at runtime in the ability task
+		// For safety, validate the Mass entity exists before returning.
+		if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
+			return;
+		UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+		if (!Subsystem)
+			return;
+		FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+		if (!EntityManager.IsEntityValid(InItem->MassEntityHandle))
+			return;
+		return;
+	}
+
 	const TArray<const FArcItemData*>& ItemsInSockets = InItem->GetItemsInSockets();
 	const FArcItemData* OwnerItemPtr = InItem->GetItemsStoreComponent()->GetItemPtr(InItem->GetOwnerId());
 

@@ -3,143 +3,184 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Iris/ReplicationSystem/NetObjectFactoryRegistry.h"
+#include "Iris/ReplicationSystem/NetRefHandle.h"
 #include "Mass/EntityHandle.h"
+#include "Replication/ArcMassEntityVessel.h"
 #include "Subsystems/WorldSubsystem.h"
-#include "Fragments/ArcMassNetId.h"
-#include "StructUtils/InstancedStruct.h"
-#include "Replication/ArcMassReplicationDescriptorSet.h"
-#include "Spatial/ArcMassSpatialGrid.h"
-
-class AArcMassEntityReplicationProxy;
-class UNetDriver;
-class UMassEntityConfigAsset;
 
 #include "ArcMassEntityReplicationSubsystem.generated.h"
 
+class UArcMassEntityVesselClusterRoot;
+class UMassEntityConfigAsset;
+
+/**
+ * World subsystem owning per-entity Iris replication for Mass entities.
+ *
+ * Maintains:
+ *  - Protocol identifier maps (UMassEntityConfigAsset <-> FReplicationProtocolIdentifier)
+ *    populated by a one-time warmup pass before the first client connects.
+ *  - A pool of UArcMassEntityVessel objects (one per replicated entity), GC-clustered
+ *    against a single root for cheap reachability.
+ *  - Server-side bookkeeping (entity <-> vessel) used by the bridge/factory.
+ *
+ * The previous proxy-based replication path (proxy actor, FArcMassNetId, spatial grid,
+ * descriptor sets, source-state tracking) is being removed in this refactor and is
+ * fully cleaned up in Phase 7. This header intentionally does not preserve those APIs.
+ */
 UCLASS()
-class ARCMASSREPLICATIONRUNTIME_API UArcMassEntityReplicationSubsystem : public UTickableWorldSubsystem
+class ARCMASSREPLICATIONRUNTIME_API UArcMassEntityReplicationSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
 public:
-	struct FArchetypeKey
-	{
-		TArray<const UScriptStruct*> SortedTypes;
-
-		bool operator==(const FArchetypeKey& Other) const { return SortedTypes == Other.SortedTypes; }
-		friend uint32 GetTypeHash(const FArchetypeKey& Key)
-		{
-			uint32 Hash = 0;
-			for (const UScriptStruct* Type : Key.SortedTypes)
-			{
-				Hash = HashCombine(Hash, ::GetTypeHash(Type));
-			}
-			return Hash;
-		}
-	};
-
-	struct FSourceState
-	{
-		FVector Position = FVector::ZeroVector;
-		FIntVector2 Cell = FIntVector2(TNumericLimits<int32>::Max(), TNumericLimits<int32>::Max());
-	};
-
-	static constexpr int32 MaxEntitiesPerProxy = 4000;
-
+	// UWorldSubsystem
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
-	virtual void Tick(float DeltaTime) override;
-	virtual TStatId GetStatId() const override;
+	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 
-	FArcMassNetId AllocateNetId();
+	/**
+	 * Public entry point — drives a warmup registration cycle for a single config,
+	 * captures the resulting FReplicationProtocolIdentifier, populates both maps.
+	 *
+	 * MUST be called before the first client connection joins. After that point
+	 * this method logs a warning and returns false (see IsProtocolWarmupLocked).
+	 *
+	 * Asset registry sweep at startup calls this once per discovered config; tests
+	 * call it directly with in-memory configs.
+	 */
+	bool RegisterConfigForReplication(UMassEntityConfigAsset* Config);
 
-	AArcMassEntityReplicationProxy* GetOrCreateProxy(
-		const TArray<const UScriptStruct*>& FragmentTypes,
-		float CullDistance,
-		UMassEntityConfigAsset* InEntityConfigAsset = nullptr);
+	/**
+	 * Server-side: acquires a vessel from the pool, sets vessel state, calls
+	 * StartReplicatingRootObject, returns the new FNetRefHandle.
+	 */
+	UE::Net::FNetRefHandle RegisterEntity(FMassEntityHandle Entity, UMassEntityConfigAsset* Config);
 
-	template<typename TProxyClass>
-	TProxyClass* SpawnProxyOfClass()
-	{
-		UWorld* World = GetWorld();
-		TProxyClass* Proxy = World->SpawnActor<TProxyClass>();
-		OwnedProxies.Add(Proxy);
-		return Proxy;
-	}
+	/** Server-side: ends replication, returns vessel to pool. */
+	void UnregisterEntity(FMassEntityHandle Entity);
 
-	void RegisterEntityNetId(FArcMassNetId NetId, FMassEntityHandle Entity);
-	void UnregisterEntityNetId(FArcMassNetId NetId);
-	FMassEntityHandle FindEntityByNetId(FArcMassNetId NetId) const;
-	FArcMassNetId FindNetId(FMassEntityHandle Entity) const;
+	/** Lookup helpers (server-side). */
+	UArcMassEntityVessel* FindVesselForEntity(FMassEntityHandle Entity) const;
+	FMassEntityHandle FindEntityForVessel(UArcMassEntityVessel* Vessel) const;
 
-	void MarkEntityDirty(FMassEntityHandle Entity);
-	TSet<FMassEntityHandle> TakeDirtyEntities();
+	/** Protocol map accessors (used by the factory). */
+	UMassEntityConfigAsset* FindConfigForProtocol(uint32 ProtocolId) const;
+	uint32 FindProtocolForConfig(UMassEntityConfigAsset* Config) const;
 
-	AArcMassEntityReplicationProxy* FindProxyForEntity(FMassEntityHandle Entity) const;
+	/**
+	 * Client-side: stopgap lookup used by InstantiateReplicatedObjectFromHeader when
+	 * FindConfigForProtocol misses. Walks PendingClientConfigs (registered via
+	 * RegisterConfigForReplication on the client) and — pending a real
+	 * descriptor-driven match — returns the first one. Caches the result in
+	 * ProtocolToConfig so subsequent lookups hit. TODO: replace with deterministic
+	 * matching once a public CalculateProtocolIdentifier path exists.
+	 */
+	UMassEntityConfigAsset* ResolveClientConfigForProtocol(uint32 ProtocolId);
 
-	void RegisterDescriptorSet(uint32 InHash, const ArcMassReplication::FArcMassReplicationDescriptorSet* InDescriptorSet);
-	const ArcMassReplication::FArcMassReplicationDescriptorSet* FindDescriptorSetByHash(uint32 InHash) const;
+	/** True after the first registration locks warmup; further RegisterConfigForReplication calls fail. */
+	bool IsProtocolWarmupLocked() const { return bProtocolWarmupLocked; }
 
-	void OnClientEntityAdded(FArcMassNetId NetId, const TArray<FInstancedStruct>& FragmentSlots,
-		const ArcMassReplication::FArcMassReplicationDescriptorSet* DescriptorSet,
-		UMassEntityConfigAsset* InEntityConfigAsset = nullptr);
-	void OnClientEntityChanged(FArcMassNetId NetId, const TArray<FInstancedStruct>& FragmentSlots,
-		uint32 ChangedFragmentMask,
-		const ArcMassReplication::FArcMassReplicationDescriptorSet* DescriptorSet);
-	void OnClientEntityRemoved(FArcMassNetId NetId);
+	/**
+	 * Client-side: pool-acquire a vessel and bind it to a Config.
+	 * Used by the factory's InstantiateReplicatedObjectFromHeader.
+	 * Returns null if the pool is exhausted and growth fails.
+	 * Vessel's EntityHandle is left invalid for the caller to populate
+	 * (typically via the local Mass entity spawn).
+	 */
+	UArcMassEntityVessel* AcquireClientVessel(UMassEntityConfigAsset* Config);
 
-	FArcMassSpatialGrid* GetOrCreateGrid(const FArchetypeKey& Key, float CellSize);
-	FArcMassSpatialGrid* FindGrid(const FArchetypeKey& Key);
-	void AddEntityToGrid(FMassEntityHandle Entity, FVector Position);
-	void UpdateEntityInGrid(FMassEntityHandle Entity, FVector Position);
-	void RemoveEntityFromGrid(FMassEntityHandle Entity);
-	void RegisterEntityArchetypeKey(FMassEntityHandle Entity, const FArchetypeKey& Key);
+	/**
+	 * Client-side: pool-return a vessel that was acquired via AcquireClientVessel.
+	 * Clears EntityHandle and Config before returning to pool. Does not interact
+	 * with the EntityToVessel map (that map is server-side only).
+	 */
+	void ReleaseClientVessel(UArcMassEntityVessel* Vessel);
 
-	FVector GetPlayerPosition(uint32 ConnectionId) const;
-	bool IsEntityRelevantToConnection(FArcMassNetId NetId, uint32 ConnectionId) const;
-	bool IsConnectionOwnerOf(FArcMassNetId NetId, uint32 ConnectionId) const;
-	void SetEntityOwner(FArcMassNetId NetId, uint32 ConnectionId);
+	/**
+	 * Register a typed UArcMassEntityVessel subclass for a Config. Both server
+	 * (RegisterEntity) and client (factory InstantiateReplicatedObjectFromHeader)
+	 * will instantiate the subclass instead of the base UArcMassEntityVessel.
+	 *
+	 * Must be called before the corresponding RegisterEntity / first replication.
+	 * Idempotent for the same (Config, VesselClass) pair.
+	 *
+	 * In the test-only path this is called explicitly. Future codegen modules
+	 * register at StartupModule.
+	 */
+	void RegisterVesselClassForConfig(
+		UMassEntityConfigAsset* Config,
+		TSubclassOf<UArcMassEntityVessel> VesselClass);
 
-	void UpdateSourceState(uint32 ConnectionId, FVector Position, FIntVector2 Cell);
-	const FSourceState* GetSourceState(uint32 ConnectionId) const;
-	TArray<uint32> GetAllSourceConnectionIds() const;
-
-	void SetCellRelevantForConnection(uint32 ConnectionId, FIntVector2 Cell);
-	void SetCellIrrelevantForConnection(uint32 ConnectionId, FIntVector2 Cell);
-	bool IsCellRelevantForConnection(uint32 ConnectionId, FIntVector2 Cell) const;
-
-	const TMap<FArchetypeKey, FArcMassSpatialGrid>& GetArchetypeGrids() const { return ArchetypeGrids; }
-
-	float EnterRadiusCells = 2.f;
-	float ExitRadiusCells = 3.f;
+	/** Returns the registered subclass for a Config, or null if none registered. */
+	TSubclassOf<UArcMassEntityVessel> FindVesselClassForConfig(
+		UMassEntityConfigAsset* Config) const;
 
 private:
-	void RegisterNetDataStore(UNetDriver* NetDriver);
-	void OnWorldBeginPlay();
+	friend struct FArcMassEntityReplicationSubsystemTestAccess;
 
-	bool bNetDataStoreRegistered = false;
+	void RunAssetRegistrySweep();
 
-	uint32 NextNetIdValue = 1;
+	/**
+	 * Lazy guard. The replication system / NetDriver may not yet exist when the
+	 * subsystem initializes. Any code path that needs the protocol map populated
+	 * (RegisterEntity, RegisterConfigForReplication) calls this first; it runs the
+	 * sweep at most once and only when the bridge is actually available.
+	 */
+	void EnsureSweepRun();
 
-	TMap<FArcMassNetId, FMassEntityHandle> NetIdToEntity;
-	TMap<FMassEntityHandle, FArcMassNetId> EntityToNetId;
+	/** FWorldDelegates::OnNetDriverCreated handler — runs the sweep when the NetDriver appears. */
+	void HandleNetDriverCreated(UWorld* InWorld, UNetDriver* InNetDriver);
 
-	TSet<FMassEntityHandle> DirtyEntities;
+	void AllocateVesselPool(int32 InitialSize);
 
-	TMap<FArchetypeKey, ArcMassReplication::FArcMassReplicationDescriptorSet> DescriptorSets;
+	/**
+	 * Pool ops. Private — the pool/EntityToVessel invariant is maintained by
+	 * RegisterEntity/UnregisterEntity. Calling these directly will produce a
+	 * stale EntityToVessel map. Tests use FArcMassEntityReplicationSubsystemTestAccess.
+	 */
+	UArcMassEntityVessel* AcquireVessel();
+	void ReleaseVessel(UArcMassEntityVessel* Vessel);
 
-	TMap<FArchetypeKey, TArray<TObjectPtr<AArcMassEntityReplicationProxy>>> ArchetypeToProxies;
-	TMap<FMassEntityHandle, FArchetypeKey> EntityToArchetypeKey;
-
-	TMap<FArchetypeKey, FArcMassSpatialGrid> ArchetypeGrids;
-
-	TMap<FArcMassNetId, uint32> EntityOwnerConnectionId;
-
-	TMap<uint32, FSourceState> SourceStates;
-	TMap<uint32, TSet<FIntVector2>> ConnectionRelevantCells;
-
-	TMap<uint32, const ArcMassReplication::FArcMassReplicationDescriptorSet*> DescriptorSetsByHash;
+	/**
+	 * Allocate (or pool-acquire) a vessel of the appropriate class for Config.
+	 * If a typed subclass is registered, NewObjects an instance of that subclass.
+	 * Otherwise falls back to AcquireVessel (base class, may come from the pool).
+	 *
+	 * Note: typed-subclass instances bypass the pre-allocated pool. This is fine
+	 * for the smoke test (one entity). Future work: per-class pooling.
+	 */
+	UArcMassEntityVessel* AcquireVesselForConfig(UMassEntityConfigAsset* Config);
 
 	UPROPERTY()
-	TArray<TObjectPtr<AArcMassEntityReplicationProxy>> OwnedProxies;
+	TMap<TObjectPtr<UMassEntityConfigAsset>, TSubclassOf<UArcMassEntityVessel>> ConfigToVesselClass;
+
+	UPROPERTY()
+	TMap<TObjectPtr<UMassEntityConfigAsset>, uint32> ConfigToProtocol;
+
+	UPROPERTY()
+	TMap<uint32, TObjectPtr<UMassEntityConfigAsset>> ProtocolToConfig;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UArcMassEntityVessel>> VesselPool;
+
+	UPROPERTY()
+	TMap<FMassEntityHandle, TObjectPtr<UArcMassEntityVessel>> EntityToVessel;
+
+	UPROPERTY()
+	TObjectPtr<UArcMassEntityVesselClusterRoot> VesselClusterRoot;
+
+	/** Client-side fallback: configs registered via RegisterConfigForReplication on the client.
+	 *  Used by ResolveClientConfigForProtocol because StartReplicatingRootObject is server-only. */
+	UPROPERTY()
+	TArray<TObjectPtr<UMassEntityConfigAsset>> PendingClientConfigs;
+
+	bool bProtocolWarmupLocked = false;
+
+	bool bAssetRegistrySweepRun = false;
+
+	FDelegateHandle OnNetDriverCreatedHandle;
+
+	/** Resolved lazily from the bridge once the replication system exists. */
+	UE::Net::FNetObjectFactoryId FactoryId = UE::Net::InvalidNetObjectFactoryId;
 };

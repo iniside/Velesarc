@@ -1,612 +1,538 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "Subsystem/ArcMassEntityReplicationSubsystem.h"
-#include "Replication/ArcMassEntityReplicationProxy.h"
-#include "Replication/ArcMassReplicationDescriptorSet.h"
-#include "NetSerializers/ArcMassEntityNetDataStore.h"
-#include "Spatial/ArcMassSpatialGrid.h"
+
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/NetDriver.h"
-#include "MassEntityManager.h"
-#include "MassEntityView.h"
-#include "MassEntityUtils.h"
-#include "Mass/EntityElementTypes.h"
+#include "Engine/World.h"
+#include "HAL/PlatformProcess.h"
+#include "Iris/ReplicationSystem/NetRefHandle.h"
+#include "Iris/ReplicationSystem/ObjectReplicationBridge.h"
+#include "Iris/ReplicationSystem/ReplicationProtocol.h"
+#include "Iris/ReplicationSystem/ReplicationSystem.h"
 #include "MassEntityConfigAsset.h"
-#include "MassSpawnerSubsystem.h"
+#include "Modules/ModuleManager.h"
+#include "Replication/ArcMassEntityRootFactory.h"
+#include "Replication/ArcMassEntityVessel.h"
+#include "Replication/ArcMassEntityVesselClusterRoot.h"
+#include "Traits/ArcMassEntityReplicationTrait.h"
+
+namespace ArcMassEntityReplicationSubsystem_Private
+{
+	constexpr int32 GArcMassVesselInitialPoolSize = 256;
+
+	UObjectReplicationBridge* GetBridge(const UWorld* World)
+	{
+		if (World == nullptr)
+		{
+			return nullptr;
+		}
+		UNetDriver* NetDriver = World->GetNetDriver();
+		if (NetDriver == nullptr)
+		{
+			return nullptr;
+		}
+		UReplicationSystem* RepSystem = NetDriver->GetReplicationSystem();
+		if (RepSystem == nullptr)
+		{
+			return nullptr;
+		}
+		return RepSystem->GetReplicationBridgeAs<UObjectReplicationBridge>();
+	}
+
+	constexpr EEndReplicationFlags GArcMassEndReplicationFlags =
+		EEndReplicationFlags::Destroy
+		| EEndReplicationFlags::DestroyNetHandle
+		| EEndReplicationFlags::ClearNetPushId;
+}
+
+bool UArcMassEntityReplicationSubsystem::ShouldCreateSubsystem(UObject* Outer) const
+{
+	UWorld* World = Cast<UWorld>(Outer);
+	if (World == nullptr)
+	{
+		return false;
+	}
+	return World->IsGameWorld();
+}
 
 void UArcMassEntityReplicationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	using namespace UE::Net;
+
 	Super::Initialize(Collection);
+	AllocateVesselPool(ArcMassEntityReplicationSubsystem_Private::GArcMassVesselInitialPoolSize);
 
-	UWorld* World = GetWorld();
-	if (World == nullptr)
+	// Best-effort early resolution; the rep system is usually created later than the
+	// world subsystem, so we resolve again lazily inside RegisterEntity / warmup.
+	UObjectReplicationBridge* Bridge = ArcMassEntityReplicationSubsystem_Private::GetBridge(GetWorld());
+	if (Bridge != nullptr)
 	{
-		return;
-	}
-
-	UNetDriver* NetDriver = World->GetNetDriver();
-	if (NetDriver != nullptr && NetDriver->GetNetTokenStore() != nullptr)
-	{
-		RegisterNetDataStore(NetDriver);
-	}
-	else if (NetDriver != nullptr)
-	{
-		NetDriver->OnNetTokenStoreReady().AddUObject(this, &UArcMassEntityReplicationSubsystem::RegisterNetDataStore);
+		FactoryId = FNetObjectFactoryRegistry::GetFactoryIdFromName(UArcMassEntityRootFactory::GetFactoryName());
 	}
 
-	if (!bNetDataStoreRegistered)
-	{
-		World->OnWorldBeginPlay.AddUObject(this, &UArcMassEntityReplicationSubsystem::OnWorldBeginPlay);
-	}
+	// Try the sweep immediately if the bridge is already up.
+	EnsureSweepRun();
+
+	// And subscribe to the NetDriver-created delegate as the primary trigger for the
+	// usual case where the rep system spins up after this subsystem initializes.
+	OnNetDriverCreatedHandle = FWorldDelegates::OnNetDriverCreated.AddUObject(
+		this, &UArcMassEntityReplicationSubsystem::HandleNetDriverCreated);
 }
 
 void UArcMassEntityReplicationSubsystem::Deinitialize()
 {
-	UWorld* World = GetWorld();
-	if (World)
+	if (OnNetDriverCreatedHandle.IsValid())
 	{
-		UNetDriver* NetDriver = World->GetNetDriver();
-		if (NetDriver != nullptr)
-		{
-			NetDriver->OnNetTokenStoreReady().RemoveAll(this);
-
-			UE::Net::FNetTokenStore* TokenStore = NetDriver->GetNetTokenStore();
-			if (TokenStore != nullptr)
-			{
-				TokenStore->UnRegisterDataStore(ArcMassReplication::FArcMassEntityNetDataStore::GetTokenStoreName());
-			}
-		}
+		FWorldDelegates::OnNetDriverCreated.Remove(OnNetDriverCreatedHandle);
+		OnNetDriverCreatedHandle.Reset();
 	}
 
-	for (TObjectPtr<AArcMassEntityReplicationProxy>& Proxy : OwnedProxies)
-	{
-		if (Proxy)
-		{
-			Proxy->Destroy();
-		}
-	}
-	OwnedProxies.Empty();
-	ArchetypeToProxies.Empty();
-	ArchetypeGrids.Empty();
-	DescriptorSets.Empty();
-	NetIdToEntity.Empty();
-	EntityToNetId.Empty();
-	EntityToArchetypeKey.Empty();
-	DirtyEntities.Empty();
-	EntityOwnerConnectionId.Empty();
-	SourceStates.Empty();
-	ConnectionRelevantCells.Empty();
-	DescriptorSetsByHash.Empty();
+	EntityToVessel.Empty();
+	VesselPool.Empty();
+	ConfigToProtocol.Empty();
+	ProtocolToConfig.Empty();
+	VesselClusterRoot = nullptr;
+	FactoryId = UE::Net::InvalidNetObjectFactoryId;
 	Super::Deinitialize();
 }
 
-void UArcMassEntityReplicationSubsystem::RegisterNetDataStore(UNetDriver* NetDriver)
+void UArcMassEntityReplicationSubsystem::AllocateVesselPool(int32 InitialSize)
 {
-	if (bNetDataStoreRegistered || NetDriver == nullptr)
+	VesselPool.Reserve(InitialSize);
+	for (int32 Index = 0; Index < InitialSize; ++Index)
 	{
-		return;
+		UArcMassEntityVessel* Vessel = NewObject<UArcMassEntityVessel>(this);
+		VesselPool.Add(Vessel);
 	}
 
-	UE::Net::FNetTokenStore* TokenStore = NetDriver->GetNetTokenStore();
-	if (TokenStore == nullptr)
+#if 0  // GC clustering disabled while smoke-test instability is investigated.
+	VesselClusterRoot = NewObject<UArcMassEntityVesselClusterRoot>(this, TEXT("ArcMassVesselClusterRoot"));
+	if (VesselClusterRoot != nullptr)
 	{
-		return;
-	}
-
-	if (TokenStore->GetDataStore<ArcMassReplication::FArcMassEntityNetDataStore>() == nullptr)
-	{
-		TokenStore->RegisterDataStore(
-			MakeUnique<ArcMassReplication::FArcMassEntityNetDataStore>(*TokenStore, this),
-			ArcMassReplication::FArcMassEntityNetDataStore::GetTokenStoreName());
-	}
-
-	bNetDataStoreRegistered = true;
-}
-
-void UArcMassEntityReplicationSubsystem::OnWorldBeginPlay()
-{
-	if (bNetDataStoreRegistered)
-	{
-		return;
-	}
-
-	UWorld* World = GetWorld();
-	if (World == nullptr)
-	{
-		return;
-	}
-
-	UNetDriver* NetDriver = World->GetNetDriver();
-	if (NetDriver != nullptr && NetDriver->GetNetTokenStore() != nullptr)
-	{
-		RegisterNetDataStore(NetDriver);
-	}
-	else if (NetDriver != nullptr)
-	{
-		NetDriver->OnNetTokenStoreReady().AddUObject(this, &UArcMassEntityReplicationSubsystem::RegisterNetDataStore);
-	}
-}
-
-FArcMassNetId UArcMassEntityReplicationSubsystem::AllocateNetId()
-{
-	return FArcMassNetId(NextNetIdValue++);
-}
-
-AArcMassEntityReplicationProxy* UArcMassEntityReplicationSubsystem::GetOrCreateProxy(
-	const TArray<const UScriptStruct*>& FragmentTypes,
-	float CullDistance,
-	UMassEntityConfigAsset* InEntityConfigAsset)
-{
-	FArchetypeKey Key;
-	Key.SortedTypes = FragmentTypes;
-	Algo::Sort(Key.SortedTypes, [](const UScriptStruct* A, const UScriptStruct* B) { return A->GetFName().LexicalLess(B->GetFName()); });
-
-	TArray<TObjectPtr<AArcMassEntityReplicationProxy>>& Proxies = ArchetypeToProxies.FindOrAdd(Key);
-
-	if (Proxies.Num() > 0)
-	{
-		AArcMassEntityReplicationProxy* Last = Proxies.Last();
-		if (Last->GetItemCount() < MaxEntitiesPerProxy)
+		VesselClusterRoot->CreateCluster();
+		for (UArcMassEntityVessel* Vessel : VesselPool)
 		{
-			return Last;
-		}
-	}
-
-	UWorld* World = GetWorld();
-	AArcMassEntityReplicationProxy* Proxy = World->SpawnActor<AArcMassEntityReplicationProxy>();
-	Proxy->Init(InEntityConfigAsset);
-
-	Proxies.Add(Proxy);
-	OwnedProxies.Add(Proxy);
-	return Proxy;
-}
-
-void UArcMassEntityReplicationSubsystem::RegisterEntityNetId(FArcMassNetId NetId, FMassEntityHandle Entity)
-{
-	NetIdToEntity.Add(NetId, Entity);
-	EntityToNetId.Add(Entity, NetId);
-}
-
-void UArcMassEntityReplicationSubsystem::UnregisterEntityNetId(FArcMassNetId NetId)
-{
-	FMassEntityHandle Entity;
-	if (NetIdToEntity.RemoveAndCopyValue(NetId, Entity))
-	{
-		EntityToNetId.Remove(Entity);
-		EntityToArchetypeKey.Remove(Entity);
-	}
-}
-
-FMassEntityHandle UArcMassEntityReplicationSubsystem::FindEntityByNetId(FArcMassNetId NetId) const
-{
-	const FMassEntityHandle* Found = NetIdToEntity.Find(NetId);
-	return Found ? *Found : FMassEntityHandle();
-}
-
-FArcMassNetId UArcMassEntityReplicationSubsystem::FindNetId(FMassEntityHandle Entity) const
-{
-	const FArcMassNetId* Found = EntityToNetId.Find(Entity);
-	return Found ? *Found : FArcMassNetId();
-}
-
-void UArcMassEntityReplicationSubsystem::MarkEntityDirty(FMassEntityHandle Entity)
-{
-	DirtyEntities.Add(Entity);
-}
-
-TSet<FMassEntityHandle> UArcMassEntityReplicationSubsystem::TakeDirtyEntities()
-{
-	TSet<FMassEntityHandle> Result = MoveTemp(DirtyEntities);
-	DirtyEntities.Reset();
-	return Result;
-}
-
-AArcMassEntityReplicationProxy* UArcMassEntityReplicationSubsystem::FindProxyForEntity(FMassEntityHandle Entity) const
-{
-	const FArchetypeKey* Key = EntityToArchetypeKey.Find(Entity);
-	if (!Key)
-	{
-		return nullptr;
-	}
-
-	const FArcMassNetId* NetId = EntityToNetId.Find(Entity);
-	if (!NetId)
-	{
-		return nullptr;
-	}
-
-	const TArray<TObjectPtr<AArcMassEntityReplicationProxy>>* Proxies = ArchetypeToProxies.Find(*Key);
-	if (!Proxies)
-	{
-		return nullptr;
-	}
-
-	for (const TObjectPtr<AArcMassEntityReplicationProxy>& Proxy : *Proxies)
-	{
-		if (Proxy && Proxy->FindItemIndexByNetId(*NetId) != INDEX_NONE)
-		{
-			return Proxy;
-		}
-	}
-
-	return nullptr;
-}
-
-void UArcMassEntityReplicationSubsystem::RegisterDescriptorSet(uint32 InHash, const ArcMassReplication::FArcMassReplicationDescriptorSet* InDescriptorSet)
-{
-	if (InHash != 0 && InDescriptorSet != nullptr)
-	{
-		DescriptorSetsByHash.Add(InHash, InDescriptorSet);
-	}
-}
-
-const ArcMassReplication::FArcMassReplicationDescriptorSet* UArcMassEntityReplicationSubsystem::FindDescriptorSetByHash(uint32 InHash) const
-{
-	const ArcMassReplication::FArcMassReplicationDescriptorSet* const* Found = DescriptorSetsByHash.Find(InHash);
-	return Found ? *Found : nullptr;
-}
-
-void UArcMassEntityReplicationSubsystem::OnClientEntityAdded(
-	FArcMassNetId NetId,
-	const TArray<FInstancedStruct>& FragmentSlots,
-	const ArcMassReplication::FArcMassReplicationDescriptorSet* DescriptorSet,
-	UMassEntityConfigAsset* InEntityConfigAsset)
-{
-	if (!DescriptorSet || DescriptorSet->FragmentTypes.IsEmpty())
-	{
-		return;
-	}
-
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	FMassEntityManager* EntityManager = UE::Mass::Utils::GetEntityManager(World);
-	if (!EntityManager)
-	{
-		return;
-	}
-
-	FMassEntityHandle Entity;
-	TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext;
-
-	if (InEntityConfigAsset)
-	{
-		const FMassEntityTemplate& EntityTemplate = InEntityConfigAsset->GetOrCreateEntityTemplate(*World);
-
-		UMassSpawnerSubsystem* SpawnerSubsystem = World->GetSubsystem<UMassSpawnerSubsystem>();
-		if (SpawnerSubsystem)
-		{
-			TArray<FMassEntityHandle> SpawnedEntities;
-			CreationContext = SpawnerSubsystem->SpawnEntities(EntityTemplate, 1, SpawnedEntities);
-			if (SpawnedEntities.Num() > 0)
+			if (Vessel != nullptr)
 			{
-				Entity = SpawnedEntities[0];
+				Vessel->AddToCluster(VesselClusterRoot, /*bAddAsMutableObject=*/ false);
 			}
 		}
+	}
+#endif
+}
 
-		if (Entity.IsSet())
-		{
-			for (const UScriptStruct* FragType : DescriptorSet->FragmentTypes)
-			{
-				if (UE::Mass::IsSparse(FragType))
-				{
-					(void)EntityManager->AddSparseElementToEntity(Entity, FragType);
-				}
-			}
-		}
+UArcMassEntityVessel* UArcMassEntityReplicationSubsystem::AcquireVessel()
+{
+	if (VesselPool.Num() > 0)
+	{
+		UArcMassEntityVessel* Vessel = VesselPool.Pop(EAllowShrinking::No);
+		return Vessel;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: vessel pool exhausted; growing"));
+	UArcMassEntityVessel* Vessel = NewObject<UArcMassEntityVessel>(this);
+#if 0  // GC clustering disabled while smoke-test instability is investigated.
+	if (VesselClusterRoot != nullptr)
+	{
+		Vessel->AddToCluster(VesselClusterRoot, /*bAddAsMutableObject=*/ false);
+	}
+#endif
+	return Vessel;
+}
+
+void UArcMassEntityReplicationSubsystem::ReleaseVessel(UArcMassEntityVessel* Vessel)
+{
+	if (Vessel == nullptr)
+	{
+		return;
+	}
+	Vessel->EntityHandle = FMassEntityHandle();
+	Vessel->Config = nullptr;
+
+	// Only return the exact base class to the pool — typed subclasses must be GC'd
+	// (they have UPROPERTY state that pool reuse would not safely reset).
+	if (Vessel->GetClass() == UArcMassEntityVessel::StaticClass())
+	{
+		VesselPool.Add(Vessel);
+	}
+	// Otherwise the vessel becomes unreachable and GC reclaims it.
+}
+
+void UArcMassEntityReplicationSubsystem::RegisterVesselClassForConfig(
+	UMassEntityConfigAsset* Config,
+	TSubclassOf<UArcMassEntityVessel> VesselClass)
+{
+	if (Config == nullptr || VesselClass == nullptr)
+	{
+		return;
+	}
+	ConfigToVesselClass.Add(Config, VesselClass);
+	UE_LOG(LogTemp, Log,
+		TEXT("ArcMassReplication: registered vessel class '%s' for config '%s'"),
+		*VesselClass->GetName(), *Config->GetName());
+}
+
+TSubclassOf<UArcMassEntityVessel> UArcMassEntityReplicationSubsystem::FindVesselClassForConfig(
+	UMassEntityConfigAsset* Config) const
+{
+	const TSubclassOf<UArcMassEntityVessel>* Found = ConfigToVesselClass.Find(Config);
+	return Found != nullptr ? *Found : TSubclassOf<UArcMassEntityVessel>();
+}
+
+UArcMassEntityVessel* UArcMassEntityReplicationSubsystem::AcquireVesselForConfig(
+	UMassEntityConfigAsset* Config)
+{
+	TSubclassOf<UArcMassEntityVessel> VesselClass = FindVesselClassForConfig(Config);
+	if (VesselClass == nullptr)
+	{
+		// Legacy / un-typed config — fall back to pool-allocated base class.
+		return AcquireVessel();
+	}
+	UArcMassEntityVessel* Vessel = NewObject<UArcMassEntityVessel>(this, VesselClass);
+	return Vessel;
+}
+
+UArcMassEntityVessel* UArcMassEntityReplicationSubsystem::AcquireClientVessel(UMassEntityConfigAsset* Config)
+{
+	UArcMassEntityVessel* Vessel = AcquireVesselForConfig(Config);
+	if (Vessel != nullptr)
+	{
+		Vessel->Config = Config;
+		// EntityHandle stays invalid — caller populates after spawning the local Mass entity.
+	}
+	return Vessel;
+}
+
+void UArcMassEntityReplicationSubsystem::ReleaseClientVessel(UArcMassEntityVessel* Vessel)
+{
+	ReleaseVessel(Vessel);
+}
+
+UArcMassEntityVessel* UArcMassEntityReplicationSubsystem::FindVesselForEntity(FMassEntityHandle Entity) const
+{
+	const TObjectPtr<UArcMassEntityVessel>* Found = EntityToVessel.Find(Entity);
+	return Found != nullptr ? Found->Get() : nullptr;
+}
+
+FMassEntityHandle UArcMassEntityReplicationSubsystem::FindEntityForVessel(UArcMassEntityVessel* Vessel) const
+{
+	if (Vessel == nullptr)
+	{
+		return FMassEntityHandle();
+	}
+	return Vessel->EntityHandle;
+}
+
+UMassEntityConfigAsset* UArcMassEntityReplicationSubsystem::FindConfigForProtocol(uint32 ProtocolId) const
+{
+	const TObjectPtr<UMassEntityConfigAsset>* Found = ProtocolToConfig.Find(ProtocolId);
+	return Found != nullptr ? Found->Get() : nullptr;
+}
+
+uint32 UArcMassEntityReplicationSubsystem::FindProtocolForConfig(UMassEntityConfigAsset* Config) const
+{
+	const uint32* Found = ConfigToProtocol.Find(Config);
+	return Found != nullptr ? *Found : 0u;
+}
+
+UMassEntityConfigAsset* UArcMassEntityReplicationSubsystem::ResolveClientConfigForProtocol(uint32 ProtocolId)
+{
+	// Cache hit first.
+	if (UMassEntityConfigAsset* Cached = FindConfigForProtocol(ProtocolId))
+	{
+		return Cached;
+	}
+
+	if (PendingClientConfigs.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: ResolveClientConfigForProtocol(0x%x) — no pending client configs"), ProtocolId);
+		return nullptr;
+	}
+
+	// TODO: real descriptor-driven matching once a public CalculateProtocolIdentifier exists.
+	// For now, return the first pending config (smoke test has exactly one).
+	UMassEntityConfigAsset* Pick = PendingClientConfigs[0].Get();
+	if (Pick == nullptr)
+	{
+		return nullptr;
+	}
+
+	if (PendingClientConfigs.Num() > 1)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: ResolveClientConfigForProtocol(0x%x) — %d pending configs, returning first ('%s'). Multi-config matching not implemented yet."),
+			ProtocolId, PendingClientConfigs.Num(), *Pick->GetName());
 	}
 	else
 	{
-		FMassFragmentBitSet FragmentBitSet;
-		TArray<const UScriptStruct*> SparseFragmentTypes;
-		for (const UScriptStruct* FragType : DescriptorSet->FragmentTypes)
-		{
-			if (UE::Mass::IsSparse(FragType))
-			{
-				SparseFragmentTypes.Add(FragType);
-			}
-			else
-			{
-				FragmentBitSet.Add(*FragType);
-			}
-		}
-
-		FMassArchetypeHandle Archetype = EntityManager->CreateArchetype(FragmentBitSet, {});
-		TArray<FMassEntityHandle> SpawnedEntities;
-		CreationContext = EntityManager->BatchCreateEntities(Archetype, 1, SpawnedEntities);
-
-		if (SpawnedEntities.Num() > 0)
-		{
-			Entity = SpawnedEntities[0];
-		}
-
-		for (const UScriptStruct* SparseType : SparseFragmentTypes)
-		{
-			(void)EntityManager->AddSparseElementToEntity(Entity, SparseType);
-		}
+		UE_LOG(LogTemp, Log, TEXT("ArcMassReplication: ResolveClientConfigForProtocol(0x%x) — using only pending client config '%s'"),
+			ProtocolId, *Pick->GetName());
 	}
 
-	if (!Entity.IsSet())
-	{
-		return;
-	}
-
-	RegisterEntityNetId(NetId, Entity);
-
-	FMassEntityView EntityView(*EntityManager, Entity);
-	for (int32 SlotIdx = 0; SlotIdx < FragmentSlots.Num() && SlotIdx < DescriptorSet->FragmentTypes.Num(); ++SlotIdx)
-	{
-		const FInstancedStruct& Slot = FragmentSlots[SlotIdx];
-		if (!Slot.IsValid())
-		{
-			continue;
-		}
-
-		const UScriptStruct* StructType = DescriptorSet->FragmentTypes[SlotIdx];
-		uint8* DstMemory = nullptr;
-		if (UE::Mass::IsSparse(StructType))
-		{
-			FStructView SparseView = EntityManager->GetMutableSparseElementDataForEntity(StructType, Entity);
-			DstMemory = SparseView.GetMemory();
-		}
-		else
-		{
-			FStructView FragmentView = EntityView.GetFragmentDataStruct(StructType);
-			DstMemory = FragmentView.GetMemory();
-		}
-
-		if (DstMemory)
-		{
-			StructType->CopyScriptStruct(DstMemory, Slot.GetMemory());
-		}
-	}
+	ConfigToProtocol.Add(Pick, ProtocolId);
+	ProtocolToConfig.Add(ProtocolId, Pick);
+	return Pick;
 }
 
-void UArcMassEntityReplicationSubsystem::OnClientEntityChanged(
-	FArcMassNetId NetId,
-	const TArray<FInstancedStruct>& FragmentSlots,
-	uint32 ChangedFragmentMask,
-	const ArcMassReplication::FArcMassReplicationDescriptorSet* DescriptorSet)
+bool UArcMassEntityReplicationSubsystem::RegisterConfigForReplication(UMassEntityConfigAsset* Config)
 {
-	if (!DescriptorSet)
+	using namespace UE::Net;
+
+	if (Config == nullptr)
 	{
-		return;
+		return false;
+	}
+	if (bProtocolWarmupLocked)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: RegisterConfigForReplication blocked by warmup lock for %s"), *Config->GetName());
+		return false;
+	}
+	if (ConfigToProtocol.Contains(Config))
+	{
+		return true;
 	}
 
-	FMassEntityHandle Entity = FindEntityByNetId(NetId);
-	if (!Entity.IsSet())
-	{
-		return;
-	}
+	// Make sure the asset-registry sweep has had its chance — but only when we already
+	// have a bridge (otherwise the sweep would just no-op again here).
+	EnsureSweepRun();
 
 	UWorld* World = GetWorld();
-	if (!World)
+	UObjectReplicationBridge* Bridge = ArcMassEntityReplicationSubsystem_Private::GetBridge(World);
+	if (Bridge == nullptr)
 	{
-		return;
+		UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: warmup deferred — no bridge yet (%s)"), *Config->GetName());
+		return false;
 	}
 
-	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*World);
-	FMassEntityView EntityView(EntityManager, Entity);
-
-	for (int32 SlotIdx = 0; SlotIdx < FragmentSlots.Num() && SlotIdx < DescriptorSet->FragmentTypes.Num(); ++SlotIdx)
+	if (!FNetObjectFactoryRegistry::IsValidFactoryId(FactoryId))
 	{
-		if ((ChangedFragmentMask & (1U << SlotIdx)) == 0)
+		FactoryId = FNetObjectFactoryRegistry::GetFactoryIdFromName(UArcMassEntityRootFactory::GetFactoryName());
+		if (!FNetObjectFactoryRegistry::IsValidFactoryId(FactoryId))
 		{
-			continue;
-		}
-
-		const FInstancedStruct& Slot = FragmentSlots[SlotIdx];
-		if (!Slot.IsValid())
-		{
-			continue;
-		}
-
-		const UScriptStruct* StructType = DescriptorSet->FragmentTypes[SlotIdx];
-		uint8* DstMemory = nullptr;
-		if (UE::Mass::IsSparse(StructType))
-		{
-			FStructView SparseView = EntityManager.GetMutableSparseElementDataForEntity(StructType, Entity);
-			DstMemory = SparseView.GetMemory();
-		}
-		else
-		{
-			FStructView FragmentView = EntityView.GetFragmentDataStruct(StructType);
-			DstMemory = FragmentView.GetMemory();
-		}
-
-		if (DstMemory)
-		{
-			StructType->CopyScriptStruct(DstMemory, Slot.GetMemory());
+			UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: factory id unresolved during warmup for %s"), *Config->GetName());
+			return false;
 		}
 	}
+
+	UReplicationSystem* RepSystem = World->GetNetDriver()->GetReplicationSystem();
+	if (RepSystem == nullptr)
+	{
+		return false;
+	}
+
+	// On clients, StartReplicatingRootObject is server-only — it silently returns
+	// an invalid handle. Skip the bridge call and record the config for lazy
+	// protocol resolution inside InstantiateReplicatedObjectFromHeader.
+	// TODO: replace this stopgap with proper deterministic protocol-id matching once a
+	// public path to FReplicationProtocolManager::CalculateProtocolIdentifier is wired.
+	if (!RepSystem->IsServer())
+	{
+		PendingClientConfigs.AddUnique(Config);
+		UE_LOG(LogTemp, Log, TEXT("ArcMassReplication: client-side RegisterConfigForReplication recorded pending config %s (PendingCount=%d)"),
+			*Config->GetName(), PendingClientConfigs.Num());
+		return true;
+	}
+
+	UArcMassEntityVessel* TempVessel = AcquireVessel();
+	if (TempVessel == nullptr)
+	{
+		return false;
+	}
+	TempVessel->Config = Config;
+	// EntityHandle stays invalid — registration only builds descriptors; chunk memory
+	// resolution happens later in Poll/Apply, which gracefully no-ops on invalid handles.
+
+	const ENetMode NetMode = World->GetNetMode();
+	const bool bIsServer = RepSystem->IsServer();
+	UE_LOG(LogTemp, Log, TEXT("ArcMassReplication: warmup calling StartReplicatingRootObject (Config=%s, Vessel=%s, FactoryId=%u, IsSupportedForNetworking=%s, NetMode=%d, RepSystem.IsServer=%s, World=%s)"),
+		*Config->GetName(),
+		*TempVessel->GetName(),
+		(uint32)FactoryId,
+		TempVessel->IsSupportedForNetworking() ? TEXT("true") : TEXT("false"),
+		(int32)NetMode,
+		bIsServer ? TEXT("true") : TEXT("false"),
+		*World->GetName());
+
+	const FNetRefHandle Handle = Bridge->StartReplicatingRootObject(TempVessel, FactoryId);
+	if (!Handle.IsValid())
+	{
+		ReleaseVessel(TempVessel);
+		UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: warmup StartReplicatingRootObject failed for %s — handle invalid (NetMode=%d, RepSystem.IsServer=%s)"),
+			*Config->GetName(), (int32)NetMode, bIsServer ? TEXT("true") : TEXT("false"));
+		return false;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("ArcMassReplication: warmup got NetRefHandle (%s) for Config=%s"),
+		*Handle.ToString(), *Config->GetName());
+
+	const FReplicationProtocol* Protocol = RepSystem->GetReplicationProtocol(Handle);
+	if (Protocol == nullptr)
+	{
+		Bridge->StopReplicatingNetObject(TempVessel, ArcMassEntityReplicationSubsystem_Private::GArcMassEndReplicationFlags);
+		ReleaseVessel(TempVessel);
+		return false;
+	}
+
+	const uint32 ProtocolId = Protocol->ProtocolIdentifier;
+	ConfigToProtocol.Add(Config, ProtocolId);
+	ProtocolToConfig.Add(ProtocolId, Config);
+
+	Bridge->StopReplicatingNetObject(TempVessel, ArcMassEntityReplicationSubsystem_Private::GArcMassEndReplicationFlags);
+
+	// TODO Phase 5c: when the bridge exposes a synchronous "is this handle still bound"
+	// query, replace the single yield below with a bounded poll. The Destroy/
+	// DestroyNetHandle/ClearNetPushId flags break the binding immediately — the next
+	// StartReplicatingRootObject for the same vessel will produce a fresh handle — so
+	// the yield is sufficient to let the bridge complete its bookkeeping.
+	FPlatformProcess::SleepNoStats(0.0f);
+
+	ReleaseVessel(TempVessel);
+	return true;
 }
 
-void UArcMassEntityReplicationSubsystem::OnClientEntityRemoved(FArcMassNetId NetId)
+UE::Net::FNetRefHandle UArcMassEntityReplicationSubsystem::RegisterEntity(FMassEntityHandle Entity, UMassEntityConfigAsset* Config)
 {
-	FMassEntityHandle Entity = FindEntityByNetId(NetId);
-	if (!Entity.IsSet())
+	using namespace UE::Net;
+
+	if (!Entity.IsSet() || Config == nullptr)
 	{
-		return;
+		return FNetRefHandle::GetInvalid();
 	}
+
+	// Asset-registry sweep MUST happen before the first RegisterEntity, since that call
+	// flips the warmup lock. The sweep is idempotent and cheap once it has run.
+	EnsureSweepRun();
 
 	UWorld* World = GetWorld();
-	if (World)
+	UObjectReplicationBridge* Bridge = ArcMassEntityReplicationSubsystem_Private::GetBridge(World);
+	if (Bridge == nullptr)
 	{
-		FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*World);
-		EntityManager.DestroyEntity(Entity);
+		UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: RegisterEntity called but no bridge available"));
+		return FNetRefHandle::GetInvalid();
 	}
 
-	UnregisterEntityNetId(NetId);
+	if (!FNetObjectFactoryRegistry::IsValidFactoryId(FactoryId))
+	{
+		// Resolve lazily if Initialize couldn't (rep system came up later).
+		FactoryId = FNetObjectFactoryRegistry::GetFactoryIdFromName(UArcMassEntityRootFactory::GetFactoryName());
+		if (!FNetObjectFactoryRegistry::IsValidFactoryId(FactoryId))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("ArcMassReplication: factory id unresolved for ArcMassEntityReplication"));
+			return FNetRefHandle::GetInvalid();
+		}
+	}
+
+	UArcMassEntityVessel* Vessel = AcquireVesselForConfig(Config);
+	if (Vessel == nullptr)
+	{
+		return FNetRefHandle::GetInvalid();
+	}
+	Vessel->EntityHandle = Entity;
+	Vessel->Config = Config;
+	EntityToVessel.Add(Entity, Vessel);
+
+	const FNetRefHandle Handle = Bridge->StartReplicatingRootObject(Vessel, FactoryId);
+	if (!Handle.IsValid())
+	{
+		EntityToVessel.Remove(Entity);
+		ReleaseVessel(Vessel);
+		return FNetRefHandle::GetInvalid();
+	}
+
+	// Capture protocol id post-registration as a backup (warmup populates eagerly,
+	// but if RegisterEntity races ahead of warmup we still record it).
+	UReplicationSystem* RepSystem = World->GetNetDriver()->GetReplicationSystem();
+	const FReplicationProtocol* Protocol = RepSystem != nullptr ? RepSystem->GetReplicationProtocol(Handle) : nullptr;
+	if (Protocol != nullptr)
+	{
+		const uint32 ProtocolId = Protocol->ProtocolIdentifier;
+		ConfigToProtocol.Add(Config, ProtocolId);
+		ProtocolToConfig.Add(ProtocolId, Config);
+	}
+
+	// Lock the warmup window only after the first successful registration. If we
+	// flipped this earlier, an AcquireVessel/StartReplicatingRootObject failure
+	// would leave the lock set permanently and silently block all subsequent
+	// RegisterConfigForReplication calls for the world's lifetime.
+	bProtocolWarmupLocked = true;
+
+	return Handle;
 }
 
-// --- Task 9: Grid management ---
-
-FArcMassSpatialGrid* UArcMassEntityReplicationSubsystem::GetOrCreateGrid(const FArchetypeKey& Key, float CellSize)
+void UArcMassEntityReplicationSubsystem::UnregisterEntity(FMassEntityHandle Entity)
 {
-	FArcMassSpatialGrid* Existing = ArchetypeGrids.Find(Key);
-	if (Existing)
-	{
-		return Existing;
-	}
-
-	FArcMassSpatialGrid& NewGrid = ArchetypeGrids.Add(Key);
-	NewGrid.CellSize = CellSize;
-	return &NewGrid;
-}
-
-FArcMassSpatialGrid* UArcMassEntityReplicationSubsystem::FindGrid(const FArchetypeKey& Key)
-{
-	return ArchetypeGrids.Find(Key);
-}
-
-void UArcMassEntityReplicationSubsystem::AddEntityToGrid(FMassEntityHandle Entity, FVector Position)
-{
-	const FArcMassNetId* NetId = EntityToNetId.Find(Entity);
-	const FArchetypeKey* Key = EntityToArchetypeKey.Find(Entity);
-	if (!NetId || !Key)
-	{
-		return;
-	}
-
-	FArcMassSpatialGrid* Grid = ArchetypeGrids.Find(*Key);
-	if (Grid)
-	{
-		Grid->AddEntity(*NetId, Position);
-	}
-}
-
-void UArcMassEntityReplicationSubsystem::UpdateEntityInGrid(FMassEntityHandle Entity, FVector Position)
-{
-	const FArcMassNetId* NetId = EntityToNetId.Find(Entity);
-	const FArchetypeKey* Key = EntityToArchetypeKey.Find(Entity);
-	if (!NetId || !Key)
-	{
-		return;
-	}
-
-	FArcMassSpatialGrid* Grid = ArchetypeGrids.Find(*Key);
-	if (Grid)
-	{
-		Grid->UpdateEntity(*NetId, Position);
-	}
-}
-
-void UArcMassEntityReplicationSubsystem::RemoveEntityFromGrid(FMassEntityHandle Entity)
-{
-	const FArcMassNetId* NetId = EntityToNetId.Find(Entity);
-	const FArchetypeKey* Key = EntityToArchetypeKey.Find(Entity);
-	if (!NetId || !Key)
+	UArcMassEntityVessel* Vessel = FindVesselForEntity(Entity);
+	if (Vessel == nullptr)
 	{
 		return;
 	}
 
-	FArcMassSpatialGrid* Grid = ArchetypeGrids.Find(*Key);
-	if (Grid)
+	UObjectReplicationBridge* Bridge = ArcMassEntityReplicationSubsystem_Private::GetBridge(GetWorld());
+	if (Bridge != nullptr)
 	{
-		Grid->RemoveEntity(*NetId);
-	}
-}
-
-void UArcMassEntityReplicationSubsystem::RegisterEntityArchetypeKey(FMassEntityHandle Entity, const FArchetypeKey& Key)
-{
-	EntityToArchetypeKey.Add(Entity, Key);
-}
-
-// --- Task 10: Tickable subsystem + player cell tracking ---
-
-TStatId UArcMassEntityReplicationSubsystem::GetStatId() const
-{
-	RETURN_QUICK_DECLARE_CYCLE_STAT(UArcMassEntityReplicationSubsystem, STATGROUP_Game);
-}
-
-void UArcMassEntityReplicationSubsystem::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
-FVector UArcMassEntityReplicationSubsystem::GetPlayerPosition(uint32 ConnectionId) const
-{
-	const FSourceState* State = SourceStates.Find(ConnectionId);
-	return State ? State->Position : FVector::ZeroVector;
-}
-
-bool UArcMassEntityReplicationSubsystem::IsEntityRelevantToConnection(FArcMassNetId NetId, uint32 ConnectionId) const
-{
-	FMassEntityHandle Entity = FindEntityByNetId(NetId);
-	if (!Entity.IsSet())
-	{
-		return true;
+		Bridge->StopReplicatingNetObject(Vessel, ArcMassEntityReplicationSubsystem_Private::GArcMassEndReplicationFlags);
 	}
 
-	const FArchetypeKey* Key = EntityToArchetypeKey.Find(Entity);
-	if (!Key)
+	EntityToVessel.Remove(Entity);
+	ReleaseVessel(Vessel);
+}
+
+void UArcMassEntityReplicationSubsystem::EnsureSweepRun()
+{
+	if (bAssetRegistrySweepRun)
 	{
-		return true;
+		return;
+	}
+	if (ArcMassEntityReplicationSubsystem_Private::GetBridge(GetWorld()) == nullptr)
+	{
+		// Bridge not ready yet — HandleNetDriverCreated (or a later RegisterEntity) will retry.
+		return;
+	}
+	RunAssetRegistrySweep();
+}
+
+void UArcMassEntityReplicationSubsystem::HandleNetDriverCreated(UWorld* InWorld, UNetDriver* /*InNetDriver*/)
+{
+	if (InWorld != GetWorld())
+	{
+		return;
+	}
+	EnsureSweepRun();
+}
+
+void UArcMassEntityReplicationSubsystem::RunAssetRegistrySweep()
+{
+	if (bAssetRegistrySweepRun)
+	{
+		return;
 	}
 
-	const FArcMassSpatialGrid* Grid = ArchetypeGrids.Find(*Key);
-	if (!Grid)
+	FAssetRegistryModule& AssetRegistryModule =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+	TArray<FAssetData> AssetData;
+	AssetRegistry.GetAssetsByClass(UMassEntityConfigAsset::StaticClass()->GetClassPathName(), AssetData);
+
+	for (const FAssetData& Data : AssetData)
 	{
-		return true;
+		UMassEntityConfigAsset* Config = Cast<UMassEntityConfigAsset>(Data.GetAsset());
+		if (Config == nullptr)
+		{
+			continue;
+		}
+
+		// Only register configs that actually carry the replication trait.
+		const UArcMassEntityReplicationTrait* Trait =
+			Cast<UArcMassEntityReplicationTrait>(Config->FindTrait(UArcMassEntityReplicationTrait::StaticClass()));
+		if (Trait == nullptr)
+		{
+			continue;
+		}
+
+		RegisterConfigForReplication(Config);
 	}
 
-	const FIntVector2* EntityCell = Grid->EntityToCell.Find(NetId);
-	if (!EntityCell)
-	{
-		return true;
-	}
-
-	return IsCellRelevantForConnection(ConnectionId, *EntityCell);
-}
-
-bool UArcMassEntityReplicationSubsystem::IsConnectionOwnerOf(FArcMassNetId NetId, uint32 ConnectionId) const
-{
-	const uint32* Owner = EntityOwnerConnectionId.Find(NetId);
-	return Owner == nullptr || *Owner == ConnectionId;
-}
-
-void UArcMassEntityReplicationSubsystem::SetEntityOwner(FArcMassNetId NetId, uint32 ConnectionId)
-{
-	EntityOwnerConnectionId.Add(NetId, ConnectionId);
-}
-
-void UArcMassEntityReplicationSubsystem::UpdateSourceState(uint32 ConnectionId, FVector Position, FIntVector2 Cell)
-{
-	FSourceState& State = SourceStates.FindOrAdd(ConnectionId);
-	State.Position = Position;
-	State.Cell = Cell;
-}
-
-const UArcMassEntityReplicationSubsystem::FSourceState* UArcMassEntityReplicationSubsystem::GetSourceState(uint32 ConnectionId) const
-{
-	return SourceStates.Find(ConnectionId);
-}
-
-TArray<uint32> UArcMassEntityReplicationSubsystem::GetAllSourceConnectionIds() const
-{
-	TArray<uint32> Result;
-	SourceStates.GetKeys(Result);
-	return Result;
-}
-
-void UArcMassEntityReplicationSubsystem::SetCellRelevantForConnection(uint32 ConnectionId, FIntVector2 Cell)
-{
-	ConnectionRelevantCells.FindOrAdd(ConnectionId).Add(Cell);
-}
-
-void UArcMassEntityReplicationSubsystem::SetCellIrrelevantForConnection(uint32 ConnectionId, FIntVector2 Cell)
-{
-	TSet<FIntVector2>* Cells = ConnectionRelevantCells.Find(ConnectionId);
-	if (Cells)
-	{
-		Cells->Remove(Cell);
-	}
-}
-
-bool UArcMassEntityReplicationSubsystem::IsCellRelevantForConnection(uint32 ConnectionId, FIntVector2 Cell) const
-{
-	const TSet<FIntVector2>* Cells = ConnectionRelevantCells.Find(ConnectionId);
-	return Cells && Cells->Contains(Cell);
+	bAssetRegistrySweepRun = true;
 }

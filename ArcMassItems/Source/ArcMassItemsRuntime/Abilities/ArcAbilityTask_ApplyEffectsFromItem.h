@@ -21,7 +21,7 @@ struct FArcAbilityTask_ApplyEffectsFromItemInstanceData
 };
 
 USTRUCT(DisplayName = "Apply Effects From Item", Category = "Arc|Ability|Effects")
-struct ARCCORE_API FArcAbilityTask_ApplyEffectsFromItem : public FArcAbilityTaskBase
+struct ARCMASSITEMSRUNTIME_API FArcAbilityTask_ApplyEffectsFromItem : public FArcAbilityTaskBase
 {
     GENERATED_BODY()
 

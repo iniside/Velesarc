@@ -3,7 +3,7 @@
 #include "Processors/ArcMassReplicationSourceTrackingProcessor.h"
 #include "Fragments/ArcMassReplicationSourceFragment.h"
 #include "Fragments/ArcMassReplicationSourceTag.h"
-#include "Subsystem/ArcMassEntityReplicationSubsystem.h"
+#include "Subsystem/ArcMassEntityReplicationProxySubsystem.h"
 #include "Spatial/ArcMassSpatialGrid.h"
 #include "Mass/EntityFragments.h"
 #include "MassExecutionContext.h"
@@ -36,15 +36,15 @@ void UArcMassReplicationSourceTrackingProcessor::Execute(FMassEntityManager& Ent
 		return;
 	}
 
-	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+	UArcMassEntityReplicationProxySubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 	if (!Subsystem)
 	{
 		return;
 	}
 
 	float CellSize = 10000.f;
-	const TMap<UArcMassEntityReplicationSubsystem::FArchetypeKey, FArcMassSpatialGrid>& Grids = Subsystem->GetArchetypeGrids();
-	for (const TPair<UArcMassEntityReplicationSubsystem::FArchetypeKey, FArcMassSpatialGrid>& Pair : Grids)
+	const TMap<UArcMassEntityReplicationProxySubsystem::FArchetypeKey, FArcMassSpatialGrid>& Grids = Subsystem->GetArchetypeGrids();
+	for (const TPair<UArcMassEntityReplicationProxySubsystem::FArchetypeKey, FArcMassSpatialGrid>& Pair : Grids)
 	{
 		CellSize = Pair.Value.CellSize;
 		break;

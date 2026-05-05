@@ -33,6 +33,7 @@
 
 #include "Core/ArcCoreAssetManager.h"
 #include "Engine/NetConnection.h"
+#include "Engine/World.h"
 
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 
@@ -204,6 +205,8 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 		}
 	}
 
+	World = OwnerComponent ? OwnerComponent->GetWorld() : nullptr;
+
 	ScalableFloatContext.ItemData = this;
 	ScalableFloatContext.ItemsStore = OwnerComponent;
 	ScalableFloatContext.ItemDefinition = ItemDefinition;
@@ -244,9 +247,96 @@ void FArcItemData::Initialize(UArcItemsStoreComponent* ItemsStoreComponent)
 	}
 }
 
+void FArcItemData::InitializeMass(UWorld* InWorld)
+{
+	World = InWorld;
+
+	// Build ItemInstances from definition fragments
+	TArray<const FArcItemFragment_ItemInstanceBase*> DefInstances = ItemDefinition->GetFragmentsOfType<FArcItemFragment_ItemInstanceBase>();
+	for (const FArcItemFragment_ItemInstanceBase* IIB : DefInstances)
+	{
+		if (!IIB->GetCreateItemInstance())
+		{
+			continue;
+		}
+		if (UScriptStruct* InstanceType = IIB->GetItemInstanceType())
+		{
+			FInstancedStruct NewInstance;
+			NewInstance.InitializeAs(InstanceType, nullptr);
+
+			int32 InitialDataIdx = Spec.InitialInstanceData.IndexOfByPredicate([InstanceType](const FInstancedStruct& Other)
+			{
+				return Other.GetScriptStruct() == InstanceType;
+			});
+			if (InitialDataIdx != INDEX_NONE)
+			{
+				NewInstance = Spec.InitialInstanceData[InitialDataIdx];
+			}
+
+			ItemInstances.Data.Add(MoveTemp(NewInstance));
+		}
+	}
+
+	// Build ItemInstances from spec fragments
+	TArray<const FArcItemFragment_ItemInstanceBase*> SpecFragments = Spec.GetSpecFragments();
+	for (const FArcItemFragment_ItemInstanceBase* Fragment : SpecFragments)
+	{
+		if (!Fragment->GetCreateItemInstance())
+		{
+			continue;
+		}
+		if (UScriptStruct* InstanceType = Fragment->GetItemInstanceType())
+		{
+			FInstancedStruct NewInstance;
+			NewInstance.InitializeAs(InstanceType, nullptr);
+
+			int32 InitialDataIdx = Spec.InitialInstanceData.IndexOfByPredicate([InstanceType](const FInstancedStruct& Other)
+			{
+				return Other.GetScriptStruct() == InstanceType;
+			});
+			if (InitialDataIdx != INDEX_NONE)
+			{
+				NewInstance = Spec.InitialInstanceData[InitialDataIdx];
+			}
+
+			ItemInstances.Data.Add(MoveTemp(NewInstance));
+		}
+	}
+
+	SetItemInstances(ItemInstances);
+
+	// Build ScalableFloatFragments
+	const TSet<FArcInstancedStruct>& DefScalable = ItemDefinition->GetScalableFloatFragments();
+	for (const FArcInstancedStruct& I : DefScalable)
+	{
+		ScalableFloatFragments.FindOrAdd(I.GetScriptStruct()) = I.GetPtr<FArcScalableFloatItemFragment>();
+	}
+
+	// Build ScalableFloatContext (Mass: no owner actor / ASC)
+	ScalableFloatContext.ItemData = this;
+	ScalableFloatContext.ItemsStore = nullptr;
+	ScalableFloatContext.ItemDefinition = ItemDefinition;
+
+	// Build ItemAggregatedTags
+	if (const FArcItemFragment_Tags* Tags = ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(this))
+	{
+		ItemAggregatedTags.Reset();
+		ItemAggregatedTags.AppendTags(Tags->ItemTags);
+	}
+
+	// Fire OnItemInitialize on all fragments
+	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
+		, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
+		{
+			InFragment->OnItemInitialize(ItemData);
+		});
+}
+
 void FArcItemData::OnItemAdded()
 {
-	UArcCoreAssetManager::Get().AddLoadedAsset(GetItemDefinition());
+	const UArcItemDefinition* Def = GetItemDefinition();
+
+	UArcCoreAssetManager::Get().AddLoadedAsset(Def);
 	
 	ArcItemsHelper::ForEachFragment<FArcItemFragment_ItemInstanceBase>(this
 			, [](const FArcItemData* ItemData, const FArcItemFragment_ItemInstanceBase* InFragment)
@@ -264,12 +354,15 @@ void FArcItemData::OnItemChanged()
 				InFragment->OnItemChanged(ItemData);
 			});
 	
-	UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(OwnerComponent);
-	if (ItemsSubsystem)
+	if (OwnerComponent)
 	{
-		ItemsSubsystem->OnItemChangedDynamic.Broadcast(OwnerComponent, GetItemId());
-		ItemsSubsystem->BroadcastActorOnItemChangedStore(OwnerComponent->GetOwner(), OwnerComponent, this);
-		ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(OwnerComponent->GetOwner(), GetItemId(), OwnerComponent, this);
+		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(OwnerComponent);
+		if (ItemsSubsystem)
+		{
+			ItemsSubsystem->OnItemChangedDynamic.Broadcast(OwnerComponent, GetItemId());
+			ItemsSubsystem->BroadcastActorOnItemChangedStore(OwnerComponent->GetOwner(), OwnerComponent, this);
+			ItemsSubsystem->BroadcastActorOnItemChangedStoreMap(OwnerComponent->GetOwner(), GetItemId(), OwnerComponent, this);
+		}
 	}
 }
 

@@ -14,6 +14,9 @@ namespace UE::ArcMassItems::Signals
 	inline const FName ItemStacksChanged = FName(TEXT("ArcMassItemStacksChanged"));
 	inline const FName ItemAttached      = FName(TEXT("ArcMassItemAttached"));
 	inline const FName ItemDetached      = FName(TEXT("ArcMassItemDetached"));
+	inline const FName ItemVisualAttached    = FName(TEXT("ArcMassItemVisualAttached"));    // NEW
+	inline const FName ItemVisualDetached    = FName(TEXT("ArcMassItemVisualDetached"));    // NEW
+	inline const FName ItemAttachmentChanged = FName(TEXT("ArcMassItemAttachmentChanged")); // NEW
 
 	// Returns a store-qualified signal name, e.g. "ArcMassItemAdded.FArcMassItemStoreFragment".
 	// Subscribe to the qualified name for the specific store type you care about.

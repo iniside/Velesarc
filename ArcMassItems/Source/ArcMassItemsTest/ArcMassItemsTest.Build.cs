@@ -13,7 +13,8 @@ public class ArcMassItemsTest : ModuleRules
 		PublicIncludePaths.AddRange(
 			new string[]
 			{
-				Path.GetFullPath(Path.Combine(PluginDirectory, "Source/ArcMassItemsRuntime"))
+				Path.GetFullPath(Path.Combine(PluginDirectory, "Source/ArcMassItemsRuntime")),
+				Path.GetFullPath(Path.Combine(PluginDirectory, "../ArcCoreTest/Source/ArcCoreTest"))
 			}
 		);
 
@@ -33,14 +34,18 @@ public class ArcMassItemsTest : ModuleRules
 			"ArcMassItemsRuntime",
 			"ArcMassReplicationRuntime",
 			"ArcCore",
+			"ArcCoreTest",
 			"MassEntity",
 			"MassCore",
 			"MassSpawner",
 			"MassSignals",
+			"MassActors",
 			"GameplayTags",
 			"StructUtils",
 			"NetCore",
-			"IrisCore"
+			"IrisCore",
+			"DeveloperSettings",
+			"ArcMassAbilities"
 		});
 	}
 }

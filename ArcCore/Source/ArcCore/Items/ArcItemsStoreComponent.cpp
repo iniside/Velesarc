@@ -209,7 +209,7 @@ void UArcItemsStoreComponent::InitializeComponent()
 // Called when the game starts
 void UArcItemsStoreComponent::BeginPlay()
 {
-	ItemsArray.SetOwner(this);
+	ItemsArray.SetOwner(this);		
 
 	Super::BeginPlay();
 

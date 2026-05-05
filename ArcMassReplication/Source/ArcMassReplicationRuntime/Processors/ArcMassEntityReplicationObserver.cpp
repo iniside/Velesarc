@@ -1,18 +1,16 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "Processors/ArcMassEntityReplicationObserver.h"
+
+#include "Engine/World.h"
+#include "Fragments/ArcMassNetIdFragment.h"
 #include "Fragments/ArcMassReplicatedTag.h"
 #include "Fragments/ArcMassReplicationConfigFragment.h"
-#include "Fragments/ArcMassNetIdFragment.h"
-#include "Subsystem/ArcMassEntityReplicationSubsystem.h"
-#include "Replication/ArcMassEntityReplicationProxy.h"
-#include "Replication/ArcMassReplicationDescriptorSet.h"
+#include "Iris/ReplicationSystem/NetRefHandle.h"
+#include "MassEntityConfigAsset.h"
 #include "MassEntityManager.h"
 #include "MassExecutionContext.h"
-#include "MassEntityView.h"
-#include "Mass/EntityFragments.h"
-#include "Mass/EntityElementTypes.h"
-#include "StructUtils/InstancedStruct.h"
+#include "Subsystem/ArcMassEntityReplicationSubsystem.h"
 
 // --- Start Observer ---
 
@@ -22,112 +20,63 @@ UArcMassEntityReplicationStartObserver::UArcMassEntityReplicationStartObserver()
 	ObservedTypes.Add(FArcMassEntityReplicatedTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
+	// Do NOT set bAutoRegisterWithProcessingPhases (observers register through
+	// FMassObserverManager, not the processing phase system).
+	// DO set ExecutionFlags so the observer is only registered on worlds with
+	// server authority. FMassObserverManager consults ShouldExecute() at register
+	// time. Without this, replication-tagged entities created on a client world
+	// (e.g. by the factory's local-entity spawn) would re-fire RegisterEntity and
+	// cascade.
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
 void UArcMassEntityReplicationStartObserver::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	ObserverQuery.AddRequirement<FArcMassEntityNetIdFragment>(EMassFragmentAccess::ReadWrite);
-	ObserverQuery.AddConstSharedRequirement<FArcMassEntityReplicationConfigFragment>();
+	ObserverQuery.AddConstSharedRequirement<FArcMassEntityReplicationConfigFragment>(EMassFragmentPresence::All);
+	ObserverQuery.AddRequirement<FArcMassEntityNetHandleFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddTagRequirement<FArcMassEntityReplicatedTag>(EMassFragmentPresence::All);
-	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
-	ObserverQuery.RegisterWithProcessor(*this);
 }
 
 void UArcMassEntityReplicationStartObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
 	UWorld* World = EntityManager.GetWorld();
-	if (!World || World->GetNetMode() == NM_Client)
+	if (World == nullptr)
 	{
 		return;
 	}
-
 	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
-	if (!Subsystem)
+	if (Subsystem == nullptr)
 	{
 		return;
 	}
 
-	ObserverQuery.ForEachEntityChunk(Context,
-		[&EntityManager, Subsystem](FMassExecutionContext& Context)
+	ObserverQuery.ForEachEntityChunk(Context, [Subsystem](FMassExecutionContext& InnerContext)
+	{
+		const FArcMassEntityReplicationConfigFragment& ConfigFragment =
+			InnerContext.GetConstSharedFragment<FArcMassEntityReplicationConfigFragment>();
+		UMassEntityConfigAsset* Config = ConfigFragment.EntityConfigAsset;
+		if (Config == nullptr)
 		{
-			const FArcMassEntityReplicationConfigFragment& Config =
-				Context.GetConstSharedFragment<FArcMassEntityReplicationConfigFragment>();
+			return;
+		}
 
-			TArray<const UScriptStruct*> FragmentTypes;
-			for (const FArcMassReplicatedFragmentEntry& Entry : Config.ReplicatedFragmentEntries)
-			{
-				if (Entry.FragmentType)
-				{
-					FragmentTypes.Add(Entry.FragmentType);
-				}
-			}
+		const TArrayView<FArcMassEntityNetHandleFragment> NetHandles =
+			InnerContext.GetMutableFragmentView<FArcMassEntityNetHandleFragment>();
 
-			// Build sorted archetype key (same sort as GetOrCreateProxy)
-			UArcMassEntityReplicationSubsystem::FArchetypeKey ArchetypeKey;
-			ArchetypeKey.SortedTypes = FragmentTypes;
-			Algo::Sort(ArchetypeKey.SortedTypes, [](const UScriptStruct* A, const UScriptStruct* B) { return A->GetFName().LexicalLess(B->GetFName()); });
-
-			AArcMassEntityReplicationProxy* Proxy = Subsystem->GetOrCreateProxy(FragmentTypes, Config.CullDistance, Config.EntityConfigAsset);
-			if (!Proxy)
-			{
-				return;
-			}
-
-			Subsystem->GetOrCreateGrid(ArchetypeKey, Config.CellSize);
-
-			const ArcMassReplication::FArcMassReplicationDescriptorSet& DescSet = Proxy->GetDescriptorSet();
-
-			const TArrayView<FArcMassEntityNetIdFragment> NetIdFragments =
-				Context.GetMutableFragmentView<FArcMassEntityNetIdFragment>();
-
-			const bool bHasTransform = Context.GetFragmentView<FTransformFragment>().Num() > 0;
-			const TConstArrayView<FTransformFragment> Transforms =
-				bHasTransform ? Context.GetFragmentView<FTransformFragment>() : TConstArrayView<FTransformFragment>();
-
-			for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
-			{
-				FMassEntityHandle Entity = Context.GetEntity(EntityIndex);
-				FArcMassEntityNetIdFragment& NetIdFragment = NetIdFragments[EntityIndex];
-
-				FArcMassNetId NetId = Subsystem->AllocateNetId();
-				NetIdFragment.NetId = NetId;
-				Subsystem->RegisterEntityNetId(NetId, Entity);
-
-				TArray<FInstancedStruct> FragmentSlots;
-				FragmentSlots.SetNum(DescSet.FragmentTypes.Num());
-				FMassEntityView EntityView(EntityManager, Entity);
-				for (int32 SlotIdx = 0; SlotIdx < DescSet.FragmentTypes.Num(); ++SlotIdx)
-				{
-					const UScriptStruct* StructType = DescSet.FragmentTypes[SlotIdx];
-					FragmentSlots[SlotIdx].InitializeAs(StructType);
-
-					const uint8* SrcMemory = nullptr;
-					if (UE::Mass::IsSparse(StructType))
-					{
-						FConstStructView SparseView = EntityManager.GetSparseElementDataForEntity(StructType, Entity);
-						SrcMemory = SparseView.GetMemory();
-					}
-					else
-					{
-						FStructView FragmentView = EntityView.GetFragmentDataStruct(StructType);
-						SrcMemory = FragmentView.GetMemory();
-					}
-
-					if (SrcMemory)
-					{
-						StructType->CopyScriptStruct(FragmentSlots[SlotIdx].GetMutableMemory(), SrcMemory);
-					}
-				}
-				Proxy->SetEntityFragments(NetId, FragmentSlots);
-
-				Subsystem->RegisterEntityArchetypeKey(Entity, ArchetypeKey);
-
-				const FVector EntityPosition = bHasTransform
-					? Transforms[EntityIndex].GetTransform().GetLocation()
-					: FVector::ZeroVector;
-				Subsystem->AddEntityToGrid(Entity, EntityPosition);
-			}
-		});
+		const int32 NumEntities = InnerContext.GetNumEntities();
+		UE_LOG(LogTemp, Log, TEXT("ArcMassReplication[Observer.Start]: chunk fired NumEntities=%d Config=%s World=%s"),
+			NumEntities, *Config->GetName(), *Subsystem->GetWorld()->GetName());
+		for (int32 Index = 0; Index < NumEntities; ++Index)
+		{
+			const FMassEntityHandle Entity = InnerContext.GetEntity(Index);
+			UE_LOG(LogTemp, Log, TEXT("ArcMassReplication[Observer.Start]: RegisterEntity Entity=(Idx=%d,Ser=%d) Config=%s"),
+				Entity.Index, Entity.SerialNumber, *Config->GetName());
+			const UE::Net::FNetRefHandle Handle = Subsystem->RegisterEntity(Entity, Config);
+			UE_LOG(LogTemp, Log, TEXT("ArcMassReplication[Observer.Start]: RegisterEntity returned Handle=%s"),
+				*Handle.ToString());
+			NetHandles[Index].NetHandle = Handle;
+		}
+	});
 }
 
 // --- Stop Observer ---
@@ -138,50 +87,39 @@ UArcMassEntityReplicationStopObserver::UArcMassEntityReplicationStopObserver()
 	ObservedTypes.Add(FArcMassEntityReplicatedTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
+	// Symmetric with start observer: only the authority world unregisters server-side
+	// replication state.
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
 void UArcMassEntityReplicationStopObserver::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	ObserverQuery.AddRequirement<FArcMassEntityNetIdFragment>(EMassFragmentAccess::ReadOnly);
+	// No fragment requirements — at Remove time the entity may have already lost
+	// dependent fragments. We only need the entity handle, which is always available
+	// via the execution context.
 	ObserverQuery.AddTagRequirement<FArcMassEntityReplicatedTag>(EMassFragmentPresence::All);
-	ObserverQuery.RegisterWithProcessor(*this);
 }
 
 void UArcMassEntityReplicationStopObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
 	UWorld* World = EntityManager.GetWorld();
-	if (!World)
+	if (World == nullptr)
 	{
 		return;
 	}
-
 	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
-	if (!Subsystem)
+	if (Subsystem == nullptr)
 	{
 		return;
 	}
 
-	ObserverQuery.ForEachEntityChunk(Context,
-		[Subsystem](FMassExecutionContext& Context)
+	ObserverQuery.ForEachEntityChunk(Context, [Subsystem](FMassExecutionContext& InnerContext)
+	{
+		const int32 NumEntities = InnerContext.GetNumEntities();
+		for (int32 Index = 0; Index < NumEntities; ++Index)
 		{
-			const TConstArrayView<FArcMassEntityNetIdFragment> NetIdFragments =
-				Context.GetFragmentView<FArcMassEntityNetIdFragment>();
-
-			for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
-			{
-				const FArcMassEntityNetIdFragment& NetIdFragment = NetIdFragments[EntityIndex];
-				if (NetIdFragment.NetId.IsValid())
-				{
-					FMassEntityHandle Entity = Context.GetEntity(EntityIndex);
-					Subsystem->RemoveEntityFromGrid(Entity);
-
-					AArcMassEntityReplicationProxy* Proxy = Subsystem->FindProxyForEntity(Entity);
-					if (Proxy)
-					{
-						Proxy->RemoveEntity(NetIdFragment.NetId);
-					}
-					Subsystem->UnregisterEntityNetId(NetIdFragment.NetId);
-				}
-			}
-		});
+			const FMassEntityHandle Entity = InnerContext.GetEntity(Index);
+			Subsystem->UnregisterEntity(Entity);
+		}
+	});
 }

@@ -1,11 +1,16 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "Replication/ArcMassEntityReplicationProxyFactory.h"
-#include "Replication/ArcMassEntityReplicationProxy.h"
+
+// TODO Phase 7: this factory targeted the deleted AArcMassEntityReplicationProxy
+// actor. Per spec, the per-entity Iris path uses UArcMassEntityVessel instead;
+// this factory will be removed (or rewired to vessels) when bridge integration
+// lands. Kept now to preserve the UCLASS for any external references.
 
 FName UArcMassEntityReplicationProxyFactory::GetFactoryName()
 {
-	static const FName Name(TEXT("ArcMassEntityReplication"));
+	// Legacy proxy factory — distinct name from the new vessel-based "ArcMassEntityReplication".
+	static const FName Name(TEXT("ArcMassEntityReplicationProxy"));
 	return Name;
 }
 

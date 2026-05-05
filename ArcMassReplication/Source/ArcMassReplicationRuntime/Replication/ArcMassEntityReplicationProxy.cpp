@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "Replication/ArcMassEntityReplicationProxy.h"
-#include "Subsystem/ArcMassEntityReplicationSubsystem.h"
+#include "Subsystem/ArcMassEntityReplicationProxySubsystem.h"
 #include "Traits/ArcMassEntityReplicationTrait.h"
 #include "Net/UnrealNetwork.h"
 #include "Net/Core/PushModel/PushModel.h"
@@ -104,7 +104,7 @@ void AArcMassEntityReplicationProxy::EnsureDescriptorSet()
 
 	if (World)
 	{
-		UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+		UArcMassEntityReplicationProxySubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 		if (Subsystem)
 		{
 			Subsystem->RegisterDescriptorSet(DescriptorSet.Hash, &DescriptorSet);
@@ -164,7 +164,7 @@ void AArcMassEntityReplicationProxy::OnClientEntityAdded(FArcMassNetId NetId, co
 		return;
 	}
 
-	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+	UArcMassEntityReplicationProxySubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 	if (Subsystem)
 	{
 		Subsystem->OnClientEntityAdded(NetId, FragmentSlots, &DescriptorSet, GetEffectiveConfigAsset());
@@ -181,7 +181,7 @@ void AArcMassEntityReplicationProxy::OnClientEntityChanged(FArcMassNetId NetId, 
 		return;
 	}
 
-	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+	UArcMassEntityReplicationProxySubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 	if (Subsystem)
 	{
 		Subsystem->OnClientEntityChanged(NetId, FragmentSlots, ChangedFragmentMask, &DescriptorSet);
@@ -196,7 +196,7 @@ void AArcMassEntityReplicationProxy::OnClientEntityRemoved(FArcMassNetId NetId)
 		return;
 	}
 
-	UArcMassEntityReplicationSubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationSubsystem>();
+	UArcMassEntityReplicationProxySubsystem* Subsystem = World->GetSubsystem<UArcMassEntityReplicationProxySubsystem>();
 	if (Subsystem)
 	{
 		Subsystem->OnClientEntityRemoved(NetId);

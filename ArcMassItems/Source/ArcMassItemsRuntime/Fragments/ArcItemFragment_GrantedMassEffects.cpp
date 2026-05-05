@@ -1,19 +1,23 @@
-#include "Items/Fragments/ArcItemFragment_GrantedMassEffects.h"
-#include "Items/Fragments/ArcItemMassHelpers.h"
+#include "Fragments/ArcItemFragment_GrantedMassEffects.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Effects/ArcEffectFunctions.h"
 #include "Effects/ArcEffectDefinition.h"
+#include "Engine/World.h"
+#include "MassEntitySubsystem.h"
 #include "MassEntityManager.h"
 
 void FArcItemFragment_GrantedMassEffects::OnItemAddedToSlot(const FArcItemData* InItem,
                                                              const FGameplayTag& InSlotId) const
 {
-    FMassEntityManager* EntityManager = nullptr;
-    FMassEntityHandle Entity;
-    if (!ArcItemMassHelpers::GetMassEntity(InItem, EntityManager, Entity))
-    {
+    if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
         return;
-    }
+    UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+    if (!Subsystem)
+        return;
+    FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+    const FMassEntityHandle Entity = InItem->MassEntityHandle;
+    if (!EntityManager.IsEntityValid(Entity))
+        return;
 
     FArcItemInstance_GrantedMassEffects* Instance =
         ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedMassEffects>(InItem);
@@ -26,19 +30,22 @@ void FArcItemFragment_GrantedMassEffects::OnItemAddedToSlot(const FArcItemData* 
             continue;
         }
 
-        ArcEffects::TryApplyEffect(*EntityManager, Entity, Effect, Entity);
+        ArcEffects::TryApplyEffect(EntityManager, Entity, Effect, Entity);
     }
 }
 
 void FArcItemFragment_GrantedMassEffects::OnItemRemovedFromSlot(const FArcItemData* InItem,
                                                                   const FGameplayTag& InSlotId) const
 {
-    FMassEntityManager* EntityManager = nullptr;
-    FMassEntityHandle Entity;
-    if (!ArcItemMassHelpers::GetMassEntity(InItem, EntityManager, Entity))
-    {
+    if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
         return;
-    }
+    UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+    if (!Subsystem)
+        return;
+    FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+    const FMassEntityHandle Entity = InItem->MassEntityHandle;
+    if (!EntityManager.IsEntityValid(Entity))
+        return;
 
     FArcItemInstance_GrantedMassEffects* Instance =
         ArcItemsHelper::FindMutableInstance<FArcItemInstance_GrantedMassEffects>(InItem);
@@ -50,7 +57,7 @@ void FArcItemFragment_GrantedMassEffects::OnItemRemovedFromSlot(const FArcItemDa
             continue;
         }
 
-        ArcEffects::RemoveEffectBySource(*EntityManager, Entity, Effect, Instance->SourceEntity);
+        ArcEffects::RemoveEffectBySource(EntityManager, Entity, Effect, Instance->SourceEntity);
     }
 }
 

@@ -79,10 +79,10 @@ struct ARCMASSITEMSRUNTIME_API FArcMassReplicatedItemArray : public FArcIrisRepl
 	int32 AddItem(FArcMassReplicatedItem&& Item) { return FArcIrisReplicatedArray::AddItem(Items, MoveTemp(Item)); }
 	void RemoveItemAt(int32 Index) { FArcIrisReplicatedArray::RemoveItemAt(Items, Index); }
 
-	void MarkItemDirty(int32 Index) { MarkItemDirtyByIndex(Items[Index].ReplicationKey, Index); }
+	void MarkItemDirty(int32 Index) { MarkItemDirtyByIndex(Items[Index].ReplicationKey, Index, Items[Index].IrisRepID); }
 	void MarkItemDirty(FArcMassReplicatedItem& Item) { FArcIrisReplicatedArray::MarkItemDirty(Items, Item); }
 	void MarkArrayDirty() { FArcIrisReplicatedArray::MarkAllDirty(Items); }
-	void ClearDirtyState() { FArcIrisReplicatedArray::ClearDirtyState(Items.Num()); }
+	void ClearDirtyState() { FArcIrisReplicatedArray::ClearDirtyState(); }
 
 	FArcMassReplicatedItem* FindById(FArcItemId ItemId);
 	int32 FindIndexById(FArcItemId ItemId) const;

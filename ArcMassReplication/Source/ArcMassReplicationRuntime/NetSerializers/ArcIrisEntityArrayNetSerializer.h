@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Iris/Serialization/NetSerializer.h"
+#include "Iris/Serialization/NetSerializerArrayStorage.h"
 #include "Iris/Serialization/NetSerializerConfig.h"
 #include "Iris/Serialization/NetSerializerDelegates.h"
 #include "Iris/Serialization/NetSerializers.h"
@@ -31,13 +32,23 @@ namespace ArcMassReplication
 		static constexpr bool bHasDynamicState = true;
 		static constexpr bool bUseDefaultDelta = false;
 		static constexpr bool bUseSerializerIsEqual = true;
+		static constexpr bool bHasCustomNetReference = true;
+
+		struct FQuantizedFragmentSlot
+		{
+			FNetSerializerAlignedStorage Buffer;
+			const UE::Net::FReplicationStateDescriptor* Descriptor = nullptr;
+			const UScriptStruct* FragmentType = nullptr;
+
+			bool IsValid() const { return Buffer.Num() > 0 && Descriptor != nullptr; }
+		};
 
 		struct FQuantizedEntity
 		{
 			uint32 NetIdValue = 0;
 			uint32 ReplicationKey = 0;
 			uint8 FragmentCount = 0;
-			TArray<FInstancedStruct> FragmentSlots;
+			TArray<FQuantizedFragmentSlot> FragmentSlots;
 		};
 
 		struct FDynamicState
@@ -75,7 +86,7 @@ namespace ArcMassReplication
 
 		static void CloneDynamicState(FNetSerializationContext& Context, const FNetCloneDynamicStateArgs& Args);
 		static void FreeDynamicState(FNetSerializationContext& Context, const FNetFreeDynamicStateArgs& Args);
-		static void CollectNetReferences(FNetSerializationContext& Context, const FNetCollectReferencesArgs& Args) {}
+		static void CollectNetReferences(FNetSerializationContext& Context, const FNetCollectReferencesArgs& Args);
 
 		class FNetSerializerRegistryDelegates final : private UE::Net::FNetSerializerRegistryDelegates
 		{
@@ -89,11 +100,17 @@ namespace ArcMassReplication
 		static FArcIrisEntityArrayNetSerializer::FNetSerializerRegistryDelegates NetSerializerRegistryDelegates;
 
 	private:
-		static void SerializeFragmentIris(FNetSerializationContext& Context, const UE::Net::FReplicationStateDescriptor* Descriptor, const FInstancedStruct& Slot);
-		static void DeserializeFragmentIris(FNetSerializationContext& Context, const UE::Net::FReplicationStateDescriptor* Descriptor, FInstancedStruct& Slot);
-		static const FArcMassReplicationDescriptorSet* GetDescriptorSetFromContext(FNetSerializationContext& Context, uint32 Hash);
-		static bool ShouldFilterEntityForConnection(FNetSerializationContext& Context, uint32 NetIdValue);
-		static uint32 FilterFragmentMaskForConnection(FNetSerializationContext& Context, uint32 NetIdValue, uint32 FragmentMask, const FArcMassReplicationDescriptorSet* DescSet);
+		static void CollectFragmentReferences(UE::Net::FNetSerializationContext& Context, const FQuantizedFragmentSlot& Slot, const UE::Net::FNetCollectReferencesArgs& Args);
+		static void QuantizeFragmentSlot(UE::Net::FNetSerializationContext& Context, const UE::Net::FReplicationStateDescriptor* Descriptor, const UScriptStruct* FragType, const uint8* SrcMemory, FQuantizedFragmentSlot& OutSlot);
+		static void SerializeFragmentFromQuantized(UE::Net::FNetSerializationContext& Context, const FQuantizedFragmentSlot& Slot);
+		static void SerializeFragmentDelta(UE::Net::FNetSerializationContext& Context, const FQuantizedFragmentSlot& CurrSlot, const FQuantizedFragmentSlot& PrevSlot);
+		static void DeserializeFragmentToQuantized(UE::Net::FNetSerializationContext& Context, const UE::Net::FReplicationStateDescriptor* Descriptor, const UScriptStruct* FragType, FQuantizedFragmentSlot& Slot);
+		static void DequantizeFragmentSlot(UE::Net::FNetSerializationContext& Context, const FQuantizedFragmentSlot& Slot, FInstancedStruct& OutDst);
+		static void CloneFragmentSlot(UE::Net::FNetSerializationContext& Context, const FQuantizedFragmentSlot& Src, FQuantizedFragmentSlot& Dst);
+		static void FreeFragmentSlot(UE::Net::FNetSerializationContext& Context, FQuantizedFragmentSlot& Slot);
+		static uint32 FilterFragmentMaskForConnection(UE::Net::FNetSerializationContext& Context, uint32 NetIdValue, uint32 FragmentMask, const FArcMassReplicationDescriptorSet* DescSet);
+		static bool ShouldFilterEntityForConnection(UE::Net::FNetSerializationContext& Context, uint32 NetIdValue);
+		static const FArcMassReplicationDescriptorSet* GetDescriptorSetFromContext(UE::Net::FNetSerializationContext& Context, uint32 Hash);
 	};
 } // namespace ArcMassReplication
 

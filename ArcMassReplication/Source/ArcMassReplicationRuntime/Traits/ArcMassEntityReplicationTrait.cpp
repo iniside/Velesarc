@@ -13,7 +13,7 @@ void UArcMassEntityReplicationTrait::BuildTemplate(
 	const UWorld& World) const
 {
 	BuildContext.AddTag<FArcMassEntityReplicatedTag>();
-	BuildContext.AddFragment<FArcMassEntityNetIdFragment>();
+	BuildContext.AddFragment<FArcMassEntityNetHandleFragment>();
 
 	FArcMassEntityReplicationConfigFragment ConfigFragment;
 	ConfigFragment.ReplicatedFragmentEntries = ReplicatedFragments;

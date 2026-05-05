@@ -1,6 +1,6 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
-#include "MassAbilities/ArcAbilityTask_ApplyEffectsFromItem.h"
+#include "Abilities/ArcAbilityTask_ApplyEffectsFromItem.h"
 #include "Abilities/Schema/ArcAbilityExecutionContext.h"
 #include "Abilities/ArcAbilityFunctions.h"
 #include "Effects/ArcEffectFunctions.h"
@@ -10,7 +10,7 @@
 #include "MassAbilities/ArcAbilitySourceData_Item.h"
 #include "Items/ArcItemData.h"
 #include "Items/ArcItemsHelpers.h"
-#include "Items/Fragments/ArcItemFragment_MassAbilityEffects.h"
+#include "Fragments/ArcItemFragment_MassAbilityEffects.h"
 #include "MassEntityManager.h"
 #include "MassEntityView.h"
 #include "MassAgentComponent.h"

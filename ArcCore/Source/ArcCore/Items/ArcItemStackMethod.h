@@ -24,11 +24,13 @@
 #pragma once
 #include "ArcItemId.h"
 #include "ScalableFloat.h"
+#include "Mass/EntityHandle.h"
 
 #include "ArcItemStackMethod.generated.h"
 
 struct FArcItemSpec;
 class UArcItemsStoreComponent;
+struct FMassEntityManager;
 
 /**
  * Override this struct, to define custom rules for how item is stacking.
@@ -65,6 +67,15 @@ public:
 	 * Returns false if no matching definition exists — caller should append InSpec manually.
 	 */
 	virtual bool TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const;
+
+	/** Mass-compatible CanAdd. Default: always true. Override in Mass-specific stack methods. */
+	virtual bool CanAddMass(FMassEntityManager& Mgr, FMassEntityHandle Entity, const UScriptStruct* StoreType, const FArcItemSpec& InSpec) const { return true; }
+
+	/** Mass-compatible CanStack. Default: never stacks. Override to enable stacking through Mass. */
+	virtual bool CanStackMass(FMassEntityManager& Mgr, FMassEntityHandle Entity, const UScriptStruct* StoreType, const FArcItemSpec& InSpec) const { return false; }
+
+	/** Mass-compatible StackCheck. Default: no stacking (returns InvalidId). Override in Mass-specific stack methods. */
+	virtual FArcItemId StackCheckMass(FMassEntityManager& Mgr, FMassEntityHandle Entity, const UScriptStruct* StoreType, const FArcItemSpec& InSpec, uint16& OutNewStacks, uint16& OutRemainingStacks) const { return FArcItemId::InvalidId; }
 
 	virtual ~FArcItemStackMethod() = default;
 };

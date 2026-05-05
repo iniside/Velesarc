@@ -170,7 +170,18 @@ void FArcMassItemsDebugger::RefreshEntityList()
 			FEntityEntry& Entry = CachedEntities.AddDefaulted_GetRef();
 			Entry.Entity = Entity;
 			Entry.ItemCount = Store->ReplicatedItems.Items.Num();
-			Entry.SlottedItemCount = Store->SlottedItems.Num();
+			{
+				int32 SlottedCount = 0;
+				for (const FArcMassReplicatedItem& ReplicatedItem : Store->ReplicatedItems.Items)
+				{
+					const FArcItemData* ItemData = ReplicatedItem.ToItem();
+					if (ItemData && ItemData->GetSlotId().IsValid())
+					{
+						++SlottedCount;
+					}
+				}
+				Entry.SlottedItemCount = SlottedCount;
+			}
 
 			FStructView ActorFragView = Manager->GetFragmentDataStruct(Entity, FMassActorFragment::StaticStruct());
 			if (ActorFragView.IsValid())
@@ -367,7 +378,7 @@ void FArcMassItemsDebugger::DrawAddItemPanel(FMassEntityManager& Manager, FMassE
 			ItemSpecCreator.Draw();
 			if (ItemSpecCreator.IsFinished())
 			{
-				ArcMassItems::AddItem(Manager, Entity, ItemSpecCreator.GetResultSpec());
+				ArcMassItems::AddItem(Manager, Entity, FArcMassItemStoreFragment::StaticStruct(), ItemSpecCreator.GetResultSpec());
 				ItemSpecCreator.Reset();
 				AddItemMode = EArcMassAddItemMode::None;
 				RefreshEntityList();
@@ -408,7 +419,7 @@ void FArcMassItemsDebugger::DrawAddItemPanel(FMassEntityManager& Manager, FMassE
 			UArcItemDefinition* Definition = Cast<UArcItemDefinition>(CachedItemDefinitions[SelectedDefinitionIndex].GetAsset());
 			if (Definition)
 			{
-				ArcMassItems::AddItem(Manager, Entity, FArcItemSpec::NewItem(Definition, 1, 1));
+				ArcMassItems::AddItem(Manager, Entity, FArcMassItemStoreFragment::StaticStruct(), FArcItemSpec::NewItem(Definition, 1, 1));
 				RefreshEntityList();
 			}
 		}
@@ -437,7 +448,18 @@ void FArcMassItemsDebugger::DrawItemsTable(FMassEntityManager& Manager, FMassEnt
 {
 	ImGui::Text("Items: %d", Store.ReplicatedItems.Items.Num());
 	ImGui::SameLine();
-	ImGui::TextDisabled("Slotted: %d", Store.SlottedItems.Num());
+	{
+		int32 SlottedCount = 0;
+		for (const FArcMassReplicatedItem& ReplicatedItem : Store.ReplicatedItems.Items)
+		{
+			const FArcItemData* ItemData = ReplicatedItem.ToItem();
+			if (ItemData && ItemData->GetSlotId().IsValid())
+			{
+				++SlottedCount;
+			}
+		}
+		ImGui::TextDisabled("Slotted: %d", SlottedCount);
+	}
 
 	const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
 	if (ImGui::BeginTable("MassItemsTable", 7, TableFlags, ImVec2(0.f, 0.f)))
@@ -486,7 +508,7 @@ void FArcMassItemsDebugger::DrawItemsTable(FMassEntityManager& Manager, FMassEnt
 			ImGui::TableSetColumnIndex(6);
 			if (ImGui::SmallButton("Remove"))
 			{
-				ArcMassItems::RemoveItem(Manager, Entity, Item->GetItemId());
+				ArcMassItems::RemoveItem(Manager, Entity, FArcMassItemStoreFragment::StaticStruct(), Item->GetItemId());
 				if (SelectedItemIndex >= Store.ReplicatedItems.Items.Num() - 1)
 				{
 					SelectedItemIndex = Store.ReplicatedItems.Items.Num() - 2;
@@ -554,7 +576,7 @@ void FArcMassItemsDebugger::DrawItemDetail(FMassEntityManager& Manager, FMassEnt
 					const FGameplayTag SlotTag = FGameplayTag::RequestGameplayTag(FName(*SlotTagText), false);
 					if (SlotTag.IsValid())
 					{
-						ArcMassItems::AddItemToSlot(Manager, Entity, Item.GetItemId(), SlotTag);
+						ArcMassItems::AddItemToSlot(Manager, Entity, FArcMassItemStoreFragment::StaticStruct(), Item.GetItemId(), SlotTag);
 					}
 				}
 			}
@@ -563,7 +585,7 @@ void FArcMassItemsDebugger::DrawItemDetail(FMassEntityManager& Manager, FMassEnt
 				ImGui::SameLine();
 				if (ImGui::Button("Remove Slot"))
 				{
-					ArcMassItems::RemoveItemFromSlot(Manager, Entity, Item.GetItemId());
+					ArcMassItems::RemoveItemFromSlot(Manager, Entity, FArcMassItemStoreFragment::StaticStruct(), Item.GetItemId());
 				}
 			}
 

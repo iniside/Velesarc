@@ -103,15 +103,16 @@ struct ARCCORE_API ArcItemsHelper
 	template<typename T>
 	static T* FindMutableInstance(const FArcItemData* InItem)
 	{
-		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(InItem->GetItemsStoreComponent());
-
-		return TraverseHierarchy(InItem, [InItem, ItemsSubsystem](const FArcItemData* Item) -> T*
+		return TraverseHierarchy(InItem, [InItem](const FArcItemData* Item) -> T*
 		{
 			FStructView* View = const_cast<FArcItemData*>(Item)->InstancedData.Find(T::StaticStruct());
 			if (View)
 			{
-				const_cast<FArcItemData*>(Item)->OwnerComponent->MarkItemDirtyById(Item->GetItemId());
-				ItemsSubsystem->OnItemChangedDynamic.Broadcast(InItem->GetItemsStoreComponent(), InItem->GetItemId());
+				if (Item->OwnerComponent)
+				{
+					const_cast<FArcItemData*>(Item)->OwnerComponent->MarkItemDirtyById(Item->GetItemId());	
+				}
+				
 				return View->GetPtr<T>();
 			}
 			return nullptr;
@@ -125,7 +126,10 @@ struct ARCCORE_API ArcItemsHelper
 			FStructView* View = const_cast<FArcItemData*>(Item)->InstancedData.Find(InstanceType);
 			if (View)
 			{
-				const_cast<FArcItemData*>(Item)->OwnerComponent->MarkItemDirtyById(Item->GetItemId());
+				if (Item->OwnerComponent)
+				{
+					const_cast<FArcItemData*>(Item)->OwnerComponent->MarkItemDirtyById(Item->GetItemId());
+				}
 				return View->GetPtr<FArcItemInstance>();
 			}
 			return nullptr;

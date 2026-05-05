@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ArcCore/Items/Fragments/ArcItemFragment.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Items/ArcItemInstance.h"
 #include "Mass/EntityHandle.h"
 #include "ArcItemFragment_GrantedMassEffects.generated.h"
@@ -8,7 +8,7 @@
 class UArcEffectDefinition;
 
 USTRUCT(meta = (ToolTip = "Mutable instance data tracking the source entity for Mass effect removal."))
-struct ARCCORE_API FArcItemInstance_GrantedMassEffects : public FArcItemInstance_ItemData
+struct ARCMASSITEMSRUNTIME_API FArcItemInstance_GrantedMassEffects : public FArcItemInstance_ItemData
 {
     GENERATED_BODY()
 
@@ -22,7 +22,7 @@ struct ARCCORE_API FArcItemInstance_GrantedMassEffects : public FArcItemInstance
 
 USTRUCT(BlueprintType, meta = (DisplayName = "Granted Mass Effects", Category = "Mass Abilities",
     ToolTip = "Applies Mass effects to the owning actor's Mass entity when equipped, removes them on unequip."))
-struct ARCCORE_API FArcItemFragment_GrantedMassEffects : public FArcItemFragment_ItemInstanceBase
+struct ARCMASSITEMSRUNTIME_API FArcItemFragment_GrantedMassEffects : public FArcItemFragment_ItemInstanceBase
 {
     GENERATED_BODY()
 

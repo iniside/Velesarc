@@ -4,7 +4,7 @@
 
 #include "Iris/ReplicationSystem/NetTokenStore.h"
 
-class UArcMassEntityReplicationSubsystem;
+class UArcMassEntityReplicationProxySubsystem;
 
 namespace ArcMassReplication
 {
@@ -14,13 +14,13 @@ class FArcMassEntityNetDataStore final : public UE::Net::FNetTokenDataStore
 	UE_NONCOPYABLE(FArcMassEntityNetDataStore);
 
 public:
-	explicit FArcMassEntityNetDataStore(UE::Net::FNetTokenStore& InTokenStore, UArcMassEntityReplicationSubsystem* InSubsystem)
+	explicit FArcMassEntityNetDataStore(UE::Net::FNetTokenStore& InTokenStore, UArcMassEntityReplicationProxySubsystem* InSubsystem)
 		: FNetTokenDataStore(InTokenStore)
 		, Subsystem(InSubsystem)
 	{
 	}
 
-	UArcMassEntityReplicationSubsystem* GetSubsystem() const { return Subsystem; }
+	UArcMassEntityReplicationProxySubsystem* GetSubsystem() const { return Subsystem; }
 
 	static FName GetTokenStoreName()
 	{
@@ -35,7 +35,7 @@ protected:
 	FNetTokenStoreKey ReadTokenData(FArchive&, const UE::Net::FNetToken&, UPackageMap*) override { return {}; }
 
 private:
-	UArcMassEntityReplicationSubsystem* Subsystem;
+	UArcMassEntityReplicationProxySubsystem* Subsystem;
 };
 
 } // namespace ArcMassReplication

@@ -1,18 +1,22 @@
-#include "Items/Fragments/ArcItemFragment_MassAttributeModifier.h"
-#include "Items/Fragments/ArcItemMassHelpers.h"
+#include "Fragments/ArcItemFragment_MassAttributeModifier.h"
 #include "Items/ArcItemsHelpers.h"
 #include "Modifiers/ArcModifierFunctions.h"
+#include "Engine/World.h"
+#include "MassEntitySubsystem.h"
 #include "MassEntityManager.h"
 
 void FArcItemFragment_MassAttributeModifier::OnItemAddedToSlot(const FArcItemData* InItem,
                                                                 const FGameplayTag& InSlotId) const
 {
-    FMassEntityManager* EntityManager = nullptr;
-    FMassEntityHandle Entity;
-    if (!ArcItemMassHelpers::GetMassEntity(InItem, EntityManager, Entity))
-    {
+    if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
         return;
-    }
+    UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+    if (!Subsystem)
+        return;
+    FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+    const FMassEntityHandle Entity = InItem->MassEntityHandle;
+    if (!EntityManager.IsEntityValid(Entity))
+        return;
 
     FArcItemInstance_MassAttributeModifiers* Instance =
         ArcItemsHelper::FindMutableInstance<FArcItemInstance_MassAttributeModifiers>(InItem);
@@ -20,7 +24,7 @@ void FArcItemFragment_MassAttributeModifier::OnItemAddedToSlot(const FArcItemDat
     for (const FArcDirectModifier& Modifier : Modifiers)
     {
         FArcModifierHandle Handle = ArcModifiers::ApplyInfinite(
-            *EntityManager, Entity, Entity, Modifier);
+            EntityManager, Entity, Entity, Modifier);
 
         if (Handle.IsValid())
         {
@@ -32,19 +36,22 @@ void FArcItemFragment_MassAttributeModifier::OnItemAddedToSlot(const FArcItemDat
 void FArcItemFragment_MassAttributeModifier::OnItemRemovedFromSlot(const FArcItemData* InItem,
                                                                      const FGameplayTag& InSlotId) const
 {
-    FMassEntityManager* EntityManager = nullptr;
-    FMassEntityHandle Entity;
-    if (!ArcItemMassHelpers::GetMassEntity(InItem, EntityManager, Entity))
-    {
+    if (!InItem->MassEntityHandle.IsValid() || !InItem->World.IsValid())
         return;
-    }
+    UMassEntitySubsystem* Subsystem = UWorld::GetSubsystem<UMassEntitySubsystem>(InItem->World.Get());
+    if (!Subsystem)
+        return;
+    FMassEntityManager& EntityManager = Subsystem->GetMutableEntityManager();
+    const FMassEntityHandle Entity = InItem->MassEntityHandle;
+    if (!EntityManager.IsEntityValid(Entity))
+        return;
 
     FArcItemInstance_MassAttributeModifiers* Instance =
         ArcItemsHelper::FindMutableInstance<FArcItemInstance_MassAttributeModifiers>(InItem);
 
     for (const FArcModifierHandle& Handle : Instance->AppliedModifiers)
     {
-        ArcModifiers::RemoveModifier(*EntityManager, Entity, Handle);
+        ArcModifiers::RemoveModifier(EntityManager, Entity, Handle);
     }
     Instance->AppliedModifiers.Empty();
 }

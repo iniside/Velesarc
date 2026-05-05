@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ArcCore/Items/Fragments/ArcItemFragment.h"
+#include "Items/Fragments/ArcItemFragment.h"
 #include "Items/ArcItemInstance.h"
 #include "Items/ArcItemId.h"
 #include "GameplayTagContainer.h"
@@ -9,7 +9,7 @@
 class UArcEffectDefinition;
 
 USTRUCT(BlueprintType, meta = (ToolTip = "A single entry mapping Mass effect definitions to source/target tag requirements."))
-struct ARCCORE_API FArcMassEffectEntry
+struct ARCMASSITEMSRUNTIME_API FArcMassEffectEntry
 {
 	GENERATED_BODY()
 
@@ -34,7 +34,7 @@ struct ARCCORE_API FArcMassEffectEntry
 };
 
 USTRUCT(BlueprintType, meta = (ToolTip = "Cached runtime entry holding a resolved Mass effect spec with tag filtering data."))
-struct ARCCORE_API FArcMassEffectSpecItem
+struct ARCMASSITEMSRUNTIME_API FArcMassEffectSpecItem
 {
 	GENERATED_BODY()
 
@@ -55,7 +55,7 @@ struct ARCCORE_API FArcMassEffectSpecItem
 };
 
 USTRUCT(meta = (ToolTip = "Mutable instance data holding pre-cached Mass effect specs. Populated at item initialization and queried by abilities at runtime."))
-struct ARCCORE_API FArcItemInstance_MassAbilityEffects : public FArcItemInstance_ItemData
+struct ARCMASSITEMSRUNTIME_API FArcItemInstance_MassAbilityEffects : public FArcItemInstance_ItemData
 {
 	GENERATED_BODY()
 
@@ -70,7 +70,7 @@ struct ARCCORE_API FArcItemInstance_MassAbilityEffects : public FArcItemInstance
 
 USTRUCT(BlueprintType, meta = (DisplayName = "Mass Ability Effects", Category = "Mass Abilities",
 	ToolTip = "Pre-caches Mass effect definitions keyed by tag for ability-triggered application."))
-struct ARCCORE_API FArcItemFragment_MassAbilityEffects : public FArcItemFragment_ItemInstanceBase
+struct ARCMASSITEMSRUNTIME_API FArcItemFragment_MassAbilityEffects : public FArcItemFragment_ItemInstanceBase
 {
 	GENERATED_BODY()
 

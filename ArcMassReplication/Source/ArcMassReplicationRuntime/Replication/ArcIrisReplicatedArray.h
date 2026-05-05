@@ -23,8 +23,9 @@ struct ARCMASSREPLICATIONRUNTIME_API FArcIrisReplicatedArray
 {
 	GENERATED_BODY()
 
-	TBitArray<> DirtyItems;
 	TArray<int32> PendingRemovals;
+	TArray<int32> ReceivedAddedIDs;
+	TArray<int32> ReceivedChangedIDs;
 	int32 NextReplicationID = 0;
 
 	using FItemCallback = void(*)(void* ItemMemory, FArcIrisReplicatedArray& Array);
@@ -58,7 +59,7 @@ struct ARCMASSREPLICATIONRUNTIME_API FArcIrisReplicatedArray
 		Item.IrisRepID = RepID;
 		Item.IrisRepKey = 0;
 		int32 Index = Items.Add(MoveTemp(Item));
-		DirtyItems.Add(true);
+		ReceivedAddedIDs.Add(RepID);
 		return Index;
 	}
 
@@ -71,11 +72,6 @@ struct ARCMASSREPLICATIONRUNTIME_API FArcIrisReplicatedArray
 		}
 		PendingRemovals.Add(Items[Index].IrisRepID);
 		Items.RemoveAtSwap(Index);
-		DirtyItems.Init(false, Items.Num());
-		for (int32 Idx = 0; Idx < Items.Num(); ++Idx)
-		{
-			DirtyItems[Idx] = true;
-		}
 	}
 
 	template<typename ItemType>
@@ -86,26 +82,23 @@ struct ARCMASSREPLICATIONRUNTIME_API FArcIrisReplicatedArray
 		{
 			++Items[Index].ReplicationKey;
 			++Items[Index].IrisRepKey;
-			if (DirtyItems.IsValidIndex(Index))
-			{
-				DirtyItems[Index] = true;
-			}
+			ReceivedChangedIDs.Add(Items[Index].IrisRepID);
 		}
 	}
 
 	template<typename ItemType>
 	void MarkAllDirty(TArray<ItemType>& Items)
 	{
-		DirtyItems.Init(true, Items.Num());
 		for (ItemType& Item : Items)
 		{
 			++Item.ReplicationKey;
 			++Item.IrisRepKey;
+			ReceivedChangedIDs.Add(Item.IrisRepID);
 		}
 	}
 
-	void MarkItemDirtyByIndex(int32& OutReplicationKey, int32 Index);
-	void ClearDirtyState(int32 ItemCount);
+	void MarkItemDirtyByIndex(int32& OutReplicationKey, int32 Index, int32 IrisRepID);
+	void ClearDirtyState();
 	bool HasDirtyItems() const;
 	int32 FindIndexByIrisRepID(const FArcIrisReplicatedArrayItem* ItemsData, int32 ItemCount, int32 RepID) const;
 };
