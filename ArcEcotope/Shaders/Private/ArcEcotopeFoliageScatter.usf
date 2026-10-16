@@ -1,0 +1,187 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ComputeShaderUtils.ush"
+#include "/Engine/Private/GPUScene/GPUSceneWriter.ush"
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcEcotope/Private/ArcEcotopeFoliageField.ush"
+#include "/Plugin/ArcEcotope/Private/ArcEcotopeFoliageTerrain.ush"
+
+uint  InPrimitiveId;
+uint  InNumInstances;
+uint  InNumInstancesAllocated;
+uint  InGridX;
+uint  InPayloadDataFlags;
+uint  InCustomDataCount;
+uint  InAlignToNormal;
+uint  InMeshIndex;
+uint  InMeshCount;
+int2  InRegionOriginCell;
+float InGridStepCm;
+float InProbeHeightWS;
+float InMinScale;
+float InMaxScale;
+float InMaxYawRad;
+float InCosMaxSlope;
+float InMinLayerWeight;
+float InUnderstoryShade;
+float InShadePreference;
+float InShadeStrength;
+float InMinMoisture;
+float InMinFertility;
+
+/** Spatial hash plus the lowbias32 finalizer. Keyed on the WORLD cell: an instance index moves with the
+ *  region and would re-randomise every plant as the observer walks. */
+uint ArcEcotopeHashWorldCell(int2 InWorldCell)
+{
+	const uint2 Cell = asuint(InWorldCell);
+	uint Hash = (Cell.x * 73856093u) ^ (Cell.y * 19349663u);
+	Hash ^= Hash >> 16;
+	Hash *= 0x7feb352du;
+	Hash ^= Hash >> 15;
+	Hash *= 0x846ca68bu;
+	Hash ^= Hash >> 16;
+	return Hash;
+}
+
+/** FRandomStream's LCG, as PCGSceneWriter.usf:29-36 spells it. */
+float ArcEcotopeFRand(inout uint InOutSeed)
+{
+	InOutSeed = (InOutSeed * 196314165u) + 907633515u;
+	const float Result = asfloat(0x3F800000u | (InOutSeed >> 9));
+	return Result - 1.0f;
+}
+
+/** Shortest-arc quaternion taking +Z onto InUp, as (x, y, z, w). */
+float4 ArcEcotopeQuatFromUp(float3 InUp)
+{
+	const float3 Up = float3(0.0f, 0.0f, 1.0f);
+	const float W = 1.0f + dot(Up, InUp);
+
+	// Antiparallel: cross() is the zero vector and W collapses, so take the explicit 180-degree turn
+	// about X rather than normalizing a zero quaternion into NaNs.
+	if (W < 1e-6f)
+	{
+		return float4(1.0f, 0.0f, 0.0f, 0.0f);
+	}
+
+	return normalize(float4(cross(Up, InUp), W));
+}
+
+float3 ArcEcotopeQuatRotateVector(float4 InQuat, float3 InVector)
+{
+	const float3 T = 2.0f * cross(InQuat.xyz, InVector);
+	return InVector + InQuat.w * T + cross(InQuat.xyz, T);
+}
+
+/** Writes the slot as a live-but-hidden instance. Never a zero-scale transform: that still occupies an
+ *  instance in culling and Nanite and its inverse-transpose is undefined for normals. */
+void ArcEcotopeCullInstance(uint InInstanceId)
+{
+	WriteInstancePrimitiveIdAndFlags(InInstanceId, InPrimitiveId, INSTANCE_SCENE_DATA_FLAG_HIDDEN);
+}
+
+[numthreads(NUM_THREADS_PER_GROUP, 1, 1)]
+void ArcEcotopeFoliageScatter_CS(const uint3 GroupId : SV_GroupID, const uint GroupIndex : SV_GroupIndex)
+{
+	const uint LocalInstanceId = GetUnWrappedDispatchThreadId(GroupId, GroupIndex, NUM_THREADS_PER_GROUP);
+
+	if (LocalInstanceId >= InNumInstancesAllocated)
+	{
+		return;
+	}
+
+	FPrimitiveSceneData PrimitiveData = GetPrimitiveData(InPrimitiveId);
+	const uint InstanceId = PrimitiveData.InstanceSceneDataOffset + LocalInstanceId;
+
+	// The allocated span survives a shrink, so the tail past the live count still holds the previous
+	// dispatch's transforms until it is hidden here.
+	if (InGridX == 0u || LocalInstanceId >= InNumInstances)
+	{
+		ArcEcotopeCullInstance(InstanceId);
+		return;
+	}
+
+	const int2 WorldCell = InRegionOriginCell
+		+ int2(LocalInstanceId % InGridX, LocalInstanceId / InGridX);
+
+	uint Seed = ArcEcotopeHashWorldCell(WorldCell);
+	const float2 Jitter = float2(ArcEcotopeFRand(Seed), ArcEcotopeFRand(Seed));
+	const float Yaw = (ArcEcotopeFRand(Seed) * 2.0f - 1.0f) * InMaxYawRad;
+	const float Scale = lerp(InMinScale, InMaxScale, ArcEcotopeFRand(Seed));
+	const float ModulationDraw = ArcEcotopeFRand(Seed);
+	const float RandomId = ArcEcotopeFRand(Seed);
+	const float SuppressionDraw = ArcEcotopeFRand(Seed);
+
+	const uint MeshDraw = min((uint)(ArcEcotopeFRand(Seed) * InMeshCount), InMeshCount - 1u);
+	if (MeshDraw != InMeshIndex)
+	{
+		ArcEcotopeCullInstance(InstanceId);
+		return;
+	}
+
+	const float3 ProbePos = float3((float2(WorldCell) + Jitter) * InGridStepCm, InProbeHeightWS);
+
+	if (!IsArcTerrainResident(ProbePos))
+	{
+		ArcEcotopeCullInstance(InstanceId);
+		return;
+	}
+
+	const float3 Normal = SampleArcTerrainNormal(ProbePos);
+
+	const float CosSlope = dot(Normal, GetArcTerrainUpWorld());
+	if (CosSlope < InCosMaxSlope - 1e-4f)
+	{
+		ArcEcotopeCullInstance(InstanceId);
+		return;
+	}
+
+	// A negative channel means the filter is disabled, never "channel 0" and never "weight is zero".
+	if (ArcTerrainLayerChannel >= 0
+		&& SampleArcTerrainLayerWeight(ProbePos, ArcTerrainLayerChannel) < InMinLayerWeight)
+	{
+		ArcEcotopeCullInstance(InstanceId);
+		return;
+	}
+
+	// Sampled at the surface, not at the probe: the field is a volume-local raster and the probe's world
+	// Z is a placeholder, which a rotated or raised volume would turn into an XY error.
+	const float3 SurfacePos = SampleArcTerrainSurfaceWorld(ProbePos);
+
+	const FArcEcotopeFieldSample Field = SampleArcEcotopeField(SurfacePos);
+	const float Fit = ArcEcotopeShadeFit(Field.Occupancy, InUnderstoryShade, InShadePreference, InShadeStrength);
+	if (Fit <= ModulationDraw || Field.Moisture < InMinMoisture || Field.Fertility < InMinFertility
+		|| Field.GroundCoverSuppression > SuppressionDraw)
+	{
+		ArcEcotopeCullInstance(InstanceId);
+		return;
+	}
+
+	const float3 Up = InAlignToNormal != 0u ? Normal : float3(0.0f, 0.0f, 1.0f);
+	const float4 AlignQuat = ArcEcotopeQuatFromUp(Up);
+
+	float SinYaw;
+	float CosYaw;
+	sincos(Yaw, SinYaw, CosYaw);
+
+	const float3 AxisX = ArcEcotopeQuatRotateVector(AlignQuat, float3(CosYaw, SinYaw, 0.0f)) * Scale;
+	const float3 AxisY = ArcEcotopeQuatRotateVector(AlignQuat, float3(-SinYaw, CosYaw, 0.0f)) * Scale;
+	const float3 AxisZ = ArcEcotopeQuatRotateVector(AlignQuat, float3(0.0f, 0.0f, 1.0f)) * Scale;
+
+	// Row 3 carries the translation, matching the layout WriteInstanceLocalToRelativeWorld transposes.
+	const float4x4 LocalToWorld = float4x4(
+		float4(AxisX, 0.0f),
+		float4(AxisY, 0.0f),
+		float4(AxisZ, 0.0f),
+		float4(SurfacePos, 1.0f));
+
+	InitializeInstanceSceneDataWS(
+		InstanceId,
+		InPrimitiveId,
+		LocalInstanceId,
+		InPayloadDataFlags,
+		InCustomDataCount,
+		RandomId,
+		DFFromTileOffset(LWCPromote(LocalToWorld)));
+}

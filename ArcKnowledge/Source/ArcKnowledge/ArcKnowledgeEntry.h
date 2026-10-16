@@ -5,10 +5,11 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcAdvertisementInstruction.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcKnowledgeEntry.generated.h"
 
 /**
@@ -45,13 +46,23 @@ struct ARCKNOWLEDGE_API FArcKnowledgeEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge", meta = (ClampMin = "0.0"))
 	float Lifetime = 0.0f;
 
+	/** Whether this entry is persistent and cannot be removed through normal paths.
+	  * Persistent entries survive advertisement completion and volume teardown.
+	  * Force-removed only when the source entity is destroyed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge")
+	bool bPersistent = false;
+
 	/** Optional arbitrary data (quantity, threat level, price, etc.). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge", meta = (BaseStruct = "/Script/ArcKnowledge.ArcKnowledgePayload", ExcludeBaseStruct))
 	FInstancedStruct Payload;
 
-	/** Broadcast radius for spatial events. 0 = use system default. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge", meta = (ClampMin = "0.0"))
+	/** Broadcast radius for spatial events. 0 = use system default, SuppressSpatialBroadcast = no spatial broadcast at all. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Knowledge", meta = (ClampMin = "-1.0"))
 	float SpatialBroadcastRadius = 0.0f;
+
+	/** Sentinel for SpatialBroadcastRadius. Any negative radius suppresses the per-entity spatial broadcast,
+	  * which otherwise costs a population-wide QuerySphere on every register/update/remove. */
+	static constexpr float SuppressSpatialBroadcast = -1.0f;
 
 	/** Optional behavioral instruction for advertisements.
 	  * Tells the claiming entity HOW to fulfill this advertisement. */

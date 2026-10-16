@@ -24,7 +24,6 @@
 #include "Development/ArcDeveloperSettings.h"
 #include "Framework/Commands/InputBindingManager.h"
 #include "Framework/Notifications/NotificationManager.h"
-#include "GameMode/ArcCoreWorldSettings.h"
 #include "Settings/ContentBrowserSettings.h"
 #include "Settings/LevelEditorPlaySettings.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -107,28 +106,13 @@ FGameInstancePIEResult UArcCoreEditorEngine::PreCreatePIEInstances(const bool bA
 																   , const bool bSupportsOnlinePIE
 																   , int32& InNumOnlinePIEInstances)
 {
-	if (const AArcCoreWorldSettings* LyraWorldSettings = Cast<AArcCoreWorldSettings>(EditorWorld->GetWorldSettings()))
-	{
-		if (LyraWorldSettings->ForceStandaloneNetMode)
-		{
-			EPlayNetMode OutPlayNetMode;
-			PlaySessionRequest->EditorPlaySettings->GetPlayNetMode(OutPlayNetMode);
-			if (OutPlayNetMode != PIE_Standalone)
-			{
-				PlaySessionRequest->EditorPlaySettings->SetPlayNetMode(PIE_Standalone);
-
-				FNotificationInfo Info(LOCTEXT("ForcingStandaloneForFrontend"
-					, "Forcing NetMode: Standalone for the Frontend"));
-				Info.ExpireDuration = 2.0f;
-				FSlateNotificationManager::Get().AddNotification(Info);
-			}
-		}
-	}
+	// AArcCoreWorldSettings retired with the GameMode cluster (Bucket B Cluster 5).
+	// ForceStandaloneNetMode override will be reimplemented against
+	// AArcMassWorldSettings if needed.
 
 	//@TODO: Should add delegates that a *non-editor* module could bind to for PIE
 	//start/stop instead of poking directly
 	GetDefault<UArcDeveloperSettings>()->OnPlayInEditorStarted();
-	// GetDefault<ULyraPlatformEmulationSettings>()->OnPlayInEditorStarted();
 
 	//
 	FGameInstancePIEResult Result = Super::PreCreatePIEServerInstance(bAnyBlueprintErrors

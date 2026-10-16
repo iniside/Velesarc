@@ -26,7 +26,7 @@
 
 /**
  * Base world condition schema for Arc systems.
- * Provides entity-centric context data: SourceEntity, SourceActor, EntityManager.
+ * Provides entity-centric context data: SelfEntity, SelfActor, EntityManager.
  * Subclass for domain-specific context (TQS adds target, planner adds goal, etc.).
  */
 UCLASS()
@@ -37,15 +37,15 @@ class ARCCORE_API UArcWorldConditionSchema : public UWorldConditionSchema
 public:
 	explicit UArcWorldConditionSchema(const FObjectInitializer& ObjectInitializer);
 
-	FWorldConditionContextDataRef GetSourceEntityRef() const { return SourceEntityRef; }
-	FWorldConditionContextDataRef GetSourceActorRef() const { return SourceActorRef; }
+	FWorldConditionContextDataRef GetSelfEntityRef() const { return SelfEntityRef; }
+	FWorldConditionContextDataRef GetSelfActorRef() const { return SelfActorRef; }
 	FWorldConditionContextDataRef GetMassEntitySubsystemRef() const { return MassEntitySubsystemRef; }
 
 protected:
 	virtual bool IsStructAllowed(const UScriptStruct* InScriptStruct) const override;
 
 private:
-	FWorldConditionContextDataRef SourceEntityRef;
-	FWorldConditionContextDataRef SourceActorRef;
+	FWorldConditionContextDataRef SelfEntityRef;
+	FWorldConditionContextDataRef SelfActorRef;
 	FWorldConditionContextDataRef MassEntitySubsystemRef;
 };

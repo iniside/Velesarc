@@ -2,9 +2,16 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "GameplayTagContainer.h"
+#include "UObject/WeakObjectPtrTemplates.h"
+#include "ArcGameplayTagTreeWidget.h"
+#include "ArcImGuiStructEditorWidget.h"
+
+class AActor;
+class UArcAIDebuggerDrawComponent;
 
 class FArcAIDebugger
 {
@@ -41,12 +48,22 @@ private:
 	// Selected state in the tree
 	int32 SelectedStateFrameIdx = INDEX_NONE;
 	uint16 SelectedStateIdx = MAX_uint16;
-	bool bSelectedNested = false;
+	bool bSelectedFrameGlobal = false;
+	enum class ENestedTreeType : uint8 { None, SmartObject, Advertisement };
+	ENestedTreeType SelectedNestedType = ENestedTreeType::None;
 	int32 NestedTaskStorageIdx = INDEX_NONE;
 
 	// Send Async Message state
-	char AsyncMessageTagBuf[256] = {};
+	FArcGameplayTagTreeWidget AsyncMessageTagWidget;
+	FArcImGuiStructEditorWidget AsyncMessagePayloadEditor;
 
 	// Send StateTree Event state
-	char StateTreeEventTagBuf[256] = {};
+	FArcGameplayTagTreeWidget StateTreeEventTagWidget;
+	FArcImGuiStructEditorWidget StateTreeEventPayloadEditor;
+
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcAIDebuggerDrawComponent> DrawComponent;
 };

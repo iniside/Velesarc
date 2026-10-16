@@ -1,0 +1,1 @@
+Placeholder so git tracks this directory before Step 3 adds shader source. AddShaderSourceDirectoryMapping asserts if the real directory does not exist (ShaderCore.cpp).

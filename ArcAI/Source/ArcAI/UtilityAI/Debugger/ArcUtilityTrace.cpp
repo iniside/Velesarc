@@ -58,8 +58,12 @@ namespace UE::ArcUtilityTrace
 	{
 		if (const UScriptStruct* ScriptStruct = Struct.GetScriptStruct())
 		{
+#if WITH_METADATA
 			const FString DisplayName = ScriptStruct->GetMetaData(TEXT("DisplayName"));
 			return DisplayName.IsEmpty() ? ScriptStruct->GetName() : DisplayName;
+#else
+			return ScriptStruct->GetName();
+#endif
 		}
 		return TEXT("Unknown");
 	}
@@ -148,7 +152,7 @@ void OutputRequestCompletedEvent(const FArcUtilityScoringInstance& Instance)
 		}
 	}
 
-	// Consideration snapshots: count + per-snapshot {int32 EntryIdx, int32 TargetIdx, int32 ConsiderationIdx, FString ConsiderationName, float RawScore, float CurvedScore, float CompensatedScore}
+	// Consideration snapshots: count + per-snapshot {int32 EntryIdx, int32 TargetIdx, int32 ConsiderationIdx, FString ConsiderationName, float RawScore, float CurvedScore}
 	FBufferArchive ConsiderationArchive;
 	{
 		int32 SnapshotCount = Instance.ConsiderationSnapshots.Num();
@@ -161,8 +165,7 @@ void OutputRequestCompletedEvent(const FArcUtilityScoringInstance& Instance)
 			FString ConsiderationName = Snap.ConsiderationName;
 			float RawScore = Snap.RawScore;
 			float CurvedScore = Snap.CurvedScore;
-			float CompensatedScore = Snap.CompensatedScore;
-			ConsiderationArchive << EntryIdx << TargetIdx << ConsiderationIdx << ConsiderationName << RawScore << CurvedScore << CompensatedScore;
+			ConsiderationArchive << EntryIdx << TargetIdx << ConsiderationIdx << ConsiderationName << RawScore << CurvedScore;
 		}
 	}
 

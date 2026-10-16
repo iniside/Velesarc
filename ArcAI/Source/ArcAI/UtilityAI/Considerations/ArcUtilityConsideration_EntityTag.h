@@ -8,7 +8,7 @@
 #include "ArcUtilityConsideration_EntityTag.generated.h"
 
 /**
- * Checks the target Mass entity's FArcMassGameplayTagContainerFragment
+ * Checks the target Mass entity's FArcOwnedTagsFragment
  * against a gameplay tag query.
  * Returns 1.0 if the query matches, 0.0 otherwise.
  */
@@ -20,7 +20,14 @@ struct ARCAI_API FArcUtilityConsideration_EntityGameplayTags : public FArcUtilit
 	UPROPERTY(EditAnywhere, Category = "Consideration")
 	FGameplayTagQuery TagQuery;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetEntity;
+	}
+#endif
 };
 
 /**
@@ -34,8 +41,15 @@ struct ARCAI_API FArcUtilityConsideration_EntityMassTag : public FArcUtilityCons
 	GENERATED_BODY()
 
 	/** The FMassTag-derived struct to check for on the target entity. */
-	UPROPERTY(EditAnywhere, Category = "Consideration", meta = (MetaStruct = "/Script/MassEntity.MassTag"))
+	UPROPERTY(EditAnywhere, Category = "Consideration", meta = (MetaStruct = "/Script/MassCore.MassTag"))
 	TObjectPtr<UScriptStruct> MassTagType;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetEntity;
+	}
+#endif
 };

@@ -21,295 +21,68 @@
 
 #include "ArcCraft/Station/ArcCraftOutputDelivery.h"
 
-#include "ArcCoreUtils.h"
-#include "MassEntitySubsystem.h"
+#include "Mass/CommandBuffer.h"
+#include "Mass/Commands.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
+#include "MassSignalSubsystem.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
-#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
-#include "ArcCraft/Station/ArcCraftStationComponent.h"
-#include "Engine/World.h"
-#include "Items/ArcItemData.h"
+#include "ArcCraft/Mass/ArcCraftQueueChangedSignal.h"
+#include "Items/ArcItemDefinitionData.h"
 #include "Items/ArcItemId.h"
-#include "Items/ArcItemsArray.h"
-#include "Items/ArcItemsStoreComponent.h"
+#include "Items/ArcItemStackMethod.h"
 
 // -------------------------------------------------------------------
 // FArcCraftOutputDelivery (base)
 // -------------------------------------------------------------------
 
-bool FArcCraftOutputDelivery::DeliverOutput(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& OutputSpec,
-	const UObject* Instigator) const
+EArcCraftDeliveryDisposition FArcCraftOutputDelivery::DeliverOutput_Mass(
+	FMassExecutionContext& Context,
+	FMassEntityManager& EntityManager,
+	FMassEntityHandle StationEntity,
+	FMassEntityHandle InstigatorEntity,
+	const FGuid& EntryId,
+	const TArray<FArcItemSpec>& Specs) const
 {
-	return false;
-}
-
-bool FArcCraftOutputDelivery::WithdrawOutput(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
-{
-	return false;
-}
-
-// -------------------------------------------------------------------
-// FArcCraftOutputDelivery_StoreOnStation
-// -------------------------------------------------------------------
-
-bool FArcCraftOutputDelivery_StoreOnStation::DeliverOutput(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& OutputSpec,
-	const UObject* Instigator) const
-{
-	if (!Station)
-	{
-		return false;
-	}
-
-	AActor* Owner = Station->GetOwner();
-	if (!Owner)
-	{
-		return false;
-	}
-
-	UArcItemsStoreComponent* Store = Arcx::Utils::GetComponent(Owner, OutputStoreClass);
-	if (!Store)
-	{
-		return false;
-	}
-
-	Store->AddItem(OutputSpec, FArcItemId::InvalidId);
-	return true;
-}
-
-bool FArcCraftOutputDelivery_StoreOnStation::WithdrawOutput(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
-{
-	if (!Station)
-	{
-		return false;
-	}
-
-	AActor* Owner = Station->GetOwner();
-	if (!Owner)
-	{
-		return false;
-	}
-
-	UArcItemsStoreComponent* Store = Arcx::Utils::GetComponent(Owner, OutputStoreClass);
-	if (!Store)
-	{
-		return false;
-	}
-
-	const TArray<const FArcItemData*> Items = Store->GetItems();
-	if (!Items.IsValidIndex(ItemIndex))
-	{
-		return false;
-	}
-
-	const FArcItemData* ItemData = Items[ItemIndex];
-	if (!ItemData)
-	{
-		return false;
-	}
-
-	const int32 ItemStacks = static_cast<int32>(ItemData->GetStacks());
-	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= ItemStacks) ? ItemStacks : Stacks;
-
-	OutSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
-	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
-
-	if (StacksToWithdraw >= ItemStacks)
-	{
-		Store->DestroyItem(ItemData->GetItemId());
-	}
-	else
-	{
-		Store->RemoveItem(ItemData->GetItemId(), StacksToWithdraw);
-	}
-
-	return true;
-}
-
-// -------------------------------------------------------------------
-// FArcCraftOutputDelivery_ToInstigator
-// -------------------------------------------------------------------
-
-bool FArcCraftOutputDelivery_ToInstigator::DeliverOutput(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& OutputSpec,
-	const UObject* Instigator) const
-{
-	const AActor* InstigatorActor = Cast<AActor>(Instigator);
-	if (!InstigatorActor)
-	{
-		return false;
-	}
-
-	UArcItemsStoreComponent* Store = Arcx::Utils::GetComponent(InstigatorActor, ItemsStoreClass);
-	if (!Store)
-	{
-		return false;
-	}
-
-	Store->AddItem(OutputSpec, FArcItemId::InvalidId);
-	return true;
-}
-
-// -------------------------------------------------------------------
-// FArcCraftOutputDelivery_EntityStore
-// -------------------------------------------------------------------
-
-UArcCraftVisEntityComponent* FArcCraftOutputDelivery_EntityStore::GetVisComponent(
-	const UArcCraftStationComponent* Station) const
-{
-	if (!Station || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
-}
-
-FArcCraftOutputFragment* FArcCraftOutputDelivery_EntityStore::GetOutputFragment(
-	const UArcCraftStationComponent* Station) const
-{
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp)
-	{
-		return nullptr;
-	}
-
-	const FMassEntityHandle Entity = VisComp->GetEntityHandle();
-	if (!Entity.IsValid())
-	{
-		return nullptr;
-	}
-
-	UWorld* World = Station->GetWorld();
-	if (!World)
-	{
-		return nullptr;
-	}
-
-	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
-	if (!MassSubsystem)
-	{
-		return nullptr;
-	}
-
-	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
-	if (!EntityManager.IsEntityValid(Entity))
-	{
-		return nullptr;
-	}
-
-	return EntityManager.GetFragmentDataPtr<FArcCraftOutputFragment>(Entity);
-}
-
-UArcItemsStoreComponent* FArcCraftOutputDelivery_EntityStore::GetMirrorOutputStore(
-	const UArcCraftStationComponent* Station) const
-{
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-
-	TArray<UArcItemsStoreComponent*> Stores;
-	Station->GetOwner()->GetComponents<UArcItemsStoreComponent>(Stores);
-	for (UArcItemsStoreComponent* Store : Stores)
-	{
-		if (Store && Store->IsA(VisComp->OutputStoreClass))
+	// Deferred Set so the write lands on the game thread at the next flush —
+	// processors call this from worker threads.
+	Context.Defer().PushCommand<FMassDeferredCommand<EMassCommandOperationType::Set>>(
+		[StationEntity, Specs](FMassEntityManager& Mgr)
 		{
-			return Store;
-		}
-	}
-	return nullptr;
-}
-
-bool FArcCraftOutputDelivery_EntityStore::DeliverOutput(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& OutputSpec,
-	const UObject* Instigator) const
-{
-	// Write to entity fragment (source of truth)
-	FArcCraftOutputFragment* OutputFrag = GetOutputFragment(Station);
-	if (!OutputFrag)
-	{
-		return false;
-	}
-
-	OutputFrag->OutputItems.Add(OutputSpec);
-
-	// Mirror to actor-side store if alive (for UI)
-	UArcItemsStoreComponent* MirrorStore = GetMirrorOutputStore(Station);
-	if (MirrorStore)
-	{
-		MirrorStore->AddItem(OutputSpec, FArcItemId::InvalidId);
-	}
-
-	return true;
-}
-
-bool FArcCraftOutputDelivery_EntityStore::WithdrawOutput(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
-{
-	FArcCraftOutputFragment* OutputFrag = GetOutputFragment(Station);
-	if (!OutputFrag)
-	{
-		return false;
-	}
-
-	if (!OutputFrag->OutputItems.IsValidIndex(ItemIndex))
-	{
-		return false;
-	}
-
-	FArcItemSpec& SourceSpec = OutputFrag->OutputItems[ItemIndex];
-	const int32 AvailableStacks = static_cast<int32>(SourceSpec.Amount);
-	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= AvailableStacks) ? AvailableStacks : Stacks;
-
-	OutSpec = SourceSpec;
-	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
-
-	// Remove from entity fragment (source of truth)
-	if (StacksToWithdraw >= AvailableStacks)
-	{
-		OutputFrag->OutputItems.RemoveAt(ItemIndex);
-	}
-	else
-	{
-		SourceSpec.Amount = static_cast<uint16>(AvailableStacks - StacksToWithdraw);
-	}
-
-	// Re-sync mirror store from fragment
-	UArcItemsStoreComponent* MirrorStore = GetMirrorOutputStore(Station);
-	if (MirrorStore)
-	{
-		const TArray<const FArcItemData*> StoreItems = MirrorStore->GetItems();
-		for (const FArcItemData* ItemData : StoreItems)
-		{
-			if (ItemData)
+			FArcCraftOutputFragment* OutputFrag = Mgr.GetFragmentDataPtr<FArcCraftOutputFragment>(StationEntity);
+			if (!OutputFrag)
 			{
-				MirrorStore->RemoveItem(ItemData->GetItemId(), ItemData->GetStacks(), true);
+				return;
 			}
-		}
-		for (const FArcItemSpec& Spec : OutputFrag->OutputItems)
-		{
-			MirrorStore->AddItem(Spec, FArcItemId::InvalidId);
-		}
-	}
 
-	return true;
+			for (const FArcItemSpec& Spec : Specs)
+			{
+				const FArcItemDefinitionData* OutputDef = Spec.GetItemDefinition();
+				const FArcItemStackMethod* StackMethod = OutputDef ? OutputDef->GetStackMethod<FArcItemStackMethod>() : nullptr;
+				FArcItemSpec SpecCopy = Spec;
+				// TryStackSpec returns true only when SpecCopy merged into an existing OutputItems
+				// line — that line keeps its already-stamped id, so do NOT restamp. Otherwise we
+				// append a NEW line and stamp it with a fresh stable id so output can be addressed
+				// by id (mirrors deposit's DepositSpec.SetItemId stamping precedent).
+				if (!StackMethod || !StackMethod->TryStackSpec(OutputFrag->OutputItems, MoveTemp(SpecCopy)))
+				{
+					FArcItemSpec NewSpec = Spec;
+					NewSpec.SetItemId(FArcItemId::Generate());
+					OutputFrag->OutputItems.Add(MoveTemp(NewSpec));
+				}
+			}
+
+			// OutputItems mutated → notify subscribers. Resolve the signal subsystem from the
+			// world (the lambda runs on the game thread at flush), matching deposit's InputChanged.
+			if (UWorld* World = Mgr.GetWorld())
+			{
+				if (UMassSignalSubsystem* Sig = World->GetSubsystem<UMassSignalSubsystem>())
+				{
+					Sig->SignalEntity(ArcCraftSignals::OutputChanged, StationEntity);
+				}
+			}
+		});
+
+	// Base/store delivery never relocates the queue entry; the processor advances it.
+	return EArcCraftDeliveryDisposition::ResolvedSync;
 }

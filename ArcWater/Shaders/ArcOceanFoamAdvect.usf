@@ -1,0 +1,79 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#include "/Engine/Private/Common.ush"
+#include "/Plugin/ArcWater/ArcOceanGerstner.ush"
+#include "/Plugin/ArcWater/ArcOceanFoam.ush"
+#include "/Plugin/ArcWater/ArcOceanSeabed.ush"
+
+#define ARC_OCEAN_FOAM_LIFETIME_SECONDS 4.0f
+
+float3 FoamWindowOriginHigh;
+float3 FoamWindowOriginLow;
+float2 FoamWindowSurfaceOriginCm;
+float2 FoamWindowDeltaCm;
+float FoamTexelSizeCm;
+float FoamWindowSizeCm;
+float FoamRingBaseCellSizeCm;
+float FoamRingMorphSpanCells;
+float FoamTimeSeconds;
+float FoamDeltaTimeSeconds;
+uint FoamHasHistory;
+Texture2D<float> FoamPrev;
+SamplerState FoamPrevSampler;
+RWTexture2D<float> FoamOut;
+
+[numthreads(ARC_OCEAN_FOAM_THREADS, ARC_OCEAN_FOAM_THREADS, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Texel = int2(DispatchThreadId.xy);
+
+	const float2 WindowLocalXY = (float2(Texel) + 0.5f) * FoamTexelSizeCm;
+	const FDFVector3 AbsWorldPos = DFAdd(
+		MakeDFVector3(FoamWindowOriginHigh, FoamWindowOriginLow), float3(WindowLocalXY, 0.0f));
+
+	float DepthCm = ArcOceanVF.DeepDepthCm;
+	float2 Shoreward = float2(0.0f, 0.0f);
+	ArcOcean_SampleSeabed(AbsWorldPos, ArcOcean_ShorewardStepCm(), DepthCm, Shoreward);
+
+	const float BreakerCrestCm = ArcOceanVF.WaveCount > 0 ? ArcOceanVF.Waves[0].w : 0.0f;
+
+	// A texel is not a vertex: the band gate has to see the cell the rings would carry here, or foam modulates at a wavelength that has no ridge.
+	const float2 RingOffsetCm = WindowLocalXY - 0.5f * FoamWindowSizeCm;
+	const float RingDistanceCm = max(abs(RingOffsetCm.x), abs(RingOffsetCm.y));
+	const float EffectiveCellSizeCm = max(
+		max(FoamTexelSizeCm, FoamRingBaseCellSizeCm), RingDistanceCm / max(FoamRingMorphSpanCells, 1.0f));
+
+	const FArcOceanWaveSample Wave = ArcOcean_EvalGerstner(
+		ArcOceanVF.Waves, ArcOceanVF.WaveCount, FoamWindowSurfaceOriginCm + WindowLocalXY,
+		FoamTimeSeconds, EffectiveCellSizeCm, DepthCm, Shoreward);
+
+	const float BreakingFraction = ArcOcean_BreakingFoam(DepthCm, BreakerCrestCm);
+	const float Injected = saturate(max(
+		BreakingFraction,
+		ArcOcean_ShoreFoam(DepthCm, Wave.Displacement.z, BreakerCrestCm)));
+
+	float Carried = 0.0f;
+	if (FoamHasHistory != 0u && ArcOceanVF.WaveCount > 0)
+	{
+		const FArcOceanDepthLimitedWave Bore = ArcOcean_DepthLimitWave(
+			ArcOcean_DecodeWave(ArcOceanVF.Waves[0], ArcOceanVF.Waves[1]), DepthCm, Shoreward);
+
+		const float KH_Bore = ArcOcean_ShorewardKH(Bore.WaveNumber, DepthCm);
+		// The blend stays in a local: ArcOcean_EvalGerstner above re-decodes wave 0 from the uniform buffer, so a rewritten Bore.Direction would reach phase the moment anyone hoists that decode.
+		const float2 DriftDir = all(Shoreward == 0.0f)
+			? Bore.Direction
+			: normalize(lerp(Bore.Direction, Shoreward, 1.0f - KH_Bore));
+
+		const float2 DriftCmPerSec = DriftDir * (Bore.AngularFrequency / Bore.WaveNumber) * BreakingFraction;
+		const float2 SourceLocalXY = WindowLocalXY - DriftCmPerSec * FoamDeltaTimeSeconds;
+		const float2 SourceUV = (FoamWindowDeltaCm + SourceLocalXY) / FoamWindowSizeCm;
+
+		if (all(SourceUV > 0.0f) && all(SourceUV < 1.0f))
+		{
+			Carried = FoamPrev.SampleLevel(FoamPrevSampler, SourceUV, 0).x
+				* exp(-FoamDeltaTimeSeconds / ARC_OCEAN_FOAM_LIFETIME_SECONDS);
+		}
+	}
+
+	FoamOut[Texel] = max(Injected, Carried);
+}

@@ -7,8 +7,9 @@
 
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
-#include "MassEntityManager.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityManager.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcProjectileVisualization)
 
@@ -19,7 +20,7 @@
 UArcProjectileActorInitObserver::UArcProjectileActorInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcProjectileTag::StaticStruct();
+	ObservedTypes.Add(FArcProjectileTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -41,6 +42,8 @@ void UArcProjectileActorInitObserver::Execute(FMassEntityManager& EntityManager,
 	}
 
 	UArcProjectileActorPoolSubsystem* Pool = World->GetSubsystem<UArcProjectileActorPoolSubsystem>();
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcProjectileActorInit);
 
 	ObserverQuery.ForEachEntityChunk(Context,
 		[Pool](FMassExecutionContext& Ctx)
@@ -80,7 +83,7 @@ void UArcProjectileActorInitObserver::Execute(FMassEntityManager& EntityManager,
 UArcProjectileActorDeinitObserver::UArcProjectileActorDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcProjectileTag::StaticStruct();
+	ObservedTypes.Add(FArcProjectileTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -95,6 +98,8 @@ void UArcProjectileActorDeinitObserver::Execute(FMassEntityManager& EntityManage
 {
 	UWorld* World = EntityManager.GetWorld();
 	UArcProjectileActorPoolSubsystem* Pool = World ? World->GetSubsystem<UArcProjectileActorPoolSubsystem>() : nullptr;
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcProjectileActorDeinit);
 
 	ObserverQuery.ForEachEntityChunk(Context,
 		[Pool](FMassExecutionContext& Ctx)

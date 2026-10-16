@@ -108,7 +108,7 @@ void UArcSettingsModel::RegisterSetting(FInstancedStruct&& InDescriptor)
 
 	if (TagToIndex.Contains(SettingTag))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UArcSettingsModel::RegisterSetting: setting '%s' already registered; ignoring duplicate."), *SettingTag.ToString());
+		UE_LOGF(LogTemp, Warning,"UArcSettingsModel::RegisterSetting: setting '%ls' already registered; ignoring duplicate.", *SettingTag.ToString());
 		return;
 	}
 
@@ -126,15 +126,24 @@ void UArcSettingsModel::RegisterSetting(FInstancedStruct&& InDescriptor)
 	if (StoredBase->StorageType != EArcSettingStorage::Engine && StoredBase->PropertyName != NAME_None)
 	{
 		FInstancedPropertyBag& TargetBag = (StoredBase->StorageType == EArcSettingStorage::Local) ? LocalStore : SharedStore;
+		const bool bWasLoaded = TargetBag.FindPropertyDescByName(StoredBase->PropertyName) != nullptr;
 
 		// Determine value type from descriptor kind
-		if (StoredDescriptor.GetScriptStruct() == FArcDiscreteSettingDescriptor::StaticStruct())
+		if (const FArcDiscreteSettingDescriptor* DiscreteDesc = StoredDescriptor.GetPtr<FArcDiscreteSettingDescriptor>())
 		{
 			TargetBag.AddProperty(StoredBase->PropertyName, EPropertyBagPropertyType::Int32);
+			if (!bWasLoaded)
+			{
+				TargetBag.SetValueInt32(StoredBase->PropertyName, DiscreteDesc->DefaultIndex);
+			}
 		}
-		else if (StoredDescriptor.GetScriptStruct() == FArcScalarSettingDescriptor::StaticStruct())
+		else if (const FArcScalarSettingDescriptor* ScalarDesc = StoredDescriptor.GetPtr<FArcScalarSettingDescriptor>())
 		{
 			TargetBag.AddProperty(StoredBase->PropertyName, EPropertyBagPropertyType::Double);
+			if (!bWasLoaded)
+			{
+				TargetBag.SetValueDouble(StoredBase->PropertyName, ScalarDesc->DefaultValue);
+			}
 		}
 		// Action settings do not persist a value
 	}

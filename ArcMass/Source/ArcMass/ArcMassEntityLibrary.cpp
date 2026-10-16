@@ -2,6 +2,9 @@
 
 #include "ArcMassEntityLibrary.h"
 
+#include "ArcMass/Physics/ArcMassPhysicsEntityLink.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
+#include "ArcMass/Spawner/ArcMassSpawnerSubsystem.h"
 #include "MassAgentComponent.h"
 #include "Engine/World.h"
 
@@ -82,11 +85,28 @@ DEFINE_FUNCTION(UArcMassEntityLibrary::execGetEntityFragment)
 	}
 
 	const UScriptStruct* RequestedStruct = FragmentProp->Struct;
-	FStructView FragmentView = EntityManager.GetFragmentDataStruct(Entity, RequestedStruct);
 
-	if (FragmentView.IsValid())
+	const uint8* FragmentMemory = nullptr;
+	if (UE::Mass::IsSparse(RequestedStruct))
 	{
-		RequestedStruct->CopyScriptStruct(FragmentPtr, FragmentView.GetMemory());
+		FConstStructView SparseView = EntityManager.GetSparseElementDataForEntity(RequestedStruct, Entity);
+		if (SparseView.IsValid())
+		{
+			FragmentMemory = SparseView.GetMemory();
+		}
+	}
+	else
+	{
+		FStructView RegularView = EntityManager.GetFragmentDataStruct(Entity, RequestedStruct);
+		if (RegularView.IsValid())
+		{
+			FragmentMemory = RegularView.GetMemory();
+		}
+	}
+
+	if (FragmentMemory != nullptr)
+	{
+		RequestedStruct->CopyScriptStruct(FragmentPtr, FragmentMemory);
 		ExecResult = EArcMassResult::Valid;
 	}
 	else
@@ -128,6 +148,45 @@ void UArcMassEntityLibrary::DestroyEntity(const UObject* WorldContextObject, con
 	{
 		EntityManager.Defer().DestroyEntity(InEntity);
 	}
+}
+
+FMassEntityHandle UArcMassEntityLibrary::ResolveHitToEntity(const FHitResult& HitResult, EArcMassResult& ExecResult)
+{
+	FMassEntityHandle Handle = ArcMassPhysicsEntityLink::ResolveHitFromPhysicsObject(HitResult);
+	if (Handle.IsValid())
+	{
+		ExecResult = EArcMassResult::Valid;
+		return Handle;
+	}
+	
+	Handle = ArcMassPhysicsEntityLink::ResolveHit(HitResult);
+	ExecResult = Handle.IsValid() ? EArcMassResult::Valid : EArcMassResult::NotValid;
+	return Handle;
+}
+
+FString UArcMassEntityLibrary::ToString(const FMassEntityHandle& InHandle)
+{
+	return InHandle.DebugGetDescription();
+}
+
+void UArcMassEntityLibrary::SpawnSingleEntity(UObject* ContextObject, UMassEntityConfigAsset* InConfig, FVector InLocation)
+{
+	UArcMassEntityConfigAsset* ArcCfg = Cast<UArcMassEntityConfigAsset>(InConfig);
+	if (!ArcCfg)
+	{
+		UE_LOGF(LogTemp, Warning,"UArcMassEntityLibrary::SpawnSingleEntity: InConfig is not a UArcMassEntityConfigAsset — spawn aborted.");
+		return;
+	}
+
+	UArcMassSpawnerSubsystem* SpawnerSystem = UWorld::GetSubsystem<UArcMassSpawnerSubsystem>(ContextObject->GetWorld());
+	if (!SpawnerSystem)
+	{
+		UE_LOGF(LogTemp, Warning,"UArcMassEntityLibrary::SpawnSingleEntity: UArcMassSpawnerSubsystem not available — spawn aborted.");
+		return;
+	}
+
+	TArray<FMassEntityHandle> OutHandles;
+	SpawnerSystem->SpawnEntities(ArcCfg, 1, FTransform(InLocation), OutHandles);
 }
 
 #undef LOCTEXT_NAMESPACE

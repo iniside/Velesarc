@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassProcessor.h"
+#include "Mass/Processor.h"
 #include "ArcNiagaraBatchVisProcessor.generated.h"
 
 class UNiagaraComponent;

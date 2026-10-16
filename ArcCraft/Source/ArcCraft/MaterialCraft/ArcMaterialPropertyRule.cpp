@@ -20,17 +20,3 @@
  */
 
 #include "ArcCraft/MaterialCraft/ArcMaterialPropertyRule.h"
-
-#include "ArcCraft/MaterialCraft/ArcQualityBandPreset.h"
-
-const TArray<FArcMaterialQualityBand>& FArcMaterialPropertyRule::GetEffectiveQualityBands() const
-{
-	if (!QualityBandPreset.IsNull())
-	{
-		if (UArcQualityBandPreset* Preset = QualityBandPreset.LoadSynchronous())
-		{
-			return Preset->QualityBands;
-		}
-	}
-	return QualityBands;
-}

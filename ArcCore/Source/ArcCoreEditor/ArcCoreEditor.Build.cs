@@ -69,14 +69,13 @@ public class ArcCoreEditor : ModuleRules
 				, "SlateCore"
 				, "GameplayTags"
 				, "GameplayTasks"
-				, "GameplayAbilities"
 				, "UnrealEd"
+				, "EditorFramework"
 				, "PropertyEditor"
 				, "SceneOutliner"
 				, "AssetTools"
 				, "AssetRegistry"
 				, "ContentBrowser"
-				, "GameplayAbilitiesEditor"
 				, "MainFrame"
 				, "GameplayTags"
 				, "GameplayTagsEditor"
@@ -97,7 +96,6 @@ public class ArcCoreEditor : ModuleRules
 				, "ArcCore"
 				, "Projects"
 				, "ApplicationCore"
-				, "KismetCompiler"
 				, "StructUtilsEditor"
 				, "StructViewer"
 				, "AssetDefinition"
@@ -111,8 +109,6 @@ public class ArcCoreEditor : ModuleRules
 				, "AnimationModifierLibrary"
 				, "AnimationBlueprintLibrary"
 				, "SignalProcessing"
-			, "Json"
-			, "JsonUtilities"
 				//dependencies that you statically link with here ...	
 			}
 		);

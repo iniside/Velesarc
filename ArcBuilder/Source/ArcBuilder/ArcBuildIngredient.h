@@ -9,6 +9,7 @@
 #include "ArcBuildIngredient.generated.h"
 
 struct FArcItemData;
+struct FArcMassItemStoreFragment;
 
 /**
  * Base ingredient requirement for a building.
@@ -32,6 +33,16 @@ public:
 	/** Returns true if the given item satisfies this ingredient requirement. */
 	virtual bool DoesItemSatisfy(const FArcItemData* InItemData) const;
 
+	/**
+	 * Item definition this ingredient resolves to for UI display (icon/name), if any.
+	 * Base and tag-based ingredients have no single item def and return an invalid id.
+	 */
+	virtual FPrimaryAssetId GetDisplayItemDefinitionId() const { return FPrimaryAssetId(); }
+
+	// Sums stacks of store items this ingredient accepts. Display-only; the consumption
+	// strategy remains the authoritative check/consume path (server re-validates in the command).
+	int32 CountAvailable(const FArcMassItemStoreFragment& Store) const;
+
 	virtual ~FArcBuildIngredient() = default;
 };
 
@@ -45,10 +56,11 @@ struct ARCBUILDER_API FArcBuildIngredient_ItemDef : public FArcBuildIngredient
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly,
-		meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false))
+		meta = (AllowedTypes = "ArcItem"))
 	FArcNamedPrimaryAssetId ItemDefinitionId;
 
 	virtual bool DoesItemSatisfy(const FArcItemData* InItemData) const override;
+	virtual FPrimaryAssetId GetDisplayItemDefinitionId() const override { return ItemDefinitionId.AssetId; }
 };
 
 /**

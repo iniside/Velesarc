@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassProcessor.h"
-#include "MassEntityQuery.h"
+#include "ArcMass/Actions/ArcMassActionFragment.h"
+#include "Mass/EntityHandle.h"
 #include "ArcProjectileSpawning.generated.h"
 
-class UMassEntityConfigAsset;
+class UArcMassEntityConfigAsset;
 
 // ---------------------------------------------------------------------------
 // Spawn data — per-entity initialization arrays
@@ -22,25 +22,8 @@ struct ARCMASS_API FArcProjectileSpawnData
 	TArray<FVector> Velocities;
 	TArray<TWeakObjectPtr<UObject>> Instigators;
 	TArray<TArray<TWeakObjectPtr<AActor>>> IgnoredActors;
-};
-
-// ---------------------------------------------------------------------------
-// Spawn processor — runs once at spawn time to initialize fragments
-// ---------------------------------------------------------------------------
-
-UCLASS()
-class ARCMASS_API UArcProjectileSpawnProcessor : public UMassProcessor
-{
-	GENERATED_BODY()
-
-public:
-	UArcProjectileSpawnProcessor();
-
-protected:
-	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-
-	FMassEntityQuery EntityQuery;
+	TArray<FMassEntityHandle> TargetEntities;
+	TArray<FArcMassActionFragment> ActionFragments;
 };
 
 // ---------------------------------------------------------------------------
@@ -51,7 +34,7 @@ namespace UE::ArcMass::Projectile
 {
 	ARCMASS_API void BatchSpawnProjectiles(
 		UWorld* World,
-		UMassEntityConfigAsset* EntityConfig,
+		UArcMassEntityConfigAsset* EntityConfig,
 		const FArcProjectileSpawnData& SpawnData,
 		TArray<FMassEntityHandle>& OutEntities
 	);

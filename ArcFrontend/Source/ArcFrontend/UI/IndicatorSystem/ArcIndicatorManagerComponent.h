@@ -24,6 +24,8 @@
 #include "Components/ControllerComponent.h"
 #include "Delegates/DelegateCombinations.h"
 
+#include "Mass/EntityHandle.h"
+
 #include "ArcIndicatorManagerComponent.generated.h"
 
 class FIndicatorDescriptor;
@@ -79,7 +81,7 @@ public:
 	UArcIndicatorManagerComponent(const FObjectInitializer& ObjectInitializer);
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Indicator")
-	static UArcIndicatorManagerComponent* GetComponent(AController* Controller);
+	static UArcIndicatorManagerComponent* GetIndicatorComponent(AController* Controller);
 
 	void AddIndicator(const TSharedRef<FIndicatorDescriptor>& CanvasEntry);
 	void RemoveIndicator(const TSharedRef<FIndicatorDescriptor>& CanvasEntry);
@@ -92,6 +94,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Indicator", meta = (BlueprintThreadSafe))
 	FArcIndicatorHandle AddIndicatorFromActor(AActor* TargetActor
 		, FName TargetComponentSocketName
+		, TSoftClassPtr<UUserWidget> InWidgetClass);
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Indicator", meta = (BlueprintThreadSafe))
+	FArcIndicatorHandle AddIndicatorFromTransform(FVector WorldLocation
+		, TSoftClassPtr<UUserWidget> InWidgetClass);
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Core|Indicator", meta = (BlueprintThreadSafe))
+	FArcIndicatorHandle AddIndicatorFromMassEntity(FMassEntityHandle Entity
 		, TSoftClassPtr<UUserWidget> InWidgetClass);
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Core|Indicator", meta = (BlueprintThreadSafe))

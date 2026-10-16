@@ -1,0 +1,17 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "/Plugin/ArcWater/ArcOceanGerstner.ush"
+
+float ArcOcean_BreakingFoam(float InDepthCm, float InBreakerCrestCm)
+{
+	return 1.0f - ArcOcean_DepthScale(InBreakerCrestCm, InDepthCm);
+}
+
+float ArcOcean_ShoreFoam(float InDepthCm, float InElevationCm, float InBreakerCrestCm)
+{
+	const float CrestCm = max(InBreakerCrestCm, ARC_OCEAN_WORLD_UNIT_CM);
+	const float BreakingDepthCm = CrestCm / (0.5f * ARC_OCEAN_BREAKER_HEIGHT_RATIO);
+	return (1.0f - smoothstep(0.0f, BreakingDepthCm, InDepthCm)) * saturate(InElevationCm / CrestCm);
+}

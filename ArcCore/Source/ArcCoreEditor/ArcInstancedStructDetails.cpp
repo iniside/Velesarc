@@ -36,7 +36,6 @@
 #include "StructUtils/InstancedStruct.h"
 #include "StructViewerFilter.h"
 #include "StructViewerModule.h"
-#include "Items/Fragments/ArcItemFragment.h"
 #include "Styling/SlateIconFinder.h"
 
 #define LOCTEXT_NAMESPACE "ArcCoreEditor" 
@@ -267,26 +266,6 @@ void FArcInstancedStructDetails::CustomizeChildren(TSharedRef<class IPropertyHan
 		TSharedRef<FArcInstancedStructDataDetails> DataDetails = MakeShared<FArcInstancedStructDataDetails>(InstanceStructHandle);
 		StructBuilder.AddCustomBuilder(DataDetails);
 	}
-}
-
-TSharedRef<IDetailCustomization> FArcItemFragment_MakeLocationInfoDetailCustomization::MakeInstance()
-{
-	return MakeShareable(new FArcItemFragment_MakeLocationInfoDetailCustomization());
-}
-
-void FArcItemFragment_MakeLocationInfoDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-	TSharedPtr<IPropertyHandle> TransformerHandle = DetailBuilder.GetProperty("Transformer");
-	DetailBuilder.HideProperty(TransformerHandle);
-
-	IDetailCategoryBuilder& NoneCategory = DetailBuilder.EditCategoryAllowNone(NAME_None);
-
-	IDetailPropertyRow& Row = NoneCategory.AddProperty(TransformerHandle);
-	TSharedPtr<SWidget> NameWidget, ValueWidget;
-	Row.GetDefaultWidgets(NameWidget, ValueWidget, false);
-	
-	NoneCategory.HeaderContent(ValueWidget.ToSharedRef(), true);
-	NoneCategory.SetIsEmpty(true);
 }
 
 #undef LOCTEXT_NAMESPACE

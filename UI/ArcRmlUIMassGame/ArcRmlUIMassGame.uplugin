@@ -1,0 +1,45 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "ArcRmlUIMassGame",
+	"Description": "Experience actions that open ArcRmlUI documents for ArcMassGameplayFramework games",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcRmlUIMassGame",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ArcRmlUI",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassGameplayFramework",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcGameplayInteraction",
+			"Enabled": true
+		},
+		{
+			"Name": "StateTree",
+			"Enabled": true
+		},
+		{
+			"Name": "MassGameplay",
+			"Enabled": true
+		},
+		{
+			"Name": "MassAI",
+			"Enabled": true
+		}
+	]
+}

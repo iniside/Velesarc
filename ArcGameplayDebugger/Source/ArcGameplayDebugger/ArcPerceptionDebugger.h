@@ -2,8 +2,13 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "UObject/WeakObjectPtrTemplates.h"
+
+class AActor;
+class UArcPerceptionDebuggerDrawComponent;
 
 class FArcPerceptionDebugger
 {
@@ -37,11 +42,8 @@ private:
 		float CurrentTime, struct FMassEntityManager* Manager);
 	void DrawSenseConfig(const struct FArcPerceptionSenseConfigFragment* Config);
 
-	// --- World drawing helpers ---
-	void DrawSenseRange(const FVector& Origin, const FVector& Forward, const struct FArcPerceptionSenseConfigFragment* Config,
-		const FColor& Color) const;
-	void DrawPerceivedEntityMarker(const struct FArcPerceivedEntity& PE, const FColor& Color, bool bHighlighted,
-		struct FMassEntityManager* Manager) const;
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 
 	TArray<FPerceiverEntry> CachedPerceivers;
 	int32 SelectedPerceiverIndex = INDEX_NONE;
@@ -55,4 +57,8 @@ private:
 
 	// Selected perceived entity (for highlighting)
 	FMassEntityHandle HighlightedPerceivedEntity;
+
+	// Draw component
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcPerceptionDebuggerDrawComponent> DrawComponent;
 };

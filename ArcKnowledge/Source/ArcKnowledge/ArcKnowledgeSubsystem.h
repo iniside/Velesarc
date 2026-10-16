@@ -6,10 +6,13 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcKnowledgeEntry.h"
+#include "ArcKnowledgeQueryCandidate.h"
 #include "ArcKnowledgeQuery.h"
 #include "ArcKnowledgeEvent.h"
 #include "ArcKnowledgeEventBroadcaster.h"
 #include "ArcKnowledgeSpatialHash.h"
+#include "ArcKnowledgeRTree.h"
+#include "ArcKnowledgeTagBitmask.h"
 #include "ArcKnowledgeSubsystem.generated.h"
 
 class UArcKnowledgeQueryDefinition;
@@ -50,9 +53,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Knowledge")
 	void UpdateKnowledge(FArcKnowledgeHandle Handle, const FArcKnowledgeEntry& Updated);
 
-	/** Remove a knowledge entry. */
+	/** Remove a knowledge entry. No-op if the entry is marked bPersistent.
+	  * Use ForceRemoveKnowledge for entity death cleanup. */
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Knowledge")
 	void RemoveKnowledge(FArcKnowledgeHandle Handle);
+
+	/** Force-remove a knowledge entry, bypassing bPersistent. Use for entity death cleanup. */
+	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Knowledge")
+	void ForceRemoveKnowledge(FArcKnowledgeHandle Handle);
 
 	/** Register multiple entries at once. */
 	void RegisterKnowledgeBatch(TArray<FArcKnowledgeEntry>& Entries, TArray<FArcKnowledgeHandle>& OutHandles);
@@ -141,9 +149,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Advertisements")
 	void CompleteAdvertisement(FArcKnowledgeHandle Handle);
 
-	/** Cancel a claim, making the advertisement available again. */
+	/** Cancel a claim, making the advertisement available again. Returns true if successfully unclaimed. */
 	UFUNCTION(BlueprintCallable, Category = "ArcKnowledge|Advertisements")
-	void CancelAdvertisement(FArcKnowledgeHandle Handle);
+	bool CancelAdvertisement(FArcKnowledgeHandle Handle);
+
+	/** Get all advertisement handles currently claimed by a specific entity. */
+	void GetAdvertisementsClaimedBy(FMassEntityHandle Claimer, TArray<FArcKnowledgeHandle>& OutHandles) const;
 
 	// ====================================================================
 	// Events
@@ -152,6 +163,14 @@ public:
 	/** Get the event broadcaster for external listener management. */
 	FArcKnowledgeEventBroadcaster& GetEventBroadcaster() { return EventBroadcaster; }
 	const FArcKnowledgeEventBroadcaster& GetEventBroadcaster() const { return EventBroadcaster; }
+
+	/** Get the static knowledge R-tree (used by observers and dual-dispatch queries). */
+	FArcKnowledgeRTree& GetStaticRTree() { return StaticRTree; }
+	const FArcKnowledgeRTree& GetStaticRTree() const { return StaticRTree; }
+
+	/** Get the tag bitmask registry (used by observers to build bitmasks for R-tree entries). */
+	FArcKnowledgeTagBitmaskRegistry& GetTagRegistry() { return TagRegistry; }
+	const FArcKnowledgeTagBitmaskRegistry& GetTagRegistry() const { return TagRegistry; }
 
 	// ====================================================================
 	// Configuration
@@ -190,6 +209,9 @@ private:
 	// Fire a knowledge event through the broadcaster
 	void BroadcastKnowledgeEvent(EArcKnowledgeEventType Type, const FArcKnowledgeEntry& Entry);
 
+	// Internal removal — unconditional, no persistence check.
+	void RemoveKnowledgeInternal(FArcKnowledgeHandle Handle);
+
 	// ---------- Storage ----------
 
 	/** All knowledge entries, keyed by handle. */
@@ -202,6 +224,9 @@ private:
 	  * Only populated for entries whose SourceEntity is valid. */
 	TMap<FMassEntityHandle, TArray<FArcKnowledgeHandle>> SourceEntityIndex;
 
+	/** Claimer entity -> claimed knowledge handles index. */
+	TMap<FMassEntityHandle, TArray<FArcKnowledgeHandle>> ClaimerIndex;
+
 	/** Spatial hash for location-based queries. Maintained inline during CRUD. */
 	FArcKnowledgeSpatialHash SpatialHash;
 
@@ -210,4 +235,10 @@ private:
 
 	/** Event broadcaster for knowledge change notifications. */
 	FArcKnowledgeEventBroadcaster EventBroadcaster;
+
+	/** R-tree for static knowledge tier (insert-once, query-many). */
+	FArcKnowledgeRTree StaticRTree;
+
+	/** Tag -> bitmask index shared by R-tree and query dispatch. */
+	FArcKnowledgeTagBitmaskRegistry TagRegistry;
 };

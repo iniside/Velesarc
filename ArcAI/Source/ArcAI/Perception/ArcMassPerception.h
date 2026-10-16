@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "Subsystems/WorldSubsystem.h"
-#include "MassProcessor.h"
+#include "Mass/Processor.h"
 
 #include "NativeGameplayTags.h"
 

@@ -21,6 +21,7 @@
 
 #include "ArcCore/Conditions/ArcWorldConditionTrait.h"
 #include "MassEntityTemplateRegistry.h"
+#include "MassWorldUtils.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcWorldConditionTrait)
 

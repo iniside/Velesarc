@@ -20,7 +20,14 @@ struct ARCAI_API FArcUtilityConsideration_PathLength : public FArcUtilityConside
 	UPROPERTY(EditAnywhere, Category = "Consideration", meta = (ClampMin = 1.0))
 	float MaxPathLength = 10000.0f;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetLocation;
+	}
+#endif
 };
 
 /**
@@ -31,5 +38,12 @@ struct ARCAI_API FArcUtilityConsideration_PathExists : public FArcUtilityConside
 {
 	GENERATED_BODY()
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetLocation;
+	}
+#endif
 };

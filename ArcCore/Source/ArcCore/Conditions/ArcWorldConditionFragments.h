@@ -21,7 +21,8 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcWorldConditionFragments.generated.h"
 
 class UArcWorldConditionDefinition;

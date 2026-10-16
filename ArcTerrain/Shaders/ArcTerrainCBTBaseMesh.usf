@@ -1,0 +1,268 @@
+﻿// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTBaseMesh.usf — seeding and refining the STATIC base mesh.
+
+	The base mesh is a fixed square grid of faces covering the whole world. A face is
+	one FaceQuads-texel square carved into the two depth-1 LEB roots (node ids 2 and 3),
+	which are hypotenuse twins of each other across the square's anti-diagonal. A face
+	holds no atlas slice and has no lifecycle: every face exists from level start to
+	level end, so nothing here admits, departs, renumbers or rolls anything back, and a
+	face that loses residency simply collapses through the ordinary merge path.
+
+	The passes:
+
+	  SeedRootsCS  — two roots per face, twinned across the anti-diagonal;
+	  AttachCS     — every face's four root legs paired with its grid neighbours', all
+	                 at depth 1, so the mesh is conformant BEFORE it is refined and the
+	                 ordinary split rules keep it so from there on;
+	  RefineVoteCS / RefineApplyCS — vote/apply iterations over one frozen heap snapshot,
+	                 each deepening a bisector by at most one level. Initial population uses
+	                 2 * MaxSubdivisionDepth rounds to reach the metric's triangulation in
+	                 one frame; later camera motion can schedule bounded catch-up rounds.
+
+	SeedRootsCS and AttachCS run EVERY frame and need NO view: both are idempotent — a
+	populated face re-roots nothing, and attach writes only legs whose two faces are both
+	still at their roots — so a face the pool refused a seed to is rooted by a later frame
+	instead of staying empty for the level's lifetime, and a world that never presents a
+	perspective view still carries two triangles per face. Refine needs the metric and therefore
+	a main view; its initial bulk run is one-shot, while motion catch-up is explicitly bounded.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainLEB.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainTessellationPredicate.ush"
+
+ByteAddressBuffer CBTHeapSnapshot;
+RWByteAddressBuffer CBTHeap;
+RWByteAddressBuffer BisectorPool;
+RWByteAddressBuffer BisectorNeighbors;
+RWBuffer<uint> BisectorCommands;
+RWBuffer<uint> BisectorPromote;
+RWBuffer<uint> PoolCounters;
+#if ARC_CBT_LATENCY_AUDIT
+RWBuffer<uint> LatencyCounters;
+#endif
+RWBuffer<uint> FaceLiveCount;
+RWBuffer<uint> FaceRoots;
+Buffer<uint> FaceNeighbors;   // 4 entries per face: -X, +X, -Y, +Y
+
+uint PoolDepth;
+uint PoolCapacity;
+uint NumFaces;
+uint MaxSubdivisionDepth;
+uint MergePhaseCount;
+uint MergeFramePhase;
+/** Diagnostics only (arc.Terrain.CBT.Stats). */
+uint StatsEnabled;
+
+#define ARC_SPLIT_APPLIED_COUNTER ARC_CBT_COUNTER_REFINE_SPLITS
+#define ARC_SPLIT_TALLY_DETAIL 0
+// The audited BaseMesh permutation is dispatched only for motion Apply passes. These counters count
+// ApplySplit request outcomes; a successful request may expand several bisectors through conformance.
+#define ARC_SPLIT_LATENCY_APPLIED_COUNTER ARC_CBT_LATENCY_MOTION_REFINE_APPLIED
+#define ARC_SPLIT_LATENCY_DEFERRED_COUNTER ARC_CBT_LATENCY_MOTION_REFINE_DEFERRED
+#define ARC_SPLIT_LATENCY_REFUSED_COUNTER ARC_CBT_LATENCY_MOTION_REFINE_REFUSED
+#include "/Plugin/ArcTerrain/ArcTerrainCBTSplit.ush"
+
+bool IsSlotLive(uint Index)
+{
+	return arc_IsLive(CBTHeap, (int)PoolDepth, Index);
+}
+
+FLEBTriangle DecodeSlotCorners(uint2 NodeID)
+{
+	return leb_DecodeNodeCorners(leb_CreateNodeFromID(NodeID));
+}
+
+/** Which root owns a face side, and with which leg: root A's RIGHT leg is x=0 (side -X) and its LEFT leg
+ *  y=0 (-Y); root B's are x=1 (+X) and y=1 (+Y). */
+uint RootForSide(uint Side) { return (Side == 1u || Side == 3u) ? 1u : 0u; }
+uint LegEdgeForSide(uint Side) { return Side < 2u ? ARC_EDGE_RIGHT : ARC_EDGE_LEFT; }
+
+/** Whether FaceRoots still names this face's live depth-1 root. Splitting a root retires its slot
+ *  WITHOUT clearing the entry, and the allocator hands that slot to any face, so an ungated attach would
+ *  write leg references into an unrelated bisector. Node id 2 + RootIndex identifies the root uniquely
+ *  inside a face, and only a merge back to depth 1 rewrites the entry. */
+bool IsFaceRoot(uint Face, uint RootIndex, uint Slot)
+{
+	if (Slot == ARC_BISECTOR_NULL || Slot >= PoolCapacity || !IsSlotLive(Slot))
+	{
+		return false;
+	}
+	if (any(arc_LoadNodeID(BisectorPool, Slot) != uint2(2u + RootIndex, 0u)))
+	{
+		return false;
+	}
+	return arc_LoadField(BisectorPool, Slot, ARC_BISECTOR_FACE) == Face;
+}
+
+// ---------------------------------------------------------------------------
+// Seeding
+// ---------------------------------------------------------------------------
+
+[numthreads(ARC_CBT_FACE_THREADS, 1, 1)]
+void SeedRootsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint Face = DispatchThreadId.x;
+	if (Face >= NumFaces)
+	{
+		return;
+	}
+	// Idempotent by construction: re-rooting a populated face would orphan its whole subtree.
+	if (FaceLiveCount[Face] != 0u)
+	{
+		return;
+	}
+
+	const int Depth = (int)PoolDepth;
+	const uint FreeCount = PoolCapacity - cbt_NodeCount_RO(CBTHeapSnapshot, 0u, Depth);
+	// The seed has its own reserved window at the top of the free list: a face's two roots are the
+	// structural guarantee that geometry exists at all.
+	uint Ordinal = 0u;
+	if (!arc_AllocSeedSlots(PoolCounters, FreeCount, PoolCapacity, 2u, Ordinal))
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_FACE_ALLOC_REFUSED, 1u);
+		return;
+	}
+
+	const uint RootA = cbt_DecodeFreeLeaf_RO(CBTHeapSnapshot, 0u, Depth,
+		arc_SeedFreeOrdinal(FreeCount, Ordinal));
+	const uint RootB = cbt_DecodeFreeLeaf_RO(CBTHeapSnapshot, 0u, Depth,
+		arc_SeedFreeOrdinal(FreeCount, Ordinal + 1u));
+
+	arc_WriteBisector(BisectorPool, RootA, uint2(2u, 0u), Face);
+	arc_WriteBisector(BisectorPool, RootB, uint2(3u, 0u), Face);
+	arc_StoreNeighbor(BisectorNeighbors, RootA, ARC_EDGE_HYP, arc_MakeRef(RootB, ARC_EDGE_HYP));
+	arc_StoreNeighbor(BisectorNeighbors, RootA, ARC_EDGE_RIGHT, ARC_BISECTOR_NULL);
+	arc_StoreNeighbor(BisectorNeighbors, RootA, ARC_EDGE_LEFT, ARC_BISECTOR_NULL);
+	arc_StoreNeighbor(BisectorNeighbors, RootB, ARC_EDGE_HYP, arc_MakeRef(RootA, ARC_EDGE_HYP));
+	arc_StoreNeighbor(BisectorNeighbors, RootB, ARC_EDGE_RIGHT, ARC_BISECTOR_NULL);
+	arc_StoreNeighbor(BisectorNeighbors, RootB, ARC_EDGE_LEFT, ARC_BISECTOR_NULL);
+
+	arc_SetLive(CBTHeap, Depth, RootA, 1u);
+	arc_SetLive(CBTHeap, Depth, RootB, 1u);
+
+	FaceRoots[Face * 2u] = RootA;
+	FaceRoots[Face * 2u + 1u] = RootB;
+	FaceLiveCount[Face] = 2u;
+
+	ArcTerrainTallyTopology(ARC_CBT_COUNTER_SEED_POPULATED, 1u);
+}
+
+/**
+ * Pair every root leg with the leg facing it across the grid. Runs at depth 1, where the pairing is a
+ * table rather than a search: across side s the neighbour presents side s^1, which its OTHER root owns
+ * with the SAME leg, because the two legs are one segment traversed from opposite sides. Each thread
+ * writes only its own side; the neighbour's thread writes the mirror.
+ *
+ * A side is paired only while BOTH faces are still at their roots; once either has refined, the link
+ * pass owns that reference and re-pairing it would name a retired slot.
+ */
+[numthreads(ARC_CBT_FACE_THREADS, 1, 1)]
+void AttachCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint Face = DispatchThreadId.x;
+	if (Face >= NumFaces)
+	{
+		return;
+	}
+
+	for (uint Side = 0u; Side < 4u; ++Side)
+	{
+		const uint RootIndex = RootForSide(Side);
+		const uint Root = FaceRoots[Face * 2u + RootIndex];
+		if (!IsFaceRoot(Face, RootIndex, Root))
+		{
+			continue;
+		}
+
+		// Off the edge of the world: the leg keeps ARC_BISECTOR_NULL and stays a free boundary.
+		const uint Other = FaceNeighbors[Face * 4u + Side];
+		if (Other >= NumFaces)
+		{
+			continue;
+		}
+		const uint OtherRootIndex = RootForSide(arc_OppositeSide(Side));
+		const uint OtherRoot = FaceRoots[Other * 2u + OtherRootIndex];
+		if (!IsFaceRoot(Other, OtherRootIndex, OtherRoot))
+		{
+			continue;
+		}
+
+		const uint Edge = LegEdgeForSide(Side);
+		arc_StoreNeighbor(BisectorNeighbors, Root, Edge, arc_MakeRef(OtherRoot, Edge));
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_ATTACH_PAIRS, 1u);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Refinement
+// ---------------------------------------------------------------------------
+
+/**
+ * One vote per live bisector, plus the reference refresh the iteration depends on: a split retires its
+ * parents, and every later iteration reads references that would otherwise still name them.
+ */
+[numthreads(ARC_CBT_POOL_THREADS, 1, 1)]
+void RefineVoteCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint Index = DispatchThreadId.x;
+	if (Index >= PoolCapacity || !IsSlotLive(Index))
+	{
+		return;
+	}
+
+	arc_FixupRefs(BisectorPool, BisectorNeighbors, BisectorPromote, Index);
+
+	const uint Face = arc_LoadField(BisectorPool, Index, ARC_BISECTOR_FACE);
+	if (Face >= NumFaces)
+	{
+		return;
+	}
+
+	const uint2 NodeID = arc_LoadNodeID(BisectorPool, Index);
+	const uint NodeDepth = arc_NodeDepth(NodeID);
+	const FLEBTriangle Tri = DecodeSlotCorners(NodeID);
+	float AreaPixels;
+	float ErrorPixels;
+	float ErrorCm;
+	float DistanceCm;
+	float EffectiveTargetPixels;
+	FArcTerrainTessProbe Probe;
+	const int Verdict = ArcTerrain_ClassifyTriangleProbe(Face, NodeDepth, Tri.Corners[0],
+		Tri.Corners[1], Tri.Corners[2], false, Tri.Corners[1], false, AreaPixels, ErrorPixels,
+		ErrorCm, DistanceCm, EffectiveTargetPixels, Probe);
+	if (NodeDepth >= Probe.LeafCapDepth || Verdict != ARC_TESS_TOO_COARSE)
+	{
+		return;
+	}
+
+	uint Ignored = 0u;
+	InterlockedMax(BisectorCommands[Index], ARC_CMD_SPLIT, Ignored);
+}
+
+[numthreads(ARC_CBT_POOL_THREADS, 1, 1)]
+void RefineApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint Index = DispatchThreadId.x;
+	if (Index >= PoolCapacity || !IsSlotLive(Index))
+	{
+		return;
+	}
+	if (BisectorCommands[Index] != ARC_CMD_SPLIT)
+	{
+		return;
+	}
+
+	const uint Result = ApplySplit((int)PoolDepth, Index, false);
+	if (Result == ARC_SPLIT_REFUSED)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_REFINE_REFUSED, 1u);
+	}
+	else if (Result == ARC_SPLIT_DEFERRED)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_REFINE_DEFERRED, 1u);
+	}
+}

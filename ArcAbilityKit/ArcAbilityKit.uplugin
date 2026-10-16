@@ -1,0 +1,38 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "ArcAbilityKit",
+	"Description": "Cross-domain ability integration: source primitives, item-ability bridge, item-targeting bridge",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcAbilityKit",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcAbilityKitEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{"Name": "AsyncMessageSystem", "Enabled": true},
+		{"Name": "MassGameplay", "Enabled": true},
+		{"Name": "Mover", "Enabled": true},
+		{"Name": "ArcMover", "Enabled": true},
+		{"Name": "StateTree", "Enabled": true},
+		{"Name": "ArcCore", "Enabled": true},
+		{"Name": "ArcMass", "Enabled": true},
+		{"Name": "ArcMassAbilities", "Enabled": true},
+		{"Name": "ArcMassItems", "Enabled": true},
+		{"Name": "ArcTargeting", "Enabled": true},
+		{"Name": "ArcCues", "Enabled": true}
+	]
+}

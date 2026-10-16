@@ -6,12 +6,11 @@
 #include "MassStateTreeExecutionContext.h"
 #include "MassStateTreeTypes.h"
 #include "StateTreeAsyncExecutionContext.h"
-#include "TargetQuery/ArcTQSTypes.h"
-#include "StructUtils/InstancedStruct.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
+#include "ArcTQSTypes.h"
+#include "ArcTQSQueryReference.h"
+#include "ArcTQSQuerySubsystem.h"
 #include "ArcTQSRunQueryTask.generated.h"
 
-class UArcTQSQueryDefinition;
 class UArcTQSQuerySubsystem;
 class UMassSignalSubsystem;
 struct FArcTQSQueryInstance;
@@ -23,56 +22,8 @@ struct FArcTQSRunQueryTaskInstanceData
 
 	// --- Configuration ---
 
-	// Toggle between DataAsset reference and inline definition
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	bool bUseInlineDefinition = false;
-
-	// DataAsset-based query definition (shared, reusable)
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "!bUseInlineDefinition"))
-	TObjectPtr<UArcTQSQueryDefinition> QueryDefinition;
-
-	/**
-	 * Context locations for the generator to run around.
-	 * E.g. smart object locations, waypoints, or any set of points.
-	 * Generators will produce items around EACH location in this array.
-	 *
-	 * If empty, the querier's own location is used as the sole context location.
-	 * If populated, the querier location is NOT automatically included — add it explicitly if needed.
-	 */
-	UPROPERTY(EditAnywhere, Category = Input, meta = (Optional))
-	TArray<FVector> ContextLocations;
-	
-	// --- Inline definition (when bUseInlineDefinition = true) ---
-
-	// Optional context provider that produces ContextLocations dynamically
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSContextProvider", EditCondition = "bUseInlineDefinition"))
-	FInstancedStruct InlineContextProvider;
-
-	// Generator that produces the initial target pool
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSGenerator"))
-	FInstancedStruct InlineGenerator;
-
-	// Ordered pipeline of filter/score steps
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (BaseStruct = "/Script/ArcAI.ArcTQSStep", EditCondition = "bUseInlineDefinition"))
-	TArray<FInstancedStruct> InlineSteps;
-
-	// How to select from the final scored pool
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition"))
-	EArcTQSSelectionMode InlineSelectionMode = EArcTQSSelectionMode::HighestScore;
-
-	// For TopN mode
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::TopN", ClampMin = 1))
-	int32 InlineTopN = 5;
-
-	// For AllPassing mode
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (EditCondition = "bUseInlineDefinition && InlineSelectionMode == EArcTQSSelectionMode::AllPassing"))
-	float InlineMinPassingScore = 0.0f;
-
-	// For custom top-percent modes: what percentage of the top items to consider
-	UPROPERTY(EditAnywhere, Category = Parameter,
-		meta = (EditCondition = "bUseInlineDefinition && (InlineSelectionMode == EArcTQSSelectionMode::RandomFromTopPercent || InlineSelectionMode == EArcTQSSelectionMode::WeightedRandomFromTopPercent)",
-			ClampMin = 1.0, ClampMax = 100.0))
-	float InlineTopPercent = 25.0f;
+	FArcTQSQueryReference Query;
 
 	// --- Outputs ---
 
@@ -88,17 +39,6 @@ struct FArcTQSRunQueryTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = Output)
 	bool bHasResults = false;
 
-	// --- Optional Inputs ---
-
-	// Explicit items to feed to ExplicitList generator
-	UPROPERTY(EditAnywhere, Category = Input, meta = (Optional))
-	TArray<FArcTQSTargetItem> ExplicitInput;
-
-
-	// Override search radius at runtime (if generator supports it)
-	UPROPERTY(EditAnywhere, Category = Parameter, meta = (Optional))
-	float OverrideRadius = -1.0f;
-
 	// --- Runtime state (not exposed to editor) ---
 
 	int32 QueryId = INDEX_NONE;
@@ -113,9 +53,6 @@ struct FArcTQSRunQueryTaskInstanceData
  * by default. On completion, the entity is signaled via UMassSignalSubsystem so the
  * State Tree wakes up and processes the transition.
  *
- * Supports two modes:
- * - DataAsset reference: set bUseInlineDefinition = false, assign QueryDefinition
- * - Inline: set bUseInlineDefinition = true, configure InlineGenerator/InlineSteps/InlineSelection directly
  *  Typical usage pattern: run in a sibling state, storing results in a parent state's parameters:
  *   - Parent (Has an TQS result parameter)
  *     - Run Target Query (on success, transition to Use Query Result)
@@ -174,7 +111,6 @@ private:
 		UWorld* World,
 		const FInstanceDataType& InstanceData);
 
-	// Submit a query using instance data configuration (DataAsset or inline)
 	static int32 SubmitQuery(
 		UArcTQSQuerySubsystem* TQSSubsystem,
 		const FInstanceDataType& InstanceData,

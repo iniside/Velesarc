@@ -21,9 +21,10 @@
 
 #include "ArcAI/Conditions/ArcTQSWorldConditionSchema.h"
 
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcAI/Conditions/ArcTQSWorldConditionBase.h"
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "GameFramework/Actor.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcTQSWorldConditionSchema)

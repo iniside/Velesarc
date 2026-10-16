@@ -22,18 +22,16 @@
 #include "Commands/ArcRequestRespawnCommand.h"
 
 #include "Engine/World.h"
-#include "GameMode/ArcCoreGameMode.h"
+#include "GameFramework/Controller.h"
 
 void FArcRequestRespawnCommand::PreSendCommand()
 {
 }
 
-bool FArcRequestRespawnCommand::Execute()
+bool FArcRequestRespawnCommand::Execute(UObject* WorldContext)
 {
-	AArcCoreGameMode* GM = Controller->GetWorld()->GetAuthGameMode<AArcCoreGameMode>();
-
-	GM->RequestPlayerRestartNextFrame(Controller
-		, true);
-		
-	return true;
+	// AArcCoreGameMode and its RequestPlayerRestartNextFrame retired with Bucket B Cluster 5.
+	// Respawn flow needs to be re-wired against AArcMassGameMode (or equivalent) when the
+	// MGF respawn API is in place.
+	return false;
 }

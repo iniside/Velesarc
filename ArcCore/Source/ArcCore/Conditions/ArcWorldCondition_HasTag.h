@@ -45,5 +45,5 @@ struct ARCCORE_API FArcWorldCondition_HasTag : public FArcWorldConditionBase
 	FGameplayTagQuery TagQuery;
 
 private:
-	FWorldConditionContextDataRef SourceActorRef;
+	FWorldConditionContextDataRef SelfActorRef;
 };

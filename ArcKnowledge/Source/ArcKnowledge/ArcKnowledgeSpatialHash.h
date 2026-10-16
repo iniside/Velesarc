@@ -110,9 +110,8 @@ inline void FArcKnowledgeSpatialHash::Clear()
 inline void FArcKnowledgeSpatialHash::QuerySphere(const FVector& Center, float Radius, TArray<FArcKnowledgeHandle>& OutHandles) const
 {
 	const float RadiusSq = Radius * Radius;
-	const FVector Extent(Radius);
-	const FIntVector MinGrid = WorldToGrid(Center - Extent);
-	const FIntVector MaxGrid = WorldToGrid(Center + Extent);
+	const FIntVector MinGrid = WorldToGrid(Center - FVector(Radius));
+	const FIntVector MaxGrid = WorldToGrid(Center + FVector(Radius));
 
 	for (int32 X = MinGrid.X; X <= MaxGrid.X; ++X)
 	{
@@ -120,14 +119,17 @@ inline void FArcKnowledgeSpatialHash::QuerySphere(const FVector& Center, float R
 		{
 			for (int32 Z = MinGrid.Z; Z <= MaxGrid.Z; ++Z)
 			{
-				if (const TArray<FEntry>* Bucket = Cells.Find(FIntVector(X, Y, Z)))
+				const TArray<FEntry>* Bucket = Cells.Find(FIntVector(X, Y, Z));
+				if (!Bucket)
 				{
-					for (const FEntry& E : *Bucket)
+					continue;
+				}
+
+				for (const FEntry& E : *Bucket)
+				{
+					if (FVector::DistSquared(Center, E.Location) <= RadiusSq)
 					{
-						if (FVector::DistSquared(Center, E.Location) <= RadiusSq)
-						{
-							OutHandles.Add(E.Handle);
-						}
+						OutHandles.Add(E.Handle);
 					}
 				}
 			}
@@ -138,9 +140,8 @@ inline void FArcKnowledgeSpatialHash::QuerySphere(const FVector& Center, float R
 inline void FArcKnowledgeSpatialHash::QuerySphereWithDistance(const FVector& Center, float Radius, TArray<FEntry>& OutEntries) const
 {
 	const float RadiusSq = Radius * Radius;
-	const FVector Extent(Radius);
-	const FIntVector MinGrid = WorldToGrid(Center - Extent);
-	const FIntVector MaxGrid = WorldToGrid(Center + Extent);
+	const FIntVector MinGrid = WorldToGrid(Center - FVector(Radius));
+	const FIntVector MaxGrid = WorldToGrid(Center + FVector(Radius));
 
 	for (int32 X = MinGrid.X; X <= MaxGrid.X; ++X)
 	{
@@ -148,15 +149,18 @@ inline void FArcKnowledgeSpatialHash::QuerySphereWithDistance(const FVector& Cen
 		{
 			for (int32 Z = MinGrid.Z; Z <= MaxGrid.Z; ++Z)
 			{
-				if (const TArray<FEntry>* Bucket = Cells.Find(FIntVector(X, Y, Z)))
+				const TArray<FEntry>* Bucket = Cells.Find(FIntVector(X, Y, Z));
+				if (!Bucket)
 				{
-					for (const FEntry& E : *Bucket)
+					continue;
+				}
+
+				for (const FEntry& E : *Bucket)
+				{
+					const float DistSq = FVector::DistSquared(Center, E.Location);
+					if (DistSq <= RadiusSq)
 					{
-						const float DistSq = FVector::DistSquared(Center, E.Location);
-						if (DistSq <= RadiusSq)
-						{
-							OutEntries.Add(E);
-						}
+						OutEntries.Add(E);
 					}
 				}
 			}

@@ -1,0 +1,321 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBT.ush — Concurrent Binary Tree (CBT) heap, HLSL port of libcbt.
+
+	Faithful port of Jonathan Dupuy's public-domain `libcbt` (cbt.h,
+	https://github.com/jdupuy/libcbt). Here the heap is the OCCUPANCY MAP of the
+	bisector pool (ArcTerrainBisector.ush): one bit per pool slot, the root value is
+	the live bisector count, cbt_DecodeNode maps a dispatch ordinal to a live slot and
+	cbt_DecodeFreeLeaf maps an allocation ordinal to a free one.
+
+	STORAGE. The heap is a flat bitfield of 2^(MaxDepth-1) BYTES (= 2^(MaxDepth-3)
+	32-bit words). A node at depth d occupies (MaxDepth - d + 1) bits — the deeper
+	the node, the fewer bits — which is exactly why the whole sum-reduction tree
+	plus the leaf bitfield fit inside 2^(MaxDepth-1) bytes (2 bits are wasted to
+	round to a power of two, matching libcbt). Word size is 32 bits (not libcbt's
+	64) so the layout aligns with HLSL ByteAddressBuffer atomics; the resulting
+	byte content is identical to the 64-bit layout on little-endian targets.
+
+	ACCESS. The heap lives in a ByteAddressBuffer. Because DXC function overloading
+	across resource types is not something we want to lean on, the read API is
+	macro-stamped once for the read-only SRV path (suffix _RO) and once for the
+	writable UAV path (suffix _RW). `Base` is a byte offset into the buffer; the
+	single-tree pool passes Base = 0.
+
+	ATOMICS (GLSL -> HLSL). libcbt's split/merge flip a single leaf bit, and its
+	SetBitValue is a masked read-modify-write; on the GPU distinct nodes can share
+	a 32-bit word, so writes are atomic. Split sets a bit to 1 -> InterlockedOr;
+	merge clears a bit to 0 -> InterlockedAnd. A multi-bit HeapWrite (the reduction
+	cascade) clears its range with InterlockedAnd then sets it with InterlockedOr —
+	the two libcbt CBT_ATOMIC ops; masks of sibling nodes packed in one word are
+	disjoint, so the four And/Or ops commute to the correct value regardless of
+	interleaving. GLSL findMSB/findLSB -> HLSL firstbithigh/firstbitlow.
+=============================================================================*/
+
+#pragma once
+
+// A CBT node: heap id (>= 1 for real nodes, 0 = null) and its depth (= floor(log2(id))).
+// Heap ids only — cbt_NodeBitID multiplies the id by a bit size, so this type stays 32-bit. LEB node
+// ids are FLEBNode (ArcTerrainLEB.ush), sized for the 45 bits depth 44 needs.
+struct FCBTNode
+{
+	uint ID;
+	int  Depth;
+};
+
+FCBTNode cbt_CreateNode(uint InID, int InDepth)
+{
+	FCBTNode Node;
+	Node.ID = InID;
+	Node.Depth = InDepth;
+	return Node;
+}
+
+bool cbt_IsRootNode(FCBTNode Node)   { return Node.ID == 1u; }
+bool cbt_IsNullNode(FCBTNode Node)   { return Node.ID == 0u; }
+bool cbt_IsCeilNode(int MaxDepth, FCBTNode Node) { return Node.Depth == MaxDepth; }
+
+// --- Topology (libcbt _Fast constructors; callers guarantee validity). --------
+FCBTNode cbt_ParentNode(FCBTNode Node)        { return cbt_CreateNode(Node.ID >> 1u, Node.Depth - 1); }
+FCBTNode cbt_SiblingNode(FCBTNode Node)       { return cbt_CreateNode(Node.ID ^ 1u, Node.Depth); }
+FCBTNode cbt_LeftSiblingNode(FCBTNode Node)   { return cbt_CreateNode(Node.ID & (~1u), Node.Depth); }
+FCBTNode cbt_RightSiblingNode(FCBTNode Node)  { return cbt_CreateNode(Node.ID | 1u, Node.Depth); }
+FCBTNode cbt_LeftChildNode(FCBTNode Node)     { return cbt_CreateNode(Node.ID << 1u, Node.Depth + 1); }
+FCBTNode cbt_RightChildNode(FCBTNode Node)    { return cbt_CreateNode((Node.ID << 1u) | 1u, Node.Depth + 1); }
+
+// The deepest leaf reachable from Node (id shifted down to MaxDepth) — libcbt CeilNode.
+FCBTNode cbt_CeilNode(int MaxDepth, FCBTNode Node)
+{
+	return cbt_CreateNode(Node.ID << (uint)(MaxDepth - Node.Depth), MaxDepth);
+}
+
+// --- Pure bit-layout helpers (no buffer access; shared by both read paths). ---
+
+// Number of bits storing this node's value: MaxDepth - depth + 1 (variable-bit encoding).
+uint cbt_NodeBitSize(int MaxDepth, int Depth)
+{
+	return (uint)(MaxDepth - Depth + 1);
+}
+
+// First bit in the flat bitfield storing this node's value.
+// libcbt: 2^(d+1) + id * (1 + MaxDepth - d).
+uint cbt_NodeBitID(int MaxDepth, uint ID, int Depth)
+{
+	uint Tmp1 = 2u << Depth;
+	uint Tmp2 = (uint)(1 + MaxDepth - Depth);
+	return Tmp1 + ID * Tmp2;
+}
+
+// Bit location of a leaf's single bitfield bit: NodeBitID of its ceil node.
+uint cbt_NodeBitID_BitField(int MaxDepth, FCBTNode Node)
+{
+	FCBTNode Ceil = cbt_CeilNode(MaxDepth, Node);
+	return cbt_NodeBitID(MaxDepth, Ceil.ID, Ceil.Depth);
+}
+
+// 32-bit word count of the heap = 2^(MaxDepth-3).
+uint cbt_HeapWordCount(int MaxDepth)
+{
+	return 1u << (uint)(MaxDepth - 3);
+}
+
+// Extract BitCount bits at BitOffset (<= 32 total). BitCount is always < 32 here
+// (max node bit size is MaxDepth+1 for the root, MaxDepth constrained < 31).
+uint cbt_BitFieldExtract(uint BitField, uint BitOffset, uint BitCount)
+{
+	uint Mask = (BitCount >= 32u) ? 0xFFFFFFFFu : ~(0xFFFFFFFFu << BitCount);
+	return (BitField >> BitOffset) & Mask;
+}
+
+// Combine the two words bounding a node's bit range into its value.
+uint cbt_CombineRead(uint WordLSB, uint WordMSB, uint BitOffsetLSB, uint BitCountLSB, uint BitCountMSB)
+{
+	uint Lsb = cbt_BitFieldExtract(WordLSB, BitOffsetLSB, BitCountLSB);
+	uint Msb = cbt_BitFieldExtract(WordMSB, 0u, BitCountMSB);
+	return Lsb | (Msb << BitCountLSB);
+}
+
+/*
+ * Read API, macro-stamped for the read-only (SRV) and writable (UAV) buffer
+ * types. HEAPTYPE = ByteAddressBuffer / RWByteAddressBuffer; SFX = _RO / _RW.
+ * Base = byte offset of this cell's heap slot.
+ */
+#define ARC_CBT_DEFINE_READ_API(HEAPTYPE, SFX)                                                        \
+uint cbt_LoadWord##SFX(HEAPTYPE Heap, uint Base, uint WordIndex)                                       \
+{                                                                                                     \
+	return Heap.Load(Base + (WordIndex << 2u));                                                        \
+}                                                                                                     \
+                                                                                                      \
+int cbt_MaxDepth##SFX(HEAPTYPE Heap, uint Base)                                                        \
+{                                                                                                     \
+	/* heap word 0 stores (1 << MaxDepth) as its lowest set bit (libcbt depth marker). */             \
+	return (int)firstbitlow(cbt_LoadWord##SFX(Heap, Base, 0u));                                        \
+}                                                                                                     \
+                                                                                                      \
+uint cbt_HeapRead##SFX(HEAPTYPE Heap, uint Base, int MaxDepth, FCBTNode Node)                          \
+{                                                                                                     \
+	uint BitCount = cbt_NodeBitSize(MaxDepth, Node.Depth);                                             \
+	uint BitOffset = cbt_NodeBitID(MaxDepth, Node.ID, Node.Depth);                                     \
+	uint MaxWord = cbt_HeapWordCount(MaxDepth) - 1u;                                                   \
+	uint WordLSB = BitOffset >> 5u;                                                                    \
+	uint WordMSB = min(WordLSB + 1u, MaxWord);                                                         \
+	uint BitOffsetLSB = BitOffset & 31u;                                                               \
+	uint BitCountLSB = min(32u - BitOffsetLSB, BitCount);                                              \
+	uint BitCountMSB = BitCount - BitCountLSB;                                                         \
+	uint LoadedLSB = cbt_LoadWord##SFX(Heap, Base, WordLSB);                                           \
+	uint LoadedMSB = cbt_LoadWord##SFX(Heap, Base, WordMSB);                                           \
+	return cbt_CombineRead(LoadedLSB, LoadedMSB, BitOffsetLSB, BitCountLSB, BitCountMSB);              \
+}                                                                                                     \
+                                                                                                      \
+bool cbt_IsLeafNode##SFX(HEAPTYPE Heap, uint Base, int MaxDepth, FCBTNode Node)                        \
+{                                                                                                     \
+	return cbt_HeapRead##SFX(Heap, Base, MaxDepth, Node) == 1u;                                        \
+}                                                                                                     \
+                                                                                                      \
+/* Root value = number of active leaves (triangles). */                                               \
+uint cbt_NodeCount##SFX(HEAPTYPE Heap, uint Base, int MaxDepth)                                        \
+{                                                                                                     \
+	return cbt_HeapRead##SFX(Heap, Base, MaxDepth, cbt_CreateNode(1u, 0));                             \
+}                                                                                                     \
+                                                                                                      \
+/* Bit-scan decode: leaf/instance ordinal Handle -> its leaf node key, walking the */                 \
+/* sum-reduction tree from the root (libcbt cbt_DecodeNode). */                                        \
+FCBTNode cbt_DecodeNode##SFX(HEAPTYPE Heap, uint Base, int MaxDepth, uint Handle)                      \
+{                                                                                                     \
+	FCBTNode Node = cbt_CreateNode(1u, 0);                                                             \
+	while (cbt_HeapRead##SFX(Heap, Base, MaxDepth, Node) > 1u)                                         \
+	{                                                                                                 \
+		Node.ID = Node.ID << 1u;                                                                       \
+		Node.Depth = Node.Depth + 1;                                                                   \
+		uint Cmp = cbt_HeapRead##SFX(Heap, Base, MaxDepth, Node);                                      \
+		uint B = (Handle < Cmp) ? 0u : 1u;                                                             \
+		Node.ID = Node.ID | B;                                                                         \
+		Handle = Handle - Cmp * B;                                                                     \
+	}                                                                                                 \
+	return Node;                                                                                       \
+}                                                                                                     \
+                                                                                                      \
+/* Inverse of decode: leaf node -> its ordinal (libcbt cbt_EncodeNode). */                            \
+uint cbt_EncodeNode##SFX(HEAPTYPE Heap, uint Base, int MaxDepth, FCBTNode Node)                        \
+{                                                                                                     \
+	uint Handle = 0u;                                                                                  \
+	FCBTNode It = Node;                                                                                \
+	while (It.ID > 1u)                                                                                 \
+	{                                                                                                 \
+		FCBTNode Sibling = cbt_LeftSiblingNode(It);                                                    \
+		uint Count = cbt_HeapRead##SFX(Heap, Base, MaxDepth, Sibling);                                 \
+		Handle = Handle + (It.ID & 1u) * Count;                                                        \
+		It = cbt_ParentNode(It);                                                                       \
+	}                                                                                                 \
+	return Handle;                                                                                     \
+}
+
+ARC_CBT_DEFINE_READ_API(ByteAddressBuffer, _RO)
+ARC_CBT_DEFINE_READ_API(RWByteAddressBuffer, _RW)
+
+/*
+ * Fixed-depth decode: ordinal Handle in [0, NodeCount) -> the Handle-th SET leaf, returned as a leaf
+ * index. cbt_DecodeNode_RO must NOT be used for this: its `while (value > 1)` walk exits at the first
+ * internal node holding a single set bit and returns THAT node, which is only the answer when set bits
+ * live at CeilNode positions (implicit libcbt). Occupancy bits sit at arbitrary leaves, so an isolated
+ * live slot would decode to an internal heap id and index far outside the pool.
+ */
+uint cbt_DecodeLeaf_RO(ByteAddressBuffer Heap, uint Base, int MaxDepth, uint Handle)
+{
+	FCBTNode Node = cbt_CreateNode(1u, 0);
+	for (int Level = 0; Level < MaxDepth; ++Level)
+	{
+		FCBTNode Left = cbt_LeftChildNode(Node);
+		uint LeftOnes = cbt_HeapRead_RO(Heap, Base, MaxDepth, Left);
+		if (Handle < LeftOnes)
+		{
+			Node = Left;
+		}
+		else
+		{
+			Handle -= LeftOnes;
+			Node = cbt_RightChildNode(Node);
+		}
+	}
+	return Node.ID - (1u << (uint)MaxDepth);
+}
+
+/*
+ * Complement decode: ordinal Handle in [0, 2^MaxDepth - NodeCount) -> the Handle-th CLEAR leaf,
+ * returned as a leaf index (not a heap id). This is what makes the CBT a memory-pool manager: with
+ * the heap frozen, distinct ordinals map to distinct free slots without a free list, so allocation
+ * is one atomic counter plus this walk. A slot whose bit was cleared this frame is still SET in the
+ * frozen heap, so it cannot be handed out again until the next frame.
+ */
+uint cbt_DecodeFreeLeaf_RO(ByteAddressBuffer Heap, uint Base, int MaxDepth, uint Handle)
+{
+	FCBTNode Node = cbt_CreateNode(1u, 0);
+	for (int Level = 0; Level < MaxDepth; ++Level)
+	{
+		FCBTNode Left = cbt_LeftChildNode(Node);
+		uint LeftOnes = cbt_HeapRead_RO(Heap, Base, MaxDepth, Left);
+		uint LeftZeros = (1u << (uint)(MaxDepth - Left.Depth)) - LeftOnes;
+		if (Handle < LeftZeros)
+		{
+			Node = Left;
+		}
+		else
+		{
+			Handle -= LeftZeros;
+			Node = cbt_RightChildNode(Node);
+		}
+	}
+	return Node.ID - (1u << (uint)MaxDepth);
+}
+
+// ----------------------------------------------------------------------------
+// Write API — writable (UAV) heap only.
+// ----------------------------------------------------------------------------
+
+// Atomic masked insert of BitCount bits of BitData at BitOffset within one word:
+// clear the range (InterlockedAnd), then set it (InterlockedOr). Matches libcbt's
+// two CBT_ATOMIC ops; sibling nodes packed in the same word own disjoint masks.
+void cbt_AtomicBitFieldInsert(RWByteAddressBuffer Heap, uint WordByteAddr, uint BitOffset, uint BitCount, uint BitData)
+{
+	if (BitCount == 0u)
+	{
+		return;
+	}
+	uint RangeMask = ((BitCount >= 32u) ? 0xFFFFFFFFu : ~(0xFFFFFFFFu << BitCount)) << BitOffset;
+	uint Dummy;
+	Heap.InterlockedAnd(WordByteAddr, ~RangeMask, Dummy);
+	Heap.InterlockedOr(WordByteAddr, (BitData << BitOffset) & RangeMask, Dummy);
+}
+
+// Write Node's value (NodeBitSize bits) into the heap, spanning up to two words.
+void cbt_HeapWrite(RWByteAddressBuffer Heap, uint Base, int MaxDepth, FCBTNode Node, uint BitData)
+{
+	uint BitCount = cbt_NodeBitSize(MaxDepth, Node.Depth);
+	uint BitOffset = cbt_NodeBitID(MaxDepth, Node.ID, Node.Depth);
+	uint MaxWord = cbt_HeapWordCount(MaxDepth) - 1u;
+	uint WordLSB = BitOffset >> 5u;
+	uint WordMSB = min(WordLSB + 1u, MaxWord);
+	uint BitOffsetLSB = BitOffset & 31u;
+	uint BitCountLSB = min(32u - BitOffsetLSB, BitCount);
+	uint BitCountMSB = BitCount - BitCountLSB;
+	cbt_AtomicBitFieldInsert(Heap, Base + (WordLSB << 2u), BitOffsetLSB, BitCountLSB, BitData);
+	cbt_AtomicBitFieldInsert(Heap, Base + (WordMSB << 2u), 0u, BitCountMSB, BitData >> BitCountLSB);
+}
+
+// Set a leaf's single bitfield bit to BitValue (0/1) atomically.
+void cbt_HeapWriteBitField(RWByteAddressBuffer Heap, uint Base, int MaxDepth, FCBTNode Node, uint BitValue)
+{
+	uint BitID = cbt_NodeBitID_BitField(MaxDepth, Node);
+	uint WordByteAddr = Base + ((BitID >> 5u) << 2u);
+	uint BitMask = 1u << (BitID & 31u);
+	uint Dummy;
+	if (BitValue != 0u)
+	{
+		Heap.InterlockedOr(WordByteAddr, BitMask, Dummy);
+	}
+	else
+	{
+		Heap.InterlockedAnd(WordByteAddr, ~BitMask, Dummy);
+	}
+}
+
+/*
+ * Sum-reduction cascade. libcbt's ComputeSumReduction fills every internal node
+ * with the count of active leaves beneath it (parent = child0 + child1), from the
+ * leaf bitfield (depth MaxDepth, 1 bit each) up to the root. On the GPU this runs
+ * as MaxDepth separate compute dispatches, one per level from the deepest to the
+ * root, with a UAV barrier between them (Step 4 owns the dispatch/barrier); each
+ * thread reduces one node via cbt_SumReduceNode below.
+ *
+ * This is the SEMANTIC reference the CPU mirror reproduces exactly. libcbt also
+ * ships a SWAR leaf-packing prepass (64 bits/thread) that fuses the deepest 6
+ * levels for speed; it produces identical node values and may replace the naive
+ * deepest levels in Step 4 as a perf optimisation, but MUST match this output.
+ */
+void cbt_SumReduceNode(RWByteAddressBuffer Heap, uint Base, int MaxDepth, uint NodeID, int Depth)
+{
+	uint X0 = cbt_HeapRead_RW(Heap, Base, MaxDepth, cbt_CreateNode(NodeID << 1u, Depth + 1));
+	uint X1 = cbt_HeapRead_RW(Heap, Base, MaxDepth, cbt_CreateNode((NodeID << 1u) | 1u, Depth + 1));
+	cbt_HeapWrite(Heap, Base, MaxDepth, cbt_CreateNode(NodeID, Depth), X0 + X1);
+}

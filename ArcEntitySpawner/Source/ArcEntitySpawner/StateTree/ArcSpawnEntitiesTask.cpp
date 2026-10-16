@@ -6,11 +6,13 @@
 #include "ArcEntitySpawner/ArcEntitySpawnerTypes.h"
 #include "MassEntityConfigAsset.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassSignalSubsystem.h"
-#include "MassSpawnerSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
 #include "ArcMass/Persistence/ArcMassPersistence.h"
+#include "ArcMass/ArcMassFragments.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
+#include "ArcMass/Spawner/ArcMassSpawnerSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcSpawnEntitiesTask)
 
@@ -26,10 +28,9 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 		return EStateTreeRunStatus::Failed;
 	}
 
-	UMassSpawnerSubsystem* SpawnerSystem = World->GetSubsystem<UMassSpawnerSubsystem>();
 	UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
 	UArcEntitySpawnerSubsystem* SpawnerSubsystem = World->GetSubsystem<UArcEntitySpawnerSubsystem>();
-	if (!SpawnerSystem || !SignalSubsystem)
+	if (!SignalSubsystem)
 	{
 		InstanceData.bSuccess = false;
 		return EStateTreeRunStatus::Failed;
@@ -39,15 +40,24 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 	const UMassEntityConfigAsset* EntityConfig = InstanceData.EntityType.GetEntityConfig();
 	if (!EntityConfig)
 	{
-		UE_LOG(LogArcEntitySpawner, Error, TEXT("FArcSpawnEntitiesTask: No EntityConfig configured."));
+		UE_LOGF(LogArcEntitySpawner, Error,"FArcSpawnEntitiesTask: No EntityConfig configured.");
 		InstanceData.bSuccess = false;
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const FMassEntityTemplate& EntityTemplate = EntityConfig->GetOrCreateEntityTemplate(*World);
-	if (!EntityTemplate.IsValid())
+	UArcMassEntityConfigAsset* ArcCfg = Cast<UArcMassEntityConfigAsset>(const_cast<UMassEntityConfigAsset*>(EntityConfig));
+	if (!ArcCfg)
 	{
-		UE_LOG(LogArcEntitySpawner, Error, TEXT("FArcSpawnEntitiesTask: EntityTemplate is invalid."));
+		UE_LOGF(LogArcEntitySpawner, Error,"FArcSpawnEntitiesTask: EntityConfig '%ls' is not a UArcMassEntityConfigAsset — skipping spawn.",
+			*EntityConfig->GetName());
+		InstanceData.bSuccess = false;
+		return EStateTreeRunStatus::Failed;
+	}
+
+	UArcMassSpawnerSubsystem* ArcSpawner = World->GetSubsystem<UArcMassSpawnerSubsystem>();
+	if (!ArcSpawner)
+	{
+		UE_LOGF(LogArcEntitySpawner, Error,"FArcSpawnEntitiesTask: No UArcMassSpawnerSubsystem available.");
 		InstanceData.bSuccess = false;
 		return EStateTreeRunStatus::Failed;
 	}
@@ -64,7 +74,15 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 	}
 
 	const int32 NumLocations = Locations.Num();
-	const int32 SpawnCount = InstanceData.Count;
+	int32 SpawnCount = InstanceData.Count;
+
+	if (NumLocations > 0 && SpawnCount > NumLocations)
+	{
+		UE_LOGF(LogArcEntitySpawner, Warning,"FArcSpawnEntitiesTask: Requested %d entities but only %d spawn locations available — clamping. "
+				 "Configure the query to return enough results (e.g. TopN or AllPassing mode).",
+			SpawnCount, NumLocations);
+		SpawnCount = NumLocations;
+	}
 
 	// Read spawner's PersistenceGuid for stamping on spawned entities
 	FGuid SpawnerPersistenceGuid;
@@ -74,22 +92,37 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 		SpawnerPersistenceGuid = SpawnerPersistFrag->PersistenceGuid;
 	}
 
-	// Spawn entities — hold CreationContext alive for fragment modification
+	// Spawn entities — one per location so each gets the correct transform via FEntityBuilder.
+	// After spawn, adjust Z by capsule half-height (readable only after entity exists).
 	InstanceData.SpawnedEntities.Reset();
-	TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
-		SpawnerSystem->SpawnEntities(EntityTemplate.GetTemplateID(), SpawnCount,
-			FConstStructView(), nullptr, InstanceData.SpawnedEntities);
-
-	// Set transforms and optionally mark spawned-by while creation context is alive
-	for (int32 i = 0; i < InstanceData.SpawnedEntities.Num(); ++i)
+	for (int32 i = 0; i < SpawnCount; ++i)
 	{
-		const FMassEntityHandle& SpawnedEntity = InstanceData.SpawnedEntities[i];
+		const FVector SpawnLocationBase = (i < NumLocations) ? Locations[i] : FVector::ZeroVector;
+		const FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocationBase);
+		const FMassEntityHandle SpawnedEntity = ArcSpawner->SpawnEntity(ArcCfg, SpawnTransform);
 
-		if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntity))
+		if (!SpawnedEntity.IsValid())
 		{
-			if (NumLocations > 0)
+			continue;
+		}
+
+		InstanceData.SpawnedEntities.Add(SpawnedEntity);
+
+		// Capsule Z-adjustment — half-height is only readable after entity creation
+		if (i < NumLocations)
+		{
+			const FArcAgentCapsuleFragment* CapsuleFrag =
+				EntityManager.GetFragmentDataPtr<FArcAgentCapsuleFragment>(SpawnedEntity);
+			if (CapsuleFrag)
 			{
-				TransformFrag->GetMutableTransform().SetLocation(Locations[i % NumLocations]);
+				FTransformFragment* TransformFrag =
+					EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntity);
+				if (TransformFrag)
+				{
+					FVector AdjustedLocation = SpawnLocationBase;
+					AdjustedLocation.Z += CapsuleFrag->HalfHeight;
+					TransformFrag->GetMutableTransform().SetLocation(AdjustedLocation);
+				}
 			}
 		}
 
@@ -103,9 +136,6 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 			}
 		}
 	}
-
-	// CreationContext released here → deferred commands flush → observers fire
-	CreationContext.Reset();
 
 	// Update spawner's tracking fragment
 	if (FArcSpawnerFragment* SpawnerFrag = EntityManager.GetFragmentDataPtr<FArcSpawnerFragment>(SpawnerEntity))
@@ -139,7 +169,7 @@ EStateTreeRunStatus FArcSpawnEntitiesTask::EnterState(FStateTreeExecutionContext
 		Message.SpawnedEntities = InstanceData.SpawnedEntities;
 		Message.SpawnLocations = Locations;
 		Message.SpawnerEntity = SpawnerEntity;
-		Message.EntityConfig = EntityConfig;
+		Message.EntityConfig = const_cast<UMassEntityConfigAsset*>(EntityConfig);
 		SpawnerSubsystem->BroadcastSpawnEvent(Message, MessageChannel);
 	}
 

@@ -4,16 +4,21 @@
 
 #include "imgui.h"
 #include "Engine/Engine.h"
-#include "GameFramework/PlayerController.h"
-#include "GameFramework/PlayerState.h"
-#include "GameFramework/Pawn.h"
-#include "Items/ArcItemsStoreComponent.h"
-#include "ArcPlayerPersistenceSubsystem.h"
-#include "AbilitySystemComponent.h"
-#include "AttributeSet.h"
 #include "Engine/GameInstance.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/Pawn.h"
+#include "MassAgentComponent.h"
+#include "MassEntitySubsystem.h"
+#include "Mass/EntityManager.h"
+#include "Mass/EntityView.h"
+#include "ArcPlayerPersistenceSubsystem.h"
+#include "Fragments/ArcMassItemStoreFragment.h"
+#include "Attributes/ArcAttribute.h"
+#include "Modifiers/ArcModifierFunctions.h"
+#include "Fragments/ArcPendingAttributeOpsFragment.h"
+#include "UObject/UObjectIterator.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogArcCharacterPersistence, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogArcCharacterPersistenceDebugger, Log, All);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle
@@ -21,51 +26,30 @@ DEFINE_LOG_CATEGORY_STATIC(LogArcCharacterPersistence, Log, All);
 
 void FArcCharacterPersistenceDebugger::Initialize()
 {
+	CachedPlayerId = GetPlayerId();
 	FMemory::Memzero(CharacterNameBuf, sizeof(CharacterNameBuf));
 	SaveStatus.Reset();
 	LoadStatus.Reset();
-	SelectedCharacterIndex = -1;
-	CachedPlayerId = GetPlayerId();
-
-	// Register with subsystem for manual editor/debugger path
-	if (UArcPlayerPersistenceSubsystem* Sub = GetSubsystem())
-	{
-		UWorld* World = GEngine->GetCurrentPlayWorld();
-		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-		if (PC)
-		{
-			Sub->RegisterPlayer(CachedPlayerId, PC);
-		}
-	}
-
+	AttributeStatus.Reset();
+	SelectedSaveCharacterIndex = -1;
+	SelectedLoadCharacterIndex = -1;
+	SelectedAttrFragmentIndex = -1;
+	EditedAttributeValues.Reset();
 	RefreshSavedCharacters();
-	RefreshStores();
 }
 
 void FArcCharacterPersistenceDebugger::Uninitialize()
 {
-	if (CachedPlayerId.IsValid())
-	{
-		if (UArcPlayerPersistenceSubsystem* Sub = GetSubsystem())
-		{
-			Sub->UnregisterPlayer(CachedPlayerId);
-		}
-	}
-
-	CachedStores.Reset();
-	CachedStoreNames.Reset();
-	StoreSelection.Reset();
-	SavedCharacterStores.Reset();
+	CachedPlayerId.Invalidate();
+	FMemory::Memzero(CharacterNameBuf, sizeof(CharacterNameBuf));
 	SavedCharacterNames.Reset();
+	SelectedSaveCharacterIndex = -1;
+	SelectedLoadCharacterIndex = -1;
 	SaveStatus.Reset();
 	LoadStatus.Reset();
-	CachedPlayerId.Invalidate();
-	SelectedCharacterIndex = -1;
-	SelectedSaveCharacterIndex = -1;
-	SelectedAttributeSetIndex = -1;
+	SelectedAttrFragmentIndex = -1;
 	EditedAttributeValues.Reset();
 	AttributeStatus.Reset();
-	SaveMode = ECharacterSaveMode::SelectExisting;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +95,7 @@ void FArcCharacterPersistenceDebugger::DrawSaveTab()
 {
 	const float LeftPanelWidth = 180.0f;
 
-	// ── Left panel: Character list ──
+	// ── Left panel: saved character list + new name input ──────────────────
 	if (ImGui::BeginChild("SaveCharList", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
 	{
 		ImGui::Text("Characters");
@@ -129,173 +113,100 @@ void FArcCharacterPersistenceDebugger::DrawSaveTab()
 				if (ImGui::Selectable(TCHAR_TO_ANSI(*SavedCharacterNames[i]), bIsSelected))
 				{
 					SelectedSaveCharacterIndex = i;
-					SaveMode = ECharacterSaveMode::SelectExisting;
 				}
 			}
 		}
 
 		ImGui::Separator();
+		ImGui::Text("New:");
+		ImGui::InputText("##NewCharName", CharacterNameBuf, IM_ARRAYSIZE(CharacterNameBuf));
 
 		if (ImGui::Button("Refresh"))
 		{
 			RefreshSavedCharacters();
-			RefreshStores();
 		}
 	}
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
-	// ── Right panel: Details & actions ──
+	// ── Right panel: summary + actions ─────────────────────────────────────
 	if (ImGui::BeginChild("SaveDetails", ImVec2(0, 0)))
 	{
-		if (SaveMode == ECharacterSaveMode::NewCharacter)
+		// Summary: item store count from entity fragment
+		ImGui::Text("Will save:");
+
+		FMassEntityHandle Entity;
+		FMassEntityManager* Manager = nullptr;
+		const bool bEntityReady = GetPlayerEntity(Entity, Manager);
+
+		if (bEntityReady && Manager != nullptr)
 		{
-			DrawSaveTab_NewCharacter();
+			const FArcMassItemStoreFragment* Store = Manager->GetSparseElementDataForEntity(
+				FArcMassItemStoreFragment::StaticStruct(), Entity).GetPtr<FArcMassItemStoreFragment>();
+			if (Store != nullptr)
+			{
+				ImGui::BulletText("Item store: %d items", Store->ReplicatedItems.Items.Num());
+			}
+			else
+			{
+				ImGui::BulletText("Item store: (no FArcMassItemStoreFragment)");
+			}
 		}
 		else
 		{
-			DrawSaveTab_SelectExisting();
+			ImGui::TextDisabled("(entity not ready)");
+		}
+
+		ImGui::Separator();
+
+		// Determine save name: prefer New buffer, else selected existing
+		const bool bHasNewName = FCStringAnsi::Strlen(CharacterNameBuf) > 0;
+		const bool bHasSelection = SavedCharacterNames.IsValidIndex(SelectedSaveCharacterIndex);
+		const bool bCanSave = bHasNewName || bHasSelection;
+
+		if (!bCanSave)
+		{
+			ImGui::BeginDisabled();
+		}
+
+		if (ImGui::Button("Save"))
+		{
+			FString SaveName = bHasNewName
+				? FString(ANSI_TO_TCHAR(CharacterNameBuf))
+				: SavedCharacterNames[SelectedSaveCharacterIndex];
+			SaveCharacter(SaveName);
+		}
+
+		if (!bCanSave)
+		{
+			ImGui::EndDisabled();
+		}
+
+		ImGui::SameLine();
+
+		if (!bHasSelection)
+		{
+			ImGui::BeginDisabled();
+		}
+
+		if (ImGui::Button("Delete"))
+		{
+			DeleteCharacter(SavedCharacterNames[SelectedSaveCharacterIndex]);
+			SelectedSaveCharacterIndex = -1;
+		}
+
+		if (!bHasSelection)
+		{
+			ImGui::EndDisabled();
+		}
+
+		if (!SaveStatus.IsEmpty())
+		{
+			ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*SaveStatus));
 		}
 	}
 	ImGui::EndChild();
-}
-
-void FArcCharacterPersistenceDebugger::DrawSaveTab_SelectExisting()
-{
-	const bool bHasSelection = SavedCharacterNames.IsValidIndex(SelectedSaveCharacterIndex);
-	const FString SelectedName = bHasSelection ? SavedCharacterNames[SelectedSaveCharacterIndex] : FString();
-
-	// Show saved stores for selected character
-	if (bHasSelection)
-	{
-		ImGui::Text("Saved stores:");
-		if (const TArray<FString>* Stores = SavedCharacterStores.Find(SelectedName))
-		{
-			for (const FString& StoreName : *Stores)
-			{
-				ImGui::BulletText("%s", TCHAR_TO_ANSI(*StoreName));
-			}
-		}
-		ImGui::Separator();
-	}
-
-	DrawStoreCheckboxes("store");
-
-	ImGui::Separator();
-
-	// Action buttons
-	if (!bHasSelection)
-	{
-		ImGui::BeginDisabled();
-	}
-
-	if (ImGui::Button("Save"))
-	{
-		SaveCharacter(SelectedName);
-	}
-
-	ImGui::SameLine();
-
-	if (ImGui::Button("Delete"))
-	{
-		DeleteCharacter(SelectedName);
-		SaveStatus = LoadStatus; // DeleteCharacter writes to LoadStatus
-		RefreshSavedCharacters();
-		SelectedSaveCharacterIndex = -1;
-	}
-
-	if (!bHasSelection)
-	{
-		ImGui::EndDisabled();
-	}
-
-	ImGui::SameLine();
-
-	if (ImGui::Button("+ New Character"))
-	{
-		SaveMode = ECharacterSaveMode::NewCharacter;
-		FMemory::Memzero(CharacterNameBuf, sizeof(CharacterNameBuf));
-	}
-
-	if (!SaveStatus.IsEmpty())
-	{
-		ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*SaveStatus));
-	}
-}
-
-void FArcCharacterPersistenceDebugger::DrawSaveTab_NewCharacter()
-{
-	ImGui::Text("New Character");
-	ImGui::Separator();
-
-	ImGui::Text("Name:");
-	ImGui::SameLine();
-	ImGui::InputText("##NewCharName", CharacterNameBuf, IM_ARRAYSIZE(CharacterNameBuf));
-
-	ImGui::Separator();
-
-	DrawStoreCheckboxes("newstore");
-
-	ImGui::Separator();
-
-	const bool bHasName = FCStringAnsi::Strlen(CharacterNameBuf) > 0;
-
-	if (!bHasName)
-	{
-		ImGui::BeginDisabled();
-	}
-
-	if (ImGui::Button("Save"))
-	{
-		FString Name = ANSI_TO_TCHAR(CharacterNameBuf);
-		SaveCharacter(Name);
-		SaveMode = ECharacterSaveMode::SelectExisting;
-
-		// Select the newly saved character
-		SelectedSaveCharacterIndex = SavedCharacterNames.IndexOfByKey(Name);
-	}
-
-	if (!bHasName)
-	{
-		ImGui::EndDisabled();
-	}
-
-	ImGui::SameLine();
-
-	if (ImGui::Button("Cancel"))
-	{
-		SaveMode = ECharacterSaveMode::SelectExisting;
-	}
-
-	if (!SaveStatus.IsEmpty())
-	{
-		ImGui::TextWrapped("%s", TCHAR_TO_ANSI(*SaveStatus));
-	}
-}
-
-void FArcCharacterPersistenceDebugger::DrawStoreCheckboxes(const char* IdPrefix)
-{
-	ImGui::Text("Stores to save:");
-	for (int32 i = 0; i < CachedStores.Num(); ++i)
-	{
-		if (!CachedStores[i].IsValid())
-		{
-			continue;
-		}
-
-		bool bSelected = StoreSelection.IsValidIndex(i) ? StoreSelection[i] : false;
-
-		UArcItemsStoreComponent* Store = CachedStores[i].Get();
-		int32 ItemCount = Store->GetItems().Num();
-
-		FString LabelStr = FString::Printf(TEXT("%s (%d items)##%s_%d"), *CachedStoreNames[i], ItemCount, ANSI_TO_TCHAR(IdPrefix), i);
-
-		if (ImGui::Checkbox(TCHAR_TO_ANSI(*LabelStr), &bSelected))
-		{
-			StoreSelection[i] = bSelected;
-		}
-	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,17 +231,17 @@ void FArcCharacterPersistenceDebugger::DrawLoadTab()
 	{
 		for (int32 i = 0; i < SavedCharacterNames.Num(); ++i)
 		{
-			const bool bIsSelected = (SelectedCharacterIndex == i);
+			const bool bIsSelected = (SelectedLoadCharacterIndex == i);
 			if (ImGui::Selectable(TCHAR_TO_ANSI(*SavedCharacterNames[i]), bIsSelected))
 			{
-				SelectedCharacterIndex = i;
+				SelectedLoadCharacterIndex = i;
 			}
 		}
 	}
 
 	ImGui::Separator();
 
-	const bool bHasSelection = SavedCharacterNames.IsValidIndex(SelectedCharacterIndex);
+	const bool bHasSelection = SavedCharacterNames.IsValidIndex(SelectedLoadCharacterIndex);
 
 	if (!bHasSelection)
 	{
@@ -339,16 +250,15 @@ void FArcCharacterPersistenceDebugger::DrawLoadTab()
 
 	if (ImGui::Button("Load Character"))
 	{
-		LoadCharacter(SavedCharacterNames[SelectedCharacterIndex]);
+		LoadCharacter(SavedCharacterNames[SelectedLoadCharacterIndex]);
 	}
 
 	ImGui::SameLine();
 
 	if (ImGui::Button("Delete Character"))
 	{
-		DeleteCharacter(SavedCharacterNames[SelectedCharacterIndex]);
-		RefreshSavedCharacters();
-		SelectedCharacterIndex = -1;
+		DeleteCharacter(SavedCharacterNames[SelectedLoadCharacterIndex]);
+		SelectedLoadCharacterIndex = -1;
 	}
 
 	if (!bHasSelection)
@@ -368,36 +278,63 @@ void FArcCharacterPersistenceDebugger::DrawLoadTab()
 
 void FArcCharacterPersistenceDebugger::DrawAttributesTab()
 {
-	UAbilitySystemComponent* ASC = GetASC();
-	if (!ASC)
+	FMassEntityHandle Entity;
+	FMassEntityManager* Manager = nullptr;
+
+	if (!GetPlayerEntity(Entity, Manager) || Manager == nullptr)
 	{
-		ImGui::TextDisabled("No AbilitySystemComponent found.");
+		ImGui::TextDisabled("No player Mass entity.");
 		return;
 	}
 
-	const TArray<UAttributeSet*>& Sets = ASC->GetSpawnedAttributes();
+	// Build candidate attribute fragment types once (set is fixed at startup).
+	// Declare NON-const as required by the plan (TObjectPtr assignment needs non-const).
+	static TArray<UScriptStruct*> AttributeFragmentTypes;
+	if (AttributeFragmentTypes.Num() == 0)
+	{
+		const UScriptStruct* AttributesBaseStruct = FArcMassAttributesBase::StaticStruct();
+		for (TObjectIterator<UScriptStruct> It; It; ++It)
+		{
+			UScriptStruct* Struct = *It;
+			if (Struct->IsChildOf(AttributesBaseStruct) && Struct != AttributesBaseStruct)
+			{
+				AttributeFragmentTypes.Add(Struct);
+			}
+		}
+	}
+
+	// Build list of fragment types actually present on this entity
+	TArray<UScriptStruct*> PresentTypes;
+	for (UScriptStruct* Struct : AttributeFragmentTypes)
+	{
+		const FConstStructView View = Manager->GetSparseElementDataForEntity(Struct, Entity);
+		if (View.IsValid())
+		{
+			PresentTypes.Add(Struct);
+		}
+	}
+
 	const float LeftPanelWidth = 180.0f;
 
-	// Left panel: AttributeSet list
-	if (ImGui::BeginChild("AttrSetList", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+	// ── Left panel: fragment type list ─────────────────────────────────────
+	if (ImGui::BeginChild("AttrFragList", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
 	{
-		ImGui::Text("Attribute Sets");
+		ImGui::Text("Attribute Fragments");
 		ImGui::Separator();
 
-		if (Sets.IsEmpty())
+		if (PresentTypes.IsEmpty())
 		{
-			ImGui::TextDisabled("(none)");
+			ImGui::TextDisabled("(none on entity)");
 		}
 		else
 		{
-			for (int32 i = 0; i < Sets.Num(); ++i)
+			for (int32 i = 0; i < PresentTypes.Num(); ++i)
 			{
-				if (!Sets[i]) continue;
-				FString SetName = Sets[i]->GetClass()->GetName();
-				const bool bIsSelected = (SelectedAttributeSetIndex == i);
-				if (ImGui::Selectable(TCHAR_TO_ANSI(*SetName), bIsSelected))
+				const bool bIsSelected = (SelectedAttrFragmentIndex == i);
+				FString TypeName = PresentTypes[i]->GetName();
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*TypeName), bIsSelected))
 				{
-					SelectedAttributeSetIndex = i;
+					SelectedAttrFragmentIndex = i;
 				}
 			}
 		}
@@ -406,117 +343,131 @@ void FArcCharacterPersistenceDebugger::DrawAttributesTab()
 
 	ImGui::SameLine();
 
-	// Right panel: Attribute values
+	// ── Right panel: attribute values + edit ───────────────────────────────
 	if (ImGui::BeginChild("AttrDetails", ImVec2(0, 0)))
 	{
-		if (Sets.IsValidIndex(SelectedAttributeSetIndex) && Sets[SelectedAttributeSetIndex])
+		if (!PresentTypes.IsValidIndex(SelectedAttrFragmentIndex))
 		{
-			UAttributeSet* Set = Sets[SelectedAttributeSetIndex];
-			FString SetClassName = Set->GetClass()->GetName();
+			ImGui::TextDisabled("Select a fragment type.");
+		}
+		else
+		{
+			UScriptStruct* ElementType = PresentTypes[SelectedAttrFragmentIndex];
+			FConstStructView View = Manager->GetSparseElementDataForEntity(ElementType, Entity);
 
-			ImGui::Text("%s", TCHAR_TO_ANSI(*SetClassName));
-			ImGui::Separator();
-
-			ImGui::TextDisabled("Attribute");
-			ImGui::SameLine(200.0f);
-			ImGui::TextDisabled("Current");
-			ImGui::SameLine(280.0f);
-			ImGui::TextDisabled("Base (edit)");
-			ImGui::Separator();
-
-			for (TFieldIterator<FStructProperty> It(Set->GetClass()); It; ++It)
+			if (!View.IsValid())
 			{
-				FStructProperty* StructProp = *It;
-				if (!StructProp || !StructProp->Struct ||
-					!StructProp->Struct->IsChildOf(FGameplayAttributeData::StaticStruct()))
-				{
-					continue;
-				}
-
-				const FGameplayAttributeData* AttrData =
-					StructProp->ContainerPtrToValuePtr<FGameplayAttributeData>(Set);
-				if (!AttrData) continue;
-
-				FString AttrName = StructProp->GetName();
-				FString EditKey = FString::Printf(TEXT("%s.%s"), *SetClassName, *AttrName);
-				bool bSaveGame = StructProp->HasAnyPropertyFlags(CPF_SaveGame);
-
-				float CurrentValue = AttrData->GetCurrentValue();
-				float BaseValue = AttrData->GetBaseValue();
-
-				// Initialize edit value if not yet tracked
-				if (!EditedAttributeValues.Contains(EditKey))
-				{
-					EditedAttributeValues.Add(EditKey, BaseValue);
-				}
-
-				float& EditValue = EditedAttributeValues[EditKey];
-
-				FString Label = bSaveGame
-					? FString::Printf(TEXT("[S] %s"), *AttrName)
-					: AttrName;
-
-				ImGui::Text("%s", TCHAR_TO_ANSI(*Label));
-
-				ImGui::SameLine(200.0f);
-				ImGui::TextDisabled("%.2f", CurrentValue);
-
-				ImGui::SameLine(280.0f);
-				ImGui::PushItemWidth(100.0f);
-				FString InputLabel = FString::Printf(TEXT("##%s"), *EditKey);
-				ImGui::InputFloat(TCHAR_TO_ANSI(*InputLabel), &EditValue, 0.0f, 0.0f, "%.2f");
-				ImGui::PopItemWidth();
+				ImGui::TextDisabled("Fragment no longer valid.");
 			}
-
-			ImGui::Separator();
-
-			if (ImGui::Button("Apply Changes"))
+			else
 			{
-				int32 Applied = 0;
-				for (TFieldIterator<FStructProperty> It(Set->GetClass()); It; ++It)
+				FString FragName = ElementType->GetName();
+				ImGui::Text("%s", TCHAR_TO_ANSI(*FragName));
+				ImGui::Separator();
+
+				const UScriptStruct* ArcAttributeStruct = FArcAttribute::StaticStruct();
+
+				for (TFieldIterator<FStructProperty> PropIt(ElementType); PropIt; ++PropIt)
 				{
-					FStructProperty* StructProp = *It;
-					if (!StructProp || !StructProp->Struct ||
-						!StructProp->Struct->IsChildOf(FGameplayAttributeData::StaticStruct()))
+					FStructProperty* StructProp = *PropIt;
+					if (!StructProp->Struct || !StructProp->Struct->IsChildOf(ArcAttributeStruct))
 					{
 						continue;
 					}
 
-					FString AttrName = StructProp->GetName();
-					FString EditKey = FString::Printf(TEXT("%s.%s"), *SetClassName, *AttrName);
-
-					if (float* EditValue = EditedAttributeValues.Find(EditKey))
+					const FArcAttribute* Attr = StructProp->ContainerPtrToValuePtr<FArcAttribute>(View.GetMemory());
+					if (!Attr)
 					{
-						FGameplayAttribute Attribute(StructProp);
-						ASC->SetNumericAttributeBase(Attribute, *EditValue);
-						++Applied;
+						continue;
+					}
+
+					FString PropName = StructProp->GetName();
+					FString Key = FragName + TEXT(".") + PropName;
+
+					// Seed the edited value only if not yet tracked
+					if (!EditedAttributeValues.Contains(Key))
+					{
+						EditedAttributeValues.Add(Key, Attr->GetBaseValue());
+					}
+
+					ImGui::Text("  %s", TCHAR_TO_ANSI(*PropName));
+					ImGui::SameLine(160.0f);
+					ImGui::TextDisabled("B:%.2f C:%.2f", Attr->GetBaseValue(), Attr->GetCurrentValue());
+
+					ImGui::SameLine(300.0f);
+					ImGui::PushItemWidth(90.0f);
+					FString InputLabel = FString::Printf(TEXT("##attr_%s"), *Key);
+					float EditedValue = EditedAttributeValues[Key];
+					if (ImGui::InputFloat(TCHAR_TO_ANSI(*InputLabel), &EditedValue, 0.0f, 0.0f, "%.2f"))
+					{
+						EditedAttributeValues[Key] = EditedValue;
+					}
+					ImGui::PopItemWidth();
+				}
+
+				ImGui::Separator();
+
+				if (ImGui::Button("Apply Changes"))
+				{
+					// Probe for FArcPendingAttributeOpsFragment before applying
+					FMassEntityView EntityView(*Manager, Entity);
+					const FArcPendingAttributeOpsFragment* PendingFrag =
+						EntityView.GetSparseFragmentDataPtr<FArcPendingAttributeOpsFragment>();
+
+					if (PendingFrag == nullptr)
+					{
+						AttributeStatus = TEXT("Entity has no FArcPendingAttributeOpsFragment — cannot apply");
+					}
+					else
+					{
+						const UScriptStruct* ArcAttributeStructInner = FArcAttribute::StaticStruct();
+						for (TFieldIterator<FStructProperty> PropIt(ElementType); PropIt; ++PropIt)
+						{
+							FStructProperty* StructProp = *PropIt;
+							if (!StructProp->Struct || !StructProp->Struct->IsChildOf(ArcAttributeStructInner))
+							{
+								continue;
+							}
+
+							FString PropName = StructProp->GetName();
+							FString Key = FragName + TEXT(".") + PropName;
+
+							const float* EditedValuePtr = EditedAttributeValues.Find(Key);
+							if (!EditedValuePtr)
+							{
+								continue;
+							}
+
+							FArcAttributeRef Ref;
+							Ref.FragmentType = ElementType;
+							Ref.PropertyName = StructProp->GetFName();
+
+							ArcAttributes::SetValue(*Manager, Entity, Ref, *EditedValuePtr);
+						}
+						AttributeStatus = TEXT("Applied");
 					}
 				}
-				AttributeStatus = FString::Printf(TEXT("Applied %d attributes."), Applied);
-			}
 
-			ImGui::SameLine();
+				ImGui::SameLine();
 
-			if (ImGui::Button("Reset to Live"))
-			{
-				TArray<FString> KeysToRemove;
-				for (auto& Pair : EditedAttributeValues)
+				if (ImGui::Button("Reset to Live"))
 				{
-					if (Pair.Key.StartsWith(SetClassName + TEXT(".")))
+					// Two-pass removal: collect keys first, then remove
+					TArray<FString> KeysToRemove;
+					for (const TPair<FString, float>& Pair : EditedAttributeValues)
 					{
-						KeysToRemove.Add(Pair.Key);
+						FString Prefix = FragName + TEXT(".");
+						if (Pair.Key.StartsWith(Prefix))
+						{
+							KeysToRemove.Add(Pair.Key);
+						}
+					}
+					for (const FString& Key : KeysToRemove)
+					{
+						EditedAttributeValues.Remove(Key);
 					}
 				}
-				for (const FString& Key : KeysToRemove)
-				{
-					EditedAttributeValues.Remove(Key);
-				}
-				AttributeStatus = TEXT("Reset to live values.");
 			}
-		}
-		else
-		{
-			ImGui::TextDisabled("Select an attribute set.");
 		}
 
 		if (!AttributeStatus.IsEmpty())
@@ -540,40 +491,22 @@ void FArcCharacterPersistenceDebugger::SaveCharacter(const FString& Name)
 		return;
 	}
 
-	RefreshStores();
-
-	int32 StoresSaved = 0;
-
-	for (int32 i = 0; i < CachedStores.Num(); ++i)
+	UMassAgentComponent* AgentComp = GetPlayerAgentComponent();
+	if (!AgentComp)
 	{
-		if (!StoreSelection.IsValidIndex(i) || !StoreSelection[i])
-		{
-			continue;
-		}
-
-		UArcItemsStoreComponent* Store = CachedStores[i].IsValid() ? CachedStores[i].Get() : nullptr;
-		if (!Store)
-		{
-			continue;
-		}
-
-		FString Domain = MakeDomain(Name, CachedStoreNames[i]);
-		Sub->SaveObject(CachedPlayerId, Domain, Store);
-		++StoresSaved;
+		SaveStatus = TEXT("Cannot save: no Mass agent / entity not ready");
+		return;
 	}
 
-	// Save attribute sets
-	TArray<UAttributeSet*> Sets = GetAttributeSets();
-	for (UAttributeSet* Set : Sets)
+	FMassEntityHandle Entity = AgentComp->GetEntityHandle();
+	if (!Entity.IsValid())
 	{
-		if (!Set) continue;
-		FString Domain = MakeAttributeDomain(Name, Set->GetClass()->GetName());
-		Sub->SaveObject(CachedPlayerId, Domain, Set);
+		SaveStatus = TEXT("Cannot save: no Mass agent / entity not ready");
+		return;
 	}
 
-	SaveStatus = FString::Printf(TEXT("Saved %d stores, %d attribute sets for '%s'."), StoresSaved, Sets.Num(), *Name);
-
-	// Refresh the character list so it shows up in Load tab
+	Sub->SaveObject(CachedPlayerId, MakeDomain(Name), AgentComp);
+	SaveStatus = FString::Printf(TEXT("Saved '%s'"), *Name);
 	RefreshSavedCharacters();
 }
 
@@ -586,37 +519,24 @@ void FArcCharacterPersistenceDebugger::LoadCharacter(const FString& Name)
 		return;
 	}
 
-	RefreshStores();
-
-	// Load attempts all stores (ignoring save-tab selection) — we want to
-	// restore everything that was saved for this character.
-	int32 StoresAttempted = 0;
-
-	for (int32 i = 0; i < CachedStores.Num(); ++i)
+	// Guard entity validity BEFORE calling (LoadObject silently skips on invalid entity)
+	UMassAgentComponent* AgentComp = GetPlayerAgentComponent();
+	if (!AgentComp)
 	{
-		if (!CachedStores[i].IsValid())
-		{
-			continue;
-		}
-
-		FString Domain = MakeDomain(Name, CachedStoreNames[i]);
-		Sub->LoadObject(CachedPlayerId, Domain, CachedStores[i].Get());
-		++StoresAttempted;
+		LoadStatus = TEXT("Cannot load: entity not ready");
+		return;
 	}
 
-	// Load attribute sets
-	TArray<UAttributeSet*> Sets = GetAttributeSets();
-	for (UAttributeSet* Set : Sets)
+	FMassEntityHandle Entity = AgentComp->GetEntityHandle();
+	if (!Entity.IsValid())
 	{
-		if (!Set) continue;
-		FString Domain = MakeAttributeDomain(Name, Set->GetClass()->GetName());
-		Sub->LoadObject(CachedPlayerId, Domain, Set);
+		LoadStatus = TEXT("Cannot load: entity not ready");
+		return;
 	}
 
-	// Clear stale edited attribute values so the Attributes tab picks up fresh live values
+	Sub->LoadObject(CachedPlayerId, MakeDomain(Name), AgentComp);
 	EditedAttributeValues.Reset();
-
-	LoadStatus = FString::Printf(TEXT("Load applied to %d stores, %d attribute sets for '%s'."), StoresAttempted, Sets.Num(), *Name);
+	LoadStatus = FString::Printf(TEXT("Loaded '%s'"), *Name);
 }
 
 void FArcCharacterPersistenceDebugger::DeleteCharacter(const FString& Name)
@@ -628,95 +548,14 @@ void FArcCharacterPersistenceDebugger::DeleteCharacter(const FString& Name)
 		return;
 	}
 
-	FString CharPrefix = FString::Printf(TEXT("characters/%s/"), *Name);
-	TArray<FString> AllDomains = Sub->ListPlayerDomains(CachedPlayerId);
-
-	int32 DeletedCount = 0;
-	for (const FString& Domain : AllDomains)
-	{
-		if (Domain.StartsWith(CharPrefix))
-		{
-			Sub->DeletePlayerDomain(CachedPlayerId, Domain);
-			++DeletedCount;
-		}
-	}
-
-	LoadStatus = FString::Printf(TEXT("Deleted character '%s' (%d entries)."), *Name, DeletedCount);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-TArray<UArcItemsStoreComponent*> FArcCharacterPersistenceDebugger::GetPlayerStores() const
-{
-	TArray<UArcItemsStoreComponent*> Result;
-
-	UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
-	if (!World)
-	{
-		return Result;
-	}
-
-	APlayerController* PC = World->GetFirstPlayerController();
-	if (!PC)
-	{
-		return Result;
-	}
-
-	APawn* Pawn = PC->GetPawn();
-
-	TArray<AActor*> ActorsToSearch;
-	if (Pawn)
-	{
-		ActorsToSearch.Add(Pawn);
-	}
-	ActorsToSearch.Add(PC);
-	if (PC->GetPlayerState<APlayerState>())
-	{
-		ActorsToSearch.Add(PC->GetPlayerState<APlayerState>());
-	}
-
-	for (AActor* Actor : ActorsToSearch)
-	{
-		if (!Actor)
-		{
-			continue;
-		}
-		TArray<UArcItemsStoreComponent*> Components;
-		Actor->GetComponents<UArcItemsStoreComponent>(Components);
-		for (UArcItemsStoreComponent* Comp : Components)
-		{
-			Result.AddUnique(Comp);
-		}
-	}
-
-	return Result;
-}
-
-UArcPlayerPersistenceSubsystem* FArcCharacterPersistenceDebugger::GetSubsystem() const
-{
-	UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
-	if (!World)
-	{
-		return nullptr;
-	}
-
-	UGameInstance* GI = World->GetGameInstance();
-	if (!GI)
-	{
-		return nullptr;
-	}
-
-	return GI->GetSubsystem<UArcPlayerPersistenceSubsystem>();
+	Sub->DeletePlayerDomain(CachedPlayerId, MakeDomain(Name));
+	LoadStatus = FString::Printf(TEXT("Deleted '%s'"), *Name);
+	RefreshSavedCharacters();
 }
 
 void FArcCharacterPersistenceDebugger::RefreshSavedCharacters()
 {
-	SavedCharacterStores.Reset();
 	SavedCharacterNames.Reset();
-	SelectedCharacterIndex = -1;
-	SelectedSaveCharacterIndex = -1;
 
 	UArcPlayerPersistenceSubsystem* Sub = GetSubsystem();
 	if (!Sub)
@@ -724,11 +563,11 @@ void FArcCharacterPersistenceDebugger::RefreshSavedCharacters()
 		return;
 	}
 
-	TArray<FString> AllDomains = Sub->ListPlayerDomains(CachedPlayerId);
+	TArray<FString> Domains = Sub->ListPlayerDomains(CachedPlayerId);
 
 	static const FString CharactersPrefix = TEXT("characters/");
 
-	for (const FString& Domain : AllDomains)
+	for (const FString& Domain : Domains)
 	{
 		if (!Domain.StartsWith(CharactersPrefix))
 		{
@@ -744,44 +583,88 @@ void FArcCharacterPersistenceDebugger::RefreshSavedCharacters()
 
 		FString CharName = AfterCharacters.Left(SlashIdx);
 
-		// Extract store name: last segment after final '/'
-		int32 LastSlash = INDEX_NONE;
-		if (Domain.FindLastChar(TEXT('/'), LastSlash) && LastSlash < Domain.Len() - 1)
+		// Dedupe
+		if (!SavedCharacterNames.Contains(CharName))
 		{
-			FString StoreName = Domain.Mid(LastSlash + 1);
-			SavedCharacterStores.FindOrAdd(CharName).AddUnique(StoreName);
+			SavedCharacterNames.Add(CharName);
 		}
 	}
 
-	SavedCharacterStores.KeySort([](const FString& A, const FString& B) { return A < B; });
-	SavedCharacterStores.GenerateKeyArray(SavedCharacterNames);
+	SavedCharacterNames.Sort();
 }
 
-void FArcCharacterPersistenceDebugger::RefreshStores()
+// ─────────────────────────────────────────────────────────────────────────────
+// Resolution helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+UWorld* FArcCharacterPersistenceDebugger::GetDebugWorld() const
 {
-	TArray<UArcItemsStoreComponent*> Stores = GetPlayerStores();
-
-	CachedStores.Reset();
-	CachedStoreNames.Reset();
-	StoreSelection.Reset();
-
-	for (UArcItemsStoreComponent* Store : Stores)
-	{
-		CachedStores.Add(Store);
-		CachedStoreNames.Add(GetStoreKeyName(Store));
-		StoreSelection.Add(true); // All selected by default
-	}
+	return GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
 }
 
-FString FArcCharacterPersistenceDebugger::GetStoreKeyName(const UArcItemsStoreComponent* Store) const
+UMassAgentComponent* FArcCharacterPersistenceDebugger::GetPlayerAgentComponent() const
 {
-	if (!Store)
+	UWorld* World = GetDebugWorld();
+	if (!World)
 	{
-		return TEXT("Unknown");
+		return nullptr;
 	}
 
-	// Use the component's class name as the key
-	return Store->GetClass()->GetName();
+	APawn* Pawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!Pawn)
+	{
+		return nullptr;
+	}
+
+	return Pawn->FindComponentByClass<UMassAgentComponent>();
+}
+
+bool FArcCharacterPersistenceDebugger::GetPlayerEntity(FMassEntityHandle& OutEntity, FMassEntityManager*& OutManager) const
+{
+	UMassAgentComponent* AgentComp = GetPlayerAgentComponent();
+	if (!AgentComp)
+	{
+		return false;
+	}
+
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	UMassEntitySubsystem* EntitySubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!EntitySubsystem)
+	{
+		return false;
+	}
+
+	FMassEntityHandle Entity = AgentComp->GetEntityHandle();
+	if (!Entity.IsValid())
+	{
+		return false;
+	}
+
+	OutEntity = Entity;
+	OutManager = &EntitySubsystem->GetMutableEntityManager();
+	return true;
+}
+
+UArcPlayerPersistenceSubsystem* FArcCharacterPersistenceDebugger::GetSubsystem() const
+{
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	UGameInstance* GI = World->GetGameInstance();
+	if (!GI)
+	{
+		return nullptr;
+	}
+
+	return GI->GetSubsystem<UArcPlayerPersistenceSubsystem>();
 }
 
 FGuid FArcCharacterPersistenceDebugger::GetPlayerId() const
@@ -796,48 +679,7 @@ FGuid FArcCharacterPersistenceDebugger::GetPlayerId() const
 	);
 }
 
-FString FArcCharacterPersistenceDebugger::MakeDomain(
-	const FString& CharacterName, const FString& StoreClassName) const
+FString FArcCharacterPersistenceDebugger::MakeDomain(const FString& CharacterName) const
 {
-	return FString::Printf(TEXT("characters/%s/PlayerState/%s"), *CharacterName, *StoreClassName);
-}
-
-UAbilitySystemComponent* FArcCharacterPersistenceDebugger::GetASC() const
-{
-	UWorld* World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
-	if (!World) return nullptr;
-
-	APlayerController* PC = World->GetFirstPlayerController();
-	if (!PC) return nullptr;
-
-	if (APawn* Pawn = PC->GetPawn())
-	{
-		if (UAbilitySystemComponent* ASC = Pawn->FindComponentByClass<UAbilitySystemComponent>())
-		{
-			return ASC;
-		}
-	}
-	if (APlayerState* PS = PC->GetPlayerState<APlayerState>())
-	{
-		if (UAbilitySystemComponent* ASC = PS->FindComponentByClass<UAbilitySystemComponent>())
-		{
-			return ASC;
-		}
-	}
-	return nullptr;
-}
-
-TArray<UAttributeSet*> FArcCharacterPersistenceDebugger::GetAttributeSets() const
-{
-	if (UAbilitySystemComponent* ASC = GetASC())
-	{
-		return TArray<UAttributeSet*>(ASC->GetSpawnedAttributes());
-	}
-	return {};
-}
-
-FString FArcCharacterPersistenceDebugger::MakeAttributeDomain(
-	const FString& CharacterName, const FString& SetClassName) const
-{
-	return FString::Printf(TEXT("characters/%s/Attributes/%s"), *CharacterName, *SetClassName);
+	return FString::Printf(TEXT("characters/%s/MassFragments"), *CharacterName);
 }

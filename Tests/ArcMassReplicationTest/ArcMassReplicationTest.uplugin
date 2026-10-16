@@ -1,0 +1,27 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "ArcMassReplication Tests",
+    "Description": "CQTest module covering ArcMassReplication (Iris).",
+    "Category": "ArcX",
+    "CreatedBy": "Lukasz Baran",
+    "CanContainContent": true,
+    "IsBetaVersion": false,
+    "IsExperimentalVersion": true,
+    "Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+    "Modules": [
+        {
+            "Name": "ArcMassReplicationTest",
+            "Type": "Runtime",
+            "LoadingPhase": "Default",
+            "TargetAllowList": [ "Editor" ]
+        }
+    ],
+    "Plugins": [
+        { "Name": "ArcMassReplication", "Enabled": true },
+        { "Name": "MassGameplay", "Enabled": true },
+        { "Name": "CQTest", "Enabled": true }
+    ]
+}

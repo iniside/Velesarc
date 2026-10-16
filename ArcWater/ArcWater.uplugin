@@ -1,0 +1,36 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Arc Water",
+	"Description": "Clipmap ocean with geometric Gerstner waves",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": true,
+	"CanContainVerse": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcWater",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name": "ArcWaterEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ArcTerrain",
+			"Enabled": true
+		},
+		{
+			"Name": "DebugDraw",
+			"Enabled": true,
+			"TargetAllowList": [ "Editor" ]
+		}
+	]
+}

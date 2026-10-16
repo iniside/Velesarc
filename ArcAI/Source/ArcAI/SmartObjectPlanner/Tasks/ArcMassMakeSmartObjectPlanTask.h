@@ -2,6 +2,7 @@
 #include "SmartObjectPlanner/ArcSmartObjectPlanContainer.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanConditionEvaluator.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
+#include "SmartObjectPlanner/ArcSmartObjectPlanSensor.h"
 #include "GameplayTagContainer.h"
 #include "MassStateTreeTypes.h"
 #include "StateTreePropertyRef.h"
@@ -38,6 +39,11 @@ struct FArcMassMakeSmartObjectPlanTaskInstanceData
 	UPROPERTY(EditAnywhere, Category = Parameter, meta = (Optional))
 	FVector SearchOrigin = FVector::ZeroVector;
 
+	// Pluggable sensors that gather candidate entities for planning.
+	// If empty, defaults to the spatial hash sensor.
+	UPROPERTY(EditAnywhere, Category = Parameter)
+	TArray<TInstancedStruct<FArcSmartObjectPlanSensor>> Sensors;
+
 	// Resulting plans produced by the planner
 	UPROPERTY(EditAnywhere, Category = Output)
 	FArcSmartObjectPlanResponse PlanResponse;
@@ -45,33 +51,35 @@ struct FArcMassMakeSmartObjectPlanTaskInstanceData
 
 /**
 * Submits an async plan request to the Smart Object Planner subsystem.
-* Searches for smart objects matching RequiredTags within SearchRadius of the entity.
+* Searches for smart objects and knowledge entries matching RequiredTags within SearchRadius.
 * Defaults to the owning entity's location if SearchOrigin is not explicitly set.
 * Completes asynchronously when the planner produces results.
 *
-* Typical StateTree composition for Smart Object planning:
+* Typical StateTree composition for plan execution:
 *
-* Root (parameters: PlanResponse, PlanSteps[], CurrentStepIdx, SOEntityHandle, CandidateSlots)
+* Root (parameters: PlanResponse, PlanSteps[], SOEntityHandle, CandidateSlots, KnowledgeHandle,
+*       SmartObjectClaimHandle, ClaimedAdvertisementHandle)
 * |
 * |-- State: Make Plan [MakeSmartObjectPlanTask or MakePlanMultipleGoalsTask]
-* |     Async — searches for smart objects, produces PlanResponse
+* |     Async — gathers candidates from all sensors (spatial, economy, knowledge),
+* |     produces PlanResponse
 * |     -> Succeeded: go to Select Plan
 * |
 * |-- State: Select Plan [SelectSmartObjectPlanTask]
 * |     Picks one plan from PlanResponse, outputs PlanSteps[]
-* |     Only re-entered after current plan finishes to avoid re-rolling mid-execution
 * |     -> Succeeded: go to Execute Plan
 * |
 * '-- State: Execute Plan
 *       |
 *       |-- State: Get Next Step [GetNextPlanStepTask]
-*       |     Advances step index, outputs SOEntityHandle + CandidateSlots for current step
+*       |     Advances step index, outputs SOEntityHandle + CandidateSlots + KnowledgeHandle
 *       |     -> Succeeded: go to Execute Step
 *       |     -> OnPlanFinished: all steps consumed, plan complete
 *       |
 *       '-- State: Execute Step
-*             Claim the smart object, move to it, then use it
-*             Task: [ClaimSmartObjectTask] -> [Move to SO] -> [UseSmartObjectTask]
+*             [ClaimPlanStepTask] -> [Move to Location] -> [ExecutePlanStepTask]
+*             Claim checks KnowledgeHandle to decide SO vs advertisement claim
+*             Execute checks AdvertisementHandle to decide SO behaviors vs instruction
 *             -> Completed: go back to Get Next Step
 */
 USTRUCT(meta = (DisplayName = "Arc Mass Make Smart Object Plan", Category = "Smart Object Planner"))

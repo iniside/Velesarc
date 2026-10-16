@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include "MassStateTreeTypes.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
+#include "Fragments/ArcOwnedTagsFragment.h"
 #include "ArcMassGiveGameplayTagsToEntity.generated.h"
 
 /** Instance data for FArcMassGiveGameplayTagsToEntityTask. Holds the tags to add to the entity. */
@@ -9,14 +9,14 @@ struct FArcMassGiveGameplayTagsToEntityInstanceData
 {
 	GENERATED_BODY()
 
-	/** The gameplay tags to add to the entity's Mass gameplay tag fragment (not the GAS AbilitySystemComponent). */
+	/** The gameplay tags to add to the entity's Mass owned tags fragment (not the GAS AbilitySystemComponent). */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer Tags;
 };
 
 /**
- * Instant task that adds gameplay tags to the entity's Mass gameplay tag fragment
- * (FArcMassGameplayTagContainerFragment), not the GAS AbilitySystemComponent.
+ * Instant task that adds gameplay tags to the entity's Mass owned tags fragment
+ * (FArcOwnedTagsFragment), not the GAS AbilitySystemComponent.
  * When bRemoveOnExit is true, the tags are automatically removed when the state is exited.
  */
 USTRUCT(meta = (DisplayName = "Arc Mass Give Gameplay Tags To Entity", Category = "Arc|Common", ToolTip = "Instant task. Adds gameplay tags to the entity's Mass tag fragment. Optionally removes them on state exit."))
@@ -45,8 +45,8 @@ protected:
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	
-	/** Handle to the entity's Mass gameplay tag container fragment. */
-	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
+	/** Handle to the entity's Mass owned tags fragment. */
+	TStateTreeExternalDataHandle<FArcOwnedTagsFragment> MassGameplayTagsHandle;
 
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;

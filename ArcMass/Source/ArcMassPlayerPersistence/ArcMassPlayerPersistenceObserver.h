@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "MassObserverProcessor.h"
+#include "Mass/ObserverProcessor.h"
 #include "ArcMassPlayerPersistenceObserver.generated.h"
 
 /**

@@ -1,0 +1,165 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+// GPU-grass plan Step 3 — the ArcTerrain point-generator kernel.
+//
+// NO #include and NO buffer declarations on purpose: the compute-framework glue injects both the
+// output point-data setters (Out_*) and this node's data-interface functions (IsArcTerrainResident,
+// SampleArcTerrainSurfaceWorld, GetArcScatter*), and PCG's default compute sources supply
+// ComputeSeed/FRand/ComputeSeedFromPosition.
+
+/** Shortest-arc quaternion taking +Z onto InNormal, as (x, y, z, w). */
+float4 ArcTerrainScatterQuatFromUp(float3 InNormal)
+{
+	const float3 Up = float3(0.0f, 0.0f, 1.0f);
+	const float W = 1.0f + dot(Up, InNormal);
+
+	// Antiparallel: the shortest arc is undefined (cross() is the zero vector and W collapses), so
+	// take the explicit 180-degree turn about X rather than normalizing a zero quaternion into NaNs.
+	if (W < 1e-6f)
+	{
+		return float4(1.0f, 0.0f, 0.0f, 0.0f);
+	}
+
+	return normalize(float4(cross(Up, InNormal), W));
+}
+
+[numthreads(64, 1, 1)]
+void ArcTerrainScatterCS(uint3 GroupId : SV_GroupID, uint GroupIndex : SV_GroupIndex)
+{
+	const uint ThreadIndex = GetUnWrappedDispatchThreadId(GroupId, GroupIndex, 64);
+	if (ThreadIndex >= GetNumThreads().x)
+	{
+		return;
+	}
+
+	uint OutDataIndex, OutElemIndex;
+	if (!Out_GetThreadData(ThreadIndex, OutDataIndex, OutElemIndex))
+	{
+		return;
+	}
+
+	// ---- Point-generator preamble (shape of PCGCustomHLSLKernel's AddPointGeneratorPreamble) ----
+	// Every native property is initialized to its FPCGPoint default before anything can return early.
+	// The output data description allocates Transform | Seed | Density, so those are written PER
+	// ELEMENT; BoundsMin/BoundsMax/Color/Steepness stay Constant Value Ranges - one slot backs all N
+	// elements - and are therefore written ONLY at element 0. Skipping this leaves the downstream GPU
+	// Static Mesh Spawner reading garbage bounds (PCGStaticMeshSpawner.usf:144-145), which corrupts
+	// its culling cells rather than merely misplacing a blade.
+	if (OutElemIndex == 0)
+	{
+		Out_SetBoundsMin(OutDataIndex, 0, float3(-50.0f, -50.0f, -50.0f));
+		Out_SetBoundsMax(OutDataIndex, 0, float3(50.0f, 50.0f, 50.0f));
+		Out_SetColor(OutDataIndex, 0, float4(1.0f, 1.0f, 1.0f, 1.0f));
+		Out_SetSteepness(OutDataIndex, 0, 0.5f);
+	}
+
+	Out_SetPosition(OutDataIndex, OutElemIndex, float3(0.0f, 0.0f, 0.0f));
+	Out_SetRotation(OutDataIndex, OutElemIndex, float4(0.0f, 0.0f, 0.0f, 1.0f));
+	Out_SetScale(OutDataIndex, OutElemIndex, float3(1.0f, 1.0f, 1.0f));
+	Out_SetSeed(OutDataIndex, OutElemIndex, 42);
+	Out_SetDensity(OutDataIndex, OutElemIndex, 1.0f);
+
+	// ---- Grid ----
+	const uint Count = GetArcScatterPointCount();
+	if (Count == 0 || OutElemIndex >= Count)
+	{
+		// Includes the "the data interface found no terrain" case: the buffer was still sized and
+		// dispatched, so every element must be explicitly removed rather than left at density 1.
+		Out_RemovePoint(OutDataIndex, OutElemIndex);
+		return;
+	}
+
+	// MUST agree with ComputeScatterGrid() in ArcTerrainScatterKernel.cpp. The fix-up below is that
+	// agreement: ceil(sqrt()) in float here and in double there differ by one at and around exact
+	// squares, and one cell of disagreement in Nx displaces every point of the grid.
+	uint Nx = (uint)ceil(sqrt((float)Count));
+	if (Nx == 0)
+	{
+		Nx = 1;
+	}
+
+	[unroll]
+	for (int FixUp = 0; FixUp < 2; ++FixUp)
+	{
+		if (Nx * Nx < Count)
+		{
+			Nx += 1;
+		}
+	}
+
+	[unroll]
+	for (int FixDown = 0; FixDown < 2; ++FixDown)
+	{
+		if (Nx > 1 && (Nx - 1) * (Nx - 1) >= Count)
+		{
+			Nx -= 1;
+		}
+	}
+
+	const uint Ny = (Count + Nx - 1) / Nx;
+
+	const uint IndexX = OutElemIndex % Nx;
+	const uint IndexY = OutElemIndex / Nx;
+
+	const float3 BoundsMin = GetArcScatterBoundsMin();
+	const float3 BoundsExtent = GetArcScatterBoundsExtent();
+	const float2 Step = (BoundsExtent.xy * 2.0f) / float2((float)Nx, (float)Ny);
+
+	uint Seed = ComputeSeed(GetArcScatterSeed(), OutElemIndex);
+	const float2 Jitter = (float2(FRand(Seed), FRand(Seed)) - 0.5f) * Step;
+	const float2 XY = BoundsMin.xy + (float2((float)IndexX, (float)IndexY) + 0.5f) * Step + Jitter;
+
+	// The probe's Z is irrelevant to the lookup (the sampler keys on the terrain-local XY cell), but
+	// it must be a defined value; the bounds' centre height keeps it inside the execution volume.
+	const float3 ProbePos = float3(XY, BoundsMin.z + BoundsExtent.z);
+
+	if (!IsArcTerrainResident(ProbePos))
+	{
+		Out_RemovePoint(OutDataIndex, OutElemIndex);
+		return;
+	}
+
+	// TERRAIN-LOCAL height -> WORLD position happens inside SampleArcTerrainSurfaceWorld. Do not
+	// swap this for SampleArcTerrainHeight: that one answers in the composite's local frame.
+	const float3 SurfacePos = SampleArcTerrainSurfaceWorld(ProbePos);
+	const float3 Normal = SampleArcTerrainNormal(ProbePos);
+
+	// Acceptance window on cos(slope), measured against TERRAIN up: .x = cos(MaxSlope) is the lower
+	// bound and .y = cos(MinSlope) the upper, because cosine decreases with the angle. The epsilon is
+	// load-bearing at the ends of the range - a default 0..90 window must not reject a perfectly flat
+	// cell because a normalized dot product came back at 1.0000001.
+	const float CosSlope = dot(Normal, GetArcTerrainUpWorld());
+	const float2 SlopeRange = GetArcScatterSlopeRange();
+	if (CosSlope < SlopeRange.x - 1e-4f || CosSlope > SlopeRange.y + 1e-4f)
+	{
+		Out_RemovePoint(OutDataIndex, OutElemIndex);
+		return;
+	}
+
+	// Tri-state layer filter: a negative channel means the filter is DISABLED (unset by the author,
+	// or a name that did not resolve - the latter already warned on the node, on the game thread).
+	// It never means "channel 0", and it must never be read as "weight is zero".
+	const int LayerChannel = GetArcScatterLayerChannel();
+	if (LayerChannel >= 0 && SampleArcTerrainLayerWeight(ProbePos, LayerChannel) < GetArcScatterMinLayerWeight())
+	{
+		Out_RemovePoint(OutDataIndex, OutElemIndex);
+		return;
+	}
+
+	// ---- Accept ----
+	Out_SetPosition(OutDataIndex, OutElemIndex, SurfacePos);
+
+	if (GetArcScatterAlignToNormal() != 0)
+	{
+		Out_SetRotation(OutDataIndex, OutElemIndex, ArcTerrainScatterQuatFromUp(Normal));
+	}
+
+	// Position-derived, so a downstream weighted mesh selection varies per blade instead of picking
+	// the same entry for the whole grid.
+	Out_SetSeed(OutDataIndex, OutElemIndex, ComputeSeedFromPosition(SurfacePos));
+
+	// Mandatory even though the preamble already wrote it: IsPointRemoved() is literally
+	// GetDensity() == PCG_INVALID_DENSITY (PCGDataCollectionDataInterface.ush:709-712), so density is
+	// the alive/dead flag and not merely a weight.
+	Out_SetDensity(OutDataIndex, OutElemIndex, 1.0f);
+}

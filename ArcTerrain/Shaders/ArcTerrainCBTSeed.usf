@@ -1,0 +1,53 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTSeed.usf — one-shot initialisation of the bisector pool.
+
+	Zeroes the CBT occupancy heap (no live bisector), stamps libcbt's depth marker
+	into word 0, and clears the per-face registers. The base mesh itself is NOT seeded
+	here: SeedRootsCS (ArcTerrainCBTBaseMesh.usf) roots every unpopulated face on every
+	frame, so a face this pass cleared is rooted by the next update.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+
+RWByteAddressBuffer CBTHeap;
+RWBuffer<uint> PoolCounters;
+RWBuffer<uint> NodeCounter;
+RWBuffer<uint> FaceLiveCount;
+RWBuffer<uint> FaceRoots;
+RWBuffer<uint> MergeScanCursor;
+
+uint PoolDepth;
+uint HeapWordCount;
+uint NumFaces;
+
+[numthreads(ARC_CBT_SEED_THREADS, 1, 1)]
+void PoolInitCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint Index = DispatchThreadId.x;
+
+	if (Index < HeapWordCount)
+	{
+		// Word 0's lowest set bit is libcbt's depth marker; it sits below the root node's bit range.
+		CBTHeap.Store(Index << 2u, Index == 0u ? (1u << PoolDepth) : 0u);
+	}
+
+	if (Index < NumFaces)
+	{
+		FaceLiveCount[Index] = 0u;
+		FaceRoots[Index * 2u] = ARC_BISECTOR_NULL;
+		FaceRoots[Index * 2u + 1u] = ARC_BISECTOR_NULL;
+	}
+
+	if (Index == 0u)
+	{
+		for (uint Counter = 0u; Counter < ARC_CBT_COUNTER_NUM; ++Counter)
+		{
+			PoolCounters[Counter] = 0u;
+		}
+		NodeCounter[0] = 0u;
+		MergeScanCursor[0] = 0u;
+	}
+}

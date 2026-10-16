@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassObserverProcessor.h"
-#include "MassProcessor.h"
+#include "Mass/ObserverProcessor.h"
+#include "Mass/Processor.h"
 #include "ArcNiagaraVisProcessors.generated.h"
 
 // ---------------------------------------------------------------------------

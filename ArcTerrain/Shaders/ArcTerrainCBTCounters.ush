@@ -1,0 +1,497 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTCounters.ush — the PoolCounters index space.
+
+	One flat RWBuffer<uint> shared by every pass and read back whole by the CPU.
+	Two slots are load-bearing outside diagnostics: the split and root-seed allocation
+	cursors. Everything else, the refusal tallies included, exists to make a stalled
+	tree readable from a log line.
+
+	RESET DISCIPLINE. FillDispatchArgsCS (ArcTerrainCBTDispatchArgs.usf) clears
+	every slot at the top of the frame so a drained value always names ONE frame,
+	with two exceptions:
+	  * LIVE_BISECTORS is published by BatchCS LATER in the same frame and must
+	    survive the reset;
+	  * every InterlockedMin slot resets to that identity, not to zero.
+	Any counter added here that a late pass writes must be excluded from that
+	reset too, or it reads as zero forever.
+
+	The count must match FArcTerrainCBTBuffers::PoolCounterNum.
+=============================================================================*/
+
+#pragma once
+
+#define ARC_CBT_COUNTER_ALLOC_CURSOR        0u
+#define ARC_CBT_COUNTER_ALLOC_REFUSED       1u
+#define ARC_CBT_COUNTER_NON_MUTUAL_REFS     2u
+#define ARC_CBT_COUNTER_LIVE_BISECTORS      3u
+
+#define ARC_CBT_COUNTER_VOTE_SPLIT          4u
+#define ARC_CBT_COUNTER_VOTE_MERGE          5u
+#define ARC_CBT_COUNTER_VOTE_KEEP           6u
+
+/** Threads that reached the classify body: zero means the indirect args were empty. */
+#define ARC_CBT_COUNTER_CLASSIFY_THREADS    7u
+
+/** Live-leaf depth over the frozen heap. MIN resets to 0xFFFFFFFF; MIN == MAX is "one level". */
+#define ARC_CBT_COUNTER_DEPTH_MIN           8u
+#define ARC_CBT_COUNTER_DEPTH_MAX           9u
+#define ARC_CBT_COUNTER_DEPTH_SUM          10u
+
+/** Bisectors whose topology write actually committed, counted in the apply pass. */
+#define ARC_CBT_COUNTER_SPLIT_APPLIED      11u
+#define ARC_CBT_COUNTER_MERGE_APPLIED      12u
+
+/** CHAINED counts applied splits that had to bisect a coarser hypotenuse twin along with themselves;
+ *  the rest are the reasons a SPLIT vote did not become a topology write. TWIN_MERGING counts only the
+ *  twins whose diamond gathers complete and unanimous, so their merge stages this pass. */
+#define ARC_CBT_COUNTER_SPLIT_CHAINED      13u
+#define ARC_CBT_COUNTER_SPLIT_TWIN_MERGING 14u
+#define ARC_CBT_COUNTER_SPLIT_LOST_ELECT   15u
+#define ARC_CBT_COUNTER_SPLIT_NON_MUTUAL   16u
+#define ARC_CBT_COUNTER_SPLIT_MAX_DEPTH    17u
+
+/** Why a MERGE vote did not become a topology write — one slot per early-out in ApplyMerge, in the
+ *  order they appear there. A merge needs a whole diamond of leaves to agree, so the reasons a vote
+ *  dies are more numerous than on the split side and applied-vs-voted alone names none of them. */
+#define ARC_CBT_COUNTER_MERGE_ROOT         18u
+#define ARC_CBT_COUNTER_MERGE_SIB_DEEPER   19u
+#define ARC_CBT_COUNTER_MERGE_SIB_MISMATCH 20u
+#define ARC_CBT_COUNTER_MERGE_FAR_DEEPER   21u
+#define ARC_CBT_COUNTER_MERGE_FARSIB_DEEP  22u
+#define ARC_CBT_COUNTER_MERGE_FAR_MISMATCH 23u
+#define ARC_CBT_COUNTER_MERGE_NOT_UNANIM   24u
+#define ARC_CBT_COUNTER_MERGE_LOST_ELECT   25u
+
+/** The two sibling-mismatch paths of ApplyMerge, split by whether the two node ids being compared come
+ *  from the SAME LEB tree. `Node ^ 1` names a sibling only inside one face — each face is its own
+ *  node-id space — so a mismatch across a face boundary says the test was never valid there, while a
+ *  mismatch inside one face says the links are corrupt. */
+#define ARC_CBT_COUNTER_SIBMM_SAME_FACE    26u
+#define ARC_CBT_COUNTER_SIBMM_DIFF_FACE    27u
+#define ARC_CBT_COUNTER_FARMM_SAME_FACE    28u
+#define ARC_CBT_COUNTER_FARMM_DIFF_FACE    29u
+
+/** ApplySplit twin elections by face relation, plus the cross-face subset that did not write topology. */
+#define ARC_CBT_COUNTER_SPLIT_TWIN_SAME    30u
+#define ARC_CBT_COUNTER_SPLIT_TWIN_DIFF    31u
+#define ARC_CBT_COUNTER_SPLIT_DIFF_DEFER   32u
+#define ARC_CBT_COUNTER_SPLIT_DIFF_REFUSE  33u
+
+/** Seeding: faces that could not get their two root slots out of the pool. */
+#define ARC_CBT_COUNTER_FACE_ALLOC_REFUSED 34u
+
+/** Leaves with at least one neighbour reference into another face, and the subset of those that hit a
+ *  sibling-mismatch path in the apply pass. Both are counted per live bisector over the same frozen heap. */
+#define ARC_CBT_COUNTER_BOUNDARY_LEAVES    35u
+#define ARC_CBT_COUNTER_BOUNDARY_MISMATCH  36u
+
+/** Depth of the partner that refused a merge, relative to the bisector that attempted it. Shared by the
+ *  three "one level deeper" returns of ApplyMerge. EQUAL and SHALLOW can only fill when the edge test
+ *  named a partner that is not in fact deeper — that is the deferral misreading a valid diamond. */
+#define ARC_CBT_COUNTER_MERGE_PARTNER_EQ   37u
+#define ARC_CBT_COUNTER_MERGE_PARTNER_D1   38u
+#define ARC_CBT_COUNTER_MERGE_PARTNER_D2   39u
+#define ARC_CBT_COUNTER_MERGE_PARTNER_SHAL 40u
+
+/** The subset of those returns taken because there was no reference at all, so no partner to measure. */
+#define ARC_CBT_COUNTER_MERGE_SIB_NOREF    41u
+#define ARC_CBT_COUNTER_MERGE_FARSIB_NOREF 42u
+
+/** Live leaves by their depth relation to their own halfedge neighbours: deeper than at least one, and
+ *  deeper than every one. The second set is the leaves that should be initiating a merge. */
+#define ARC_CBT_COUNTER_LEAF_DEEPER_NBR    43u
+#define ARC_CBT_COUNTER_LEAF_DEEPEST_NBR   44u
+
+/** Live leaves at depth >= 2 whose sibling edge names nothing, and whose sibling edge names something
+ *  that is not the sibling nor a descendant of it. Either is a break in the parent's child pair. */
+#define ARC_CBT_COUNTER_LEAF_SIB_NOREF     45u
+#define ARC_CBT_COUNTER_LEAF_SIB_NOTKIN    46u
+
+/** BaseMesh population/refinement (ArcTerrainCBTBaseMesh.usf): faces given their two roots, root legs
+ *  paired with their grid neighbours' (which must reach 2 * NumFaces minus the world-border legs), and
+ *  both initial-bulk and motion catch-up vote/apply iterations — bisections applied, splits the diamond
+ *  rules held back for a later iteration, and splits the pool could not fund. */
+#define ARC_CBT_COUNTER_SEED_POPULATED     47u
+#define ARC_CBT_COUNTER_ATTACH_PAIRS       48u
+#define ARC_CBT_COUNTER_REFINE_SPLITS      49u
+#define ARC_CBT_COUNTER_REFINE_DEFERRED    50u
+#define ARC_CBT_COUNTER_REFINE_REFUSED     51u
+
+/** The root seed's twins of [0] and [1]: its own cursor into the free list, counted down from the top
+ *  end, and its refusals. It allocates in its own window so split-refusal traffic cannot starve the two
+ *  roots that guarantee a face has geometry. Read against [F]'s seeded count. */
+#define ARC_CBT_COUNTER_SEED_CURSOR        52u
+#define ARC_CBT_COUNTER_SEED_REFUSED       53u
+
+/** 0 or 1, not a count: the classify pass found the pool saturated and raised no SPLIT that frame, so
+ *  the tree is coarsening only. Written unconditionally — the pool-full warning reads it. */
+#define ARC_CBT_COUNTER_SPLIT_POOL_FULL    54u
+
+/** The apply pass's OWN view of the command buffer, so it can be compared against the classify pass's
+ *  vote histogram. A gap between the two means commands are not reaching the pass that consumes them;
+ *  SEEN_OTHER catches a value that is none of the three. */
+#define ARC_CBT_COUNTER_SM_THREADS         55u
+#define ARC_CBT_COUNTER_SM_SEEN_SPLIT      56u
+#define ARC_CBT_COUNTER_SM_SEEN_MERGE      57u
+#define ARC_CBT_COUNTER_SM_SEEN_KEEP       58u
+#define ARC_CBT_COUNTER_SM_SEEN_OTHER      59u
+
+/** What ClassifyCS reads back from BisectorCommands IMMEDIATELY after writing its own command. The
+ *  buffer is InterlockedMax, so a value can only rise — reading KEEP back is proof the write never
+ *  landed, and it splits "the write failed" from "the value was lost afterwards". */
+#define ARC_CBT_COUNTER_CMD_ECHO_SPLIT     60u
+#define ARC_CBT_COUNTER_CMD_ECHO_MERGE     61u
+#define ARC_CBT_COUNTER_CMD_ECHO_LOST      62u
+
+/** Leaves sitting on their geometry cap that still read TOO_COARSE. The four-slot head count is indexed
+ *  by diagnostic height tier; resident tiers share the global cap. */
+#define ARC_CBT_COUNTER_MAXDEPTH_COARSE    63u
+#define ARC_CBT_COUNTER_MAXDEPTH_BY_ERROR  67u
+#define ARC_CBT_COUNTER_MAXDEPTH_BY_AREA   68u
+#define ARC_CBT_COUNTER_MAXDEPTH_ERRPX_X100 69u
+#define ARC_CBT_COUNTER_MAXDEPTH_ERRCM_MAX 70u
+#define ARC_CBT_COUNTER_MAXDEPTH_DISTM_MIN 71u
+#define ARC_CBT_COUNTER_MAXDEPTH_DISTM_MAX 72u
+
+/** The AREA side of the same ceiling-coarse set, in whole square pixels: a ceiling-coarse triangle is over
+ *  the threshold by definition, so the fractional part carries nothing. */
+#define ARC_CBT_COUNTER_MAXDEPTH_AREAPX_MAX 73u
+
+/** Live leaves whose corners resolve to different resident height tiers. Geometry depth is independent. */
+#define ARC_CBT_COUNTER_LEAF_TIERS_MIXED    74u
+
+/** The PARENT's verdict over leaves that voted TOO_FINE. A merge command is only written where the parent
+ *  agrees, so this is where a coarsening vote is actually lost — three orders of magnitude ahead of the
+ *  diamond rules, which only ever see what survives here. Split by which term refused the parent. */
+#define ARC_CBT_COUNTER_PARENT_COARSE_AREA  75u
+#define ARC_CBT_COUNTER_PARENT_COARSE_ERR   76u
+#define ARC_CBT_COUNTER_PARENT_KEEP         77u
+#define ARC_CBT_COUNTER_PARENT_FINE         78u
+
+/** Applied conforming chains by MEMBER COUNT, not by a depth difference: LEN2 is one coarser twin pulled
+ *  along, LEN3PLUS a chain that walked further up before it found a twin at an equal depth. Together they
+ *  sum to CHAINED. */
+#define ARC_CBT_COUNTER_SPLIT_CHAIN_LEN2      79u
+#define ARC_CBT_COUNTER_SPLIT_CHAIN_LEN3PLUS  80u
+
+/** A chain walk that ran past MaxSubdivisionDepth steps, and a chain member whose face id is out of
+ *  range. A step is one level coarser, so neither can happen to a well-formed pool: both name a corrupt
+ *  link graph, and both refuse the split rather than write through it. */
+#define ARC_CBT_COUNTER_SPLIT_CHAIN_OVERFLOW  81u
+#define ARC_CBT_COUNTER_SPLIT_CHAIN_BADFACE   82u
+
+/** Live bisectors the draw-list compaction left out as wholly outside the widened view frustum. This is
+ *  the DRAW's own margin, which is the tighter of the two — the tessellation verdict has its own below. */
+#define ARC_CBT_COUNTER_FRUSTUM_CULLED        83u
+
+/** Bisectors the compaction actually put in the drawn list, counted independently of the slot above so
+ *  that drawn == live - culled is a check rather than a restatement. */
+#define ARC_CBT_COUNTER_DRAWN_BISECTORS       84u
+
+/** Live leaves whose sampled footprint and full authored-height prism were both wholly outside the
+ *  TessFrustumCullMargin frustum. A subset of votes-merge, counted on the leaf only. */
+#define ARC_CBT_COUNTER_PRISM_CULLED_FINE     85u
+
+/** Chain members a split walked THROUGH although they carry ARC_CMD_MERGE, because their diamond cannot
+ *  collapse this pass. Counted in members, while TWIN_MERGING and TWIN_MERGEUNSURE count one per
+ *  ApplySplit call, on the FIRST twin that stopped the walk. */
+#define ARC_CBT_COUNTER_SPLIT_TWIN_STALEMERGE 86u
+
+/** The DrawArgs block the compaction fills, in uints from the start of the buffer. Block 0 is the whole
+ *  live set (ArcTerrainCBTBatch.usf owns the layout); block 1 is the same draw over the visible list, and
+ *  its InstanceCount doubles as the compaction's append cursor. */
+#define ARC_CBT_DRAWARGS_VISIBLE              5u
+#define ARC_CBT_DRAWARGS_VISIBLE_COUNT        (ARC_CBT_DRAWARGS_VISIBLE + 1u)
+
+/*=============================================================================
+	PREDICATE PROBE — arc.Terrain.CBT.ProbePredicate, gated apart from Stats and
+	compiled out entirely without it (ARC_CBT_PROBE_PREDICATE permutation).
+
+	Which branch of ArcTerrainTess_ScreenAreaPixels the ceiling-coarse leaves went
+	through, how often the near-plane fallback fired at all over the frame, and four
+	whole dumps of one leaf's predicate INPUTS, the fourth carrying its PARENT's too.
+
+	Every float in a record is stored with asuint() and read back bit-for-bit, not
+	scaled to fixed point: the quantities span 1e-5 to 4e9 px and a scaled write
+	cannot report a value it clamped.
+=============================================================================*/
+#define ARC_CBT_COUNTER_CLIPW_FALLBACK        87u
+#define ARC_CBT_COUNTER_CEIL_FALLBACK         88u
+#define ARC_CBT_COUNTER_CEIL_PROJECTED        89u
+
+/** A link of the merge diamond's ring that is not mutual in index, in edge slot or in depth, and the
+ *  splits that yielded to a twin refused for that or for a node-id mismatch. The merge is refused there
+ *  and the split defers to it anyway, so a standing MERGEUNSURE is a stall with a corrupt link under it,
+ *  never the resolved conflicts TWIN_MERGING reports. */
+#define ARC_CBT_COUNTER_MERGE_NONMUTUAL       90u
+#define ARC_CBT_COUNTER_SPLIT_TWIN_MERGEUNSURE 91u
+
+/** Election keys, one per record, each the winning thread's asuint() of the quantity it is elected on —
+ *  monotone against the float order because every one of them is non-negative. A: max AreaPixels over
+ *  every classified leaf. B: MIN DistanceCm over the ceiling-coarse leaves, C: MAX — the two ends of the
+ *  range MAXDEPTH_DISTM_MIN/MAX already report, so a record explains the number beside it. B resets to
+ *  0xFFFFFFFF, like every other InterlockedMin slot. */
+#define ARC_CBT_PROBE_A_KEY                   92u
+#define ARC_CBT_PROBE_B_KEY                   93u
+#define ARC_CBT_PROBE_C_KEY                   94u
+
+/** Record layout, mirrored by the decoder in ArcTerrainCBTRenderer.cpp. The key is written FIRST and
+ *  LAST around a plain (non-atomic) body: a writer can be overtaken mid-record by a better key, and two
+ *  guards that disagree with each other or with the election slot is how the reader sees that. */
+#define ARC_CBT_PROBE_KEYFIRST                 0u
+#define ARC_CBT_PROBE_FACE                     1u
+#define ARC_CBT_PROBE_DEPTH                    2u
+#define ARC_CBT_PROBE_NODE_LO                  3u
+#define ARC_CBT_PROBE_NODE_HI                  4u
+#define ARC_CBT_PROBE_FLAGS                    5u
+#define ARC_CBT_PROBE_VERDICT                  6u
+/** C0.xy C1.xy C2.xy — the face-local [0,1]^2 corners the LEB decode produced. */
+#define ARC_CBT_PROBE_CORNERS                  7u
+/** P0.xyz P1.xyz P2.xyz — eye-relative terrain-local cm, exactly as handed to the area term. */
+#define ARC_CBT_PROBE_POINTS                  13u
+/** The three w after mul(float4(P,1), EyeLocalToClip), against the MinClipW they are tested on. */
+#define ARC_CBT_PROBE_CLIPW                   22u
+#define ARC_CBT_PROBE_MINCLIPW                25u
+#define ARC_CBT_PROBE_DISTCM                  26u
+#define ARC_CBT_PROBE_AREA3DCM2               27u
+#define ARC_CBT_PROBE_AREAPX                  28u
+#define ARC_CBT_PROBE_ERRCM                   29u
+#define ARC_CBT_PROBE_ERRPX                   30u
+/** Terrain-local heights of the three corners and the split-edge midpoint. */
+#define ARC_CBT_PROBE_HEIGHTS                 31u
+/** Whole / low / high, retained only to compare the legacy reducible-sag diagnostic. */
+#define ARC_CBT_PROBE_DEVIATION               35u
+/** The area threshold the verdict was actually compared against, after the flat-area relief. */
+#define ARC_CBT_PROBE_EFFTARGET               38u
+#define ARC_CBT_PROBE_EDGEPX                  39u
+#define ARC_CBT_PROBE_LEGACY_ERRCM            40u
+/** Explicit visibility policy plus the bounded discovery comparison. Ordinary records store zeroes. */
+#define ARC_CBT_PROBE_VISIBILITY              41u
+#define ARC_CBT_PROBE_LEAFTIER                42u
+#define ARC_CBT_PROBE_LEAFCAP                 43u
+#define ARC_CBT_PROBE_DISCOVERY_EDGEPX         44u
+#define ARC_CBT_PROBE_DISCOVERY_TARGETPX       45u
+#define ARC_CBT_PROBE_HEIGHT_SOURCE            46u
+#define ARC_CBT_PROBE_HEIGHT_TIER              47u
+#define ARC_CBT_PROBE_HEIGHT_SECTOR_X          48u
+#define ARC_CBT_PROBE_HEIGHT_SECTOR_Y          49u
+#define ARC_CBT_PROBE_HEIGHT_SLICE             50u
+#define ARC_CBT_PROBE_HEIGHT_MINCM             51u
+#define ARC_CBT_PROBE_HEIGHT_MAXCM             52u
+#define ARC_CBT_PROBE_KEYLAST                  53u
+#define ARC_CBT_PROBE_STRIDE                   54u
+
+/** FLAGS bits. */
+#define ARC_CBT_PROBE_FLAG_FALLBACK           0x1u
+#define ARC_CBT_PROBE_FLAG_ATCEILING          0x2u
+#define ARC_CBT_PROBE_FLAG_FILLONLY           0x4u
+#define ARC_CBT_PROBE_FLAG_RESIDENT0          0x8u
+#define ARC_CBT_PROBE_FLAG_RESIDENT1         0x10u
+#define ARC_CBT_PROBE_FLAG_RESIDENT2         0x20u
+#define ARC_CBT_PROBE_FLAG_RESIDENTMID       0x40u
+#define ARC_CBT_PROBE_FLAG_ERRMEASURED       0x80u
+/** Set means the verdict returned before any term was computed, so every number in the record — areapx,
+ *  errorcm, efftarget — and every residency bit is its INITIAL value, not a measurement. On a LEAF body
+ *  the triangle judged is that leaf's parent, so the bit can be set while the record's own clipw sits
+ *  inside the frustum; on the P4 parent line it is that parent's own corners. */
+#define ARC_CBT_PROBE_FLAG_TESSCULLED       0x100u
+#define ARC_CBT_PROBE_FLAG_PRISMGUARDED     0x200u
+
+#define ARC_CBT_PROBE_A_BASE                  95u
+#define ARC_CBT_PROBE_B_BASE                  (ARC_CBT_PROBE_A_BASE + ARC_CBT_PROBE_STRIDE)
+#define ARC_CBT_PROBE_C_BASE                  (ARC_CBT_PROBE_B_BASE + ARC_CBT_PROBE_STRIDE)
+
+/** Record D and its key, appended after C rather than beside the other three keys so the A/B/C bases
+ *  do not move. Elected on MIN DistanceCm over leaves that read TOO_FINE against a TOO_COARSE PARENT —
+ *  the population CBTStats/K counts and no other record can reach, because that verdict pair is what the
+ *  merge gate refuses. Resets to 0xFFFFFFFF, like every other InterlockedMin slot. */
+#define ARC_CBT_PROBE_D_KEY                   (ARC_CBT_PROBE_C_BASE + ARC_CBT_PROBE_STRIDE)
+#define ARC_CBT_PROBE_D_BASE                  (ARC_CBT_PROBE_D_KEY + 1u)
+
+/** D's tail, past the shared leaf body: the leaf's flatness quotient and targets both sides
+ *  were held to, and the PARENT's whole side of the refusal. The parent's face is the leaf's and its depth
+ *  is one less, so neither is stored twice. Written between D's two key guards, so they bracket the tail
+ *  as well as the body. */
+#define ARC_CBT_PROBE_D_SAGCM_M2              54u
+#define ARC_CBT_PROBE_D_TARGETERRPX           55u
+#define ARC_CBT_PROBE_D_TARGETEDGEPX          56u
+#define ARC_CBT_PROBE_D_P_DEPTH               57u
+#define ARC_CBT_PROBE_D_P_VERDICT             58u
+#define ARC_CBT_PROBE_D_P_FLAGS               59u
+#define ARC_CBT_PROBE_D_P_VISIBILITY          60u
+#define ARC_CBT_PROBE_D_P_LEAFTIER            61u
+#define ARC_CBT_PROBE_D_P_LEAFCAP             62u
+#define ARC_CBT_PROBE_D_P_DISTCM              63u
+#define ARC_CBT_PROBE_D_P_AREAPX              64u
+#define ARC_CBT_PROBE_D_P_EFFTARGET           65u
+#define ARC_CBT_PROBE_D_P_ERRCM               66u
+#define ARC_CBT_PROBE_D_P_ERRPX               67u
+#define ARC_CBT_PROBE_D_P_EDGEPX              68u
+#define ARC_CBT_PROBE_D_P_DISCOVERY_EDGEPX    69u
+#define ARC_CBT_PROBE_D_P_DISCOVERY_TARGETPX  70u
+#define ARC_CBT_PROBE_D_P_SAGCM_M2            71u
+#define ARC_CBT_PROBE_D_P_HEIGHT_SOURCE       72u
+#define ARC_CBT_PROBE_D_P_HEIGHT_TIER         73u
+#define ARC_CBT_PROBE_D_P_HEIGHT_SECTOR_X     74u
+#define ARC_CBT_PROBE_D_P_HEIGHT_SECTOR_Y     75u
+#define ARC_CBT_PROBE_D_P_HEIGHT_SLICE        76u
+#define ARC_CBT_PROBE_D_P_HEIGHT_MINCM        77u
+#define ARC_CBT_PROBE_D_P_HEIGHT_MAXCM        78u
+#define ARC_CBT_PROBE_D_STRIDE                79u
+
+/** Valid live bisectors the draw-list compaction rejected as wholly beyond the configured physical
+ *  terrain-plane radius. Appended after every probe record so the established diagnostic layout and
+ *  election-key offsets never move. */
+#define ARC_CBT_COUNTER_DISTANCE_CULLED       (ARC_CBT_PROBE_D_BASE + ARC_CBT_PROBE_D_STRIDE)
+
+/** Predicate-term diagnostics. BY_* subsets overlap when more than one term is above threshold. The two
+ *  maxima store positive finite float bits, whose uint order matches float order. */
+#define ARC_CBT_COUNTER_COARSE_BY_EDGE         (ARC_CBT_COUNTER_DISTANCE_CULLED + 1u)
+#define ARC_CBT_COUNTER_COARSE_BY_HEIGHT       (ARC_CBT_COUNTER_COARSE_BY_EDGE + 1u)
+#define ARC_CBT_COUNTER_COARSE_BY_AREA         (ARC_CBT_COUNTER_COARSE_BY_HEIGHT + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_UNKNOWN         (ARC_CBT_COUNTER_COARSE_BY_AREA + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_OVER_AT_CAP     (ARC_CBT_COUNTER_HEIGHT_UNKNOWN + 1u)
+#define ARC_CBT_COUNTER_MAX_EDGE_BITS          (ARC_CBT_COUNTER_HEIGHT_OVER_AT_CAP + 1u)
+#define ARC_CBT_COUNTER_MAX_SAMPLED_ERR_BITS   (ARC_CBT_COUNTER_MAX_EDGE_BITS + 1u)
+#define ARC_CBT_COUNTER_PARENT_COARSE_EDGE     (ARC_CBT_COUNTER_MAX_SAMPLED_ERR_BITS + 1u)
+
+/** Leaf-only outcomes of the conservative prism guard. Each is a subset of the normal vote histogram;
+ *  parent classifications performed by the merge gate are deliberately not tallied. */
+#define ARC_CBT_COUNTER_PRISM_GUARDED_SPLIT    (ARC_CBT_COUNTER_PARENT_COARSE_EDGE + 1u)
+#define ARC_CBT_COUNTER_PRISM_GUARDED_KEEP     (ARC_CBT_COUNTER_PRISM_GUARDED_SPLIT + 1u)
+#define ARC_CBT_COUNTER_PRISM_GUARDED_FINE     (ARC_CBT_COUNTER_PRISM_GUARDED_KEEP + 1u)
+
+/** Height-range source behind each leaf-only prism outcome. Exactly one source slot is incremented for
+ *  every PRISM_CULLED or PRISM_GUARDED leaf, so these columns must sum to the policy counters above. */
+#define ARC_CBT_COUNTER_HEIGHT_LOCAL_CULLED       (ARC_CBT_COUNTER_PRISM_GUARDED_FINE + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_LOCAL_GUARDED      (ARC_CBT_COUNTER_HEIGHT_LOCAL_CULLED + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_FILL_CULLED        (ARC_CBT_COUNTER_HEIGHT_LOCAL_GUARDED + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_FILL_GUARDED       (ARC_CBT_COUNTER_HEIGHT_FILL_CULLED + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_GLOBAL_SPAN_CULLED (ARC_CBT_COUNTER_HEIGHT_FILL_GUARDED + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_GLOBAL_SPAN_GUARDED (ARC_CBT_COUNTER_HEIGHT_GLOBAL_SPAN_CULLED + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_GLOBAL_UNSAFE_CULLED (ARC_CBT_COUNTER_HEIGHT_GLOBAL_SPAN_GUARDED + 1u)
+#define ARC_CBT_COUNTER_HEIGHT_GLOBAL_UNSAFE_GUARDED (ARC_CBT_COUNTER_HEIGHT_GLOBAL_UNSAFE_CULLED + 1u)
+
+/** Deterministic merge-wave scheduler diagnostics, counted in diamond MEMBERS by the elected initiator.
+ *  CANDIDATE is the complete unanimous population; SELECTED and DEFERRED partition it. The resolved
+ *  source-frame count/phase and pressure override are written by thread zero of SplitMergeCS so delayed
+ *  readback never pairs the topology result with a newer CPU-side CVar value. */
+#define ARC_CBT_COUNTER_MERGE_PHASE_CANDIDATE  (ARC_CBT_COUNTER_HEIGHT_GLOBAL_UNSAFE_GUARDED + 1u)
+#define ARC_CBT_COUNTER_MERGE_PHASE_SELECTED   (ARC_CBT_COUNTER_MERGE_PHASE_CANDIDATE + 1u)
+#define ARC_CBT_COUNTER_MERGE_PHASE_DEFERRED   (ARC_CBT_COUNTER_MERGE_PHASE_SELECTED + 1u)
+#define ARC_CBT_COUNTER_MERGE_PHASE_COUNT      (ARC_CBT_COUNTER_MERGE_PHASE_DEFERRED + 1u)
+#define ARC_CBT_COUNTER_MERGE_FRAME_PHASE      (ARC_CBT_COUNTER_MERGE_PHASE_COUNT + 1u)
+#define ARC_CBT_COUNTER_MERGE_PRESSURE_OVERRIDE (ARC_CBT_COUNTER_MERGE_FRAME_PHASE + 1u)
+
+/** Fast canonical gate diagnostics, all in merge-thread units. RESOLVED and FALLBACK partition the MERGE
+ *  threads seen by SplitMergeCS; PROJECTED_SELECTED and PROJECTED_DEFERRED partition RESOLVED. Stats keeps
+ *  the authoritative gather and requires zero KEY_MISMATCH for every complete diamond thread. */
+#define ARC_CBT_COUNTER_MERGE_FAST_RESOLVED      (ARC_CBT_COUNTER_MERGE_PRESSURE_OVERRIDE + 1u)
+#define ARC_CBT_COUNTER_MERGE_FAST_FALLBACK      (ARC_CBT_COUNTER_MERGE_FAST_RESOLVED + 1u)
+#define ARC_CBT_COUNTER_MERGE_FAST_PROJECTED_SELECTED (ARC_CBT_COUNTER_MERGE_FAST_FALLBACK + 1u)
+#define ARC_CBT_COUNTER_MERGE_FAST_PROJECTED_DEFERRED (ARC_CBT_COUNTER_MERGE_FAST_PROJECTED_SELECTED + 1u)
+#define ARC_CBT_COUNTER_MERGE_FAST_KEY_MISMATCH  (ARC_CBT_COUNTER_MERGE_FAST_PROJECTED_DEFERRED + 1u)
+
+/** Bounded-topology producer diagnostics. These are written only by the bounded Classify permutation
+ *  and topology-work entry points; the legacy SubmitWork path dispatches neither. */
+#define ARC_CBT_COUNTER_TOPO_SPLIT_APPENDED       368u
+#define ARC_CBT_COUNTER_TOPO_SPLIT_OVERFLOW       (ARC_CBT_COUNTER_TOPO_SPLIT_APPENDED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SCAN_ORDINALS        (ARC_CBT_COUNTER_TOPO_SPLIT_OVERFLOW + 1u)
+#define ARC_CBT_COUNTER_TOPO_FAST_REJECTS         (ARC_CBT_COUNTER_TOPO_SCAN_ORDINALS + 1u)
+#define ARC_CBT_COUNTER_TOPO_FULL_GATHERS         (ARC_CBT_COUNTER_TOPO_FAST_REJECTS + 1u)
+#define ARC_CBT_COUNTER_TOPO_SELECTED_DIAMONDS    (ARC_CBT_COUNTER_TOPO_FULL_GATHERS + 1u)
+#define ARC_CBT_COUNTER_TOPO_SELECTED_MEMBERS     (ARC_CBT_COUNTER_TOPO_SELECTED_DIAMONDS + 1u)
+#define ARC_CBT_COUNTER_TOPO_CURSOR_START         (ARC_CBT_COUNTER_TOPO_SELECTED_MEMBERS + 1u)
+#define ARC_CBT_COUNTER_TOPO_CURSOR_END           (ARC_CBT_COUNTER_TOPO_CURSOR_START + 1u)
+#define ARC_CBT_COUNTER_TOPO_CURSOR_WRAPPED       (ARC_CBT_COUNTER_TOPO_CURSOR_END + 1u)
+#define ARC_CBT_COUNTER_TOPO_FULL_WRAP_NO_SELECT  (ARC_CBT_COUNTER_TOPO_CURSOR_WRAPPED + 1u)
+#define ARC_CBT_COUNTER_TOPO_NORMAL_BUDGET        (ARC_CBT_COUNTER_TOPO_FULL_WRAP_NO_SELECT + 1u)
+#define ARC_CBT_COUNTER_TOPO_PRESSURE_BUDGET      (ARC_CBT_COUNTER_TOPO_NORMAL_BUDGET + 1u)
+#define ARC_CBT_COUNTER_TOPO_ACTIVE_BUDGET        (ARC_CBT_COUNTER_TOPO_PRESSURE_BUDGET + 1u)
+#define ARC_CBT_COUNTER_TOPO_PRESSURE_ACTIVE      (ARC_CBT_COUNTER_TOPO_ACTIVE_BUDGET + 1u)
+#define ARC_CBT_COUNTER_TOPO_SELECTED_OVERFLOW    (ARC_CBT_COUNTER_TOPO_PRESSURE_ACTIVE + 1u)
+
+/** Dormant bounded split-consumer integrity. CONSUMED and LOST_ENTRY partition the clamped split
+ *  worklist dispatch. SELECTED_DEFERRED is a split chain that safely yielded after finding any member
+ *  reserved by MergeSelectCS. The final three slots are populated by Step 6 while validating selected
+ *  records before staging; reserving them here keeps that producer/consumer contract explicit. */
+#define ARC_CBT_COUNTER_TOPO_SPLIT_CONSUMED        (ARC_CBT_COUNTER_TOPO_SELECTED_OVERFLOW + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY      (ARC_CBT_COUNTER_TOPO_SPLIT_CONSUMED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_SELECTED_DEFERRED (ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY + 1u)
+#define ARC_CBT_COUNTER_TOPO_SELECTED_NONLIVE      (ARC_CBT_COUNTER_TOPO_SPLIT_SELECTED_DEFERRED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SELECTED_CLAIMED      (ARC_CBT_COUNTER_TOPO_SELECTED_NONLIVE + 1u)
+#define ARC_CBT_COUNTER_TOPO_SELECTED_MISSING_BIT  (ARC_CBT_COUNTER_TOPO_SELECTED_CLAIMED + 1u)
+
+/** Sparse merge-consumer accounting. In an integrity-clean frame, selected, staged and committed
+ *  diamonds/members are equal. STALE_COMMIT counts whole records whose stage proof was incomplete. */
+#define ARC_CBT_COUNTER_TOPO_STAGED_DIAMONDS       (ARC_CBT_COUNTER_TOPO_SELECTED_MISSING_BIT + 1u)
+#define ARC_CBT_COUNTER_TOPO_STAGED_MEMBERS        (ARC_CBT_COUNTER_TOPO_STAGED_DIAMONDS + 1u)
+#define ARC_CBT_COUNTER_TOPO_COMMITTED_DIAMONDS    (ARC_CBT_COUNTER_TOPO_STAGED_MEMBERS + 1u)
+#define ARC_CBT_COUNTER_TOPO_COMMITTED_MEMBERS     (ARC_CBT_COUNTER_TOPO_COMMITTED_DIAMONDS + 1u)
+#define ARC_CBT_COUNTER_TOPO_STALE_COMMIT           (ARC_CBT_COUNTER_TOPO_COMMITTED_MEMBERS + 1u)
+
+/** Bounded split admission accounting. APPENDED above is the raw count. Priorities are indexed 0..5
+ *  here for encoded request priorities 1..6. In a clean frame raw = canonical + duplicate and
+ *  canonical = admitted + deferred. */
+#define ARC_CBT_COUNTER_TOPO_SPLIT_DUPLICATE          (ARC_CBT_COUNTER_TOPO_STALE_COMMIT + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_CANONICAL          (ARC_CBT_COUNTER_TOPO_SPLIT_DUPLICATE + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_ADMITTED           (ARC_CBT_COUNTER_TOPO_SPLIT_CANONICAL + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_DEFERRED           (ARC_CBT_COUNTER_TOPO_SPLIT_ADMITTED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_GUARDED_QUOTA      (ARC_CBT_COUNTER_TOPO_SPLIT_DEFERRED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_GUARDED_ADMITTED   (ARC_CBT_COUNTER_TOPO_SPLIT_GUARDED_QUOTA + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_RAW_BUCKET_BASE    (ARC_CBT_COUNTER_TOPO_SPLIT_GUARDED_ADMITTED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_CANONICAL_BUCKET_BASE (ARC_CBT_COUNTER_TOPO_SPLIT_RAW_BUCKET_BASE + 6u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_ADMITTED_BUCKET_BASE (ARC_CBT_COUNTER_TOPO_SPLIT_CANONICAL_BUCKET_BASE + 6u)
+
+/** Transactional bounded-split lifecycle. These counters deliberately separate scheduler budget debt from
+ *  genuine frozen-pool exhaustion; detailed decoding is added with the Step 4 diagnostics. */
+#define ARC_CBT_COUNTER_TOPO_SPLIT_PREPARED             (ARC_CBT_COUNTER_TOPO_SPLIT_ADMITTED_BUCKET_BASE + 6u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_PREPARE_FAILED       (ARC_CBT_COUNTER_TOPO_SPLIT_PREPARED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_RESERVED             (ARC_CBT_COUNTER_TOPO_SPLIT_PREPARE_FAILED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_BUDGET_DEFERRED      (ARC_CBT_COUNTER_TOPO_SPLIT_RESERVED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_PHYSICAL_REFUSED     (ARC_CBT_COUNTER_TOPO_SPLIT_BUDGET_DEFERRED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_APPLIED_DESCRIPTOR   (ARC_CBT_COUNTER_TOPO_SPLIT_PHYSICAL_REFUSED + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_RELEASED_DESCRIPTOR  (ARC_CBT_COUNTER_TOPO_SPLIT_APPLIED_DESCRIPTOR + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_ALLOCATED_SLOTS      (ARC_CBT_COUNTER_TOPO_SPLIT_RELEASED_DESCRIPTOR + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_MALFORMED            (ARC_CBT_COUNTER_TOPO_SPLIT_ALLOCATED_SLOTS + 1u)
+#define ARC_CBT_COUNTER_TOPO_SPLIT_HELD_CLAIMS          (ARC_CBT_COUNTER_TOPO_SPLIT_MALFORMED + 1u)
+
+#define ARC_CBT_COUNTER_RESIDENT_TIER1_COUNT             (ARC_CBT_COUNTER_TOPO_SPLIT_HELD_CLAIMS + 1u)
+#define ARC_CBT_COUNTER_RESIDENT_TIER2_COUNT             (ARC_CBT_COUNTER_RESIDENT_TIER1_COUNT + 1u)
+#define ARC_CBT_COUNTER_RESIDENT_TIER1_MAX_DEPTH         (ARC_CBT_COUNTER_RESIDENT_TIER2_COUNT + 1u)
+#define ARC_CBT_COUNTER_RESIDENT_TIER2_MAX_DEPTH         (ARC_CBT_COUNTER_RESIDENT_TIER1_MAX_DEPTH + 1u)
+#define ARC_CBT_COUNTER_RESIDENT_CAP_MISMATCH            (ARC_CBT_COUNTER_RESIDENT_TIER2_MAX_DEPTH + 1u)
+#define ARC_CBT_COUNTER_FILL_COUNT                       (ARC_CBT_COUNTER_RESIDENT_CAP_MISMATCH + 1u)
+#define ARC_CBT_COUNTER_FILL_AT_OR_ABOVE_CAP             (ARC_CBT_COUNTER_FILL_COUNT + 1u)
+#define ARC_CBT_COUNTER_FILL_CAP_MISMATCH                (ARC_CBT_COUNTER_FILL_AT_OR_ABOVE_CAP + 1u)
+#define ARC_CBT_COUNTER_FILL_CEILING_VOTE_VIOLATION      (ARC_CBT_COUNTER_FILL_CAP_MISMATCH + 1u)
+
+#define ARC_CBT_COUNTER_NUM                    (ARC_CBT_COUNTER_FILL_CEILING_VOTE_VIOLATION + 1u)
+
+/*=============================================================================
+	CAMERA-MOTION LATENCY COUNTERS — a separate transient 17-DWORD buffer.
+	These indices do NOT extend PoolCounters or ARC_CBT_COUNTER_NUM. They exist only
+	in ARC_CBT_LATENCY_AUDIT shader permutations and are copied through their own
+	bounded readback ring.
+=============================================================================*/
+#define ARC_CBT_LATENCY_VISIBLE_SPLITTABLE     0u
+#define ARC_CBT_LATENCY_CAPPED_TIER0           1u
+#define ARC_CBT_LATENCY_CAPPED_TIER1           2u
+#define ARC_CBT_LATENCY_CAPPED_TIER2           3u
+#define ARC_CBT_LATENCY_CAPPED_TIER3           4u
+#define ARC_CBT_LATENCY_WORST_AREA_RATIO_BITS  5u
+#define ARC_CBT_LATENCY_WORST_ERROR_RATIO_BITS 6u
+#define ARC_CBT_LATENCY_AREA_LEVEL_ESTIMATE    7u
+#define ARC_CBT_LATENCY_SPLIT_APPLIED          8u
+#define ARC_CBT_LATENCY_SPLIT_DEFERRED         9u
+#define ARC_CBT_LATENCY_SPLIT_REFUSED         10u
+#define ARC_CBT_LATENCY_POOL_FULL             11u
+#define ARC_CBT_LATENCY_LIVE_BISECTORS        12u
+/** Motion-refine outcomes count ApplySplit requests, not every bisector expanded by conforming chains. */
+#define ARC_CBT_LATENCY_MOTION_REFINE_APPLIED  13u
+#define ARC_CBT_LATENCY_MOTION_REFINE_DEFERRED 14u
+#define ARC_CBT_LATENCY_MOTION_REFINE_REFUSED  15u
+#define ARC_CBT_LATENCY_WORST_EDGE_RATIO_BITS  16u
+#define ARC_CBT_LATENCY_COUNTER_NUM            17u

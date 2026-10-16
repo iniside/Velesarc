@@ -2,6 +2,10 @@
 
 #include "ArcWeatherSubsystem.h"
 
+#include "ArcWeatherLevelSettings.h"
+
+UE_DEFINE_MASS_SUBSYSTEM_WRAPPER(UArcWeatherSubsystem, FMassSystem_ArcWeatherSubsystem);
+
 void UArcWeatherSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -22,13 +26,17 @@ FIntVector UArcWeatherSubsystem::WorldToCell(const FVector& WorldLocation) const
 	);
 }
 
-void UArcWeatherSubsystem::SetBaseClimate(const FIntVector& CellCoords, const FArcClimateParams& Climate)
+void UArcWeatherSubsystem::SetBaseClimate(const FIntVector& CellCoords, const FArcClimateParams& Climate,
+	float HumidityThreshold, float FreezeThreshold)
 {
 	FArcWeatherCell& Cell = Grid.FindOrAdd(CellCoords);
 	Cell.BaseClimate = Climate;
+	Cell.HumidityThreshold = HumidityThreshold;
+	Cell.FreezeThreshold = FreezeThreshold;
 }
 
-void UArcWeatherSubsystem::SetBaseClimateInBounds(const FBox& Bounds, const FArcClimateParams& Climate)
+void UArcWeatherSubsystem::SetBaseClimateInBounds(const FBox& Bounds, const FArcClimateParams& Climate,
+	float HumidityThreshold, float FreezeThreshold)
 {
 	const FIntVector MinCell = WorldToCell(Bounds.Min);
 	const FIntVector MaxCell = WorldToCell(Bounds.Max);
@@ -41,6 +49,8 @@ void UArcWeatherSubsystem::SetBaseClimateInBounds(const FBox& Bounds, const FArc
 			{
 				FArcWeatherCell& Cell = Grid.FindOrAdd(FIntVector(X, Y, Z));
 				Cell.BaseClimate = Climate;
+				Cell.HumidityThreshold = HumidityThreshold;
+				Cell.FreezeThreshold = FreezeThreshold;
 			}
 		}
 	}
@@ -115,4 +125,72 @@ FArcClimateParams UArcWeatherSubsystem::GetBaseClimateAtLocation(const FVector& 
 {
 	const FArcWeatherCell* Cell = Grid.Find(WorldToCell(Location));
 	return Cell ? Cell->BaseClimate : DefaultClimate;
+}
+
+int32 UArcWeatherSubsystem::GetRainLevelAtLocation(const FVector& Location) const
+{
+	const FArcWeatherCell* Cell = Grid.Find(WorldToCell(Location));
+	const FArcClimateParams Weather = GetWeatherAtLocation(Location);
+	const float HumThreshold = Cell ? Cell->HumidityThreshold : DefaultHumidityThreshold;
+	const float FrzThreshold = Cell ? Cell->FreezeThreshold : DefaultFreezeThreshold;
+
+	if (Weather.Temperature <= FrzThreshold)
+	{
+		return 0;
+	}
+
+	const UArcWeatherLevelSettings* Settings = GetDefault<UArcWeatherLevelSettings>();
+	if (Weather.Humidity >= HumThreshold + Settings->RainLevel3)
+	{
+		return 3;
+	}
+	if (Weather.Humidity >= HumThreshold + Settings->RainLevel2)
+	{
+		return 2;
+	}
+	if (Weather.Humidity >= HumThreshold + Settings->RainLevel1)
+	{
+		return 1;
+	}
+	return 0;
+}
+
+int32 UArcWeatherSubsystem::GetColdLevelAtLocation(const FVector& Location) const
+{
+	const float Temperature = GetWeatherAtLocation(Location).Temperature;
+	const UArcWeatherLevelSettings* Settings = GetDefault<UArcWeatherLevelSettings>();
+
+	if (Temperature <= Settings->ColdLevel3)
+	{
+		return 3;
+	}
+	if (Temperature <= Settings->ColdLevel2)
+	{
+		return 2;
+	}
+	if (Temperature <= Settings->ColdLevel1)
+	{
+		return 1;
+	}
+	return 0;
+}
+
+int32 UArcWeatherSubsystem::GetHeatLevelAtLocation(const FVector& Location) const
+{
+	const float Temperature = GetWeatherAtLocation(Location).Temperature;
+	const UArcWeatherLevelSettings* Settings = GetDefault<UArcWeatherLevelSettings>();
+
+	if (Temperature >= Settings->HeatLevel3)
+	{
+		return 3;
+	}
+	if (Temperature >= Settings->HeatLevel2)
+	{
+		return 2;
+	}
+	if (Temperature >= Settings->HeatLevel1)
+	{
+		return 1;
+	}
+	return 0;
 }

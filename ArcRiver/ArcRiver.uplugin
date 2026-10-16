@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Arc River",
+	"Description": "Rivers extracted from the terrain Rivers mask, carved as ArcTerrain stamps and rendered as Water splines.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"CanContainVerse": false,
+	"IsExperimentalVersion": true,
+	"EnabledByDefault": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcRiver",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name": "ArcRiverEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcTerrain", "Enabled": true },
+		{ "Name": "Water", "Enabled": true }
+	]
+}

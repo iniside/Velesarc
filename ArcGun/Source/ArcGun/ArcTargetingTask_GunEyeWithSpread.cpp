@@ -26,7 +26,7 @@
 #include "ArcGunRecoilInstance.h"
 #include "ArcGunStateComponent.h"
 #include "GameFramework/Character.h"
-#include "Player/ArcCorePlayerState.h"
+#include "Player/ArcMassPlayerState.h"
 #include "Targeting/ArcTargetingSourceContext.h"
 
 UArcTargetingTask_GunEyeWithSpread::UArcTargetingTask_GunEyeWithSpread(const FObjectInitializer& ObjectInitializer)
@@ -47,7 +47,7 @@ void UArcTargetingTask_GunEyeWithSpread::Execute(const FTargetingRequestHandle& 
 		return;
 	}
 
-	AArcCorePlayerState* ArcPS = Cast<AArcCorePlayerState>(Ctx->InstigatorActor.Get());
+	AArcMassPlayerState* ArcPS = Cast<AArcMassPlayerState>(Ctx->InstigatorActor.Get());
 
 	if (ArcPS == nullptr)
 	{

@@ -46,7 +46,7 @@ public:
 protected:
 	/** Called when user confirms a new key binding. Override in Blueprint. */
 	UFUNCTION(BlueprintImplementableEvent)
-	void OnBindingChanged(FKey InNewKey, bool bIsPrimarySlot);
+	void OnKeyBindingChanged(FKey InNewKey, bool bIsPrimarySlot);
 
 	/** Called to start listening for a key press. */
 	UFUNCTION(BlueprintCallable)

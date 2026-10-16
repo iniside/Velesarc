@@ -21,7 +21,6 @@
 
 #include "ArcGunStateComponent.h"
 
-#include "ArcAnimNotify_Unholster.h"
 #include "ArcGunActor.h"
 
 
@@ -29,38 +28,26 @@
 #include "ArcGunInstanceBase.h"
 #include "ArcGunItemInstance.h"
 #include "ArcGunRecoilInstance.h"
-#include "ArcWorldDelegates.h"
 #include "DisplayDebugHelpers.h"
-#include "Camera/ArcPlayerCameraManager.h"
 #include "Camera/CameraComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
 #include "Engine/Canvas.h"
-#include "Equipment/ArcItemAttachmentComponent.h"
 #include "Fragments/ArcItemFragment_GunStats.h"
-#include "Player/ArcCorePlayerController.h"
-#include "Player/ArcPlayerStateExtensionComponent.h"
+#include "Player/ArcMassPlayerController.h"
+#include "Player/ArcMassPlayerStateExtensionComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/HUD.h"
-#include "Pawn/ArcPawnExtensionComponent.h"
+#include "Pawn/ArcMassPawnExtensionComponent.h"
 
-#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemDefinitionData.h"
 #include "Items/ArcItemData.h"
 
-#include "Items/ArcItemsComponent.h"
-#include "Items/ArcItemsSubsystem.h"
 #include "Net/UnrealNetwork.h"
-#include "QuickBar/ArcQuickBarComponent.h"
 
-#include "Items/ArcItemDefinition.h"
 #include "Items/ArcItemsHelpers.h"
 
-#include "Equipment/ArcItemAttachmentComponent.h"
-#include "Items/Fragments/ArcItemFragment_AbilityEffectsToApply.h"
 
 #include "ArcCoreUtils.h"
-#include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
-#include "AbilitySystem/ArcTargetingBPF.h"
 #include "AbilitySystem/Targeting/ArcTargetingObject.h"
 #include "Equipment/ArcSkeletalMeshOwnerInterface.h"
 #include "GameFramework/GameplayControlRotationComponent.h"
@@ -81,12 +68,8 @@ void UArcGunStateComponent::OnRep_SelectedGun(const FArcSelectedGun& Old)
 		return;
 	}
 
-	// TODO:: This is not gonna work on sim proxies (??)
-	// But I don't need item, just item def.
-	// Or I can replicate entire ItemPtr.
-	const FArcItemData* ItemData = GetItemsComponent()->GetItemPtr(SelectedGun.WeaponItemHandle);
-
-	if (SelectedGun.WeaponItemDef == nullptr)
+	const FArcItemDefinitionData* WeaponItemDef = FArcItemDefinitionData::Find(SelectedGun.WeaponItemDef);
+	if (WeaponItemDef == nullptr)
 	{
 		SelectedGunRecoil.Reset();
 		SelectedGunFireMode.Reset();
@@ -99,7 +82,7 @@ void UArcGunStateComponent::OnRep_SelectedGun(const FArcSelectedGun& Old)
 		SelectedGunFireMode.Reset();
 	}
 
-	const FArcItemFragment_GunFireMode* FireMode = SelectedGun.WeaponItemDef->FindFragment<FArcItemFragment_GunFireMode>();
+	const FArcItemFragment_GunFireMode* FireMode = WeaponItemDef->FindFragment<FArcItemFragment_GunFireMode>();
 	if (FireMode != nullptr)
 	{
 		// TODO Move it to SelectedGun.
@@ -111,18 +94,10 @@ void UArcGunStateComponent::OnRep_SelectedGun(const FArcSelectedGun& Old)
 		SelectedGunInstance.Reset();
 	}
 
-	const FArcItemFragment_GunInstancePreset* GunInstance = SelectedGun.WeaponItemDef->FindFragment<FArcItemFragment_GunInstancePreset>();
+	const FArcItemFragment_GunInstancePreset* GunInstance = WeaponItemDef->FindFragment<FArcItemFragment_GunInstancePreset>();
 	if (GunInstance != nullptr)
 	{
 		SelectedGunInstance = GunInstance->InstanceAsset->GunInstance;
-	}
-	
-	UArcItemAttachmentComponent* IAC = GetOwner()->FindComponentByClass<UArcItemAttachmentComponent>();
-	
-	SelectedGun.GunActor = Cast<AArcGunActor>(IAC->GetAttachedActor(SelectedGun.WeaponItemHandle));
-	if (SelectedGun.GunActor.IsValid())
-	{
-		SelectedGun.GunActor->Initialize(SelectedGun.WeaponItemHandle);
 	}
 }
 
@@ -133,7 +108,7 @@ void UArcGunStateComponent::OnRep_GunState(const FArcGunState& OldWeaponState)
 		OnStartFireDelegate.Broadcast(SelectedGun);
 		if (FArcGunFireMode* FireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>())
 		{
-			const bool bPreFired = FireMode->FireStart(GunState.RequestingAbility, this);
+			const bool bPreFired = FireMode->FireStart(this);
 			if (bPreFired)
 			{
 				PreFire();
@@ -145,7 +120,7 @@ void UArcGunStateComponent::OnRep_GunState(const FArcGunState& OldWeaponState)
 		OnStopFireDelegate.Broadcast(SelectedGun);
 		if (FArcGunFireMode* FireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>())
 		{
-			FireMode->FireStop(GunState.RequestingAbility, this);
+			FireMode->FireStop(this);
 		}
 	}
 }
@@ -179,64 +154,34 @@ UArcGunStateComponent::UArcGunStateComponent()
 	// ...
 }
 
-UArcItemsStoreComponent* UArcGunStateComponent::GetItemsComponent() const
-{
-	if (ItemsComponent == nullptr)
-	{
-		ItemsComponent = Arcx::Utils::GetComponent(GetOwner(), ItemSlotComponentClass);
-	}
-
-	return ItemsComponent;
-}
-
 // Called when the game starts
 void UArcGunStateComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	
 	SelectedGun.WCOwner = this;
-
-	UArcWorldDelegates::Get(this)->BroadcastActorOnComponentBeginPlay(
-		FArcComponentChannelKey(GetOwner(), UArcGunStateComponent::StaticClass())
-		, this);
 }
 
 void UArcGunStateComponent::InitializeComponent()
 {
 	//This component should be on PlayerState, but it's possible for it to end up on Pawn.
-	if (UArcPlayerStateExtensionComponent* PSExt = UArcPlayerStateExtensionComponent::Get(GetOwner()))
+	if (UArcMassPlayerStateExtensionComponent* PSExt = UArcMassPlayerStateExtensionComponent::Get(GetOwner()))
 	{
-		PSExt->AddOnPlayerStateReady(FSimpleMulticastDelegate::FDelegate::CreateUObject(
-			this, &ThisClass::HandleComponentReady
-		));
+		PSExt->OnPlayerStateReady().AddUObject(this, &ThisClass::HandleComponentReady);
 	}
-	else if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
+	else if (UArcMassPawnExtensionComponent* PawnExtComp = UArcMassPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
 	{
-		PawnExtComp->OnPawnReadyToInitialize_RegisterAndCall(FSimpleMulticastDelegate::FDelegate::CreateUObject(
-			this, &ThisClass::HandleComponentReady));
+		PawnExtComp->OnPawnReadyToInitialize_RegisterAndCall(
+			UArcMassPawnExtensionComponent::FArcMassOnPawnReadyToInitialize::FDelegate::CreateWeakLambda(
+				this, [this](UArcMassPawnExtensionComponent*) { HandleComponentReady(); }));
 	}
 	
 	HandleComponentReady();
-	
+
 	Super::InitializeComponent();
 
-	if (Arcx::Utils::IsPlayableWorld(GetWorld()))
-	{
-		UArcItemsSubsystem* ItemsSubsystem = UArcItemsSubsystem::Get(this);
-
-		if (ItemsSubsystem)
-		{
-			ItemsSubsystem->AddActorOnRemovedFromSlot(GetOwner(), FArcGenericItemSlotDelegate::FDelegate::CreateUObject(
-				this, &UArcGunStateComponent::HandleOnItemRemovedFromSlot
-				));
-		
-			ItemsSubsystem->AddActorOnAddedToSocket(GetOwner(), FArcGenericItemSocketSlotDelegate::FDelegate::CreateUObject(
-				this, &UArcGunStateComponent::HandleOnItemAddedToSocket));
-
-			ItemsSubsystem->AddActorOnAddedToSlot(GetOwner(), FArcGenericItemSlotDelegate::FDelegate::CreateUObject(
-				this, &UArcGunStateComponent::HandleOnItemAddedToSlot));
-		}
-	}
+	// Item-store / slot lifecycle hooks retired with UArcItemsStoreComponent (plan step 8b-gun).
+	// Mass-side equivalent will rewire via FArcMassItemStoreFragment events when reintroduced.
 }
 
 void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -272,9 +217,10 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		Targeting->ExecuteTargetingRequestWithHandle(CameraAimTargetingHandle, CompletionDelegate);		
 	}
 	
-	if (GunState.TargetingObject.Get() && SelectedGun.WeaponItemDef)
+	const FArcItemDefinitionData* WeaponItemDef = GunState.TargetingObject.Get() ? FArcItemDefinitionData::Find(SelectedGun.WeaponItemDef) : nullptr;
+	if (WeaponItemDef != nullptr)
 	{
-		const ArcGunStats* WeaponStats = SelectedGun.WeaponItemDef->GetScalableFloatFragment<ArcGunStats>();
+		const ArcGunStats* WeaponStats = WeaponItemDef->GetScalableFloatFragment<ArcGunStats>();
 		
 		//const float FixedUpdateRate = WeaponStats->RecoilUpdateRate;
 
@@ -318,7 +264,7 @@ void UArcGunStateComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	FArcGunFireMode* FireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>();
 	if (FireMode != nullptr && GunState.bIsFiring == true)
 	{
-		const bool bPreFired = FireMode->FireUpdate(GunState.RequestingAbility, this, DeltaTime);
+		const bool bPreFired = FireMode->FireUpdate(this, DeltaTime);
 		if (bPreFired)
 		{
 			PreFire();
@@ -379,11 +325,9 @@ void UArcGunStateComponent::PreFire()
 {
 	FArcGunShotInfo ShotInfo;
 	ShotInfo.GunStateComponent = this;
-	ShotInfo.Ability = GunState.SourceAbility.Get();
 	ShotInfo.CurrentGun = SelectedGun;
 	ShotInfo.Targets = {CurrentHitResult};
 	ShotInfo.TargetingObject = GunState.TargetingObject;
-	ShotInfo.TargetRequestHandle = GunState.RequestingAbility;
 	ShotInfo.bEnded = false;
 	ShotInfo.TimeHeld = 0;
 	
@@ -394,26 +338,24 @@ void UArcGunStateComponent::HandleComponentReady()
 	ENetMode NetMode = GetNetMode();
 	if (NetMode != ENetMode::NM_DedicatedServer)
 	{
-		if (UArcPlayerStateExtensionComponent* PSExt = UArcPlayerStateExtensionComponent::Get(GetOwner()))
+		if (UArcMassPlayerStateExtensionComponent* PSExt = UArcMassPlayerStateExtensionComponent::Get(GetOwner()))
 		{
-			CharacterOwner = PSExt->GetPawn<APawn>();
-			if (CharacterOwner != nullptr)
+			if (APlayerState* PS = Cast<APlayerState>(PSExt->GetOwner()))
 			{
-				ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();
+				CharacterOwner = PS->GetPawn();
+				if (CharacterOwner != nullptr)
+				{
+					ArcPC = CharacterOwner->GetController<AArcMassPlayerController>();
+				}
 			}
-			
-			if (ArcASC == nullptr)
-			{
-				ArcASC = PSExt->GetOwner()->FindComponentByClass<UArcCoreAbilitySystemComponent>();
-			}
-			
+			// GAS-side ArcASC wiring removed (Bucket B); weapon ASC integration retires in Bucket D.
 		}
-		else if (UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
+		else if (UArcMassPawnExtensionComponent* PawnExtComp = UArcMassPawnExtensionComponent::FindPawnExtensionComponent(GetOwner()))
 		{
 			CharacterOwner = PawnExtComp->GetPawn<APawn>();
 			if (CharacterOwner != nullptr)
 			{
-				ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();
+				ArcPC = CharacterOwner->GetController<AArcMassPlayerController>();
 			}
 		}
 		
@@ -441,322 +383,35 @@ void UArcGunStateComponent::HandleComponentReady()
 
 
 		
-		if(CharacterOwner)
-		{
-			UArcPawnExtensionComponent* PawnExtComp = UArcPawnExtensionComponent::FindPawnExtensionComponent(CharacterOwner);
-			ArcASC = PawnExtComp->GetArcAbilitySystemComponent();
-			
-			//EndPhysicsTickFunction.AddPrerequisite(this, );
-		}
+		// GAS-side ArcASC fetch removed (Bucket B); weapon ASC integration retires in Bucket D.
 	}
 
 	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(GetOwner(), UArcGunStateComponent::NAME_GunComponentReady);
 	OnWeaponComponentReady();
 }
 
-void UArcGunStateComponent::HandleQuickSlotSelected(FGameplayTag BarId, FGameplayTag QuickSlotId)
-{
-	UArcQuickBarComponent* QuickBar = UArcQuickBarComponent::GetQuickBar(GetOwner());
 
-	FArcItemId ItemId = QuickBar->GetItemId(BarId, QuickSlotId);
-	const FArcItemData* ItemData = QuickBar->FindQuickSlotItem(BarId, QuickSlotId);	
-
-	FArcGunFireMode* CurrentFireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>();
-
-	if (CurrentFireMode != nullptr && GunState.bIsFiring == true)
-	{
-		StopFire();
-	}
-	
-	// No matter if we go further reset everything.
-	SelectedGun.Reset();
-	SelectedGunFireMode.Reset();
-	SelectedGunInstance.Reset();
-	if (SelectedGunRecoil.IsValid())
-	{
-		SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>()->Deinitialize();
-	}
-	SelectedGunRecoil.Reset();
-	
-	if(ItemId.IsValid() == false)
-	{
-		return;
-	}
-
-	if (ItemData == nullptr)
-	{
-		return;
-	}
-
-	const FArcItemFragment_GunFireMode* FireMode = ArcItemsHelper::FindFragment<FArcItemFragment_GunFireMode>(ItemData);
-	const FArcItemFragment_GunInstancePreset* GunInstance = ArcItemsHelper::FindFragment<FArcItemFragment_GunInstancePreset>(ItemData);
-	const FArcItemFragment_GunRecoilPreset* GunRecoil = ArcItemsHelper::FindFragment<FArcItemFragment_GunRecoilPreset>(ItemData);
-
-	if (FireMode == nullptr || GunInstance == nullptr || GunRecoil == nullptr)
-	{
-		MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, SelectedGun, this);
-		return;
-	}
-	
-	SelectedGunFireMode = FireMode->FireModeAsset->FireMode;
-	
-	SelectedGunInstance = GunInstance->InstanceAsset->GunInstance;
-	SelectedGunInstance.GetMutablePtr<FArcGunInstanceBase>()->Initialize(this);
-
-	SelectedGunRecoil = GunRecoil->InstancePreset->RecoilInstance;
-
-	SelectedGun.QuickBarId = BarId;
-	SelectedGun.QuickSlotId = QuickSlotId;
-	
-	SelectedGun.GunItemPtr = ItemData;
-	SelectedGun.WeaponItemHandle = ItemId;
-	SelectedGun.SetWeaponItemPtr(ItemData);
-	SelectedGun.Slot = ItemData->GetSlotId();
-	SelectedGun.WeaponItemDef = ItemData->GetItemDefinition();
-	
-	UArcItemAttachmentComponent* IAC = GetOwner()->FindComponentByClass<UArcItemAttachmentComponent>();
-	
-	SelectedGun.GunActor = Cast<AArcGunActor>(IAC->GetAttachedActor(ItemId));
-	if (SelectedGun.GunActor.IsValid())
-	{
-		SelectedGun.GunActor->Initialize(SelectedGun.WeaponItemHandle);
-	}
-	
-	OnGunSelectedDelegate.Broadcast(SelectedGun);
-	
-	MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, SelectedGun, this);
-}
-
-void UArcGunStateComponent::HandleQuickSlotDeselected(FGameplayTag BarId
-	, FGameplayTag QuickSlotId)
-{
-	UArcQuickBarComponent* QuickBar = UArcQuickBarComponent::GetQuickBar(GetOwner());
-	FArcItemId OldItemId = QuickBar->GetItemId(BarId, QuickSlotId);
-	const FArcItemData* OldItemData = QuickBar->FindQuickSlotItem(BarId, QuickSlotId);	
-
-	if(OldItemId.IsValid() == false)
-	{
-		return;
-	}
-
-	if (OldItemData != nullptr)
-	{
-		OldSelectedGun.WeaponItemHandle = OldItemData->GetItemId();
-		OldSelectedGun.SetWeaponItemPtr(OldItemData);
-		OldSelectedGun.Slot = OldItemData->GetSlotId();
-		OldSelectedGun.WeaponItemDef = OldItemData->GetItemDefinition();
-	}
-
-	// If somehow we already set new gun, don't reset.
-	if (SelectedGun.WeaponItemHandle == OldItemId)
-	{
-		SelectedGun.Reset();	
-	}
-}
-
-void UArcGunStateComponent::HandleOnItemRemovedFromSlot(UArcItemsStoreComponent* ItemSlotComponent
-	, const FGameplayTag& ItemSlot
-	, const FArcItemData* ItemData)
-{
-	if (ItemSlotComponent->GetClass()->IsChildOf(ItemSlotComponentClass) == false)
-	{
-		return;
-	}
-
-	FArcGunFireMode* CurrentFireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>();
-
-	if (CurrentFireMode != nullptr && GunState.bIsFiring == true)
-	{
-		StopFire();
-	}
-	
-	if (SelectedGun.WeaponItemHandle == ItemData->GetItemId())
-	{
-		OldSelectedGun = SelectedGun;
-		
-		SelectedGun.Reset();
-		SelectedGun.ForceUpdate++;
-		
-		MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, SelectedGun, this);
-		
-		SelectedGunInstance.Reset();
-		SelectedGunFireMode.Reset();
-		SelectedGunRecoil.Reset();
-	}
-}
-
-void UArcGunStateComponent::HandleOnItemAddedToSlot(UArcItemsStoreComponent* ItemSlotComponent
-	, const FGameplayTag& ItemSlot
-	, const FArcItemData* ItemData)
-{
-	if (OldSelectedGun.IsValid() == false)
-	{
-		return;
-	}
-
-	if (OldSelectedGun.Slot != ItemSlot)
-	{
-		return;
-	}
-
-	FArcGunFireMode* CurrentFireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>();
-
-	if (CurrentFireMode != nullptr && GunState.bIsFiring == true)
-	{
-		StopFire();
-	}
-	
-	OldSelectedGun.WeaponItemHandle = SelectedGun.WeaponItemHandle;
-	OldSelectedGun.SetWeaponItemPtr(SelectedGun.GunItemPtr);
-	OldSelectedGun.Slot = SelectedGun.Slot;
-	
-	// No matter if we go further reset everything.
-	SelectedGun.Reset();
-	SelectedGunFireMode.Reset();
-	SelectedGunInstance.Reset();
-	if (SelectedGunRecoil.IsValid())
-	{
-		SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>()->Deinitialize();
-	}
-	SelectedGunRecoil.Reset();
-	
-	if(ItemData->GetItemId().IsValid() == false)
-	{
-		return;
-	}
-
-	if (ItemData == nullptr)
-	{
-		return;
-	}
-
-	const FArcItemFragment_GunFireMode* FireMode = ArcItemsHelper::FindFragment<FArcItemFragment_GunFireMode>(ItemData);
-	const FArcItemFragment_GunInstancePreset* GunInstance = ArcItemsHelper::FindFragment<FArcItemFragment_GunInstancePreset>(ItemData);
-	const FArcItemFragment_GunRecoilPreset* GunRecoil = ArcItemsHelper::FindFragment<FArcItemFragment_GunRecoilPreset>(ItemData);
-
-	if (FireMode == nullptr || GunInstance == nullptr || GunRecoil == nullptr)
-	{
-		MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, SelectedGun, this);
-		return;
-	}
-	
-	SelectedGunFireMode = FireMode->FireModeAsset->FireMode;
-	
-	SelectedGunInstance = GunInstance->InstanceAsset->GunInstance;
-	SelectedGunInstance.GetMutablePtr<FArcGunInstanceBase>()->Initialize(this);
-
-	SelectedGunRecoil = GunRecoil->InstancePreset->RecoilInstance;
-	
-	SelectedGun.GunItemPtr = ItemData;
-	SelectedGun.WeaponItemHandle = ItemData->GetItemId();
-	SelectedGun.SetWeaponItemPtr(ItemData);
-	SelectedGun.Slot = ItemData->GetSlotId();
-
-	UArcItemAttachmentComponent* IAC = GetOwner()->FindComponentByClass<UArcItemAttachmentComponent>();
-	
-	SelectedGun.GunActor = Cast<AArcGunActor>(IAC->GetAttachedActor(ItemData->GetItemId()));
-	if (SelectedGun.GunActor.IsValid())
-	{
-		SelectedGun.GunActor->Initialize(SelectedGun.WeaponItemHandle);
-	}
-
-	const FArcItemFragment_GunUnholster* WeaponAttachment = ItemData->GetItemDefinition()->FindFragment<FArcItemFragment_GunUnholster>();
-	if(WeaponAttachment == nullptr)
-	{
-		//UE_LOG(LogArcWeaponComponent, Log, TEXT("AttachUnholster - Weapon attachment is invalid"));
-		return;
-	}
-
-	IAC->AttachItemToSocket(ItemData->GetItemId(), WeaponAttachment->UnholsterSocket, NAME_None, WeaponAttachment->Transform);
-	IAC->LinkAnimLayer(ItemData->GetItemId());
-	
-	OnGunSelectedDelegate.Broadcast(SelectedGun);
-
-	UArcQuickBarComponent* QuickBar = UArcQuickBarComponent::GetQuickBar(GetOwner());
-	//QuickBar->SetBarSlotDeselected(SelectedGun.QuickBarId, SelectedGun.QuickSlotId);
-	
-	MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, SelectedGun, this);
-	
-}
-
-void UArcGunStateComponent::HandleOnItemAddedToSocket(UArcItemsStoreComponent* ItemSlotComponent
-													  , const FGameplayTag& ItemSlot
-													  , const FArcItemData* OwnerItemData
-													  , const FGameplayTag& ItemSocketSlot
-													  , const FArcItemData* SocketItemData)
-{
-	if (ItemSlotComponent->GetOwner() != GetOwner())
-	{
-		return;
-	}
-	
-	if (SelectedGun.IsValid() == false)
-	{
-		return;
-	}
-
-	if(OwnerItemData->GetItemId() != SelectedGun.WeaponItemHandle)
-	{
-		return;
-	}
-
-	// Try to reinstance everything new.
-	const FArcItemFragment_GunFireMode* FireMode = ArcItemsHelper::FindFragment<FArcItemFragment_GunFireMode>(SocketItemData);
-	if (FireMode != nullptr)
-	{
-		if (SelectedGunFireMode.GetScriptStruct() != FireMode->FireModeAsset->FireMode.GetScriptStruct())
-		{
-			SelectedGunFireMode = FireMode->FireModeAsset->FireMode;
-		}
-	}
-
-	const FArcItemFragment_GunInstancePreset* GunInstance = ArcItemsHelper::FindFragment<FArcItemFragment_GunInstancePreset>(SocketItemData);
-	if (GunInstance != nullptr)
-	{
-		if (SelectedGunInstance.GetScriptStruct() != GunInstance->InstanceAsset->GunInstance.GetScriptStruct())
-		{
-			SelectedGunInstance = GunInstance->InstanceAsset->GunInstance;
-		}
-	}
-	
-	const FArcItemFragment_GunRecoilPreset* GunRecoil = ArcItemsHelper::FindFragment<FArcItemFragment_GunRecoilPreset>(SocketItemData);
-	if (GunRecoil != nullptr)
-	{
-		if (SelectedGunRecoil.GetScriptStruct() != GunRecoil->InstancePreset->RecoilInstance.GetScriptStruct())
-		{
-			SelectedGunRecoil = GunRecoil->InstancePreset->RecoilInstance;
-		}
-	}
-}
-
-void UArcGunStateComponent::StartFire(
-	UGameplayAbility* SourceAbility
-	, UArcTargetingObject* InTargetingObject
-	, const FGameplayAbilitySpecHandle& TargetRequest)
+void UArcGunStateComponent::StartFire(UArcTargetingObject* InTargetingObject)
 {
 	if (SelectedGunInstance.IsValid() == false)
 	{
 		return;
 	}
 
-	UArcCoreGameplayAbility* ArcAbility = Cast<UArcCoreGameplayAbility>(SourceAbility);
-	
 	ShootCount = 0;
 	OnStartFireDelegate.Broadcast(SelectedGun);
 	GunState.bIsFiring = true;
 	GunState.TargetingObject = InTargetingObject;
-	GunState.RequestingAbility = TargetRequest;
 	GunState.StateRep++;
-	GunState.SourceAbility = ArcAbility;
-	
+
 	MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, GunState, this);
-	
+
 	if(GetOwnerRole() < ROLE_Authority)
 	{
-		ServerFireStart(InTargetingObject, TargetRequest);
+		ServerFireStart(InTargetingObject);
 	}
 	SelectedGunInstance.GetMutablePtr<FArcGunInstanceBase>()->Initialize(this);
-	
+
 	if (GetNetMode() != ENetMode::NM_DedicatedServer)
 	{
 		FArcGunRecoilInstance* RecoilInstance = SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>();
@@ -765,16 +420,16 @@ void UArcGunStateComponent::StartFire(
 			RecoilInstance->StartRecoil(this);
 		}
 	}
-	
+
 	if (FArcGunFireMode* FireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>())
 	{
-		const bool bPreFired = FireMode->FireStart(GunState.RequestingAbility, this);
+		const bool bPreFired = FireMode->FireStart(this);
 		if (bPreFired)
 		{
 			PreFire();
 		}
 	}
-	
+
 	GetOwner()->ForceNetUpdate();
 }
 
@@ -791,7 +446,7 @@ void UArcGunStateComponent::StopFire()
 	
 	if (FArcGunFireMode* FireMode = SelectedGunFireMode.GetMutablePtr<FArcGunFireMode>())
 	{
-		FireMode->FireStop(GunState.RequestingAbility, this);
+		FireMode->FireStop(this);
 	}
 	
 	if (GetNetMode() != ENetMode::NM_DedicatedServer)
@@ -831,16 +486,13 @@ bool UArcGunStateComponent::CommitAmmo()
 	return bCommited;
 }
 
-void UArcGunStateComponent::ShootGun(
-	class UGameplayAbility* InAbility
-	, const FGameplayAbilityTargetDataHandle& InHits
-	, class UArcTargetingObject* InTrace)
+void UArcGunStateComponent::ShootGun(class UArcTargetingObject* InTrace)
 {
 	LastShootTime = GetWorld()->GetTimeSeconds();
 	ShootCount++;
-	
-	OnGunShootDelegate.Broadcast(InAbility, SelectedGun, InHits, InTrace, InAbility->GetCurrentAbilitySpecHandle());
-	
+
+	OnGunShootDelegate.Broadcast(SelectedGun, InTrace);
+
 	if (GetNetMode() != ENetMode::NM_DedicatedServer)
 	{
 		FArcGunRecoilInstance* RecoilInstance = SelectedGunRecoil.GetMutablePtr<FArcGunRecoilInstance>();
@@ -856,12 +508,11 @@ void UArcGunStateComponent::BroadcastOnPreShoot(const FArcGunShotInfo& ShotInfo)
 	OnPreShootDelegate.Broadcast(ShotInfo);
 }
 
-void UArcGunStateComponent::ServerFireStart_Implementation(UArcTargetingObject* InTargetingObject, const FGameplayAbilitySpecHandle& TargetRequest)
+void UArcGunStateComponent::ServerFireStart_Implementation(UArcTargetingObject* InTargetingObject)
 {
 	ShootCount = 0;
 	GunState.bIsFiring = true;
 	GunState.TargetingObject = InTargetingObject;
-	GunState.RequestingAbility = TargetRequest;
 	GunState.StateRep++;
 	MARK_PROPERTY_DIRTY_FROM_NAME(UArcGunStateComponent, GunState, this);
 
@@ -892,12 +543,6 @@ void UArcGunStateComponent::ClientReloadCompleted_Implementation(const FArcClien
 void UArcGunStateComponent::ServerCommitAmmo_Implementation()
 {
 	SelectedGunInstance.GetMutablePtr<FArcGunInstanceBase>()->CommitAmmo(SelectedGun.GunItemPtr, this);
-}
-
-TArray<const FArcEffectSpecItem*> UArcGunStateComponent::GetAmmoGameplayEffectSpecs(const FGameplayTag& InTag) const
-{
-	const FArcItemInstance_EffectToApply* Instance = ArcItemsHelper::FindInstance<FArcItemInstance_EffectToApply>(SelectedGun.GunItemPtr);
-	return Instance->GetEffectSpecHandles(InTag);
 }
 
 FVector UArcGunStateComponent::GetWeaponSocketLocation(FName SocketName) const
@@ -965,13 +610,13 @@ FVector UArcGunStateComponent::GetGunAimPoint() const
 	return AimPoint;
 }
 
-AArcCorePlayerController* UArcGunStateComponent::GetPlayerController() const
+AArcMassPlayerController* UArcGunStateComponent::GetPlayerController() const
 {
 	if (ArcPC == nullptr)
 	{
 		if (APlayerState* PS = GetOwner<APlayerState>())
 		{
-			ArcPC = Cast<AArcCorePlayerController>(PS->GetOwningController());
+			ArcPC = Cast<AArcMassPlayerController>(PS->GetOwningController());
 		}
 	}
 
@@ -979,13 +624,13 @@ AArcCorePlayerController* UArcGunStateComponent::GetPlayerController() const
 	{
 		if (APawn* PS = GetOwner<APawn>())
 		{
-			ArcPC = Cast<AArcCorePlayerController>(PS->GetController());
+			ArcPC = Cast<AArcMassPlayerController>(PS->GetController());
 		}
 	}
 	
 	if (ArcPC == nullptr)
 	{
-		ArcPC = GetOwner<AArcCorePlayerController>();
+		ArcPC = GetOwner<AArcMassPlayerController>();
 	}
 	
 	return ArcPC;
@@ -994,11 +639,6 @@ AArcCorePlayerController* UArcGunStateComponent::GetPlayerController() const
 UArcTargetingObject* UArcGunStateComponent::GetTargetingObject() const
 {
 	return GunState.TargetingObject;
-}
-
-UArcCoreAbilitySystemComponent* UArcGunStateComponent::GetArcASC() const
-{
-	return ArcASC;
 }
 
 float UArcGunStateComponent::GetCurrentSpread() const
@@ -1091,22 +731,5 @@ USceneComponent* UArcGunStateComponent::GetAttachComponent(const FGameplayTag& I
 	return C->GetMesh();
 }
 
-AArcPlayerCameraManager* UArcGunStateComponent::GetCameraManager()
-{
-	unimplemented();
-	return nullptr;
-	//APlayerState* PS = Cast<APlayerState>(GetOwner());
-	//if (PS)
-	//{
-	//	APlayerController* PC = PS->GetPlayerController();
-	//	AArcPlayerCameraManager* ArcPCM = Cast<AArcPlayerCameraManager>(PC->PlayerCameraManager.Get());
-	//	return ArcPCM;
-	//}
-	//ACharacter* C = Cast<ACharacter>(GetOwner());
-	//
-	//APlayerController* PC = C->GetController<APlayerController>();
-	//AArcPlayerCameraManager* ArcPCM = Cast<AArcPlayerCameraManager>(PC->PlayerCameraManager.Get());
-	//return ArcPCM;
-}
 
 

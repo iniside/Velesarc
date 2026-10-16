@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "GameplayTagContainer.h"
 #include "ArcAreaTypes.h"
 
@@ -18,24 +19,10 @@ struct ARCAREA_API FArcAreaAssignmentFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Area")
-	FArcAreaSlotHandle SlotHandle;
+	UPROPERTY(BlueprintReadOnly, Category = "Area")
+	FSmartObjectSlotHandle SlotHandle;
 
 	bool IsAssigned() const { return SlotHandle.IsValid(); }
-};
-
-/**
- * Const shared fragment: what roles this NPC archetype can fill.
- * Shared across all entities of the same NPC archetype.
- */
-USTRUCT(BlueprintType)
-struct ARCAREA_API FArcAreaAssignmentConfigFragment : public FMassConstSharedFragment
-{
-	GENERATED_BODY()
-
-	/** Role tags this NPC type is eligible for (e.g., "Role.Blacksmith", "Role.Guard"). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Area")
-	FGameplayTagContainer EligibleRoles;
 };
 
 /**

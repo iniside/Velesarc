@@ -132,93 +132,9 @@ public:
 	}
 };
 
-USTRUCT()
-struct FArcBotAttributeSet
-{
-	GENERATED_BODY()
+// FArcBotAttributeSet / FArcBotGiveAttributeSet retired with GAS keystone (Bucket D 7).
 
-public:
-	UPROPERTY(EditAnywhere
-		, Category = "Arc Core")
-	TSubclassOf<class UArcAttributeSet> AttributeSetClass;
-
-	UPROPERTY(EditAnywhere
-		, Category = "Arc Core"
-		, meta = (RequiredAssetDataTags = "RowStructure=/Script/GameplayAbilities.AttributeMetaData"))
-	TObjectPtr<class UDataTable> AttributeMetaData;
-
-	FArcBotAttributeSet()
-		: AttributeSetClass(nullptr)
-		, AttributeMetaData(nullptr)
-	{
-	};
-};
-
-USTRUCT(BlueprintType)
-struct ARCCORE_API FArcBotGiveAttributeSet : public FArcBotDataFragment
-{
-	GENERATED_BODY()
-
-protected:
-	UPROPERTY(EditAnywhere
-		, Category = "Arc Core")
-	TArray<FArcBotAttributeSet> AttributeSets;
-
-public:
-	FArcBotGiveAttributeSet()
-	{
-	};
-
-	virtual void GiveFragment(class APawn* InPawn
-							  , class AAIController* InController) const override;
-
-	virtual ~FArcBotGiveAttributeSet() override
-	{
-	}
-};
-
-USTRUCT(BlueprintType)
-struct ARCCORE_API FArcBotGiveAbilities : public FArcBotDataFragment
-{
-	GENERATED_BODY()
-
-protected:
-	UPROPERTY(EditAnywhere, Category = "Arc Core")
-	TArray<TSubclassOf<class UGameplayAbility>> Abilities;
-
-public:
-	FArcBotGiveAbilities()
-	{
-	};
-
-	virtual void GiveFragment(class APawn* InPawn
-							  , class AAIController* InController) const override;
-
-	virtual ~FArcBotGiveAbilities() override
-	{
-	}
-};
-
-USTRUCT(BlueprintType)
-struct ARCCORE_API FArcBotGiveEffects : public FArcBotDataFragment
-{
-	GENERATED_BODY()
-
-protected:
-	UPROPERTY(EditAnywhere, Category = "Arc Core")
-	TArray<TSubclassOf<class UGameplayEffect>> GameplayEffects;
-
-public:
-	FArcBotGiveEffects()
-	{
-	};
-
-	virtual void GiveFragment(class APawn* InPawn, class AAIController* InController) const override;
-
-	virtual ~FArcBotGiveEffects() override
-	{
-	}
-};
+// FArcBotGiveAbilities / FArcBotGiveEffects retired with GAS keystone (Bucket D 7).
 
 UCLASS()
 class ARCCORE_API UArcBotData : public UDataAsset

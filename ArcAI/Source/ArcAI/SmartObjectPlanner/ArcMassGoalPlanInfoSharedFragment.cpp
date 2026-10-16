@@ -3,7 +3,8 @@
 #include "ArcMassGoalPlanInfoSharedFragment.h"
 
 #include "MassEntityTemplateRegistry.h"
-#include "MassEntityUtils.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
 
 void UArcMassGoalPlanInfoTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {

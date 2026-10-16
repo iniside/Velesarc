@@ -9,6 +9,8 @@ public class ArcEditorTools : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
+		OptimizeCode = CodeOptimization.Always;
+		
 		PublicIncludePaths.AddRange(
 			new string[]
 			{
@@ -34,18 +36,10 @@ public class ArcEditorTools : ModuleRules
 
 		PublicIncludePaths.AddRange(
 			new string[] {
-				// ... add public include paths required here ...
+				// ... add public include paths required here ...+
 			}
 			);
-				
-		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				// ... add other private include paths required here ...
-			}
-			);
-			
-		
+
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
@@ -73,7 +67,6 @@ public class ArcEditorTools : ModuleRules
 				, "AssetTools"
 				, "AssetRegistry"
 				, "ContentBrowser"
-				, "GameplayAbilitiesEditor"
 				, "MainFrame"
 				, "EditorScriptingUtilities"
 				, "ClassViewer"
@@ -91,14 +84,50 @@ public class ArcEditorTools : ModuleRules
 				, "ToolMenus"
 				, "Projects"
 				, "ApplicationCore"
-				, "KismetCompiler"
 				, "StructUtilsEditor"
 				, "AssetDefinition"
 				, "EngineAssetDefinitions"
 				, "ContentBrowser"
 				, "ContentBrowserData"
 				, "AssetManagerEditor"
-				// ... add private dependencies that you statically link with here ...	
+				, "MassEntity"
+				, "MassCore"
+				, "MassSignals"
+				, "WorkspaceMenuStructure"
+				, "ArcArea"
+				, "ArcCues"
+				, "ArcMassDamageSystem"
+				, "ArcKnowledge"
+				, "ArcNeeds"
+				, "ArcTargetQuery"
+				, "ModelingComponents"
+				, "GeometryCore"
+				, "DynamicMesh"
+				, "ZoneGraph"
+				, "Blutility"
+				, "MeshDescription"
+				, "SkeletalMeshDescription"
+				, "AnimationCore"
+				, "Json"
+				, "JsonUtilities"
+				, "ArcMassItemsRuntime"
+				, "DerivedDataCache"
+				, "TextureGraph"
+				, "TextureGraphEngine"
+				, "ArcTextureGraphTerrain"
+				, "ArcTerrain"
+				, "RenderCore"
+				, "RHI"
+				, "GeometryAlgorithms"
+				, "ModelingComponentsEditorOnly"
+				, "MeshConversion"
+				, "PCG"
+				, "ImageCore"
+				, "ToolWidgets"
+				, "DynamicWind"
+				, "DynamicWindEditor"
+				, "TraceLog"
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
 		

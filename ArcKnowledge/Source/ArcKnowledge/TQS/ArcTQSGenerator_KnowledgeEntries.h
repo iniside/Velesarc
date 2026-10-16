@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSGenerator.h"
+#include "ArcTQSGenerator.h"
 #include "GameplayTagContainer.h"
 #include "ArcTQSGenerator_KnowledgeEntries.generated.h"
 
@@ -19,11 +19,17 @@ struct ARCKNOWLEDGE_API FArcTQSGenerator_KnowledgeEntries : public FArcTQSGenera
 {
 	GENERATED_BODY()
 
+	UPROPERTY(EditAnywhere, Category = "Knowledge", meta = (ArcTQSRequiredBinding))
+	FVector Center = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, Category = "Knowledge")
+	FMassEntityHandle Querier;
+
 	/** Tag query to filter knowledge entries. */
 	UPROPERTY(EditAnywhere, Category = "Knowledge")
 	FGameplayTagQuery TagQuery;
 
-	/** Maximum search radius from query origin. 0 = unlimited. */
+	/** Maximum search radius from Center. 0 = unlimited. */
 	UPROPERTY(EditAnywhere, Category = "Knowledge", meta = (ClampMin = 0.0))
 	float MaxDistance = 0.0f;
 
@@ -40,4 +46,5 @@ struct ARCKNOWLEDGE_API FArcTQSGenerator_KnowledgeEntries : public FArcTQSGenera
 		TArray<FArcTQSTargetItem>& OutItems) const override;
 
 	virtual void GetOutputSchema(TArray<FPropertyBagPropertyDesc>& OutDescs) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Knowledge; }
 };

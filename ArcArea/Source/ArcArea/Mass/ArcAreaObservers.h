@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassObserverProcessor.h"
+#include "Mass/ObserverProcessor.h"
 #include "ArcAreaObservers.generated.h"
 
 /**
- * Observer that fires when FArcAreaTag is added to a SmartObject entity.
+ * Observer that fires when FArcSmartObjectTag is added to an entity that also carries FArcAreaTag.
  * Registers the area in UArcAreaSubsystem using its definition and location.
  */
 UCLASS()
@@ -27,7 +27,7 @@ private:
 };
 
 /**
- * Observer that fires when FArcAreaTag is removed from a SmartObject entity.
+ * Observer that fires when FArcSmartObjectTag is removed from an entity that also carries FArcAreaTag.
  * Unregisters the area from UArcAreaSubsystem.
  */
 UCLASS()

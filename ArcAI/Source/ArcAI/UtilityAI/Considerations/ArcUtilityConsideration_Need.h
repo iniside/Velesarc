@@ -25,7 +25,14 @@ struct ARCAI_API FArcUtilityConsideration_TargetNeed : public FArcUtilityConside
 	UPROPERTY(EditAnywhere, Category = "Consideration", meta = (ClampMin = 0.01))
 	float MaxNeedValue = 100.0f;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetEntity;
+	}
+#endif
 };
 
 /**
@@ -44,5 +51,12 @@ struct ARCAI_API FArcUtilityConsideration_OwnerNeed : public FArcUtilityConsider
 	UPROPERTY(EditAnywhere, Category = "Consideration", meta = (ClampMin = 0.01))
 	float MaxNeedValue = 100.0f;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::None;
+	}
+#endif
 };

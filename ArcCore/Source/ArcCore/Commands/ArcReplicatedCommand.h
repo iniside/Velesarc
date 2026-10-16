@@ -24,7 +24,6 @@
 #include "ArcReplicatedCommand.generated.h"
 
 class UScriptStruct;
-class AArcCorePlayerController;
 
 USTRUCT()
 struct ARCCORE_API FArcReplicatedCommand
@@ -47,19 +46,19 @@ public:
 	{
 	}
 
-	virtual bool Execute()
+	virtual bool Execute(UObject* WorldContext)
 	{
 		return false;
 	};
 
-	/** Whether the command system should store a copy for confirmation handling. */
-	virtual bool NeedsConfirmation() const
+	/** On a client without authority, Execute runs locally before the send; it must return false before changing any local state. */
+	virtual bool ExecutesOnClient() const
 	{
 		return false;
 	}
 
-	/** Called on the stored copy when the server responds with success/failure. */
-	virtual void CommandConfirmed(bool bSuccess)
+	/** Reverts the local effects of the last client-side Execute; does nothing when that Execute captured nothing. */
+	virtual void UndoPrediction(UObject* WorldContext)
 	{
 	}
 
@@ -120,9 +119,14 @@ public:
 		return Data;
 	}
 
-	bool Execute() const
+	const TSharedPtr<FArcReplicatedCommand>& GetData() const
 	{
-		return Data->Execute();
+		return Data;
+	}
+
+	bool Execute(UObject* WorldContext) const
+	{
+		return Data->Execute(WorldContext);
 	}
 
 	bool CanSendCommand() const
@@ -133,6 +137,11 @@ public:
 	void PreSendCommand() const
 	{
 		Data->PreSendCommand();
+	}
+
+	bool ExecutesOnClient() const
+	{
+		return Data->ExecutesOnClient();
 	}
 
 	bool IsValid() const

@@ -34,7 +34,7 @@
 enum class ECommonUserOnlineContext : uint8;
 enum class ECommonUserPrivilege : uint8;
 class UCommonActivatableWidget;
-class UArcExperienceDefinition;
+class UArcMassExperienceDefinition;
 class UCommonUserInfo;
 
 UCLASS(Abstract)
@@ -75,7 +75,7 @@ public:
 	//~End of ILoadingProcessInterface
 
 private:
-	void OnExperienceLoaded(const UArcExperienceDefinition* Experience);
+	void OnExperienceLoaded(const UArcMassExperienceDefinition* Experience);
 
 	UFUNCTION()
 		void OnUserInitialized(const UCommonUserInfo* UserInfo, bool bSuccess, FText Error, ECommonUserPrivilege RequestedPrivilege, ECommonUserOnlineContext OnlineContext);

@@ -8,9 +8,11 @@
 #include "GameplayDebuggerCategoryReplicator.h"
 #include "MassActorSubsystem.h"
 #include "MassAgentComponent.h"
-#include "MassDebugger.h"
+#include "Mass/Debugger.h"
+#include "MassDebuggerWorld.h"
 #include "MassEntitySubsystem.h"
-#include "MassExecutionContext.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassGameplayDebugTypes.h"
 #include "Engine/World.h"
 

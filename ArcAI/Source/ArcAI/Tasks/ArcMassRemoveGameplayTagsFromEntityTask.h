@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "GameplayTagContainer.h"
 #include "MassStateTreeTypes.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
+#include "Fragments/ArcOwnedTagsFragment.h"
 
 #include "ArcMassRemoveGameplayTagsFromEntityTask.generated.h"
 
@@ -11,14 +11,14 @@ struct FArcMassRemoveGameplayTagsFromEntityTaskInstanceData
 {
 	GENERATED_BODY()
 
-	/** The gameplay tags to remove from the entity's Mass gameplay tag fragment (not the GAS AbilitySystemComponent). */
+	/** The gameplay tags to remove from the entity's Mass owned tags fragment (not the GAS AbilitySystemComponent). */
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	FGameplayTagContainer Tags;
 };
 
 /**
- * Instant task that removes gameplay tags from the entity's Mass gameplay tag fragment
- * (FArcMassGameplayTagContainerFragment). This operates on Mass-level tags, not the GAS AbilitySystemComponent.
+ * Instant task that removes gameplay tags from the entity's Mass owned tags fragment
+ * (FArcOwnedTagsFragment). This operates on Mass-level tags, not the GAS AbilitySystemComponent.
  */
 USTRUCT(meta = (DisplayName = "Arc Mass Remove Gameplay Tags From Entity", Category = "Arc|Common", ToolTip = "Instant task. Removes gameplay tags from the entity's Mass tag fragment."))
 struct FArcMassRemoveGameplayTagsFromEntityTask : public FMassStateTreeTaskBase
@@ -41,8 +41,8 @@ protected:
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
-	/** Handle to the entity's Mass gameplay tag container fragment. */
-	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
+	/** Handle to the entity's Mass owned tags fragment. */
+	TStateTreeExternalDataHandle<FArcOwnedTagsFragment> MassGameplayTagsHandle;
 
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;

@@ -7,17 +7,22 @@
 #include "Engine/StreamableManager.h"
 #include "MassAgentComponent.h"
 #include "MassEntityConfigAsset.h"
-#include "MassEntityFragments.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityFragments.h"
+#include "Mass/EntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "MassSimulationSubsystem.h"
 #include "MassSpawnerSubsystem.h"
-#include "TargetQuery/ArcTQSQueryDefinition.h"
-#include "TargetQuery/ArcTQSQueryInstance.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSQueryDefinition.h"
+#include "ArcTQSQueryInstance.h"
+#include "ArcTQSQuerySubsystem.h"
+#include "ArcTQSTypes.h"
 #include "ArcEntitySpawnerSubsystem.h"
 #include "ArcMass/Persistence/ArcMassPersistence.h"
+#include "ArcMass/ArcMassFragments.h"
+#include "ArcMass/Spawner/ArcMassSpawnerSubsystem.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcEntitySpawner)
 
@@ -143,8 +148,11 @@ void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		ActiveTQSQueryId = INDEX_NONE;
 	}
 
-	DoDespawning();
-
+	if (EndPlayReason != EEndPlayReason::EndPlayInEditor)
+	{
+		DoDespawning();	
+	}
+	
 	if (UArcEntitySpawnerSubsystem* SpawnerSub = UWorld::GetSubsystem<UArcEntitySpawnerSubsystem>(GetWorld()))
 	{
 		SpawnerSub->UnregisterActorSpawner(SpawnerGuid);
@@ -155,7 +163,7 @@ void AArcEntitySpawner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AArcEntitySpawner::BeginDestroy()
 {
-	DoDespawning();
+	//DoDespawning();
 
 	if (StreamingHandle.IsValid() && StreamingHandle->IsActive())
 	{
@@ -186,13 +194,13 @@ void AArcEntitySpawner::DoSpawning()
 {
 	if (EntityTypes.Num() == 0)
 	{
-		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: No EntityTypes configured."), *GetName());
+		UE_LOGF(LogArcEntitySpawner, Warning,"%ls: No EntityTypes configured.", *GetName());
 		return;
 	}
 
-	if (!SpawnQuery)
+	if (!SpawnQuery.IsValid())
 	{
-		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: No SpawnQuery configured."), *GetName());
+		UE_LOGF(LogArcEntitySpawner, Warning,"%ls: No SpawnQuery configured.", *GetName());
 		return;
 	}
 
@@ -217,7 +225,7 @@ void AArcEntitySpawner::DoSpawning()
 		UArcTQSQuerySubsystem* TQSSubsystem = UWorld::GetSubsystem<UArcTQSQuerySubsystem>(GetWorld());
 		if (!TQSSubsystem)
 		{
-			UE_LOG(LogArcEntitySpawner, Error, TEXT("%s: UArcTQSQuerySubsystem missing."), *GetName());
+			UE_LOGF(LogArcEntitySpawner, Error,"%ls: UArcTQSQuerySubsystem missing.", *GetName());
 			return;
 		}
 
@@ -265,7 +273,7 @@ void AArcEntitySpawner::OnTQSQueryCompleted(FArcTQSQueryInstance& CompletedQuery
 
 	if (CompletedQuery.Status != EArcTQSQueryStatus::Completed || CompletedQuery.Results.Num() == 0)
 	{
-		UE_LOG(LogArcEntitySpawner, Warning, TEXT("%s: TQS query returned no results."), *GetName());
+		UE_LOGF(LogArcEntitySpawner, Warning,"%ls: TQS query returned no results.", *GetName());
 		OnSpawningFinished.Broadcast();
 		return;
 	}
@@ -283,7 +291,17 @@ void AArcEntitySpawner::SpawnEntitiesFromResults(TConstArrayView<FArcTQSTargetIt
 		Locations.Add(Item.Location);
 	}
 
-	SpawnEntitiesAtLocations(GetSpawnCount(), Locations);
+	const int32 DesiredCount = GetSpawnCount();
+	const int32 ClampedCount = FMath::Min(DesiredCount, Locations.Num());
+
+	if (ClampedCount < DesiredCount)
+	{
+		UE_LOGF(LogArcEntitySpawner, Warning,"%ls: TQS query returned %d results but spawn count is %d — clamping to %d. "
+				 "Configure the query to return enough results (e.g. TopN or AllPassing mode).",
+			*GetName(), Locations.Num(), DesiredCount, ClampedCount);
+	}
+
+	SpawnEntitiesAtLocations(ClampedCount, Locations);
 }
 
 void AArcEntitySpawner::SpawnEntitiesAtLocations(int32 InCount, TConstArrayView<FVector> Locations)
@@ -299,15 +317,17 @@ void AArcEntitySpawner::SpawnEntitiesAtLocations(int32 InCount, TConstArrayView<
 
 void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations)
 {
-	UMassSpawnerSubsystem* SpawnerSystem = UWorld::GetSubsystem<UMassSpawnerSubsystem>(GetWorld());
-	if (SpawnerSystem == nullptr)
+	UWorld* World = GetWorld();
+	check(World);
+
+	UArcMassSpawnerSubsystem* ArcSpawner = World->GetSubsystem<UArcMassSpawnerSubsystem>();
+	if (ArcSpawner == nullptr)
 	{
-		UE_LOG(LogArcEntitySpawner, Error, TEXT("%s: UMassSpawnerSubsystem missing."), *GetName());
+		UE_LOGF(LogArcEntitySpawner, Error,"%ls: UArcMassSpawnerSubsystem missing.", *GetName());
 		return;
 	}
 
-	UWorld* World = GetWorld();
-	check(World);
+	FMassEntityManager& EntityManager = UE::Mass::Utils::GetEntityManagerChecked(*World);
 
 	const int32 TotalCount = GetSpawnCount();
 	const int32 NumLocations = Locations.Num();
@@ -319,6 +339,13 @@ void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations
 		const UMassEntityConfigAsset* EntityConfig = EntityType.GetEntityConfig();
 		if (EntityConfig == nullptr)
 		{
+			continue;
+		}
+
+		UArcMassEntityConfigAsset* ArcCfg = Cast<UArcMassEntityConfigAsset>(const_cast<UMassEntityConfigAsset*>(EntityConfig));
+		if (ArcCfg == nullptr)
+		{
+			UE_LOGF(LogArcEntitySpawner, Warning,"%ls: EntityConfig '%ls' is not a UArcMassEntityConfigAsset — skipping type.", *GetName(), *EntityConfig->GetName());
 			continue;
 		}
 
@@ -336,22 +363,27 @@ void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations
 		FSpawnedEntities& SpawnedEntities = AllSpawnedEntities.AddDefaulted_GetRef();
 		SpawnedEntities.TemplateID = EntityTemplate.GetTemplateID();
 
-		// Spawn entities — no SpawnData/Processor, we set transforms manually
-		TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
-			SpawnerSystem->SpawnEntities(EntityTemplate.GetTemplateID(), SpawnCount,
-				FConstStructView(), nullptr, SpawnedEntities.Entities);
-
-		// Set transforms from location array while creation context is alive
-		FMassEntityManager& EntityManager = SpawnerSystem->GetEntityManagerChecked();
-		for (int32 i = 0; i < SpawnedEntities.Entities.Num(); ++i)
+		// Spawn entities one-by-one via ArcMassSpawnerSubsystem, then fix up Z from capsule
+		for (int32 i = 0; i < SpawnCount; ++i)
 		{
-			if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntities.Entities[i]))
+			const FVector RawLocation = (i < NumLocations) ? Locations[i] : GetActorLocation();
+			FMassEntityHandle Entity = ArcSpawner->SpawnEntity(ArcCfg, FTransform(RawLocation));
+			if (!Entity.IsValid())
 			{
-				const FVector& Location = (NumLocations > 0)
-					? Locations[i % NumLocations]
-					: GetActorLocation();
-				TransformFrag->GetMutableTransform().SetLocation(Location);
+				continue;
 			}
+
+			if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity))
+			{
+				if (const FArcAgentCapsuleFragment* CapsuleFrag = EntityManager.GetFragmentDataPtr<FArcAgentCapsuleFragment>(Entity))
+				{
+					FVector Loc = TransformFrag->GetMutableTransform().GetLocation();
+					Loc.Z += CapsuleFrag->HalfHeight;
+					TransformFrag->GetMutableTransform().SetLocation(Loc);
+				}
+			}
+
+			SpawnedEntities.Entities.Add(Entity);
 		}
 
 		// Run initializers while the creation context is alive — observers haven't fired yet
@@ -362,8 +394,6 @@ void AArcEntitySpawner::SpawnEntitiesInternal(TConstArrayView<FVector> Locations
 
 		// Stamp SpawnerGuid on spawned entities and track their PersistenceGuids
 		TrackSpawnedEntities(EntityManager, SpawnedEntities.Entities);
-
-		// CreationContext released here → deferred commands flush → observers fire
 	}
 
 	bHasSpawned = true;
@@ -392,7 +422,7 @@ void AArcEntitySpawner::DoDespawning()
 	UMassSpawnerSubsystem* SpawnerSystem = UWorld::GetSubsystem<UMassSpawnerSubsystem>(GetWorld());
 	if (SpawnerSystem == nullptr)
 	{
-		UE_LOG(LogArcEntitySpawner, Error, TEXT("%s: UMassSpawnerSubsystem missing while despawning."), *GetName());
+		UE_LOGF(LogArcEntitySpawner, Error,"%ls: UMassSpawnerSubsystem missing while despawning.", *GetName());
 		return;
 	}
 
@@ -418,7 +448,7 @@ bool AArcEntitySpawner::DespawnEntity(const FMassEntityHandle Entity)
 	UMassSpawnerSubsystem* SpawnerSystem = UWorld::GetSubsystem<UMassSpawnerSubsystem>(GetWorld());
 	if (SpawnerSystem == nullptr)
 	{
-		UE_LOG(LogArcEntitySpawner, Error, TEXT("%s: UMassSpawnerSubsystem missing while despawning entity."), *GetName());
+		UE_LOGF(LogArcEntitySpawner, Error,"%ls: UMassSpawnerSubsystem missing while despawning entity.", *GetName());
 		return false;
 	}
 
@@ -479,6 +509,6 @@ void AArcEntitySpawner::OnSpawnedEntityDied(const FGuid& EntityGuid, FMassEntity
 		}
 	}
 
-	UE_LOG(LogArcEntitySpawner, Log, TEXT("%s: Entity %s died, %d remaining"),
+	UE_LOGF(LogArcEntitySpawner, Log,"%ls: Entity %ls died, %d remaining",
 		*GetName(), *EntityGuid.ToString(), SpawnedEntityGuids.Num());
 }

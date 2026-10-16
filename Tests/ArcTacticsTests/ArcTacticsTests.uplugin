@@ -1,0 +1,31 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcTactics Tests",
+	"Description": "CQTest coverage for ArcTactics compiled bindings, runtime state, and instance pool.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcTacticsTests",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor", "Program" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcTactics", "Enabled": true },
+		{ "Name": "ArcAI", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "MassAI", "Enabled": true },
+		{ "Name": "ArcTargetQuery", "Enabled": true },
+		{ "Name": "PropertyBindingUtils", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

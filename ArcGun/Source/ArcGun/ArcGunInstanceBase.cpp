@@ -23,29 +23,21 @@
 
 #include "ArcGunInstanceBase.h"
 
-#include "GameplayEffectExecutionCalculation.h"
-
-#include "ArcGunAttributeSet.h"
 #include "ArcGunItemInstance.h"
 #include "ArcGunStateComponent.h"
-
-#include "AbilitySystem/ArcAbilitiesTypes.h"
 
 #include "Fragments/ArcItemFragment_GunAmmoInfo.h"
 #include "Fragments/ArcItemFragment_GunStats.h"
 
-#include "Player/ArcCorePlayerController.h"
+#include "Player/ArcMassPlayerController.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerState.h"
 
-#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemDefinitionData.h"
 #include "Items/ArcItemData.h"
 
-#include "Items/ArcItemsComponent.h"
 #include "Items/ArcItemsHelpers.h"
-#include "Items/ArcItemsStoreComponent.h"
-#include "Items/Fragments/ArcItemFragment_ItemStats.h"
 
 DEFINE_LOG_CATEGORY(LogArcGunInstanceBase);
 
@@ -95,8 +87,8 @@ bool FArcGunInstanceBase::CommitAmmo(const FArcItemData* InItem, class UArcGunSt
 	const int32 NewAmmo = CurrentAmmo - Cost;
 	Instance->SetAmmo(NewAmmo);
 
-	// TODO:: It should be more auomated on server/standalone.
-	ArcItemsHelper::BroadcastItemChanged(InItem);
+	// ArcItemsHelper::BroadcastItemChanged retired with UArcItemsStoreComponent;
+	// Mass-side change broadcast happens via the store fragment / processors.
 	InComponent->BroadcastOnWeaponAmmoChanged(Instance->GetAmmo());
 	return true;
 }
@@ -110,17 +102,13 @@ bool FArcGunInstanceBase::CanReload(const FArcItemData* InItem
 		return false;
 	}
 	
-	if(WeaponAmmoInfo->AmmoItem == nullptr)
+	if (!WeaponAmmoInfo->AmmoItem.IsValid())
 	{
 		return false;
 	}
 
-	int32 Amount = InComponent->GetItemsComponent()->GetItemStacks(WeaponAmmoInfo->AmmoItem);
-	if(Amount <= 0)
-	{
-		return false;
-	}
-
+	// Reserve-ammo lookup retired with UArcItemsStoreComponent (plan step 8b-gun);
+	// reload from a Mass-side ammo store will reattach when wired.
 	return true;
 }
 
@@ -145,7 +133,7 @@ void FArcGunInstanceBase::Reload(const FArcItemData* InItem
 	//InComponent->GetItemsComponent()->RemoveItem(AmmoItem->GetItemId(), AmmoToRemove, false);
 	
 	Instance->SetAmmo(MaxAmmo);
-	ArcItemsHelper::BroadcastItemChanged(InItem);
+	// ArcItemsHelper::BroadcastItemChanged retired with UArcItemsStoreComponent.
 }
 
 int32 FArcGunInstanceBase::GetMagazineAmmo(const FArcItemData* InItem
@@ -169,13 +157,13 @@ int32 FArcGunInstanceBase::GetWeaponAmmo(const FArcItemData* InItem
 	{
 		return 0;
 	}
-	if (WeaponAmmoInfo->AmmoItem == nullptr)
+	if (!WeaponAmmoInfo->AmmoItem.IsValid())
 	{
 		return 0;
 	}
 
-	int32 Amount = InComponent->GetItemsComponent()->GetItemStacks(WeaponAmmoInfo->AmmoItem);
-	return Amount;
+	// Reserve-ammo lookup retired with UArcItemsStoreComponent (plan step 8b-gun).
+	return 0;
 }
 
 float FArcGunInstanceBase::GetFireRate(const FArcItemData* InItem

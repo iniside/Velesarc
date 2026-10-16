@@ -23,9 +23,10 @@
 
 #include "GameplayTagContainer.h"
 #include "Components/ActorComponent.h"
-#include "Components/GameFrameworkComponentDelegates.h"
-#include "Components/GameFrameworkComponentManager.h"
 #include "View/MVVMViewModelContextResolver.h"
+#include "StructUtils/InstancedStruct.h"
+#include "MVVMViewModelBase.h"
+#include "Types/MVVMViewModelContext.h"
 #include "ArcFrontendMVVMModelComponent.generated.h"
 
 UCLASS(Blueprintable, EditInlineNew)
@@ -36,9 +37,36 @@ class ARCFRONTEND_API UArcFrontendMVVMComponentResolver : public UMVVMViewModelC
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ExposeOnSpawn, Categories = "ViewModel"))
 	FGameplayTag ViewModelTag;
-	
+
 public:
 	virtual UObject* CreateInstance(const UClass* ExpectedType, const UUserWidget* UserWidget, const UMVVMView* View) const override;
+};
+
+UCLASS(Blueprintable, EditInlineNew)
+class ARCFRONTEND_API UArcFrontendMVVMWidgetSlotResolver : public UMVVMViewModelContextResolver
+{
+	GENERATED_BODY()
+
+public:
+	virtual UObject* CreateInstance(const UClass* ExpectedType, const UUserWidget* UserWidget, const UMVVMView* View) const override;
+};
+
+class UArcFrontendMVVMModelComponent;
+
+USTRUCT(BlueprintType)
+struct ARCFRONTEND_API FArcViewModelSpec
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	FName ContextName;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<UMVVMViewModelBase> ViewModelClass;
+
+	/** Optional. If valid, the created VM is also registered in UArcFrontendMVVMModelComponent::ViewModels under this tag, so tag-based resolvers can find it. */
+	UPROPERTY(EditAnywhere, meta = (Categories = "ViewModel"))
+	FGameplayTag RegistrationTag;
 };
 
 UCLASS(BlueprintType, Blueprintable, Within=ArcFrontendMVVMModelComponent)
@@ -81,14 +109,36 @@ public:
 	virtual UWorld* GetWorld() const override;
 
 	virtual bool NeedsLoadForServer() const override { return false; };
-	
+
 };
+
+USTRUCT(BlueprintType)
+struct ARCFRONTEND_API FArcFrontendMVVMStructModel
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Ticking")
+	bool bTickForAll = false;
+
+	UPROPERTY(EditAnywhere, Category = "Ticking")
+	bool bTickForLocalOnly = false;
+
+	virtual ~FArcFrontendMVVMStructModel() = default;
+
+	virtual void CreateViewModels(UArcFrontendMVVMModelComponent& Component);
+	virtual void Initialize(UArcFrontendMVVMModelComponent& Component);
+	virtual void Tick(float DeltaTime, UArcFrontendMVVMModelComponent& Component);
+	virtual void Deinitialize(UArcFrontendMVVMModelComponent& Component);
+};
+
+class UMVVMViewModelCollectionObject;
+class UArcMassPlayerStateExtensionComponent;
 
 UCLASS(Blueprintable, BlueprintType, meta = (BlueprintSpawnableComponent), DefaultToInstanced)
 class ARCFRONTEND_API UArcFrontendMVVMModelComponent : public UActorComponent
 {
 	GENERATED_BODY()
-	
+
 public:
 	UPROPERTY(EditAnywhere)
 	TArray<TSubclassOf<UArcFrontendMVVMModel>> ModelClasses;
@@ -98,23 +148,35 @@ public:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UArcFrontendMVVMModel>> ModelTickLocal;
-	
+
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UArcFrontendMVVMModel>> ModelTickForAll;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Categories = "ViewModel"))
 	TMap<FGameplayTag, TObjectPtr<UMVVMViewModelBase>> ViewModels;
 
-	FDelegateHandle DelegateHandle;
-	TSharedPtr<FComponentRequestHandle> RequestHandle;
-	
+	UPROPERTY(EditAnywhere, meta = (BaseStruct = "/Script/ArcFrontend.ArcFrontendMVVMStructModel"))
+	TArray<FInstancedStruct> StructModels;
+
+	TArray<int32> StructTickLocalIndices;
+	TArray<int32> StructTickForAllIndices;
+
+	// Global-collection contexts this component successfully registered; removed on EndPlay.
+	// Plain member (not a UPROPERTY): FMVVMViewModelContext holds a UClass pointer + FName,
+	// mirroring the old non-UPROPERTY CachedViewModels.
+	TArray<FMVVMViewModelContext> RegisteredGlobalContexts;
+
+	UMVVMViewModelCollectionObject* GetGlobalViewModelCollection() const;
+
+	FDelegateHandle InitStateHandle;
+
 	UArcFrontendMVVMModelComponent();
-	
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
-	void HandleOnGameplayReady(AActor* Actor, FName EventName);
-	
+
+	void OnPlayerStateDataInitialized(UArcMassPlayerStateExtensionComponent* PSExt);
+
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;
 	
 	virtual bool NeedsLoadForServer() const override { return false; };
@@ -124,4 +186,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Arc Frontend")
 	void AddViewModel(UPARAM( meta = (Categories = "ViewModel")) FGameplayTag ViewModelTag, UMVVMViewModelBase* InViewModel);
+
+	UFUNCTION(BlueprintCallable, Category = "Arc Frontend")
+	void RemoveViewModel(UPARAM( meta = (Categories = "ViewModel")) FGameplayTag ViewModelTag);
+
+	/** Registers an existing VM into the global MVVM collection (by ContextName) and/or the component tag map (by RegistrationTag). Records the global context for EndPlay teardown only on a successful add. */
+	void RegisterViewModel(UMVVMViewModelBase* VM, FName ContextName, FGameplayTag RegistrationTag);
+
+	/** Creates a VM per spec and registers each via RegisterViewModel. */
+	void CreateAndRegisterViewModels(TConstArrayView<FArcViewModelSpec> Specs);
+
+	/** Resolves a VM handle from the global collection by exact ContextClass + ContextName. */
+	UMVVMViewModelBase* FindViewModelByContext(FName ContextName, TSubclassOf<UMVVMViewModelBase> Class) const;
 };

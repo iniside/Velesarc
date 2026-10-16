@@ -1,0 +1,31 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcMassAbilities Tests",
+	"Description": "CQTest module covering ArcMassAbilities.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcMassAbilitiesTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcCoreTest", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcAbilityKit", "Enabled": true },
+		{ "Name": "ArcMassItems", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "ArcCues", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

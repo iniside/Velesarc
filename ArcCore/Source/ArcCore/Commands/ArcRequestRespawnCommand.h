@@ -41,7 +41,7 @@ public:
 
 	virtual void PreSendCommand() override;
 
-	virtual bool Execute() override; ;
+	virtual bool Execute(UObject* WorldContext) override; ;
 
 	FArcRequestRespawnCommand()
 		: Controller(nullptr)

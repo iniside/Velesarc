@@ -1,0 +1,397 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTMergeDiamond.ush — which four leaves a collapse would consume.
+
+	The diamond is the four children of a parent pair: B, its sibling across the
+	interior edge, and the pair across the half-hypotenuse. Gathering it is SHARED
+	between the pass that collapses it (ApplyMerge, ArcTerrainCBTSplitMerge.usf) and
+	the pass that must know whether a collapse is coming (ApplySplit's hypotenuse
+	chain walk, ArcTerrainCBTSplit.ush).
+
+	EVERY LINK OF THE RING IS VERIFIED MUTUAL — both sibling edges, both
+	half-hypotenuse edges, in index AND in edge slot, plus the far pair's depth. That
+	is what makes the gather symmetric: a diamond that gathers complete from one
+	member gathers the SAME four from each of the other three, so a member the merge
+	path writes always answers ARC_MERGE_STAGE_YES to the split that walks onto it.
+	Without it a member could refuse its own gather while another member collapsed it,
+	and a split and a merge would land on one diamond.
+
+	Everything read here is fixed for the whole apply pass — the command buffer is
+	written only by the classify pass before it, and a bisection writes node ids and
+	neighbour records of FRESH slots alone.
+
+	The including pass must declare, with these names:
+		RWByteAddressBuffer BisectorPool, BisectorNeighbors;
+		RWBuffer<uint>      BisectorCommands, BisectorPromote, FaceRoots;
+		uint                PoolCapacity, MergePhaseCount, MergeFramePhase;
+=============================================================================*/
+
+#pragma once
+
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+
+struct FArcMergeDiamond
+{
+	uint Members[4];
+	uint Count;
+	/** The early-out that refused the diamond, or ARC_CBT_COUNTER_NUM when it is complete. */
+	uint FailCounter;
+	/** The two slots the refusal compared, for the tallies that describe it; NULL where it named none. */
+	uint FailTested;
+	uint FailPartner;
+	bool bComplete;
+};
+
+struct FArcMergeFastCanonical
+{
+	uint Canonical;
+	bool bResolved;
+};
+
+/**
+ * Resolves only the pool-global identity used by the phase gate. It deliberately does not prove that the
+ * diamond is mutual or unanimous: a fast result can reject work, while ArcTerrainGatherMergeDiamond remains
+ * the sole authority allowed to admit topology writes.
+ */
+FArcMergeFastCanonical ArcTerrainTryFastMergeCanonical(uint B)
+{
+	FArcMergeFastCanonical Result;
+	Result.Canonical = ARC_BISECTOR_NULL;
+	Result.bResolved = false;
+	if (B >= PoolCapacity)
+	{
+		return Result;
+	}
+
+	const uint2 BNode = arc_LoadNodeID(BisectorPool, B);
+	if (BNode.y == 0u && BNode.x < 4u)
+	{
+		return Result;
+	}
+
+	const uint SiblingRef = arc_LoadNeighbor(BisectorNeighbors, B, arc_SiblingEdge(BNode));
+	if (!arc_RefValid(SiblingRef) || arc_RefEdge(SiblingRef) == ARC_EDGE_HYP
+		|| arc_RefEdge(SiblingRef) >= 3u)
+	{
+		return Result;
+	}
+	const uint Sibling = arc_RefIndex(SiblingRef);
+	if (Sibling >= PoolCapacity || Sibling == B)
+	{
+		return Result;
+	}
+
+	const uint2 SNode = arc_LoadNodeID(BisectorPool, Sibling);
+	if (any(SNode != (BNode ^ uint2(1u, 0u))))
+	{
+		return Result;
+	}
+
+	const uint HalfRef = arc_LoadNeighbor(BisectorNeighbors, B, arc_HalfHypotenuseEdge(BNode));
+	const uint SHalfRef = arc_LoadNeighbor(BisectorNeighbors, Sibling, arc_HalfHypotenuseEdge(SNode));
+	const bool bHalfValid = arc_RefValid(HalfRef);
+	const bool bSHalfValid = arc_RefValid(SHalfRef);
+	if (!bHalfValid && !bSHalfValid)
+	{
+		Result.Canonical = min(B, Sibling);
+		Result.bResolved = true;
+		return Result;
+	}
+	if (!bHalfValid || !bSHalfValid
+		|| arc_RefEdge(HalfRef) == ARC_EDGE_HYP || arc_RefEdge(SHalfRef) == ARC_EDGE_HYP
+		|| arc_RefEdge(HalfRef) >= 3u || arc_RefEdge(SHalfRef) >= 3u)
+	{
+		return Result;
+	}
+
+	const uint U = arc_RefIndex(HalfRef);
+	const uint USibling = arc_RefIndex(SHalfRef);
+	if (U >= PoolCapacity || USibling >= PoolCapacity
+		|| U == B || U == Sibling || USibling == B || USibling == Sibling || U == USibling)
+	{
+		return Result;
+	}
+
+	Result.Canonical = min(min(B, Sibling), min(U, USibling));
+	Result.bResolved = true;
+	return Result;
+}
+
+/** A member whose sibling or half-hypotenuse reference has slot HYP is subdivided one level deeper, which
+ *  is the classic "all four are leaves" guard. */
+FArcMergeDiamond ArcTerrainGatherMergeDiamond(uint B)
+{
+	FArcMergeDiamond Diamond;
+	Diamond.Members[0] = B;
+	Diamond.Members[1] = ARC_BISECTOR_NULL;
+	Diamond.Members[2] = ARC_BISECTOR_NULL;
+	Diamond.Members[3] = ARC_BISECTOR_NULL;
+	Diamond.Count = 1u;
+	Diamond.FailCounter = ARC_CBT_COUNTER_NUM;
+	Diamond.FailTested = ARC_BISECTOR_NULL;
+	Diamond.FailPartner = ARC_BISECTOR_NULL;
+	Diamond.bComplete = false;
+	if (B >= PoolCapacity)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		return Diamond;
+	}
+
+	const uint2 BNode = arc_LoadNodeID(BisectorPool, B);
+	if (BNode.y == 0u && BNode.x < 4u)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_ROOT;
+		return Diamond; // a depth-1 root has no parent inside its face
+	}
+
+	const uint BSiblingEdge = arc_SiblingEdge(BNode);
+	const uint BHalfEdge = arc_HalfHypotenuseEdge(BNode);
+
+	const uint SiblingRef = arc_LoadNeighbor(BisectorNeighbors, B, BSiblingEdge);
+	if (!arc_RefValid(SiblingRef) || arc_RefEdge(SiblingRef) == ARC_EDGE_HYP)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_SIB_DEEPER;
+		Diamond.FailPartner = arc_RefValid(SiblingRef) ? arc_RefIndex(SiblingRef) : ARC_BISECTOR_NULL;
+		return Diamond;
+	}
+
+	const uint Sibling = arc_RefIndex(SiblingRef);
+	if (Sibling >= PoolCapacity)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		Diamond.FailTested = B;
+		Diamond.FailPartner = Sibling;
+		return Diamond;
+	}
+	const uint2 SNode = arc_LoadNodeID(BisectorPool, Sibling);
+	if (any(SNode != (BNode ^ uint2(1u, 0u))))
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_SIB_MISMATCH;
+		Diamond.FailTested = B;
+		Diamond.FailPartner = Sibling;
+		return Diamond; // not our sibling; refuse rather than corrupt the pool
+	}
+
+	const uint SSiblingEdge = arc_SiblingEdge(SNode);
+	const uint SHalfEdge = arc_HalfHypotenuseEdge(SNode);
+	if (arc_RefEdge(SiblingRef) != SSiblingEdge
+		|| arc_LoadNeighbor(BisectorNeighbors, Sibling, SSiblingEdge) != arc_MakeRef(B, BSiblingEdge))
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		return Diamond;
+	}
+
+	Diamond.Members[1] = Sibling;
+	Diamond.Count = 2u;
+
+	const uint HalfRef = arc_LoadNeighbor(BisectorNeighbors, B, BHalfEdge);
+	const uint SHalfRef = arc_LoadNeighbor(BisectorNeighbors, Sibling, SHalfEdge);
+	if (!arc_RefValid(HalfRef))
+	{
+		if (arc_RefValid(SHalfRef))
+		{
+			Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+			return Diamond;
+		}
+		Diamond.bComplete = true;
+		return Diamond;
+	}
+	if (arc_RefEdge(HalfRef) == ARC_EDGE_HYP)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_FAR_DEEPER;
+		Diamond.FailPartner = arc_RefIndex(HalfRef);
+		return Diamond;
+	}
+
+	const uint U = arc_RefIndex(HalfRef);
+	if (U >= PoolCapacity)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		Diamond.FailTested = B;
+		Diamond.FailPartner = U;
+		return Diamond;
+	}
+	const uint2 UNode = arc_LoadNodeID(BisectorPool, U);
+	const uint UHalfEdge = arc_HalfHypotenuseEdge(UNode);
+	if (U == B || U == Sibling || arc_NodeDepth(UNode) != arc_NodeDepth(BNode)
+		|| arc_RefEdge(HalfRef) != UHalfEdge
+		|| arc_LoadNeighbor(BisectorNeighbors, U, UHalfEdge) != arc_MakeRef(B, BHalfEdge))
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		return Diamond;
+	}
+
+	const uint USiblingEdge = arc_SiblingEdge(UNode);
+	const uint USiblingRef = arc_LoadNeighbor(BisectorNeighbors, U, USiblingEdge);
+	if (!arc_RefValid(USiblingRef) || arc_RefEdge(USiblingRef) == ARC_EDGE_HYP)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_FARSIB_DEEP;
+		Diamond.FailPartner = arc_RefValid(USiblingRef) ? arc_RefIndex(USiblingRef) : ARC_BISECTOR_NULL;
+		return Diamond;
+	}
+
+	const uint USibling = arc_RefIndex(USiblingRef);
+	if (USibling >= PoolCapacity)
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		Diamond.FailTested = U;
+		Diamond.FailPartner = USibling;
+		return Diamond;
+	}
+	const uint2 USNode = arc_LoadNodeID(BisectorPool, USibling);
+	if (any(USNode != (UNode ^ uint2(1u, 0u))))
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_FAR_MISMATCH;
+		Diamond.FailTested = U;
+		Diamond.FailPartner = USibling;
+		return Diamond;
+	}
+
+	const uint USSiblingEdge = arc_SiblingEdge(USNode);
+	const uint USHalfEdge = arc_HalfHypotenuseEdge(USNode);
+	if (USibling == B || USibling == Sibling
+		|| arc_RefEdge(USiblingRef) != USSiblingEdge
+		|| arc_LoadNeighbor(BisectorNeighbors, USibling, USSiblingEdge) != arc_MakeRef(U, USiblingEdge)
+		|| SHalfRef != arc_MakeRef(USibling, USHalfEdge)
+		|| arc_LoadNeighbor(BisectorNeighbors, USibling, USHalfEdge) != arc_MakeRef(Sibling, SHalfEdge))
+	{
+		Diamond.FailCounter = ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		return Diamond;
+	}
+
+	Diamond.Members[2] = U;
+	Diamond.Members[3] = USibling;
+	Diamond.Count = 4u;
+	Diamond.bComplete = true;
+	return Diamond;
+}
+
+#define ARC_MERGE_STAGE_NO     0u
+#define ARC_MERGE_STAGE_YES    1u
+#define ARC_MERGE_STAGE_UNSURE 2u
+
+uint ArcTerrainMergeCanonicalMember(FArcMergeDiamond Diamond)
+{
+	uint Canonical = ARC_BISECTOR_NULL;
+	for (uint Index = 0u; Index < Diamond.Count; ++Index)
+	{
+		Canonical = min(Canonical, Diamond.Members[Index]);
+	}
+	return Canonical;
+}
+
+/** Orders the authoritative diamond as the two child pairs consumed by merge staging. A boundary diamond
+ *  carries only the first pair; null sentinels make that shape explicit to every sparse consumer. */
+uint4 ArcTerrainOrderMergeDiamond(FArcMergeDiamond Diamond)
+{
+	const uint2 BNode = arc_LoadNodeID(BisectorPool, Diamond.Members[0]);
+	const uint Even0 = (BNode.x & 1u) != 0u ? Diamond.Members[1] : Diamond.Members[0];
+	const uint Odd0 = (BNode.x & 1u) != 0u ? Diamond.Members[0] : Diamond.Members[1];
+	uint Even1 = ARC_BISECTOR_NULL;
+	uint Odd1 = ARC_BISECTOR_NULL;
+	if (Diamond.Count == 4u)
+	{
+		const uint2 UNode = arc_LoadNodeID(BisectorPool, Diamond.Members[2]);
+		Even1 = (UNode.x & 1u) != 0u ? Diamond.Members[3] : Diamond.Members[2];
+		Odd1 = (UNode.x & 1u) != 0u ? Diamond.Members[2] : Diamond.Members[3];
+	}
+	return uint4(Even0, Odd0, Even1, Odd1);
+}
+
+/** Stage one selected child pair without overwriting the surviving child's decision inputs. */
+void ArcTerrainStageMergedPair(uint Even, uint Odd, uint Partner)
+{
+	arc_RetireBisector(BisectorPool, Odd, ARC_RETIRE_MERGED, Even, ARC_BISECTOR_NULL);
+	arc_StoreField(BisectorPool, Even, ARC_BISECTOR_SUCC_A, Partner);
+	arc_StoreField(BisectorPool, Even, ARC_BISECTOR_SUCC_B, Odd);
+	BisectorPromote[Even] = ARC_EDGE_RIGHT;
+}
+
+/** Rebuild the parent record after a separate pass has validated the complete record's stage proof. */
+void ArcTerrainCommitMergedPair(uint Even)
+{
+	const uint Partner = arc_LoadField(BisectorPool, Even, ARC_BISECTOR_SUCC_A);
+	const uint Odd = arc_LoadField(BisectorPool, Even, ARC_BISECTOR_SUCC_B);
+	const uint Face = arc_LoadField(BisectorPool, Even, ARC_BISECTOR_FACE);
+	const uint2 ParentNode = leb_ShiftDown(arc_LoadNodeID(BisectorPool, Even));
+	const uint EvenHyp = arc_LoadNeighbor(BisectorNeighbors, Even, ARC_EDGE_HYP);
+	const uint OddHyp = arc_LoadNeighbor(BisectorNeighbors, Odd, ARC_EDGE_HYP);
+
+	arc_WriteBisector(BisectorPool, Even, ParentNode, Face);
+	arc_StoreNeighbor(BisectorNeighbors, Even, ARC_EDGE_RIGHT, EvenHyp);
+	arc_StoreNeighbor(BisectorNeighbors, Even, ARC_EDGE_LEFT, OddHyp);
+	arc_StoreNeighbor(BisectorNeighbors, Even, ARC_EDGE_HYP,
+		arc_RefValid(Partner) ? arc_MakeRef(Partner, ARC_EDGE_HYP) : ARC_BISECTOR_NULL);
+
+	if (arc_NodeDepth(ParentNode) == 1u)
+	{
+		FaceRoots[Face * 2u + (ParentNode.x & 1u)] = Even;
+	}
+}
+
+uint ArcTerrainMergePhaseHash(uint Value)
+{
+	Value ^= Value >> 16u;
+	Value *= 0x7feb352du;
+	Value ^= Value >> 15u;
+	Value *= 0x846ca68bu;
+	Value ^= Value >> 16u;
+	return Value;
+}
+
+bool ArcTerrainMergeCanonicalPhaseSelected(uint Canonical, bool bPressureOverride)
+{
+	if (MergePhaseCount == 1u || bPressureOverride)
+	{
+		return true;
+	}
+	const uint Hash = ArcTerrainMergePhaseHash(Canonical);
+	return (Hash & (MergePhaseCount - 1u)) == MergeFramePhase;
+}
+
+/** Count is resolved to a power of two by the render thread. Count 1 and pressure both take this fast
+ *  path before the canonical-member scan and hash. */
+bool ArcTerrainMergePhaseSelected(FArcMergeDiamond Diamond, bool bPressureOverride)
+{
+	if (MergePhaseCount == 1u || bPressureOverride)
+	{
+		return true;
+	}
+	if (!Diamond.bComplete)
+	{
+		return false;
+	}
+	return ArcTerrainMergeCanonicalPhaseSelected(ArcTerrainMergeCanonicalMember(Diamond), bPressureOverride);
+}
+
+/**
+ * Whether the merge path will write Slot this pass. YES is exact, by the gather symmetry above. UNSURE is
+ * the refusal family that says the
+ * link graph is corrupt around Slot: ApplyMerge refuses those and the split yields to them anyway, so the
+ * two passes stay off each other even where the reasoning the symmetry rests on does not hold.
+ */
+uint ArcTerrainMergeStageStatus(uint Slot, FArcMergeDiamond Diamond, bool bScheduled)
+{
+	if (arc_CommandKind(BisectorCommands[Slot]) != ARC_CMD_MERGE)
+	{
+		return ARC_MERGE_STAGE_NO;
+	}
+
+	if (!Diamond.bComplete)
+	{
+		const bool bCorrupt = Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_SIB_MISMATCH
+			|| Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_FAR_MISMATCH
+			|| Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_NONMUTUAL;
+		return bCorrupt ? ARC_MERGE_STAGE_UNSURE : ARC_MERGE_STAGE_NO;
+	}
+
+	for (uint Index = 0u; Index < Diamond.Count; ++Index)
+	{
+		if (arc_CommandKind(BisectorCommands[Diamond.Members[Index]]) != ARC_CMD_MERGE)
+		{
+			return ARC_MERGE_STAGE_NO;
+		}
+	}
+	return bScheduled ? ARC_MERGE_STAGE_YES : ARC_MERGE_STAGE_NO;
+}

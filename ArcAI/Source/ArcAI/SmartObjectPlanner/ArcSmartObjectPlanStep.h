@@ -1,7 +1,8 @@
 ﻿#pragma once
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassSmartObjectRequest.h"
+#include "ArcKnowledgeTypes.h"
 
 #include "ArcSmartObjectPlanStep.generated.h"
 
@@ -22,4 +23,7 @@ public:
 
 	UPROPERTY()
 	FMassSmartObjectCandidateSlots FoundCandidateSlots;
+
+	UPROPERTY()
+	FArcKnowledgeHandle KnowledgeHandle;
 };

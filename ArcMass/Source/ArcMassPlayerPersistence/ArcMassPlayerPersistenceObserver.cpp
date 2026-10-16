@@ -5,7 +5,8 @@
 #include "ArcMassPlayerPersistence.h"
 #include "ArcPlayerPersistenceSubsystem.h"
 #include "MassActorSubsystem.h"
-#include "MassExecutionContext.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "ArcMass/Persistence/ArcMassFragmentSerializer.h"
 #include "ArcMass/Persistence/ArcMassPersistence.h"
 #include "Serialization/ArcJsonLoadArchive.h"
@@ -19,7 +20,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogArcMassPlayerPersistenceObserver, Log, All);
 UArcMassPlayerPersistenceObserver::UArcMassPlayerPersistenceObserver()
 	: EntityQuery{*this}
 {
-	ObservedType = FArcMassPlayerPersistenceTag::StaticStruct();
+	ObservedTypes.Add(FArcMassPlayerPersistenceTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bAutoRegisterWithProcessingPhases = true;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
@@ -56,6 +57,8 @@ void UArcMassPlayerPersistenceObserver::Execute(
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassPlayerPersistence);
 
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, World, PlayerPersistence](FMassExecutionContext& Ctx)
@@ -135,8 +138,7 @@ void UArcMassPlayerPersistenceObserver::Execute(
 				FArcMassFragmentSerializer::LoadEntityFragments(
 					EntityManager, Entity, LoadAr, World);
 
-				UE_LOG(LogArcMassPlayerPersistenceObserver, Log,
-					TEXT("Deferred load: Applied fragment data for player %s"),
+				UE_LOGF(LogArcMassPlayerPersistenceObserver, Log,"Deferred load: Applied fragment data for player %ls",
 					*PlayerId.ToString());
 			}
 		});

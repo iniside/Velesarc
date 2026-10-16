@@ -3,8 +3,9 @@
 #include "ArcNiagaraBatchVisProcessor.h"
 
 #include "ArcNiagaraBatchVisFragments.h"
-#include "MassEntityFragments.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityFragments.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "NiagaraComponent.h"
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -53,6 +54,8 @@ void UArcNiagaraBatchVisProcessor::Execute(FMassEntityManager& EntityManager, FM
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraBatchVis);
 
 	// -----------------------------------------------------------------------
 	// Phase 1: Clear all position buffers (Reset keeps allocation)
@@ -152,7 +155,7 @@ UArcNiagaraBatchVisProcessor::FBatchState& UArcNiagaraBatchVisProcessor::GetOrCr
 	AActor* Actor = World.SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
 	if (!Actor)
 	{
-		UE_LOG(LogMass, Error, TEXT("ArcNiagaraBatchVis: Failed to spawn batch owner actor for %s"),
+		UE_LOGF(LogMass, Error,"ArcNiagaraBatchVis: Failed to spawn batch owner actor for %ls",
 			*GetNameSafe(&System));
 		return State;
 	}
@@ -172,7 +175,7 @@ UArcNiagaraBatchVisProcessor::FBatchState& UArcNiagaraBatchVisProcessor::GetOrCr
 	State.OwnerActor = Actor;
 	State.NiagaraComponent = Comp;
 
-	UE_LOG(LogMass, Log, TEXT("ArcNiagaraBatchVis: Created batch for system %s (PositionParam=%s)"),
+	UE_LOGF(LogMass, Log,"ArcNiagaraBatchVis: Created batch for system %ls (PositionParam=%ls)",
 		*GetNameSafe(&System), *PositionParamName.ToString());
 
 	return State;

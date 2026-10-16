@@ -2,25 +2,11 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
-#include "ArcAreaTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcAreaDefinition.h"
 
 #include "ArcAreaFragments.generated.h"
-
-/**
- * Per-entity mutable fragment: stores the runtime area handle after registration.
- * Lives on SmartObject Mass entities that have the UArcAreaTrait.
- */
-USTRUCT()
-struct ARCAREA_API FArcAreaFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-	/** Set by the observer after the area is registered in the subsystem. */
-	UPROPERTY()
-	FArcAreaHandle AreaHandle;
-};
 
 /**
  * Const shared fragment: references the area definition data asset.

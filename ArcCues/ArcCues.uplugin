@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Arc Cues",
+	"Description": "Entity-side cue/feedback system for ArcMassAbilities. ASC-free; mirrors engine GameplayCue lifecycle (Execute vs Apply/Tick/Remove) for Mass entities.",
+	"Category": "ArcX",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcCues",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "Metasound", "Enabled": true }
+	]
+}

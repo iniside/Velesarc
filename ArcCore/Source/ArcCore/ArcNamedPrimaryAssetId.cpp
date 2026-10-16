@@ -82,3 +82,11 @@ bool FArcNamedPrimaryAssetId::ImportTextItem(const TCHAR*& Buffer
 
 	return true;
 }
+
+void FArcNamedPrimaryAssetId::PostSerialize(const FArchive& Ar)
+{
+	if (Ar.IsSaving() && AssetId.IsValid())
+	{
+		Ar.MarkSearchableName(FArcNamedPrimaryAssetId::StaticStruct(), FName(AssetId.ToString()));
+	}
+}

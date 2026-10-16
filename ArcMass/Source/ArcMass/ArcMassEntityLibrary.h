@@ -5,9 +5,11 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "ArcMassEntityHandleWrapper.h"
+#include "Engine/HitResult.h"
 #include "ArcMassEntityLibrary.generated.h"
 
 class UMassAgentComponent;
+class UMassEntityConfigAsset;
 
 UENUM()
 enum class EArcMassResult : uint8
@@ -44,4 +46,15 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "ArcMass", meta = (WorldContext = "WorldContextObject", DefaultToSelf = "WorldContextObject"))
 	static ARCMASS_API void DestroyEntity(const UObject* WorldContextObject, const FMassEntityHandle& InEntity);
+
+	/** Resolve a trace hit to the owning Mass entity, if one was attached via the physics link system. */
+	UFUNCTION(BlueprintCallable, Category = "ArcMass|PhysicsLink", meta = (ExpandEnumAsExecs = "ExecResult"))
+	static ARCMASS_API FMassEntityHandle ResolveHitToEntity(const FHitResult& HitResult, EArcMassResult& ExecResult);
+	
+	UFUNCTION(BlueprintCallable, Category = "ArcMass|Utils")
+	static ARCMASS_API FString ToString(const FMassEntityHandle& InHandle);
+
+	/** Spawn a single Mass entity from an Arc Mass entity config at the given location. */
+	UFUNCTION(BlueprintCallable, Category = "ArcMass|Spawner", meta = (WorldContext = "ContextObject"))
+	static ARCMASS_API void SpawnSingleEntity(UObject* ContextObject, UMassEntityConfigAsset* InConfig, FVector InLocation);
 };

@@ -1,0 +1,41 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Arc Target Query",
+	"Description": "Spatial and entity query system with scoring pipeline.",
+	"Category": "ArcX",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcTargetQuery",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcTargetQueryEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "SmartObjects", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "PropertyBindingUtils", "Enabled": true },
+		{ "Name": "PropertyAccessEditor", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+		{ "Name": "ArcCore", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcMassDamageSystem", "Enabled": true },
+		{ "Name": "ToolsetRegistry", "Enabled": true, "TargetAllowList": [ "Editor" ] }
+	]
+}

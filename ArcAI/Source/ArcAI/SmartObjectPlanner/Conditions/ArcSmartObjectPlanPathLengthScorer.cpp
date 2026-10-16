@@ -2,9 +2,8 @@
 
 #include "ArcSmartObjectPlanPathLengthScorer.h"
 
-#include "MassEntityManager.h"
-#include "NavigationSystem.h"
-#include "NavigationPath.h"
+#include "Mass/EntityManager.h"
+#include "ArcMass/Helpers/ArcNavHelpers.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
 
 float FArcSmartObjectPlanPathLengthScorer::ScoreEntity(
@@ -12,33 +11,15 @@ float FArcSmartObjectPlanPathLengthScorer::ScoreEntity(
 	const FArcSmartObjectPlanEvaluationContext& Context) const
 {
 	const UWorld* World = Context.EntityManager->GetWorld();
-	if (!World)
+
+	const TOptional<float> Len = ArcNavHelpers::PathLength(World, Context.RequestingLocation, Entity.Location, NavAgentProperties);
+	if (!Len.IsSet() || MaxPathLength <= 0.f)
 	{
 		return 0.f;
 	}
 
-	const UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
-	if (!NavSys)
-	{
-		return 0.f;
-	}
-
-	const FVector Start = Context.RequestingLocation;
-	const FVector End = Entity.Location;
-
-	FPathFindingQuery Query(nullptr, *NavSys->GetDefaultNavDataInstance(), Start, End);
-	Query.NavAgentProperties = NavAgentProperties;
-
-	const FPathFindingResult Result = const_cast<UNavigationSystemV1*>(NavSys)->FindPathSync(Query);
-
-	if (!Result.IsSuccessful() || !Result.Path.IsValid())
-	{
-		return 0.f;
-	}
-
-	const float PathLength = Result.Path->GetLength();
-
-	if (MaxPathLength <= 0.f || PathLength >= MaxPathLength)
+	const float PathLength = Len.GetValue();
+	if (PathLength >= MaxPathLength)
 	{
 		return 0.f;
 	}

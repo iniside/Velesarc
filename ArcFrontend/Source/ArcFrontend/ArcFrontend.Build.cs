@@ -38,7 +38,6 @@ public class ArcFrontend : ModuleRules
 				, "Slate"
 				, "SlateCore"
 				, "NetCore"
-				, "GameplayAbilities"
 				, "GameplayTasks"
 				, "GameplayTags"
 				, "GameplayDebugger"
@@ -56,6 +55,8 @@ public class ArcFrontend : ModuleRules
 				, "Niagara"
 				, "AsyncMixin"
 				, "ArcCore"
+				, "ArcMassItemsRuntime"
+				, "ArcMassGameplayFramework"
 				, "ArcAudio"
 				, "ApplicationCore"
 				, "TargetingSystem"
@@ -107,11 +108,20 @@ public class ArcFrontend : ModuleRules
 			new string[]
 			{
 				"ArcGun", "AudioModulation"
-				// ... add private dependencies that you statically link with here ...	
+				, "MassCore"
+				, "ArcAbilityKit"
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
-		
-		
+
+
+		PublicDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"MassEntity"
+			}
+		);
+
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{

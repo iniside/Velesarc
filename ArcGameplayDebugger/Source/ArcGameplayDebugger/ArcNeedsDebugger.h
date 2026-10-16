@@ -2,8 +2,9 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 
 class FArcNeedsDebugger
 {

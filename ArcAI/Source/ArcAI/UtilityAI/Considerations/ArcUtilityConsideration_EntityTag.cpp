@@ -1,51 +1,51 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "UtilityAI/Considerations/ArcUtilityConsideration_EntityTag.h"
-#include "MassEntityManager.h"
-#include "MassArchetypeTypes.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
+#include "Mass/EntityManager.h"
+#include "Mass/ArchetypeTypes.h"
+#include "Fragments/ArcOwnedTagsFragment.h"
 
-float FArcUtilityConsideration_EntityGameplayTags::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+FArcUtilityConsiderationResult FArcUtilityConsideration_EntityGameplayTags::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	if (!Context.EntityManager || !Target.EntityHandle.IsSet())
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
 	if (!Context.EntityManager->IsEntityValid(Target.EntityHandle))
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
-	const FArcMassGameplayTagContainerFragment* TagFragment =
-		Context.EntityManager->GetFragmentDataPtr<FArcMassGameplayTagContainerFragment>(Target.EntityHandle);
+	const FArcOwnedTagsFragment* TagFragment =
+		Context.EntityManager->GetFragmentDataPtr<FArcOwnedTagsFragment>(Target.EntityHandle);
 
 	if (!TagFragment)
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
-	return TagQuery.Matches(TagFragment->Tags) ? 1.0f : 0.0f;
+	return FArcUtilityConsiderationResult::Accept(TagQuery.Matches(TagFragment->GetTags().GetTagContainer()) ? 1.0f : 0.0f);
 }
 
-float FArcUtilityConsideration_EntityMassTag::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+FArcUtilityConsiderationResult FArcUtilityConsideration_EntityMassTag::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	if (!Context.EntityManager || !Target.EntityHandle.IsSet() || !MassTagType)
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
 	if (!Context.EntityManager->IsEntityValid(Target.EntityHandle))
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
 	const FMassArchetypeHandle Archetype = Context.EntityManager->GetArchetypeForEntity(Target.EntityHandle);
 	if (!Archetype.IsValid())
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
 	const FMassElementBitSet& Composition = Archetype.GetCompositionBitSetChecked();
-	return Composition.Contains(MassTagType) ? 1.0f : 0.0f;
+	return FArcUtilityConsiderationResult::Accept(Composition.Contains(MassTagType) ? 1.0f : 0.0f);
 }

@@ -33,28 +33,21 @@
 
 void FArcAIEditorModule::StartupModule()
 {
-	// Register TQS trace module with TraceServices
+	// --- TQS Rewind Debugger ---
+
 	TQSTraceModule = MakeUnique<FArcTQSTraceModule>();
 	IModularFeatures::Get().RegisterModularFeature(TraceServices::ModuleFeatureName, TQSTraceModule.Get());
 
-	// Register Rewind Debugger track creator
-	//TQSTrackCreator = MakeUnique<FArcTQSRewindDebuggerTrackCreator>();
-	//IModularFeatures::Get().RegisterModularFeature(
-	//	RewindDebugger::IRewindDebuggerTrackCreator::ModularFeatureName,
-	//	TQSTrackCreator.Get());
-	
-	// Register Rewind Debugger playback extension
+	TQSTrackCreator = MakePimpl<FArcTQSRewindDebuggerTrackCreator>();
+	IModularFeatures::Get().RegisterModularFeature(
+		RewindDebugger::IRewindDebuggerTrackCreator::ModularFeatureName,
+		TQSTrackCreator.Get());
+
 	TQSPlaybackExtension = MakeUnique<FArcTQSRewindDebuggerPlaybackExtension>();
 	IModularFeatures::Get().RegisterModularFeature(
 		IRewindDebuggerExtension::ModularFeatureName,
 		TQSPlaybackExtension.Get());
-	
-	TQSTrackCreator = MakePimpl<FArcTQSRewindDebuggerTrackCreator>();
-	IModularFeatures::Get().RegisterModularFeature(
-	RewindDebugger::IRewindDebuggerTrackCreator::ModularFeatureName,
-		TQSTrackCreator.Get());
-	
-	// Register Rewind Debugger recording extension (channel toggle)
+
 	TQSRecordingExtension = MakeUnique<FArcTQSRewindDebuggerRecordingExtension>();
 	IModularFeatures::Get().RegisterModularFeature(
 		IRewindDebuggerRuntimeExtension::ModularFeatureName,

@@ -33,7 +33,15 @@
 			"Enabled": true
 		},
 		{
-			"Name": "GameplayAbilities",
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassGameplayFramework",
 			"Enabled": true
 		},
 		{

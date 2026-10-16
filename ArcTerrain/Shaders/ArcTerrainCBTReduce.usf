@@ -1,0 +1,30 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTReduce.usf — sum-reduction of the pool occupancy heap.
+
+	One dispatch per tree level, deepest internal level up to the root; RDG inserts a
+	UAV barrier between them so each parent reads its already-reduced children. There
+	is ONE tree over the whole bisector pool, so the dispatch count is MaxDepth
+	regardless of how many sectors are resident.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBT.ush"
+
+RWByteAddressBuffer CBTHeap;
+
+uint PoolDepth;
+uint Level;         // depth of the nodes reduced by this dispatch
+uint ThreadStride;  // total threads dispatched (grid-stride wrap for the deep levels)
+
+[numthreads(ARC_CBT_REDUCE_THREADS, 1, 1)]
+void ReduceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint NodesPerLevel = 1u << Level;
+
+	for (uint Tid = DispatchThreadId.x; Tid < NodesPerLevel; Tid += ThreadStride)
+	{
+		cbt_SumReduceNode(CBTHeap, 0u, (int)PoolDepth, NodesPerLevel + Tid, (int)Level);
+	}
+}

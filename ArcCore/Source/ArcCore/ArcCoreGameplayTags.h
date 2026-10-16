@@ -46,32 +46,6 @@ public:
 										, bool bMatchPartialString = false);
 
 public:
-	FGameplayTag Ability_ActivateFail_IsDead;
-	FGameplayTag Ability_ActivateFail_Cooldown;
-	FGameplayTag Ability_ActivateFail_Cost;
-	FGameplayTag Ability_ActivateFail_TagsBlocked;
-	FGameplayTag Ability_ActivateFail_TagsMissing;
-	FGameplayTag Ability_ActivateFail_Networking;
-	FGameplayTag Ability_ActivateFail_ActivationGroup;
-
-	FGameplayTag Ability_Behavior_SurvivesDeath;
-
-	// Initialization states for the GameFrameworkComponentManager, these are registered
-	// in order by LyraGameInstance and some actors will skip right to GameplayReady
-
-	/** Actor/component has initially spawned and can be extended */
-	FGameplayTag InitState_Spawned;
-
-	/** All required data has been loaded/replicated and is ready for initialization */
-	FGameplayTag InitState_DataAvailable;
-
-	/** The available data has been initialized for this actor/component, but it is not
-	 * ready for full gameplay */
-	FGameplayTag InitState_DataInitialized;
-
-	/** The actor/component is fully ready for active gameplay */
-	FGameplayTag InitState_GameplayReady;
-
 	TMap<uint8, FGameplayTag> MovementModeTagMap;
 	TMap<uint8, FGameplayTag> CustomMovementModeTagMap;
 

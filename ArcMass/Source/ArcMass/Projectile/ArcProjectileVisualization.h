@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassObserverProcessor.h"
+#include "Mass/ObserverProcessor.h"
 
 #include "ArcProjectileVisualization.generated.h"
 

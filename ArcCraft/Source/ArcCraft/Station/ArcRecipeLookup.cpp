@@ -21,91 +21,149 @@
 
 #include "ArcCraft/Station/ArcRecipeLookup.h"
 
-#include "ArcCraft/Recipe/ArcRecipeDefinition.h"
-#include "Engine/AssetManager.h"
-#include "Items/ArcItemSpec.h"
-#include "Items/Fragments/ArcItemFragment_Tags.h"
+#include "ArcCraft/Recipe/ArcRecipeDefinitionData.h"
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
+#include "ArcCraft/Shared/ArcCraftRecords.h"
+#include "Core/ArcCoreAssetManager.h"
+#include "Items/ArcItemSpec.h"
+#include "JsonAssets/ArcJsonAssetType.h"
 
-TArray<FAssetData> FArcRecipeLookup::FindRecipesForStation(
-	const FGameplayTagContainer& StationTags)
+namespace ArcRecipeLookupPrivate
 {
-	IAssetRegistry& AR = UAssetManager::Get().GetAssetRegistry();
+	const TCHAR* RecipeExtension = TEXT("arcrecipe");
 
-	// Build filter for all UArcRecipeDefinition assets (and derived classes)
-	FARFilter AssetFilter;
-	AssetFilter.ClassPaths.Add(UArcRecipeDefinition::StaticClass()->GetClassPathName());
+	FGameplayTagContainer GetIngredientTags(const FArcRecipeDefinitionData& Recipe)
+	{
+		FGameplayTagContainer IngredientTags;
+		for (const FInstancedStruct& IngredientStruct : Recipe.Ingredients)
+		{
+			const FArcRecipeIngredient* Ingredient = IngredientStruct.GetPtr<FArcRecipeIngredient>();
+			if (Ingredient != nullptr && Ingredient->bOptional)
+			{
+				continue;
+			}
 
-	TSet<FTopLevelAssetPath> DerivedClassNames;
-	AR.GetDerivedClassNames(AssetFilter.ClassPaths, TSet<FTopLevelAssetPath>(), DerivedClassNames);
-	AssetFilter.ClassPaths.Append(DerivedClassNames.Array());
-	AssetFilter.bRecursiveClasses = true;
+			if (const FArcRecipeIngredient_Tags* TagIngredient = IngredientStruct.GetPtr<FArcRecipeIngredient_Tags>())
+			{
+				IngredientTags.AppendTags(TagIngredient->RequiredTags);
+			}
+		}
+		return IngredientTags;
+	}
 
-	TArray<FAssetData> AllRecipes;
-	AR.GetAssets(AssetFilter, AllRecipes);
+	TArray<FPrimaryAssetId> GetRecipeIds()
+	{
+		UArcCoreAssetManager& AssetManager = UArcCoreAssetManager::Get();
 
-	// Filter by station tags using asset registry data
-	return UArcRecipeDefinition::FilterByStationTags(AllRecipes, StationTags);
+		TArray<FPrimaryAssetId> RecipeIds;
+		for (const FPrimaryAssetType& Type : AssetManager.GetJsonRecordTypes())
+		{
+			const FArcJsonAssetTypeInfo* TypeInfo = AssetManager.FindJsonRecordType(Type);
+			if (TypeInfo != nullptr && TypeInfo->Extension == RecipeExtension)
+			{
+				AssetManager.GetPrimaryAssetIdList(Type, RecipeIds);
+			}
+		}
+		return RecipeIds;
+	}
 }
 
-TArray<FAssetData> FArcRecipeLookup::FilterByAvailableIngredients(
-	const TArray<FAssetData>& CandidateRecipes,
+TArray<FPrimaryAssetId> FArcRecipeLookup::FindRecipesForStation(
+	const FGameplayTagContainer& StationTypeTags,
+	const FGameplayTagContainer& OfferedRecipeTags)
+{
+	const TArray<FPrimaryAssetId> RecipeIds = ArcRecipeLookupPrivate::GetRecipeIds();
+
+	TArray<FPrimaryAssetId> Filtered;
+	Filtered.Reserve(RecipeIds.Num());
+	for (const FPrimaryAssetId& RecipeId : RecipeIds)
+	{
+		const FArcRecipeDefinitionData* Recipe = ArcCraftRecords::Find<FArcRecipeDefinitionData>(RecipeId);
+		if (Recipe == nullptr)
+		{
+			continue;
+		}
+
+		const bool bTypeOk = Recipe->RequiredStationTags.IsEmpty() || StationTypeTags.HasAll(Recipe->RequiredStationTags);
+		if (!bTypeOk)
+		{
+			continue;
+		}
+
+		// HasAny expands the RECEIVER's tags (adds parents). Receiver = RecipeTags so a station
+		// offering a PARENT tag (Offered={Recipe.Tier}) matches a recipe tagged with a child
+		// (RecipeTags={Recipe.Tier.0}). The reverse direction would silently fail parent offers.
+		const bool bTierOk = !Recipe->RecipeTags.IsEmpty() && Recipe->RecipeTags.HasAny(OfferedRecipeTags);
+		if (bTierOk)
+		{
+			Filtered.Add(RecipeId);
+		}
+	}
+	return Filtered;
+}
+
+TArray<FPrimaryAssetId> FArcRecipeLookup::FilterByAvailableIngredients(
+	const TArray<FPrimaryAssetId>& CandidateRecipes,
 	const FGameplayTagContainer& AvailableItemTags)
 {
-	TArray<FAssetData> Filtered;
+	TArray<FPrimaryAssetId> Filtered;
 
-	for (const FAssetData& Data : CandidateRecipes)
+	for (const FPrimaryAssetId& RecipeId : CandidateRecipes)
 	{
-		// Get ingredient tags from asset registry
-		FGameplayTagContainer IngredientTags = UArcRecipeDefinition::GetIngredientTagsFromAssetData(Data);
+		const FArcRecipeDefinitionData* Recipe = ArcCraftRecords::Find<FArcRecipeDefinitionData>(RecipeId);
+		if (Recipe == nullptr)
+		{
+			continue;
+		}
+
+		const FGameplayTagContainer IngredientTags = ArcRecipeLookupPrivate::GetIngredientTags(*Recipe);
 
 		// If recipe has no ingredient tags (e.g. all item-def based), include it
 		if (IngredientTags.Num() == 0)
 		{
-			Filtered.Add(Data);
+			Filtered.Add(RecipeId);
 			continue;
 		}
 
 		// Check if available items have any overlap with what the recipe needs
 		if (AvailableItemTags.HasAny(IngredientTags))
 		{
-			Filtered.Add(Data);
+			Filtered.Add(RecipeId);
 		}
 	}
 
 	return Filtered;
 }
 
-UArcRecipeDefinition* FArcRecipeLookup::FindBestRecipeForIngredients(
-	const TArray<FAssetData>& CandidateRecipes,
+FPrimaryAssetId FArcRecipeLookup::FindBestRecipeForIngredients(
+	const TArray<FPrimaryAssetId>& CandidateRecipes,
 	const TArray<FArcItemSpec>& AvailableItems,
 	const FGameplayTagContainer& StationTags,
 	float& OutMatchScore)
 {
 	OutMatchScore = 0.0f;
-	UArcRecipeDefinition* BestRecipe = nullptr;
+	FPrimaryAssetId BestRecipe;
 
-	for (const FAssetData& Data : CandidateRecipes)
+	for (const FPrimaryAssetId& RecipeId : CandidateRecipes)
 	{
-		// Load the recipe asset
-		UArcRecipeDefinition* Recipe = Cast<UArcRecipeDefinition>(Data.GetAsset());
-		if (!Recipe)
+		const FArcRecipeDefinitionData* Recipe = ArcCraftRecords::Find<FArcRecipeDefinitionData>(RecipeId);
+		if (Recipe == nullptr)
 		{
 			continue;
 		}
 
-		// Validate station tags again (in case of race condition)
 		if (Recipe->RequiredStationTags.Num() > 0 && !StationTags.HasAll(Recipe->RequiredStationTags))
 		{
 			continue;
 		}
 
-		// Try to match all ingredient slots against available items
+		// Try to match all required ingredient slots against available items
 		TSet<int32> UsedItemIndices;
 		int32 MatchedSlots = 0;
-		const int32 TotalSlots = Recipe->Ingredients.Num();
+		const int32 TotalSlots = Recipe->GetIngredientCount();
+		const int32 RequiredSlots = Recipe->GetRequiredIngredientCount();
 
-		if (TotalSlots == 0)
+		if (RequiredSlots == 0)
 		{
 			continue;
 		}
@@ -113,7 +171,7 @@ UArcRecipeDefinition* FArcRecipeLookup::FindBestRecipeForIngredients(
 		for (int32 SlotIdx = 0; SlotIdx < TotalSlots; ++SlotIdx)
 		{
 			const FArcRecipeIngredient* Ingredient = Recipe->GetIngredientBase(SlotIdx);
-			if (!Ingredient)
+			if (!Ingredient || Ingredient->bOptional)
 			{
 				continue;
 			}
@@ -131,9 +189,7 @@ UArcRecipeDefinition* FArcRecipeLookup::FindBestRecipeForIngredients(
 					continue;
 				}
 
-				// We pass nullptr for tier table since we don't have it without loading more.
-				// This is a best-effort match.
-				if (Ingredient->DoesItemSatisfy(ItemSpec, nullptr) &&
+				if (Ingredient->DoesItemSatisfy(ItemSpec) &&
 					ItemSpec.Amount >= static_cast<uint16>(Ingredient->Amount))
 				{
 					UsedItemIndices.Add(ItemIdx);
@@ -143,24 +199,52 @@ UArcRecipeDefinition* FArcRecipeLookup::FindBestRecipeForIngredients(
 			}
 		}
 
-		// Only consider recipes where ALL slots are satisfied
-		if (MatchedSlots < TotalSlots)
+		// Only consider recipes where all required slots are satisfied
+		if (MatchedSlots < RequiredSlots)
 		{
 			continue;
 		}
 
-		// Score: more ingredient slots = more specific recipe = better match.
+		// Score: more required slots = more specific recipe = better match.
 		// Tie-break by closeness of available items count to required count.
-		const float SlotScore = static_cast<float>(TotalSlots);
-		const float Closeness = 1.0f / (1.0f + FMath::Abs(static_cast<float>(AvailableItems.Num() - TotalSlots)));
+		const float SlotScore = static_cast<float>(RequiredSlots);
+		const float Closeness = 1.0f / (1.0f + FMath::Abs(static_cast<float>(AvailableItems.Num() - RequiredSlots)));
 		const float Score = SlotScore + Closeness;
 
 		if (Score > OutMatchScore)
 		{
 			OutMatchScore = Score;
-			BestRecipe = Recipe;
+			BestRecipe = RecipeId;
 		}
 	}
 
 	return BestRecipe;
+}
+
+FPrimaryAssetId FArcRecipeLookup::FindRarityVariant(
+	const FPrimaryAssetId& BaseRecipeId,
+	const FGameplayTag& Rarity,
+	const FGameplayTag& DefaultRarity)
+{
+	if (!BaseRecipeId.IsValid() || !Rarity.IsValid())
+	{
+		return FPrimaryAssetId();
+	}
+
+	for (const FPrimaryAssetId& RecipeId : ArcRecipeLookupPrivate::GetRecipeIds())
+	{
+		const FArcRecipeDefinitionData* Recipe = ArcCraftRecords::Find<FArcRecipeDefinitionData>(RecipeId);
+		if (Recipe == nullptr)
+		{
+			continue;
+		}
+
+		const bool bInFamily = RecipeId == BaseRecipeId || Recipe->BaseRecipe == BaseRecipeId;
+		const FGameplayTag StartRarity = Recipe->GuaranteedRarity.IsValid() ? Recipe->GuaranteedRarity : DefaultRarity;
+		if (bInFamily && StartRarity == Rarity)
+		{
+			return RecipeId;
+		}
+	}
+	return FPrimaryAssetId();
 }

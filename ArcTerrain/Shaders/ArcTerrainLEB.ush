@@ -1,0 +1,169 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainLEB.ush — Longest-Edge Bisection decode, HLSL port of libleb.
+
+	Faithful port of the DECODE half of Jonathan Dupuy's public-domain `libleb`
+	(leb.h, https://github.com/jdupuy/libleb). Given a bisector's node id,
+	leb_DecodeNodeCorners returns the three triangle corners in its face's local
+	[0,1]^2 domain. The "square" variant is used: the two root triangles (node ids 2
+	and 3 at depth 1) tile the unit square that maps to one terrain SECTOR.
+
+	Subdivision itself is NOT here. Topology lives in the explicit halfedge bisector
+	pool (ArcTerrainBisector.ush), where a split follows twin pointers instead of the
+	implicit same-depth-neighbour id recursion — the recursion assumes a Left-to-Right
+	gluing that a translation-symmetric square base mesh does not have.
+=============================================================================*/
+
+#pragma once
+
+struct FLEBTriangle
+{
+	float2 Corners[3];
+};
+
+/*
+ * A LEB node: the implicit-tree id and its depth (= floor(log2(id))). The id is 64 bits across two
+ * words — ID.x holds bits [0,32), ID.y bits [32,64) — because a face subdivided to depth 44 needs 45
+ * id bits. This is deliberately NOT FCBTNode: that one indexes the pool occupancy heap, where the id
+ * is multiplied by a bit size (cbt_NodeBitID) and must stay 32-bit.
+ */
+struct FLEBNode
+{
+	uint2 ID;
+	int   Depth;
+};
+
+uint2 leb_ShiftUp(uint2 ID)   { return uint2(ID.x << 1u, (ID.y << 1u) | (ID.x >> 31u)); }
+uint2 leb_ShiftDown(uint2 ID) { return uint2((ID.x >> 1u) | (ID.y << 31u), ID.y >> 1u); }
+
+/** Node id >> Count. Split out because HLSL shifts take their count modulo 32, so neither word can be
+ *  shifted by the full amount when Count crosses the word boundary. */
+uint2 leb_ShiftDownBy(uint2 ID, uint Count)
+{
+	if (Count == 0u)
+	{
+		return ID;
+	}
+	if (Count >= 64u)
+	{
+		return uint2(0u, 0u);
+	}
+	if (Count >= 32u)
+	{
+		return uint2(ID.y >> (Count - 32u), 0u);
+	}
+	return uint2((ID.x >> Count) | (ID.y << (32u - Count)), ID.y >> Count);
+}
+
+uint leb_NodeDepth(uint2 ID)
+{
+	return ID.y != 0u ? firstbithigh(ID.y) + 32u : firstbithigh(ID.x);
+}
+
+uint leb_GetBitValue(uint2 ID, int BitID)
+{
+	const uint Word = BitID < 32 ? ID.x : ID.y;
+	return (Word >> ((uint)BitID & 31u)) & 1u;
+}
+
+FLEBNode leb_CreateNode(uint2 InID, int InDepth)
+{
+	FLEBNode Node;
+	Node.ID = InID;
+	Node.Depth = InDepth;
+	return Node;
+}
+
+FLEBNode leb_CreateNodeFromID(uint2 InID)
+{
+	return leb_CreateNode(InID, (int)leb_NodeDepth(InID));
+}
+
+FLEBNode leb_ParentNode(FLEBNode Node)
+{
+	return leb_CreateNode(leb_ShiftDown(Node.ID), Node.Depth - 1);
+}
+
+/**
+ * The apex of this node's PARENT, from the node's own corners. A bisection hands the child two of the
+ * parent's corners as C0 and C2 and puts the child's apex on the midpoint of the parent's split edge, so
+ * the third parent corner is that apex reflected through whichever end the split edge ran from. Which end
+ * is the id's low bit against the depth parity, because the winding matrix swaps corners 0 and 2 on
+ * alternate depths. Undefined below depth 1, where there is no parent.
+ */
+float2 leb_ParentApex(FLEBNode Node, FLEBTriangle Tri)
+{
+	const bool bFromCorner0 = ((((uint)Node.Depth) ^ Node.ID.x) & 1u) != 0u;
+	return 2.0f * Tri.Corners[1] - (bFromCorner0 ? Tri.Corners[0] : Tri.Corners[2]);
+}
+
+// --- Transformation-matrix decode -------------------------------------------
+// libleb builds the corner positions by multiplying split matrices along the
+// node id bits. Row-vector product out = mul(A, B) matches libleb Matrix3x3Product.
+
+float3x3 leb_SplittingMatrix(uint BitValue)
+{
+	float B = (float)BitValue;
+	float C = 1.0f - B;
+	return float3x3(
+		C,    B,    0.0f,
+		0.5f, 0.0f, 0.5f,
+		0.0f, C,    B);
+}
+
+float3x3 leb_SquareMatrix(uint BitValue)
+{
+	float B = (float)BitValue;
+	float C = 1.0f - B;
+	return float3x3(
+		C, 0.0f, B,
+		B, C,    B,
+		B, 0.0f, C);
+}
+
+float3x3 leb_WindingMatrix(uint BitValue)
+{
+	float B = (float)BitValue;
+	float C = 1.0f - B;
+	return float3x3(
+		C,    0.0f, B,
+		0.0f, 1.0f, 0.0f,
+		B,    0.0f, C);
+}
+
+// Square-variant transformation matrix for a node (libleb DecodeTransformationMatrix_Square).
+float3x3 leb_DecodeTransformationMatrix_Square(FLEBNode Node)
+{
+	int BitID = Node.Depth > 0 ? Node.Depth - 1 : 0;
+	float3x3 M = leb_SquareMatrix(leb_GetBitValue(Node.ID, BitID));
+
+	for (BitID = Node.Depth - 2; BitID >= 0; --BitID)
+	{
+		M = mul(leb_SplittingMatrix(leb_GetBitValue(Node.ID, BitID)), M);
+	}
+
+	M = mul(leb_WindingMatrix((uint)((Node.Depth ^ 1) & 1)), M);
+	return M;
+}
+
+/*
+ * Decode a leaf node key to its 3 triangle corners in the cell's [0,1]^2 domain.
+ * Base attributes are the canonical square-cell triangle used by the LEB demos:
+ * X = {0,0,1}, Y = {1,0,0} (corners (0,1),(0,0),(1,0)); the square matrix winds
+ * the two root triangles to tile the unit square. Corner k = (Xout[k], Yout[k]),
+ * where the output vectors are M applied to the base attribute vectors.
+ */
+FLEBTriangle leb_DecodeNodeCorners(FLEBNode Node)
+{
+	float3x3 M = leb_DecodeTransformationMatrix_Square(Node);
+	float3 Xout = mul(M, float3(0.0f, 0.0f, 1.0f));
+	float3 Yout = mul(M, float3(1.0f, 0.0f, 0.0f));
+
+	FLEBTriangle Tri;
+	Tri.Corners[0] = float2(Xout[0], Yout[0]);
+	Tri.Corners[1] = float2(Xout[1], Yout[1]);
+	Tri.Corners[2] = float2(Xout[2], Yout[2]);
+	return Tri;
+}
+

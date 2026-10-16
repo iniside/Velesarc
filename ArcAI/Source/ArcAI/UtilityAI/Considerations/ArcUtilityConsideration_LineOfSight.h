@@ -23,5 +23,12 @@ struct ARCAI_API FArcUtilityConsideration_LineOfSight : public FArcUtilityConsid
 	UPROPERTY(EditAnywhere, Category = "Consideration")
 	float TraceHeightOffset = 50.0f;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetLocation;
+	}
+#endif
 };

@@ -21,17 +21,12 @@
 
 #pragma once
 
-#include "ArcLayeredMove_Lift.h"
 #include "ArcNamedPrimaryAssetId.h"
-#include "ChaosMover/Character/Modifiers/ChaosStanceModifier.h"
-#include "DefaultMovementSet/LayeredMoves/BasicLayeredMoves.h"
 #include "Templates/SubclassOf.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "ArcStaticsBFL.generated.h"
 
-class UMassEntityConfigAsset;
 class AAIController;
-class UArcUserFacingExperienceDefinition;
 class UObject;
 class UScriptStruct;
 
@@ -66,9 +61,6 @@ public:
 		return InAssetId.AssetId;
 	}
 
-	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"), Category = "Arc Core|Game")
-	static void OpenLevelFromUserFacingExperience(const UObject* WorldContextObject, UArcUserFacingExperienceDefinition* InDefinition);
-	
 	static EAnimCardinalDirection GetCardinalDirectionFromAngle(EAnimCardinalDirection PreviousCardinalDirection
 																, float AngleInDegrees
 																, float DeadZoneAngle)
@@ -125,9 +117,6 @@ public:
 	}
 
 
-	UFUNCTION(BlueprintCallable)
-	static void SpawnSingleEntity(UObject* ContextObject, UMassEntityConfigAsset* InConfig, FVector InLocation);
-
 	UFUNCTION(BlueprintCallable, CustomThunk, BlueprintInternalUseOnly, Category = "Arc Core|Ability", meta = (CustomStructureParam = "InCommand"))
 	static void SendCommandToServer(UObject* ContextObject,
 		UPARAM(meta = (MetaStruct = "/Script/ArcCore.ArcReplicatedCommand")) UScriptStruct* InCommandType
@@ -139,23 +128,9 @@ public:
 	static UObject* IsObjectChildOf(UObject* InObject, TSubclassOf<UObject> InClass, bool& bSuccess);
 	
 	UFUNCTION(BlueprintCallable, Category = "Arc Core")
-	static void AddChaosMoverStance(AActor* Actor, FChaosStanceModifier NewStance);
-	
-	UFUNCTION(BlueprintCallable, Category = "Arc Core")
 	static void PauseCurrentMove(AAIController* AIController);
 	
 	UFUNCTION(BlueprintCallable, Category = "Arc Core")
 	static void ResumeCurrentMove(AAIController* AIController);
 	
-	UFUNCTION(BlueprintCallable, Category = "Arc Core")
-	static void LaunchMove(AActor* Actor, FVector LaunchVelocity, EMoveMixMode MixMode);
-	
-	UFUNCTION(BlueprintCallable, Category = "Arc Core")
-	static void ApplyVelocityEffect(AActor* Actor, FVector LaunchVelocity, EChaosMoverVelocityEffectMode Mode);
-	
-	UFUNCTION(BlueprintCallable, Category = "Arc Core")
-	static void MoveToMove(AActor* Actor, FLayeredMove_MoveTo MoveTo);
-	
-	UFUNCTION(BlueprintCallable, Category = "Arc Core")
-	static void MoveLift(AActor* Actor, FArcLayeredMove_Lift Lift);
 };

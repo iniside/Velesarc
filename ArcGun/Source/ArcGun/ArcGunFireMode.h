@@ -30,7 +30,6 @@
 #include "ArcGunFireMode.generated.h"
 
 class UArcGunStateComponent;
-struct FGameplayAbilitySpecHandle;
 USTRUCT()
 struct ARCGUN_API FArcGunFireMode
 {
@@ -38,12 +37,12 @@ struct ARCGUN_API FArcGunFireMode
 	
 public:
 	// Return true if weapon can shot
-	virtual bool FireStart(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent) { return false; };
+	virtual bool FireStart(UArcGunStateComponent* InGunComponent) { return false; };
 
-	virtual void FireStop(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent) {};
+	virtual void FireStop(UArcGunStateComponent* InGunComponent) {};
 	
 	// Return true if weapon can shot
-	virtual bool FireUpdate(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent, float DeltaTime) { return false; };
+	virtual bool FireUpdate(UArcGunStateComponent* InGunComponent, float DeltaTime) { return false; };
 
 	virtual ~FArcGunFireMode() = default;
 	float ElapsedTime = 0;
@@ -55,9 +54,9 @@ struct ARCGUN_API FArcGunFireMode_FullAuto : public FArcGunFireMode
 	GENERATED_BODY()
 	
 public:
-	virtual bool FireStart(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent) override;
-	virtual void FireStop(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent) override;
-	virtual bool FireUpdate(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent, float DeltaTime) override;
+	virtual bool FireStart(UArcGunStateComponent* InGunComponent) override;
+	virtual void FireStop(UArcGunStateComponent* InGunComponent) override;
+	virtual bool FireUpdate(UArcGunStateComponent* InGunComponent, float DeltaTime) override;
 
 	virtual ~FArcGunFireMode_FullAuto() override = default;
 	
@@ -76,9 +75,9 @@ struct ARCGUN_API FArcGunFireMode_Single : public FArcGunFireMode
 	GENERATED_BODY()
 	
 public:
-	virtual bool FireStart(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent) override;
-	virtual void FireStop(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent) override;
-	virtual bool FireUpdate(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent, float DeltaTime) override;
+	virtual bool FireStart(UArcGunStateComponent* InGunComponent) override;
+	virtual void FireStop(UArcGunStateComponent* InGunComponent) override;
+	virtual bool FireUpdate(UArcGunStateComponent* InGunComponent, float DeltaTime) override;
 
 	virtual ~FArcGunFireMode_Single() override = default;
 	

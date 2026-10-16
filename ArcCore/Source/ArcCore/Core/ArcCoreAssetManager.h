@@ -24,14 +24,26 @@
 
 #include "AssetRegistry/AssetData.h"
 #include "Engine/AssetManager.h"
+#include "Engine/DataAsset.h"
 #include "Engine/Engine.h"
+#include "Engine/StreamableManager.h"
 #include "Engine/World.h"
-#include "GameMode/ArcExperienceDefinition.h"
-#include "GameMode/ArcCoreWorldSettings.h"
+#include "StructUtils/InstancedStruct.h"
+#include "Templates/SubclassOf.h"
+#include "UObject/PrimaryAssetId.h"
+#include "UObject/SoftObjectPtr.h"
 #include "ArcCoreAssetManager.generated.h"
 
-class UArcExperienceData;
-class UArcPawnData;
+struct FArcJsonAssetContentRoot;
+struct FArcJsonAssetTypeInfo;
+
+struct FArcJsonRecordEntry
+{
+	FPrimaryAssetId Id;
+	FString DisplayName;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FArcJsonRecordChanged, const FPrimaryAssetId& /*Id*/);
 
 struct FArcBundles
 {
@@ -46,7 +58,7 @@ struct FArcAssetManagerStartupJob
 {
 	FArcssetManagerStartupJobSubstepProgress SubstepProgressDelegate;
 	TFunction<void(const FArcAssetManagerStartupJob&, TSharedPtr<FStreamableHandle>&)> JobFunc;
-	
+
 	FString JobName;
 	float JobWeight;
 	mutable double LastUpdate = 0;
@@ -127,7 +139,7 @@ public:
 	static const AssetType* GetAssetWithBundles(UObject* WorldContext
 												, const FPrimaryAssetId& AssetId
 										  		, bool bKeepInMemory = true);
-	
+
 	// Returns the subclass referenced by a TSoftClassPtr.  This will synchronously load
 	// the asset if it's not already loaded.
 	template <typename AssetType>
@@ -140,70 +152,6 @@ public:
 
 	// Logs all assets currently loaded and tracked by the asset manager.
 	static void DumpLoadedAssets();
-
-	template <typename T = UArcExperienceData>
-	const T& GetGameData(class UWorld* InWorld) const
-	{
-		if (AArcCoreWorldSettings* WS = Cast<AArcCoreWorldSettings>(InWorld->GetWorldSettings()))
-		{
-			FSoftObjectPath AssetPath = UAssetManager::Get().GetPrimaryAssetPath(WS->GetDefaultExperience());
-			UArcExperienceDefinition* Experience = Cast<UArcExperienceDefinition>(AssetPath.TryLoad());
-			if (Experience && Experience->GetDefaultGameData().IsNull() == false)
-			{
-				if (T* Ptr = Cast<T>(GetAsset<UArcExperienceData>(Experience->GetDefaultGameData())))
-				{
-					return *Ptr;
-				}
-			}
-		}
-		if (T* Ptr = Cast<T>(GetAsset<UArcExperienceData>(DefaultGameData)))
-		{
-			return *Ptr;
-		}
-		checkf(false
-			, TEXT("GameData asset [%s] has not been loaded!")
-			, *DefaultGameData.ToString());
-
-		// Fatal error above prevents this from being called.
-		return *NewObject<T>();
-	}
-
-	template <typename T = UArcExperienceDefinition>
-	const T* GetGameExperience(class UWorld* InWorld) const
-	{
-		if (AArcCoreWorldSettings* WS = Cast<AArcCoreWorldSettings>(InWorld->GetWorldSettings()))
-		{
-			FSoftObjectPath AssetPath = UAssetManager::Get().GetPrimaryAssetPath(WS->GetDefaultExperience());
-			T* Experience = Cast<T>(AssetPath.TryLoad());
-			if (Experience != nullptr)
-			{
-				return Experience;
-			}
-		}
-		UE_LOG(LogArcAssetManager
-			, Error
-			, TEXT("Experience Is Null."));
-		// checkf(false, TEXT("GameData asset [%s] has not been loaded!"),
-		// *DefaultGameData.ToString());
-
-		// Fatal error above prevents this from being called.
-		return nullptr;
-	}
-
-	template <typename T = UArcPawnData>
-	const T* GetDefaultPawnData() const
-	{
-		if (T* Ptr = Cast<T>(GetAsset<UArcPawnData>(DefaultPawnData)))
-		{
-			return Ptr;
-		}
-		checkf(false
-			, TEXT("GameData asset [%s] has not been loaded!")
-			, *DefaultPawnData.ToString());
-
-		// Fatal error above prevents this from being called.
-		return NewObject<T>();
-	}
 
 	TSharedPtr<FStreamableHandle> LoadAsset(FSoftObjectPath& Asset
 											, FStreamableDelegate DelegateToCall = FStreamableDelegate()
@@ -221,14 +169,43 @@ public:
 
 	void RemoveLoadedAsset(const UObject* Asset);
 
+	// Only the top-level record pointer survives a reload; data inside it is valid until the next OnJsonRecordChanged(Id).
+	const void* FindJsonRecord(const FPrimaryAssetId& Id, const UScriptStruct& Struct) const;
+
+	template <typename T>
+	const T* FindJsonRecord(const FPrimaryAssetId& Id) const
+	{
+		return static_cast<const T*>(FindJsonRecord(Id, *T::StaticStruct()));
+	}
+
+	TArray<FPrimaryAssetType> GetJsonRecordTypes() const;
+	const FArcJsonAssetTypeInfo* FindJsonRecordType(FPrimaryAssetType PrimaryAssetType) const;
+
+	FString GetJsonRecordFilename(const FPrimaryAssetId& Id) const;
+	TArray<FArcJsonRecordEntry> GetJsonRecordEntries(FPrimaryAssetType PrimaryAssetType) const;
+
+	bool ReindexJsonFile(const FString& Filename);
+	bool RemoveJsonFile(const FString& Filename);
+
+	FArcJsonRecordChanged& OnJsonRecordChanged()
+	{
+		return JsonRecordChanged;
+	}
+
+	void DumpJsonRecords(FPrimaryAssetType PrimaryAssetType) const;
+
+#if WITH_EDITOR
+	virtual void ReinitializeFromConfig() override;
+#endif
+
+	virtual void BeginDestroy() override;
+
 protected:
 	virtual void StartInitialLoading() override;
 
 #if WITH_EDITOR
 	virtual void PreBeginPIE(bool bStartSimulate) override;
 #endif
-
-	void LoadGameData();
 
 	UPrimaryDataAsset* LoadGameDataOfClass(TSubclassOf<UPrimaryDataAsset> DataClass
 										   , const TSoftObjectPtr<UPrimaryDataAsset>& DataClassPat
@@ -249,17 +226,8 @@ protected:
 	}
 
 protected:
-	// Global game data asset to use.
-	UPROPERTY(Config)
-	TSoftObjectPtr<UArcExperienceData> DefaultGameData;
-
 	UPROPERTY(Transient)
 	TMap<TObjectPtr<UClass>, TObjectPtr<UPrimaryDataAsset>> GameDataMap;
-
-	// Pawn data used when spawning player pawns if there isn't one set on the player
-	// state.
-	UPROPERTY(Config)
-	TSoftObjectPtr<UArcPawnData> DefaultPawnData;
 
 	UPROPERTY(Config)
 	TArray<FName> DefaultGameBundles;
@@ -272,14 +240,52 @@ protected:
 private:
 	void DoAllStartupJobs();
 
-	// Sets up the ability system
-	void InitializeAbilitySystem();
+	// Registers all native gameplay tags (ArcCore, Mass framework, event tags) at boot.
+	void InitializeNativeGameplayTags();
 
 	void InitializeGameplayCueManager();
 
 	// Called periodically during loads, could be used to feed the status to a loading
 	// screen
 	void UpdateInitialGameContentLoadPercent(float GameContentPercent);
+
+	struct FJsonPendingOwner
+	{
+		FPrimaryAssetId Id;
+		FString Filename;
+	};
+
+	struct FJsonPendingIndex
+	{
+		TMap<TPair<FString, FName>, FJsonPendingOwner> Owners;
+		TMap<FPrimaryAssetType, FString> TypeExtensions;
+	};
+
+	struct FJsonTypeUse
+	{
+		FString Extension;
+		int32 IdCount = 0;
+	};
+
+	void HandleJsonInitialScanCompleted();
+	void HandleJsonContentRootChanged(const FArcJsonAssetContentRoot& Root, bool bMounted);
+	void IndexJsonRoots(TConstArrayView<FArcJsonAssetContentRoot> Roots, bool bAlwaysLogSummary);
+	bool AcceptJsonId(const FPrimaryAssetId& Id, const FArcJsonAssetTypeInfo& Type, const FString& Filename, const FJsonPendingIndex* Pending);
+	FString FindJsonGuidOwner(const FArcJsonAssetTypeInfo& Type, FName Guid, FPrimaryAssetId& OutOwnerId) const;
+	void StoreJsonRecord(const FPrimaryAssetId& Id, const FArcJsonAssetTypeInfo& Type, FInstancedStruct&& Record);
+	void RemoveJsonRecord(const FPrimaryAssetId& Id, const FString& Filename);
+	void ForgetJsonDuplicate(const FString& Filename);
+
+	UPROPERTY(Transient)
+	TMap<FPrimaryAssetId, FInstancedStruct> JsonRecords;
+
+	TMap<FString, FPrimaryAssetId> JsonFilenameToId;
+	TMap<FPrimaryAssetId, TArray<FString>> JsonDuplicateFilenames;
+	TMap<FPrimaryAssetType, FJsonTypeUse> JsonCustomTypes;
+	TMap<FPrimaryAssetType, TArray<FString>> JsonTypeConflictFilenames;
+	FArcJsonRecordChanged JsonRecordChanged;
+	FDelegateHandle JsonContentRootChangedHandle;
+	bool bJsonInitialIndexCompleted = false;
 
 	// Ok Im not sure if keeping track of Load References is good idea..
 	//  Assets loaded and tracked by the asset manager.
@@ -357,7 +363,7 @@ const AssetType* UArcCoreAssetManager::GetAssetWithBundles(const FPrimaryAssetId
 
 	FAssetData Data;
 	Get().GetPrimaryAssetData(AssetId, Data);
-	
+
 	LoadedAsset = Cast<AssetType>(Data.GetAsset());
 
 	if (LoadedAsset && bKeepInMemory)
@@ -382,9 +388,9 @@ const AssetType* UArcCoreAssetManager::GetAssetWithBundles(UObject* WorldContext
 	{
 		return GetAssetWithBundles<AssetType>(AssetId);
 	}
-	
+
 	return GetAssetWithBundles<AssetType>(AssetId);
-	
+
 }
 
 template <typename AssetType>

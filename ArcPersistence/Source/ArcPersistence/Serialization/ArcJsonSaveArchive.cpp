@@ -21,15 +21,46 @@
 
 #include "Serialization/ArcJsonSaveArchive.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal helpers
-// ─────────────────────────────────────────────────────────────────────────────
+#include "ArcYyJson.h"
 
-nlohmann::json& FArcJsonSaveArchive::Current()
+namespace ArcJsonSaveArchivePrivate
+{
+	void Put(yyjson_mut_doc* Doc, yyjson_mut_val* Obj, FName Key, yyjson_mut_val* Value)
+	{
+		yyjson_mut_obj_put(Obj, ArcJson::CopyName(Doc, Key), Value);
+	}
+
+	yyjson_mut_val* MakeVector(yyjson_mut_doc* Doc, const FVector& Value)
+	{
+		yyjson_mut_val* Obj = yyjson_mut_obj(Doc);
+		yyjson_mut_obj_add_double(Doc, Obj, "X", Value.X);
+		yyjson_mut_obj_add_double(Doc, Obj, "Y", Value.Y);
+		yyjson_mut_obj_add_double(Doc, Obj, "Z", Value.Z);
+		return Obj;
+	}
+}
+
+void FArcJsonSaveArchive::FDocDeleter::operator()(yyjson_mut_doc* InDoc) const
+{
+	yyjson_mut_doc_free(InDoc);
+}
+
+FArcJsonSaveArchive::FArcJsonSaveArchive()
+	: Doc(yyjson_mut_doc_new(nullptr))
+{
+	check(Doc.IsValid());
+	Root = yyjson_mut_obj(Doc.Get());
+}
+
+FArcJsonSaveArchive::~FArcJsonSaveArchive() = default;
+FArcJsonSaveArchive::FArcJsonSaveArchive(FArcJsonSaveArchive&&) = default;
+FArcJsonSaveArchive& FArcJsonSaveArchive::operator=(FArcJsonSaveArchive&&) = default;
+
+yyjson_mut_val* FArcJsonSaveArchive::Current() const
 {
 	if (ScopeStack.Num() > 0)
 	{
-		return *ScopeStack.Last();
+		return ScopeStack.Last();
 	}
 	return Root;
 }
@@ -40,47 +71,49 @@ nlohmann::json& FArcJsonSaveArchive::Current()
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, bool Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_bool(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, int32 Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_sint(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, int64 Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_sint(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, uint8 Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_uint(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, uint16 Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_uint(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, uint32 Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_uint(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, uint64 Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_uint(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, float Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	yyjson_mut_val* Number = yyjson_mut_double(Doc.Get(), static_cast<double>(Value));
+	yyjson_mut_set_fp_to_float(Number, true);
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, Number);
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, double Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = Value;
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, yyjson_mut_double(Doc.Get(), Value));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,17 +122,17 @@ void FArcJsonSaveArchive::WriteProperty(FName Key, double Value)
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FString& Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = TCHAR_TO_UTF8(*Value);
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, ArcJson::CopyString(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FName& Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = TCHAR_TO_UTF8(*Value.ToString());
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, ArcJson::CopyName(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FText& Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = TCHAR_TO_UTF8(*Value.ToString());
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, ArcJson::CopyString(Doc.Get(), Value.ToString()));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +141,7 @@ void FArcJsonSaveArchive::WriteProperty(FName Key, const FText& Value)
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FGuid& Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = TCHAR_TO_UTF8(*Value.ToString(EGuidFormats::DigitsWithHyphens));
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, ArcJson::CopyString(Doc.Get(), Value.ToString(EGuidFormats::DigitsWithHyphens)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,19 +150,17 @@ void FArcJsonSaveArchive::WriteProperty(FName Key, const FGuid& Value)
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FGameplayTag& Value)
 {
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = TCHAR_TO_UTF8(*Value.GetTagName().ToString());
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, ArcJson::CopyName(Doc.Get(), Value.GetTagName()));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FGameplayTagContainer& Value)
 {
-	nlohmann::json TagArray = nlohmann::json::array();
-
+	yyjson_mut_val* TagArray = yyjson_mut_arr(Doc.Get());
 	for (const FGameplayTag& Tag : Value)
 	{
-		TagArray.push_back(TCHAR_TO_UTF8(*Tag.GetTagName().ToString()));
+		yyjson_mut_arr_append(TagArray, ArcJson::CopyName(Doc.Get(), Tag.GetTagName()));
 	}
-
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = MoveTemp(TagArray);
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, TagArray);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,50 +169,34 @@ void FArcJsonSaveArchive::WriteProperty(FName Key, const FGameplayTagContainer& 
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FVector& Value)
 {
-	nlohmann::json Obj;
-	Obj["X"] = Value.X;
-	Obj["Y"] = Value.Y;
-	Obj["Z"] = Value.Z;
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = MoveTemp(Obj);
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, ArcJsonSaveArchivePrivate::MakeVector(Doc.Get(), Value));
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FRotator& Value)
 {
-	nlohmann::json Obj;
-	Obj["Pitch"] = Value.Pitch;
-	Obj["Yaw"] = Value.Yaw;
-	Obj["Roll"] = Value.Roll;
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = MoveTemp(Obj);
+	yyjson_mut_val* Obj = yyjson_mut_obj(Doc.Get());
+	yyjson_mut_obj_add_double(Doc.Get(), Obj, "Pitch", Value.Pitch);
+	yyjson_mut_obj_add_double(Doc.Get(), Obj, "Yaw", Value.Yaw);
+	yyjson_mut_obj_add_double(Doc.Get(), Obj, "Roll", Value.Roll);
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, Obj);
 }
 
 void FArcJsonSaveArchive::WriteProperty(FName Key, const FTransform& Value)
 {
 	const FQuat Rot = Value.GetRotation();
-	const FVector Trans = Value.GetTranslation();
-	const FVector Scale = Value.GetScale3D();
 
-	nlohmann::json RotObj;
-	RotObj["X"] = Rot.X;
-	RotObj["Y"] = Rot.Y;
-	RotObj["Z"] = Rot.Z;
-	RotObj["W"] = Rot.W;
+	yyjson_mut_val* RotObj = yyjson_mut_obj(Doc.Get());
+	yyjson_mut_obj_add_double(Doc.Get(), RotObj, "X", Rot.X);
+	yyjson_mut_obj_add_double(Doc.Get(), RotObj, "Y", Rot.Y);
+	yyjson_mut_obj_add_double(Doc.Get(), RotObj, "Z", Rot.Z);
+	yyjson_mut_obj_add_double(Doc.Get(), RotObj, "W", Rot.W);
 
-	nlohmann::json TransObj;
-	TransObj["X"] = Trans.X;
-	TransObj["Y"] = Trans.Y;
-	TransObj["Z"] = Trans.Z;
+	yyjson_mut_val* Obj = yyjson_mut_obj(Doc.Get());
+	yyjson_mut_obj_add_val(Doc.Get(), Obj, "Rotation", RotObj);
+	yyjson_mut_obj_add_val(Doc.Get(), Obj, "Translation", ArcJsonSaveArchivePrivate::MakeVector(Doc.Get(), Value.GetTranslation()));
+	yyjson_mut_obj_add_val(Doc.Get(), Obj, "Scale3D", ArcJsonSaveArchivePrivate::MakeVector(Doc.Get(), Value.GetScale3D()));
 
-	nlohmann::json ScaleObj;
-	ScaleObj["X"] = Scale.X;
-	ScaleObj["Y"] = Scale.Y;
-	ScaleObj["Z"] = Scale.Z;
-
-	nlohmann::json Obj;
-	Obj["Rotation"] = MoveTemp(RotObj);
-	Obj["Translation"] = MoveTemp(TransObj);
-	Obj["Scale3D"] = MoveTemp(ScaleObj);
-
-	Current()[TCHAR_TO_UTF8(*Key.ToString())] = MoveTemp(Obj);
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, Obj);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,11 +205,9 @@ void FArcJsonSaveArchive::WriteProperty(FName Key, const FTransform& Value)
 
 void FArcJsonSaveArchive::BeginStruct(FName Key)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-
-	// Create the object in the current scope first, then take its address.
-	Current()[KeyStr] = nlohmann::json::object();
-	ScopeStack.Push(&Current()[KeyStr]);
+	yyjson_mut_val* Child = yyjson_mut_obj(Doc.Get());
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, Child);
+	ScopeStack.Push(Child);
 }
 
 void FArcJsonSaveArchive::EndStruct()
@@ -209,36 +222,23 @@ void FArcJsonSaveArchive::EndStruct()
 
 void FArcJsonSaveArchive::BeginArray(FName Key, int32 Count)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-
-	// Create the array in the current scope, then push its address.
-	Current()[KeyStr] = nlohmann::json::array();
-	ScopeStack.Push(&Current()[KeyStr]);
+	yyjson_mut_val* Child = yyjson_mut_arr(Doc.Get());
+	ArcJsonSaveArchivePrivate::Put(Doc.Get(), Current(), Key, Child);
+	ScopeStack.Push(Child);
 }
 
 void FArcJsonSaveArchive::BeginArrayElement(int32 Index)
 {
-	// Create a temporary JSON object for this element via TUniquePtr for pointer stability.
-	// TArray reallocation won't invalidate pointers to earlier temp elements held in ScopeStack.
-	TempElements.Add(MakeUnique<nlohmann::json>(nlohmann::json::object()));
-	ScopeStack.Push(TempElements.Last().Get());
+	check(ScopeStack.Num() > 0);
+	yyjson_mut_val* Element = yyjson_mut_obj(Doc.Get());
+	yyjson_mut_arr_append(ScopeStack.Last(), Element);
+	ScopeStack.Push(Element);
 }
 
 void FArcJsonSaveArchive::EndArrayElement()
 {
 	check(ScopeStack.Num() > 0);
-	check(TempElements.Num() > 0);
-
-	// Pop the temp element off the scope stack.
 	ScopeStack.Pop();
-
-	// Move the completed temp element into the parent array.
-	nlohmann::json Element = MoveTemp(*TempElements.Last());
-	TempElements.Pop();
-
-	// The array should be the current scope (we pushed it in BeginArray).
-	check(ScopeStack.Num() > 0);
-	ScopeStack.Last()->push_back(MoveTemp(Element));
 }
 
 void FArcJsonSaveArchive::EndArray()
@@ -253,13 +253,17 @@ void FArcJsonSaveArchive::EndArray()
 
 TArray<uint8> FArcJsonSaveArchive::Finalize()
 {
-	nlohmann::json Envelope;
-	Envelope["version"] = Version;
-	Envelope["data"] = Root;
+	if (Envelope == nullptr)
+	{
+		Envelope = yyjson_mut_obj(Doc.Get());
+		yyjson_mut_obj_add_uint(Doc.Get(), Envelope, "version", Version);
+		yyjson_mut_obj_add_val(Doc.Get(), Envelope, "data", Root);
+		yyjson_mut_doc_set_root(Doc.Get(), Envelope);
+	}
+	else
+	{
+		yyjson_mut_obj_put(Envelope, yyjson_mut_str(Doc.Get(), "version"), yyjson_mut_uint(Doc.Get(), Version));
+	}
 
-	const std::string JsonStr = Envelope.dump(2); // pretty-print with 2-space indent
-
-	TArray<uint8> Result;
-	Result.Append(reinterpret_cast<const uint8*>(JsonStr.data()), static_cast<int32>(JsonStr.size()));
-	return Result;
+	return ArcJson::WritePretty(Doc.Get());
 }

@@ -15,7 +15,7 @@ struct ARCAI_API FArcUtilityEntry
 	UPROPERTY(EditAnywhere, Category = "Entry")
 	FStateTreeStateLink LinkedState;
 
-	UPROPERTY(EditAnywhere, Category = "Entry", meta = (BaseStruct = "/Script/ArcAI.ArcUtilityConsideration"))
+	UPROPERTY(EditAnywhere, Category = "Entry", meta = (BaseStruct = "/Script/ArcAI.ArcUtilityConsideration", ExcludeBaseStruct))
 	TArray<FInstancedStruct> Considerations;
 
 	UPROPERTY(EditAnywhere, Category = "Entry", meta = (ClampMin = 0.01))

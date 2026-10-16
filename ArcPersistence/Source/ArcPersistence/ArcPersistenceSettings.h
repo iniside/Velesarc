@@ -51,5 +51,5 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "Persistence|Storage")
 	EArcPersistenceBackendType BackendType = EArcPersistenceBackendType::JsonFile;
 
-	virtual FName GetCategoryName() const override { return FName("Plugins"); }
+	virtual FName GetCategoryName() const override { return FName("Arc Game"); }
 };

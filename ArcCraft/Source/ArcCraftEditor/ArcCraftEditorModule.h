@@ -21,8 +21,12 @@
 
 #pragma once
 
-#include "AssetToolsModule.h"
 #include "Modules/ModuleManager.h"
+#include "Widgets/ArcModifierCellFactory.h"
+
+struct FArcRecipeGraphNodeFactory;
+class FSpawnTabArgs;
+class SDockTab;
 
 class FArcCraftEditorModule : public IModuleInterface
 {
@@ -31,11 +35,17 @@ public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
 
-	static EAssetTypeCategories::Type GetArcCraftAssetCategory()
-	{
-		return ArcCraftAssetCategory;
-	}
+	/** Returns the module-scope cell factory. Valid between StartupModule and ShutdownModule. */
+	FArcModifierCellFactory& GetCellFactory() { return CellFactory; }
 
 private:
-	static EAssetTypeCategories::Type ArcCraftAssetCategory;
+
+	/** Spawns the recipe dependency graph nomad tab. */
+	TSharedRef<SDockTab> SpawnRecipeGraphTab(const FSpawnTabArgs& Args);
+
+	TArray<FName> RegisteredPropertyTypeLayouts;
+	FArcModifierCellFactory CellFactory;
+
+	/** Visual node factory; registered with FEdGraphUtilities in StartupModule. */
+	TSharedPtr<FArcRecipeGraphNodeFactory> RecipeGraphNodeFactory;
 };

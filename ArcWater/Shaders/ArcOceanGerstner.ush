@@ -1,0 +1,209 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+// World units are centimetres, so g is 9.8 m/s^2 expressed as 980 cm/s^2.
+#define ARC_OCEAN_GRAVITY_CMS2 980.0f
+#define ARC_OCEAN_WORLD_UNIT_CM 1.0f
+#define ARC_OCEAN_BREAKER_HEIGHT_RATIO 0.78f
+#define ARC_OCEAN_SHALLOW_BAND_FLAG 1u
+// Newton needs |det J| > FrameEpsilon (1e-4) and det J >= (1 - SteepnessSum)^2, so the sum stops at 1 - sqrt(1e-4).
+#define ARC_OCEAN_MAX_STEEPNESS_SUM 0.99f
+
+struct FArcGerstnerWaveParams
+{
+	float2 Direction;
+	float Wavelength;
+	float Amplitude;
+	float Steepness;
+	float Phase;
+	uint BandFlags;
+};
+
+struct FArcOceanDepthLimitedWave
+{
+	float2 Direction;
+	float WaveNumber;
+	float AngularFrequency;
+	float Amplitude;
+	float Steepness;
+	float Weight;
+};
+
+struct FArcOceanWaveSample
+{
+	float3 Displacement;
+	float3 Normal;
+	float3 Tangent;
+	float3 Binormal;
+};
+
+FArcGerstnerWaveParams ArcOcean_DecodeWave(float4 Data0, float4 Data1)
+{
+	FArcGerstnerWaveParams OutWave;
+	OutWave.Direction = Data0.xy;
+	OutWave.Wavelength = Data0.z;
+	OutWave.Amplitude = Data0.w;
+	OutWave.Steepness = Data1.x;
+	OutWave.Phase = Data1.y;
+	OutWave.BandFlags = (uint)Data1.z;
+	return OutWave;
+}
+
+float ArcOcean_DepthScale(float InDeepAmplitudeCm, float InDepthCm)
+{
+	const float BreakingAmplitudeCm = 0.5f * ARC_OCEAN_BREAKER_HEIGHT_RATIO * max(InDepthCm, 0.0f);
+	return saturate(BreakingAmplitudeCm / max(InDeepAmplitudeCm, ARC_OCEAN_WORLD_UNIT_CM));
+}
+
+float ArcOcean_ShallowScale(float InDeepAmplitudeCm, float InWavelengthCm, float InDepthCm)
+{
+	if (InWavelengthCm > 0.0f)
+	{
+		const float ShallowFraction = 1.0f - saturate(2.0f * InDepthCm / InWavelengthCm);
+		const float BreakingAmplitudeCm = 0.5f * ARC_OCEAN_BREAKER_HEIGHT_RATIO * max(InDepthCm, 0.0f);
+		const float AmplitudeCm = lerp(InDeepAmplitudeCm, BreakingAmplitudeCm, ShallowFraction);
+		return AmplitudeCm / max(InDeepAmplitudeCm, ARC_OCEAN_WORLD_UNIT_CM);
+	}
+
+	return 0.0f;
+}
+
+float ArcOcean_ShorewardKH(float InWaveNumber, float InDepthCm)
+{
+	return min(1.0f, InWaveNumber * max(InDepthCm, 0.0f));
+}
+
+// Snell sends every deep-water direction into the cone asin(min(1, sqrt(k*h))), so the authored set is read as a local sampling basis and the cone says which of its members can carry energy at this depth.
+float ArcOcean_ShorewardWeight(float2 InDirection, float InWaveNumber, float InDepthCm, float2 InShoreward)
+{
+	if (all(InShoreward == 0.0f))
+	{
+		return 1.0f;
+	}
+
+	const float KH = ArcOcean_ShorewardKH(InWaveNumber, InDepthCm);
+	const float Alignment = dot(InDirection, InShoreward);
+	const float ConeWeight = saturate((Alignment * abs(Alignment) - (1.0f - KH)) / max(KH, 1e-4f));
+	return lerp(1.0f, ConeWeight, 1.0f - KH);
+}
+
+FArcOceanDepthLimitedWave ArcOcean_DepthLimitWave(FArcGerstnerWaveParams InWave, float InDepthCm, float2 InShoreward)
+{
+	const float ShoalingScale = (InWave.BandFlags & ARC_OCEAN_SHALLOW_BAND_FLAG) != 0u
+		? ArcOcean_ShallowScale(InWave.Amplitude, InWave.Wavelength, InDepthCm)
+		: 1.0f;
+
+	FArcOceanDepthLimitedWave OutWave;
+	OutWave.Direction = InWave.Direction;
+	OutWave.WaveNumber = 2.0f * PI / InWave.Wavelength;
+	OutWave.AngularFrequency = sqrt(ARC_OCEAN_GRAVITY_CMS2 * OutWave.WaveNumber);
+	OutWave.Weight = ArcOcean_ShorewardWeight(OutWave.Direction, OutWave.WaveNumber, InDepthCm, InShoreward);
+	OutWave.Amplitude = InWave.Amplitude * ShoalingScale * OutWave.Weight;
+	OutWave.Steepness = InWave.Steepness * ShoalingScale * OutWave.Weight;
+	return OutWave;
+}
+
+FArcOceanWaveSample ArcOcean_EvalGerstner(
+	float4 InWaves[ARC_OCEAN_MAX_WAVES * 2],
+	int InWaveCount,
+	float2 InBaseXY,
+	float InTime,
+	float InEffectiveCellSize,
+	float InDepthCm,
+	float2 InShoreward)
+{
+	const float SafeCellSize = max(InEffectiveCellSize, 1e-6f);
+
+	float SwellWaveCount = 0.0f;
+	float SwellWeightSum = 0.0f;
+	float SwellSteepnessSum = 0.0f;
+	float ShallowWaveCount = 0.0f;
+	float ShallowWeightSum = 0.0f;
+	float ShallowSteepnessSum = 0.0f;
+
+	UNROLL
+	for (int SumIndex = 0; SumIndex < ARC_OCEAN_MAX_WAVES; ++SumIndex)
+	{
+		if (SumIndex >= InWaveCount)
+		{
+			break;
+		}
+
+		const FArcGerstnerWaveParams Wave = ArcOcean_DecodeWave(InWaves[SumIndex * 2], InWaves[SumIndex * 2 + 1]);
+		const FArcOceanDepthLimitedWave Limited = ArcOcean_DepthLimitWave(Wave, InDepthCm, InShoreward);
+
+		const float Attenuation = smoothstep(2.0f * SafeCellSize, 4.0f * SafeCellSize, 2.0f * PI / Limited.WaveNumber);
+
+		if ((Wave.BandFlags & ARC_OCEAN_SHALLOW_BAND_FLAG) != 0u)
+		{
+			ShallowWaveCount += 1.0f;
+			ShallowWeightSum += Limited.Weight;
+			ShallowSteepnessSum += Limited.Steepness * Attenuation;
+		}
+		else
+		{
+			SwellWaveCount += 1.0f;
+			SwellWeightSum += Limited.Weight;
+			SwellSteepnessSum += Limited.Steepness * Attenuation;
+		}
+	}
+
+	const float SwellGain = SwellWaveCount > 0.0f ? SwellWaveCount / max(SwellWeightSum, 1e-4f) : 1.0f;
+	const float ShallowGain = ShallowWaveCount > 0.0f ? ShallowWaveCount / max(ShallowWeightSum, 1e-4f) : 1.0f;
+
+	const float SteepnessSum = SwellSteepnessSum * SwellGain + ShallowSteepnessSum * ShallowGain;
+
+	// Renormalization scales amplitude together with steepness: the horizontal term is (Steepness/k)*cos with Steepness == Q*k*A, so moving one without the other rewrites the authored Q.
+	const float Renormalize = ARC_OCEAN_MAX_STEEPNESS_SUM / max(SteepnessSum, ARC_OCEAN_MAX_STEEPNESS_SUM);
+
+	float3 Displacement = (float3)0;
+	float2 SlopeCos = (float2)0;
+	float SumXX = 0.0f;
+	float SumYY = 0.0f;
+	float SumXY = 0.0f;
+
+	UNROLL
+	for (int WaveIndex = 0; WaveIndex < ARC_OCEAN_MAX_WAVES; ++WaveIndex)
+	{
+		if (WaveIndex >= InWaveCount)
+		{
+			break;
+		}
+
+		const FArcGerstnerWaveParams Wave = ArcOcean_DecodeWave(InWaves[WaveIndex * 2], InWaves[WaveIndex * 2 + 1]);
+		const FArcOceanDepthLimitedWave Limited = ArcOcean_DepthLimitWave(Wave, InDepthCm, InShoreward);
+
+		const float Theta = Limited.WaveNumber * dot(Limited.Direction, InBaseXY) - Limited.AngularFrequency * InTime + Wave.Phase;
+
+		float SinTheta, CosTheta;
+		sincos(Theta, SinTheta, CosTheta);
+
+		const float Attenuation = smoothstep(2.0f * SafeCellSize, 4.0f * SafeCellSize, 2.0f * PI / Limited.WaveNumber);
+		const float BandGain = (Wave.BandFlags & ARC_OCEAN_SHALLOW_BAND_FLAG) != 0u ? ShallowGain : SwellGain;
+		const float PreCapAmplitude = Limited.Amplitude * Attenuation * BandGain * Renormalize;
+		// The breaking cap runs last so its per-wave nonlinearity stays out of loop 1's steepness sum; it only ever reduces, so that sum cannot climb back over the budget.
+		const float BreakingCap = ArcOcean_DepthScale(PreCapAmplitude, InDepthCm);
+
+		const float ScaledAmplitude = PreCapAmplitude * BreakingCap;
+		const float ScaledSteepness = Limited.Steepness * Attenuation * BandGain * Renormalize * BreakingCap;
+		const float ScaledKA = Limited.WaveNumber * ScaledAmplitude;
+
+		// Amplitude cancels out of the horizontal term, so the attenuation has to scale the whole contribution rather than the amplitude.
+		Displacement.xy += (ScaledSteepness / Limited.WaveNumber) * CosTheta * Limited.Direction;
+		Displacement.z += ScaledAmplitude * SinTheta;
+
+		SlopeCos += Limited.Direction * (ScaledKA * CosTheta);
+		SumXX += ScaledSteepness * Limited.Direction.x * Limited.Direction.x * SinTheta;
+		SumYY += ScaledSteepness * Limited.Direction.y * Limited.Direction.y * SinTheta;
+		SumXY += ScaledSteepness * Limited.Direction.x * Limited.Direction.y * SinTheta;
+	}
+
+	FArcOceanWaveSample OutSample;
+	OutSample.Displacement = Displacement;
+	const float FrameEpsilon = 1e-4f;
+	OutSample.Normal = normalize(float3(-SlopeCos.x, -SlopeCos.y, max(1.0f - (SumXX + SumYY), FrameEpsilon)));
+	OutSample.Binormal = normalize(float3(max(1.0f - SumXX, FrameEpsilon), -SumXY, SlopeCos.x));
+	OutSample.Tangent = normalize(float3(-SumXY, max(1.0f - SumYY, FrameEpsilon), SlopeCos.y));
+	return OutSample;
+}

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "ArcAreaTypes.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSTypes.h"
 
 namespace ArcTQS::Area
 {
@@ -17,7 +17,7 @@ namespace ArcTQS::Area
 	inline FInstancedPropertyBag MakeAreaTemplate()
 	{
 		FInstancedPropertyBag Bag;
-		Bag.AddProperty(Names::AreaHandle, EPropertyBagPropertyType::Struct, FArcAreaHandle::StaticStruct());
+		Bag.AddProperty(Names::AreaHandle, EPropertyBagPropertyType::Struct, FSmartObjectHandle::StaticStruct());
 		return Bag;
 	}
 
@@ -25,43 +25,45 @@ namespace ArcTQS::Area
 	inline FInstancedPropertyBag MakeSlotTemplate()
 	{
 		FInstancedPropertyBag Bag;
-		Bag.AddProperty(Names::SlotHandle, EPropertyBagPropertyType::Struct, FArcAreaSlotHandle::StaticStruct());
+		Bag.AddProperty(Names::SlotHandle, EPropertyBagPropertyType::Struct, FSmartObjectSlotHandle::StaticStruct());
 		return Bag;
 	}
 
 	/** Write area handle into item's property bag (bag must already have schema). */
-	inline void SetAreaHandle(FInstancedPropertyBag& Bag, FArcAreaHandle Handle)
+	inline void SetAreaHandle(FInstancedPropertyBag& Bag, FSmartObjectHandle Handle)
 	{
 		Bag.SetValueStruct(Names::AreaHandle, Handle);
 	}
 
 	/** Write slot handle into item's property bag (bag must already have schema). */
-	inline void SetSlotHandle(FInstancedPropertyBag& Bag, const FArcAreaSlotHandle& Handle)
+	inline void SetSlotHandle(FInstancedPropertyBag& Bag, const FSmartObjectSlotHandle& Handle)
 	{
 		Bag.SetValueStruct(Names::SlotHandle, Handle);
 	}
 
 	/** Read area handle from item's property bag. */
-	inline FArcAreaHandle GetAreaHandle(const FArcTQSTargetItem& Item)
+	inline FSmartObjectHandle GetAreaHandle(const FArcTQSTargetItem& Item)
 	{
-		const auto Result = Item.ItemData.GetValueStruct<FArcAreaHandle>(Names::AreaHandle);
+		const TValueOrError<FSmartObjectHandle*, EPropertyBagResult> Result =
+			Item.ItemData.GetValueStruct<FSmartObjectHandle>(Names::AreaHandle);
 		if (Result.IsValid())
 		{
 			return *Result.GetValue();
 		}
-		UE_LOG(LogTemp, Warning, TEXT("ArcTQS::Area::GetAreaHandle — ItemData does not contain '%s'"), *Names::AreaHandle.ToString());
-		return FArcAreaHandle();
+		UE_LOGF(LogTemp, Warning,"ArcTQS::Area::GetAreaHandle — ItemData does not contain '%ls'", *Names::AreaHandle.ToString());
+		return FSmartObjectHandle();
 	}
 
 	/** Read slot handle from item's property bag. */
-	inline FArcAreaSlotHandle GetSlotHandle(const FArcTQSTargetItem& Item)
+	inline FSmartObjectSlotHandle GetSlotHandle(const FArcTQSTargetItem& Item)
 	{
-		const auto Result = Item.ItemData.GetValueStruct<FArcAreaSlotHandle>(Names::SlotHandle);
+		const TValueOrError<FSmartObjectSlotHandle*, EPropertyBagResult> Result =
+			Item.ItemData.GetValueStruct<FSmartObjectSlotHandle>(Names::SlotHandle);
 		if (Result.IsValid())
 		{
 			return *Result.GetValue();
 		}
-		UE_LOG(LogTemp, Warning, TEXT("ArcTQS::Area::GetSlotHandle — ItemData does not contain '%s'"), *Names::SlotHandle.ToString());
-		return FArcAreaSlotHandle();
+		UE_LOGF(LogTemp, Warning,"ArcTQS::Area::GetSlotHandle — ItemData does not contain '%ls'", *Names::SlotHandle.ToString());
+		return FSmartObjectSlotHandle();
 	}
 }

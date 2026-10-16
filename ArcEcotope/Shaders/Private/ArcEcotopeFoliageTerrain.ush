@@ -1,0 +1,234 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+// ArcTerrain baked-section sampler for the GPU foliage kernels. Loose globals below mirror
+// FArcEcotopeFoliageTerrainParameters 1:1 by name; ARC_ECOTOPE_FOLIAGE_MAX_CELLS is set by the including
+// shader's ModifyCompilationEnvironment.
+
+#pragma once
+
+#include "/Engine/Private/LargeWorldCoordinates.ush"
+
+// HeightAtlas slices are copies of the baked PF_R32_FLOAT section tiles: the sampled value is
+// terrain-local cm.
+// WeightAtlas carries ONE PF_G8 slice per slot — the slice of that cell's baked weight array holding
+// the layer-filter channel, selected on the game thread (per-cell slice indices differ).
+Texture2DArray<float> ArcTerrainHeightAtlas;
+SamplerState          ArcTerrainHeightAtlasSampler;
+Texture2DArray<float> ArcTerrainWeightAtlas;
+SamplerState          ArcTerrainWeightAtlasSampler;
+
+uint     ArcTerrainResidencyMask;
+float4x4 ArcTerrainWorldToLocal;
+float4x4 ArcTerrainLocalToWorld;
+float3   ArcTerrainInvNonUniformScale;
+float3   ArcTerrainLWCTile;
+int2     ArcTerrainAtlasOriginCell;
+int2     ArcTerrainAtlasCellCount;
+float2   ArcTerrainHeightSubRectInv;
+float2   ArcTerrainWeightSubRectInv;
+float4   ArcTerrainHeightSrcOriginPerSlot[ARC_ECOTOPE_FOLIAGE_MAX_CELLS];
+float4   ArcTerrainWeightSrcOriginPerSlot[ARC_ECOTOPE_FOLIAGE_MAX_CELLS];
+float    ArcTerrainCellSize;
+float    ArcTerrainHeightTileRes;
+float    ArcTerrainWeightTileRes;
+float    ArcTerrainTexelToLocal;
+int      ArcTerrainLayerChannel;
+
+struct FArcTerrainSlot
+{
+	int SlotIndex;
+	float2 Frac;   // cell-local [0,1]^2
+	bool bResident;
+};
+
+/**
+ * World position -> (atlas slice, cell-local fraction), or non-resident.
+ *
+ * LWC: the CPU split the terrain transform into a render tile plus a TILE-RELATIVE matrix, so the
+ * world->local step goes through MakeLWCInverseMatrix/LWCMultiply. A plain mul() against a matrix
+ * carrying a multi-kilometre translation is the float32 cancellation this machinery prevents, and it
+ * would land in the FRACTION below — the most lookup-sensitive quantity here.
+ *
+ * KNOWN LIMITATION: positions arrive as a bare float3 with an implicit zero tile, so only the
+ * TRANSFORM side of the precision problem is fixed.
+ */
+FArcTerrainSlot ArcTerrainResolveSlot(float3 InWorldPos)
+{
+	FArcTerrainSlot Result;
+	Result.SlotIndex = -1;
+	Result.Frac = float2(0.0f, 0.0f);
+	Result.bResident = false;
+
+	const float3 PositionTile = (float3)0;
+	const FLWCVector4 LwcWorldPos = MakeLWCVector4(PositionTile, float4(InWorldPos, 1.0f));
+	const FLWCInverseMatrix LwcWorldToLocal = MakeLWCInverseMatrix(ArcTerrainLWCTile, ArcTerrainWorldToLocal);
+	const float3 LocalPos = LWCMultiply(LwcWorldPos, LwcWorldToLocal).xyz;
+
+	const float2 CellF = LocalPos.xy / ArcTerrainCellSize;
+	const float2 KeyF = floor(CellF);
+	const int2 SlotXY = int2(KeyF) - ArcTerrainAtlasOriginCell;
+
+	if (any(SlotXY < int2(0, 0)) || any(SlotXY >= ArcTerrainAtlasCellCount))
+	{
+		return Result;
+	}
+
+	const int SlotIndex = SlotXY.y * ArcTerrainAtlasCellCount.x + SlotXY.x;
+	if (SlotIndex < 0 || SlotIndex >= ARC_ECOTOPE_FOLIAGE_MAX_CELLS)
+	{
+		return Result;
+	}
+
+	if ((ArcTerrainResidencyMask & (1u << (uint)SlotIndex)) == 0u)
+	{
+		return Result;
+	}
+
+	Result.SlotIndex = SlotIndex;
+	Result.Frac = CellF - KeyF;
+	Result.bResident = true;
+	return Result;
+}
+
+/** Cell-local fraction -> atlas UV. Mirrors the CPU WorldToTileTexel (Frac * (TileRes - 3) + 1.5),
+ *  minus this slice's sub-rect origin, scaled by the sub-rect size. */
+float2 ArcTerrainHeightUV(int SlotIndex, float2 Frac)
+{
+	const float2 Texel = Frac * (ArcTerrainHeightTileRes - 3.0f) + 1.5f
+		- ArcTerrainHeightSrcOriginPerSlot[SlotIndex].xy;
+	return Texel * ArcTerrainHeightSubRectInv;
+}
+
+float2 ArcTerrainWeightUV(int SlotIndex, float2 Frac)
+{
+	const float2 Texel = Frac * (ArcTerrainWeightTileRes - 3.0f) + 1.5f
+		- ArcTerrainWeightSrcOriginPerSlot[SlotIndex].xy;
+	return Texel * ArcTerrainWeightSubRectInv;
+}
+
+/** TERRAIN-LOCAL height in cm — the baked tile stores it directly. */
+float ArcTerrainSampleHeightUV(int SlotIndex, float2 UV)
+{
+	return ArcTerrainHeightAtlas.SampleLevel(ArcTerrainHeightAtlasSampler,
+		float3(UV, (float)SlotIndex), 0).x;
+}
+
+/** VertexFactoryCommon.ush's RotateLocalToWorld, reproduced locally (that header is a vertex-factory
+ *  include and must not be dragged into a compute kernel). InvScale renormalizes the basis ROWS, so
+ *  this differs from a bare rotation multiply under non-uniform scale. */
+float3 ArcTerrainRotateLocalToWorld(float3 LocalDirection)
+{
+	return ArcTerrainInvNonUniformScale.x * ArcTerrainLocalToWorld[0].xyz * LocalDirection.xxx
+		+ ArcTerrainInvNonUniformScale.y * ArcTerrainLocalToWorld[1].xyz * LocalDirection.yyy
+		+ ArcTerrainInvNonUniformScale.z * ArcTerrainLocalToWorld[2].xyz * LocalDirection.zzz;
+}
+
+bool IsArcTerrainResident(float3 InWorldPos)
+{
+	return ArcTerrainResolveSlot(InWorldPos).bResident;
+}
+
+/** TERRAIN-LOCAL height in cm. 0 for a non-resident position — callers gate on IsArcTerrainResident
+ *  rather than read a sentinel out of this. */
+float SampleArcTerrainHeight(float3 InWorldPos)
+{
+	const FArcTerrainSlot Slot = ArcTerrainResolveSlot(InWorldPos);
+	if (!Slot.bResident)
+	{
+		return 0.0f;
+	}
+
+	return ArcTerrainSampleHeightUV(Slot.SlotIndex, ArcTerrainHeightUV(Slot.SlotIndex, Slot.Frac));
+}
+
+/**
+ * The WORLD-space surface point under InWorldPos.
+ *
+ * THIS, not SampleArcTerrainHeight, is what an instance position must be built from: the height above
+ * is TERRAIN-LOCAL cm in the composite's own frame, so writing it into a world Z is correct only for a
+ * terrain at the world origin with an identity transform. Here the probe goes world->local through the
+ * LWC inverse matrix, the sampled height REPLACES the local Z, and the result goes back local->world
+ * through the matching forward matrix — exact under rotation and non-uniform scale alike.
+ */
+float3 SampleArcTerrainSurfaceWorld(float3 InWorldPos)
+{
+	const float3 PositionTile = (float3)0;
+	const FLWCVector4 LwcWorldPos = MakeLWCVector4(PositionTile, float4(InWorldPos, 1.0f));
+	const FLWCInverseMatrix LwcWorldToLocal = MakeLWCInverseMatrix(ArcTerrainLWCTile, ArcTerrainWorldToLocal);
+
+	float3 LocalPos = LWCMultiply(LwcWorldPos, LwcWorldToLocal).xyz;
+	LocalPos.z = SampleArcTerrainHeight(InWorldPos);
+
+	const FLWCMatrix LwcLocalToWorld = MakeLWCMatrix(ArcTerrainLWCTile, ArcTerrainLocalToWorld);
+	return LWCToFloat(LWCMultiply(LocalPos, LwcLocalToWorld));
+}
+
+/** Terrain-local +Z in world space: the reference direction a slope test is measured against. World up
+ *  is only the same thing while the terrain transform carries no rotation. */
+float3 GetArcTerrainUpWorld()
+{
+	return normalize(ArcTerrainRotateLocalToWorld(float3(0.0f, 0.0f, 1.0f)));
+}
+
+/**
+ * WORLD-space normal from the same 4-tap central difference the terrain VF uses.
+ *
+ * TAP OFFSET IS ONE ATLAS TEXEL: HeightSubRectInv, NOT 1/HeightTileRes. The VF taps a whole tile; here
+ * the slice IS the sub-rect, so one texel of UV is the sub-rect's inverse size. The DIVISOR stays
+ * 2 * TexelToLocal — the copy is texel-for-texel, so one atlas texel still spans TexelToLocal cm.
+ *
+ * Non-resident -> terrain-local up, rotated to world (a defined, flat answer, never a NaN).
+ */
+float3 SampleArcTerrainNormal(float3 InWorldPos)
+{
+	const FArcTerrainSlot Slot = ArcTerrainResolveSlot(InWorldPos);
+	if (!Slot.bResident)
+	{
+		return normalize(ArcTerrainRotateLocalToWorld(float3(0.0f, 0.0f, 1.0f)));
+	}
+
+	const float2 UV = ArcTerrainHeightUV(Slot.SlotIndex, Slot.Frac);
+	const float2 Offset = ArcTerrainHeightSubRectInv;
+
+	const float HeightXNeg = ArcTerrainSampleHeightUV(Slot.SlotIndex, UV + float2(-Offset.x, 0.0f));
+	const float HeightXPos = ArcTerrainSampleHeightUV(Slot.SlotIndex, UV + float2(Offset.x, 0.0f));
+	const float HeightYNeg = ArcTerrainSampleHeightUV(Slot.SlotIndex, UV + float2(0.0f, -Offset.y));
+	const float HeightYPos = ArcTerrainSampleHeightUV(Slot.SlotIndex, UV + float2(0.0f, Offset.y));
+
+	const float2 GradientLocal = float2(HeightXPos - HeightXNeg, HeightYPos - HeightYNeg)
+		/ (2.0f * ArcTerrainTexelToLocal);
+	const float3 LocalNormal = normalize(float3(-GradientLocal, 1.0f));
+
+	return normalize(ArcTerrainRotateLocalToWorld(LocalNormal));
+}
+
+/**
+ * Weight of one GLOBAL channel index, 0..1. The index is resolved from its FName on the GAME THREAD; a
+ * negative index means "filter disabled" and is answered with 0 here — the KERNEL, not this function,
+ * is what must treat a negative channel as "accept everything".
+ *
+ * The weight atlas carries EXACTLY ONE slice per slot: the CPU already picked, per cell, the slice of
+ * the baked weight array holding this channel, so no shader-side packing math can exist.
+ */
+float SampleArcTerrainLayerWeight(float3 InWorldPos, int InGlobalChannelIndex)
+{
+	if (InGlobalChannelIndex < 0)
+	{
+		return 0.0f;
+	}
+
+	const FArcTerrainSlot Slot = ArcTerrainResolveSlot(InWorldPos);
+	if (!Slot.bResident)
+	{
+		return 0.0f;
+	}
+
+	if (ArcTerrainWeightSrcOriginPerSlot[Slot.SlotIndex].z < 0.5f)
+	{
+		return 0.0f;
+	}
+
+	const float2 UV = ArcTerrainWeightUV(Slot.SlotIndex, Slot.Frac);
+	return ArcTerrainWeightAtlas.SampleLevel(
+		ArcTerrainWeightAtlasSampler, float3(UV, (float)Slot.SlotIndex), 0).x;
+}

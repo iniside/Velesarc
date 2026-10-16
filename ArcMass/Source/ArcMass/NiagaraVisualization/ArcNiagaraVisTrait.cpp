@@ -2,9 +2,10 @@
 
 #include "ArcNiagaraVisTrait.h"
 
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityTemplateRegistry.h"
-#include "MassEntityUtils.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
 
 void UArcNiagaraVisTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {

@@ -21,24 +21,9 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcNeedFragment.generated.h"
-
-UENUM(BlueprintType)
-enum class EArcNeedOperation : uint8
-{
-	Add,
-	Subtract,
-	Override
-};
-
-UENUM(BlueprintType)
-enum class EArcNeedFillType : uint8
-{
-	Fixed,
-	FixedTicks,
-	UntilValue
-};
 
 USTRUCT(BlueprintType)
 struct ARCNEEDS_API FArcNeedFragment : public FMassFragment
@@ -56,6 +41,19 @@ struct ARCNEEDS_API FArcNeedFragment : public FMassFragment
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float CurrentValue = 0.f;
+
+	/** World time the value was last written by anyone; sleep recovery stamps it so the lazy advance skips the slept interval. */
+	UPROPERTY()
+	double LastUpdateTime = 0.0;
+
+	UPROPERTY()
+	double NextRepostTime = 0.0;
+
+	UPROPERTY()
+	uint32 LiveOrderId = 0;
+
+	UPROPERTY()
+	uint8 LastBand = 0;
 };
 
 USTRUCT(BlueprintType)

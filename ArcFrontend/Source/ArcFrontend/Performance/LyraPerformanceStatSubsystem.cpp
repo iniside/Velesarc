@@ -26,7 +26,7 @@
 #include "Engine/NetConnection.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
-#include "GameMode/ArcCoreGameState.h"
+#include "GameMode/ArcMassGameState.h"
 #include "Performance/LyraPerformanceStatTypes.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(LyraPerformanceStatSubsystem)
@@ -54,7 +54,7 @@ void FLyraPerformanceStatCache::ProcessFrame(const FFrameData& FrameData)
 
 	if (UWorld* World = MySubsystem->GetGameInstance()->GetWorld())
 	{
-		if (const AArcCoreGameState* GameState = World->GetGameState<AArcCoreGameState>())
+		if (const AArcMassGameState* GameState = World->GetGameState<AArcMassGameState>())
 		{
 			CachedServerFPS = GameState->GetServerFPS();
 		}

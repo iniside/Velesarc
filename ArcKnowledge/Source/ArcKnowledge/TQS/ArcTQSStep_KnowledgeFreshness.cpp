@@ -11,25 +11,25 @@ float FArcTQSStep_KnowledgeFreshness::ExecuteStep(const FArcTQSTargetItem& Item,
 	const FArcKnowledgeHandle Handle = ArcTQS::Knowledge::GetHandle(Item);
 	if (!Handle.IsValid())
 	{
-		return 0.0f;
+		return UnscorableRaw;
 	}
 
 	UWorld* World = QueryContext.World.Get();
 	if (!World)
 	{
-		return 0.0f;
+		return UnscorableRaw;
 	}
 
 	const UArcKnowledgeSubsystem* Subsystem = World->GetSubsystem<UArcKnowledgeSubsystem>();
 	if (!Subsystem)
 	{
-		return 0.0f;
+		return UnscorableRaw;
 	}
 
 	const FArcKnowledgeEntry* Entry = Subsystem->GetKnowledgeEntry(Handle);
 	if (!Entry)
 	{
-		return 0.0f;
+		return UnscorableRaw;
 	}
 
 	const float Age = static_cast<float>(World->GetTimeSeconds() - Entry->Timestamp);

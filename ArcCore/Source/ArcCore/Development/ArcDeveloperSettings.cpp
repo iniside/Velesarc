@@ -35,7 +35,7 @@ UArcDeveloperSettings::UArcDeveloperSettings()
 
 FName UArcDeveloperSettings::GetCategoryName() const
 {
-	return FApp::GetProjectName();
+	return FName(TEXT("Arc Game"));
 }
 
 #if WITH_EDITOR
@@ -97,16 +97,9 @@ TArray<FName> UArcDeveloperSettings::GetKnownPlatformIds() const
 #if WITH_EDITOR
 void UArcDeveloperSettings::OnPlayInEditorStarted() const
 {
-	// Show a notification toast to remind the user that there's an experience override
-	// set
-	if (ExperienceOverride.IsValid())
-	{
-		FNotificationInfo Info(FText::Format(LOCTEXT("ExperienceOverrideActive"
-				, "Developer Settings Override\nExperience {0}")
-			, FText::FromName(ExperienceOverride.PrimaryAssetName)));
-		Info.ExpireDuration = 2.0f;
-		FSlateNotificationManager::Get().AddNotification(Info);
-	}
+	// ExperienceOverride retired with the Experience cluster (Bucket B Cluster 2);
+	// PIE override notification will be reimplemented against
+	// AArcMassGameMode-side override if/when reintroduced.
 }
 #endif
 

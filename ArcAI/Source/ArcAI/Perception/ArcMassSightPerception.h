@@ -1,11 +1,11 @@
-﻿// Copyright Lukasz Baran. All Rights Reserved.
+// Copyright Lukasz Baran. All Rights Reserved.
 
 #pragma once
 #include "ArcMassPerception.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityTraitBase.h"
-#include "MassObserverProcessor.h"
-#include "MassProcessor.h"
+#include "Mass/ObserverProcessor.h"
+#include "Mass/Processor.h"
 
 #include "ArcMassSightPerception.generated.h"
 
@@ -43,7 +43,9 @@ struct TMassFragmentTraits<FArcMassSightPerceptionResult> final
 };
 
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
+/** Trait that adds sight perception sensing to a Mass entity.
+ *  Configures the entity as a perceiver that can detect other entities within its sight cone. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Perception Sight Perceiver", Category = "Perception"))
 class ARCAI_API UArcPerceptionSightPerceiverTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -51,12 +53,14 @@ class ARCAI_API UArcPerceptionSightPerceiverTrait : public UMassEntityTraitBase
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FArcPerceptionSightSenseConfigFragment SightConfig;
-	
+
 	/** Appends items into the entity template required for the trait. */
 	virtual void BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const override;
 };
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Perception Sight Perceivable"))
+/** Trait that marks a Mass entity as perceivable by sight.
+ *  Adds the sight perceivable tag so perceivers can detect this entity visually. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Perception Sight Perceivable", Category = "Perception"))
 class ARCAI_API UArcPerceptionSightPerceivableTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()
@@ -82,12 +86,12 @@ class ARCAI_API UArcMassSightPerceptionSubsystem : public UWorldSubsystem
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
-	
+
 	TMap<FMassEntityHandle, FArcPerceptionEntityAddedNative> OnEntityPerceived;
 	TMap<FMassEntityHandle, FArcPerceptionEntityAddedNative> OnEntityLostFromPerception;
-	
+
 	TMap<FMassEntityHandle, FArcPerceptionEntityList> OnPerceptionUpdated;
-	
+
 	// Internal - called by processor to broadcast events
 	void BroadcastEntityPerceived(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
 	void BroadcastEntityLostFromPerception(FMassEntityHandle Perceiver, FMassEntityHandle Perceived, FGameplayTag SenseTag);
@@ -118,7 +122,7 @@ public:
 protected:
 	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-	
+
 	void ProcessPerceptionChunk(
 		FMassEntityManager& EntityManager,
 		FMassExecutionContext& Context,
@@ -147,4 +151,20 @@ protected:
 
 private:
 	FMassEntityQuery ObserverQuery;
+	FMassEntityQuery CleanupQuery;
 };
+
+namespace ArcMassPerception
+{
+	/** Adds sight-perceiver fragments to a Mass template build context. Called by both
+	 *  UArcPerceptionSightPerceiverTrait and UArcPerceptionCombinedPerceiverTrait. */
+	ARCAI_API void ApplySightPerceiver(
+		FMassEntityTemplateBuildContext& BuildContext,
+		const UWorld& World,
+		const FArcPerceptionSightSenseConfigFragment& SightConfig);
+
+	/** Adds sight-perceivable tags/fragments. Called by both UArcPerceptionSightPerceivableTrait
+	 *  and UArcPerceptionCombinedPerceivableTrait. */
+	ARCAI_API void ApplySightPerceivable(
+		FMassEntityTemplateBuildContext& BuildContext);
+}

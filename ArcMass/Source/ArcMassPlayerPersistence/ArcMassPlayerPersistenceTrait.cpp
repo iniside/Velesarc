@@ -4,7 +4,8 @@
 
 #include "ArcMassPlayerPersistence.h"
 #include "MassEntityTemplateRegistry.h"
-#include "MassEntityUtils.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
 
 void UArcMassPlayerPersistenceTrait::BuildTemplate(
 	FMassEntityTemplateBuildContext& BuildContext,

@@ -1,0 +1,161 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+//
+// GPU thermal (talus) erosion — single-pass gather formulation.
+// Input: single-channel R32F height texture (height in .r).
+// Output: RWTexture2D<float4> Result, height written to .r (all channels set to h for consistency).
+//
+// Algorithm (gather, race-free):
+//   For cell c, iterate over all 4 von Neumann neighbors n_i.
+//   Talus threshold T = tan(theta) * cellSize  (theta = 33 deg, cellSize = 1).
+//   For each neighbor n_i:
+//     dH_i = h_c - h_ni  (positive => c is higher => c sends material DOWN to n_i)
+//   Net height change for c:
+//     delta_c = SUM over i where dH_i > T: -Strength * amplitude * (dH_i - T) * w_i   [c loses material going down]
+//             + SUM over i where dH_ni > T: +Strength * amplitude * (dH_ni - T) * w_ni [c gains from neighbor above]
+//   Where w_i is the proportional weight: (dH_i - T) / SUM_j(dH_j - T) over qualifying downhill neighbors.
+//
+// Border handling: zero-flux (border cells treat out-of-bounds neighbors as having the same height).
+
+#include "/Engine/Public/Platform.ush"
+
+//////////////////////////////////////////////////////////////////////////
+/// Inputs / Outputs
+//////////////////////////////////////////////////////////////////////////
+Texture2D			InputHeight;
+
+RWTexture2D<float4>	Result;
+
+int					Width;
+int					Height;
+float				Strength;
+
+//////////////////////////////////////////////////////////////////////////
+/// Fixed internal constants
+//////////////////////////////////////////////////////////////////////////
+static const float AMPLITUDE     = 0.5f;
+static const float TALUS_THETA   = 0.6494f;  // tan(33 degrees) = 0.6494; cellSize = 1 => threshold = 0.6494
+static const float CELL_SIZE     = 1.0f;
+static const float TALUS_THRESHOLD = TALUS_THETA * CELL_SIZE;
+
+#ifndef THREADGROUPSIZE_X
+#define THREADGROUPSIZE_X 8
+#define THREADGROUPSIZE_Y 8
+#define THREADGROUPSIZE_Z 1
+#endif
+
+//////////////////////////////////////////////////////////////////////////
+/// Helpers
+//////////////////////////////////////////////////////////////////////////
+bool InBounds(int2 P)
+{
+	return P.x >= 0 && P.y >= 0 && P.x < Width && P.y < Height;
+}
+
+// Clamp to border for zero-flux: out-of-bounds neighbors have the same height as c (no gradient).
+float LoadHeight(int2 P, float BorderH)
+{
+	if (!InBounds(P))
+		return BorderH;
+	return InputHeight.Load(int3(P, 0)).r;
+}
+
+//////////////////////////////////////////////////////////////////////////
+/// CSH_Thermal — thermal erosion (talus model), gather formulation
+//
+// Net change for cell c = (material received from uphill neighbors)
+//                        - (material sent to downhill neighbors)
+//
+// For each neighbor n_i, let dH_i = h_c - h_ni.
+//   If dH_i > TALUS_THRESHOLD  =>  c is above n_i by more than threshold: c sends material down.
+//   If dH_i < -TALUS_THRESHOLD =>  n_i is above c by more than threshold: c receives material.
+//
+// Material sent from c to n_i (downhill):
+//   send_i = Strength * AMPLITUDE * (dH_i - T) * (dH_i - T) / totalExcess_down
+//   (proportional weight among all qualifying downhill neighbors)
+//
+// Material received by c from n_i (uphill, i.e. n_i sends to c):
+//   The amount n_i sends to c is: Strength * AMPLITUDE * (h_ni - h_c - T) * weight_c_among_ni_downhill
+//   Since we gather, we re-compute from c's perspective knowing h_ni:
+//   dH_up_i = h_ni - h_c  (positive: n_i above c)
+//   We need the total qualifying excess around n_i to compute n_i's proportional weight to c.
+//   To avoid another neighbor-of-neighbor read, we use the simplified unweighted form:
+//   receive_i = Strength * AMPLITUDE * (dH_up_i - T) / 4.0  (equal split among 4 neighbors)
+//   NOTE: The simpler equal-split gather is standard for GPU thermal erosion (e.g. Olsen 2004)
+//         and avoids a second-order neighborhood read. It conserves approximate mass over many iters.
+//////////////////////////////////////////////////////////////////////////
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_Thermal(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+		return;
+
+	float hC = InputHeight.Load(int3(P, 0)).r;
+
+	// Von Neumann neighborhood offsets: Left, Right, Up, Down
+	int2 Offsets[4];
+	Offsets[0] = int2(-1,  0);
+	Offsets[1] = int2( 1,  0);
+	Offsets[2] = int2( 0, -1);
+	Offsets[3] = int2( 0,  1);
+
+	// --- Outgoing: material c sends DOWN to neighbors below ---
+	// Compute proportional weights among qualifying downhill neighbors.
+	float DownExcess[4];
+	float TotalDownExcess = 0.0f;
+
+	[unroll]
+	for (int d = 0; d < 4; ++d)
+	{
+		float hN = LoadHeight(P + Offsets[d], hC);  // border => same height => dH = 0
+		float dH = hC - hN;  // positive when c is higher than neighbor
+		if (dH > TALUS_THRESHOLD)
+		{
+			DownExcess[d] = dH - TALUS_THRESHOLD;
+			TotalDownExcess += DownExcess[d];
+		}
+		else
+		{
+			DownExcess[d] = 0.0f;
+		}
+	}
+
+	float TotalSent = 0.0f;
+	if (TotalDownExcess > 0.0f)
+	{
+		[unroll]
+		for (int s = 0; s < 4; ++s)
+		{
+			if (DownExcess[s] > 0.0f)
+			{
+				// Proportional share of the excess going to this neighbor
+				float Weight = DownExcess[s] / TotalDownExcess;
+				TotalSent += Strength * AMPLITUDE * DownExcess[s] * Weight;
+			}
+		}
+	}
+
+	// --- Incoming: material c receives from uphill neighbors above ---
+	// Equal-split gather (Olsen 2004 GPU thermal erosion):
+	// Each qualifying uphill neighbor sends its excess split equally among its own downhill neighbors.
+	// We approximate: c receives 1/4 of each uphill neighbor's qualifying excess above threshold.
+	float TotalReceived = 0.0f;
+
+	[unroll]
+	for (int r = 0; r < 4; ++r)
+	{
+		int2 NPos = P + Offsets[r];
+		float hN = LoadHeight(NPos, hC);
+		float dH_up = hN - hC;  // positive when neighbor is higher than c
+		if (dH_up > TALUS_THRESHOLD)
+		{
+			// n_i sends excess to c (among up to 4 of its own downhill neighbors).
+			// Approximate weight: 1/4 (equal split, avoids second-order neighborhood reads).
+			TotalReceived += Strength * AMPLITUDE * (dH_up - TALUS_THRESHOLD) * 0.25f;
+		}
+	}
+
+	float NewH = hC - TotalSent + TotalReceived;
+
+	Result[P] = float4(NewH, NewH, NewH, 1.0f);
+}

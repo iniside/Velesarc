@@ -3,9 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "UObject/Interface.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "ArcProjectileFragments.generated.h"
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,28 @@ struct ARCMASS_API FArcProjectileHomingConfigFragment : public FMassConstSharedF
 	float HomingAcceleration = 1000.f;
 };
 
+UENUM(BlueprintType)
+enum class EArcTargetedProjectileMovementMode : uint8
+{
+	FixedDuration,
+	ConstantSpeed
+};
+
+USTRUCT(BlueprintType)
+struct ARCMASS_API FArcTargetedProjectileConfigFragment : public FMassConstSharedFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Targeted")
+	EArcTargetedProjectileMovementMode MovementMode = EArcTargetedProjectileMovementMode::ConstantSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Targeted", meta = (ClampMin = "0.001"))
+	float FixedDuration = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Targeted", meta = (ClampMin = "0.001"))
+	float ConstantSpeed = 5000.f;
+};
+
 // ---------------------------------------------------------------------------
 // Per-entity mutable state
 // ---------------------------------------------------------------------------
@@ -95,7 +118,6 @@ struct ARCMASS_API FArcProjectileFragment : public FMassFragment
 	UPROPERTY()
 	float DistanceTraveled = 0.f;
 
-	/** True once the projectile has hit something or exceeded MaxDistance. */
 	UPROPERTY()
 	bool bPendingDestroy = false;
 
@@ -116,6 +138,18 @@ struct ARCMASS_API FArcProjectileHomingFragment : public FMassFragment
 	/** Entity to home toward. */
 	UPROPERTY()
 	FMassEntityHandle TargetEntity;
+};
+
+USTRUCT()
+struct ARCMASS_API FArcTargetedProjectileFragment : public FMassFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FMassEntityHandle TargetEntity;
+
+	UPROPERTY()
+	float RemainingDuration = 0.f;
 };
 
 // ---------------------------------------------------------------------------
@@ -169,6 +203,12 @@ struct ARCMASS_API FArcBouncingProjectileTag : public FMassTag
 	GENERATED_BODY()
 };
 
+USTRUCT()
+struct ARCMASS_API FArcTargetedProjectileTag : public FMassTag
+{
+	GENERATED_BODY()
+};
+
 // ---------------------------------------------------------------------------
 // Shared collision context — passed to both actor and instigator interfaces
 // ---------------------------------------------------------------------------
@@ -187,7 +227,9 @@ struct ARCMASS_API FArcCollisionHitContext
 	UPROPERTY(BlueprintReadOnly, Category = "Collision")
 	FVector Velocity = FVector::ZeroVector;
 
-	/** True when projectile exceeded max distance rather than hitting something. */
+	UPROPERTY(BlueprintReadOnly, Category = "Collision")
+	FMassEntityHandle TargetEntity;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Collision")
 	bool bExpired = false;
 };
@@ -215,7 +257,6 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Projectile")
 	void OnProjectileCollision(const FArcCollisionHitContext& Context);
 
-	/** Called BEFORE entity destruction when max distance exceeded. */
 	UFUNCTION(BlueprintNativeEvent, Category = "Projectile")
 	void OnProjectileExpired(const FArcCollisionHitContext& Context);
 };

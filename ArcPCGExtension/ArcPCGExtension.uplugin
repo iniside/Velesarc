@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Arc PCG Extension",
+	"Description": "Runtime PCG settings extensions for ArcGame.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"EnabledByDefault": true,
+	"CanContainContent": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcPCGExtension",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "PCG", "Enabled": true },
+		{ "Name": "ArcTerrain", "Enabled": true },
+		{ "Name": "ComputeFramework", "Enabled": true }
+	]
+}

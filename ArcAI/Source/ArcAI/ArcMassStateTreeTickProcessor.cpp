@@ -4,7 +4,7 @@
 
 #include "MassStateTreeExecutionContext.h"
 #include "MassStateTreeFragments.h"
-#include "Tasks/ArcMassActorMoveToTask.h"
+#include "Tasks/ArcMassDrawDebugSphereTask.h"
 
 UArcMassStateTreeTickProcessor::UArcMassStateTreeTickProcessor()
 	: EntityQuery_Conditional(*this)
@@ -39,7 +39,9 @@ void UArcMassStateTreeTickProcessor::Execute(FMassEntityManager& EntityManager, 
 	{
 		return;
 	}
-	
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassStateTreeTick);
+
 	EntityQuery_Conditional.ForEachEntityChunk(Context, [this](FMassExecutionContext& MyContext)
 	{
 		const TArrayView<FMassStateTreeInstanceFragment> StateTreeInstanceList = MyContext.GetMutableFragmentView<FMassStateTreeInstanceFragment>();

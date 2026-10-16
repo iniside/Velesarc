@@ -3,7 +3,8 @@
 #include "ArcAreaAssignmentObserver.h"
 #include "ArcAreaAssignmentFragments.h"
 #include "ArcAreaSubsystem.h"
-#include "MassExecutionContext.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 
 UArcAreaAssignmentRemoveObserver::UArcAreaAssignmentRemoveObserver()
 	: ObserverQuery{*this}
@@ -27,6 +28,8 @@ void UArcAreaAssignmentRemoveObserver::Execute(FMassEntityManager& EntityManager
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcAreaAssignmentRemove);
+
 	ObserverQuery.ForEachEntityChunk(Context, [Subsystem](FMassExecutionContext& Ctx)
 	{
 		TConstArrayView<FArcAreaAssignmentFragment> AssignmentFragments = Ctx.GetFragmentView<FArcAreaAssignmentFragment>();
@@ -40,7 +43,6 @@ void UArcAreaAssignmentRemoveObserver::Execute(FMassEntityManager& EntityManager
 			{
 				Subsystem->UnassignEntity(EntityHandle);
 			}
-			Subsystem->RemoveEntityDelegates(EntityHandle);
 		}
 	});
 }

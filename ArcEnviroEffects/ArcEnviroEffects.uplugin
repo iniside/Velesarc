@@ -1,0 +1,42 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcEnviroEffects",
+	"Description": "Level-based Wet and temperature environment effects for Mass entities",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Plugins": [
+		{
+			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassMechanics",
+			"Enabled": true
+		},
+		{
+			"Name": "MassGameplay",
+			"Enabled": true
+		}
+	],
+	"Modules": [
+		{
+			"Name": "ArcEnviroEffects",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

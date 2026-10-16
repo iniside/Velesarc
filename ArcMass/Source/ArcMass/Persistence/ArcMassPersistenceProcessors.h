@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassObserverProcessor.h"
-#include "MassProcessor.h"
+#include "Mass/ObserverProcessor.h"
+#include "Mass/Processor.h"
 #include "ArcMassPersistenceProcessors.generated.h"
 
 /**
@@ -63,6 +63,27 @@ class ARCMASS_API UArcMassPersistenceInitObserver : public UMassObserverProcesso
 
 public:
 	UArcMassPersistenceInitObserver();
+
+protected:
+	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
+	virtual void Execute(FMassEntityManager& EntityManager,
+		FMassExecutionContext& Context) override;
+
+private:
+	FMassEntityQuery EntityQuery;
+};
+
+/**
+ * Observer: cleans up persistence tracking when tag is removed.
+ * Removes entity from ActiveEntities and CellEntityMap.
+ */
+UCLASS()
+class ARCMASS_API UArcMassPersistenceDeinitObserver : public UMassObserverProcessor
+{
+	GENERATED_BODY()
+
+public:
+	UArcMassPersistenceDeinitObserver();
 
 protected:
 	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;

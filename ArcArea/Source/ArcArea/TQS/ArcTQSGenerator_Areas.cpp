@@ -23,11 +23,13 @@ void FArcTQSGenerator_Areas::GenerateItems(const FArcTQSQueryContext& QueryConte
 
 	FInstancedPropertyBag TemplateBag = ArcTQS::Area::MakeAreaTemplate();
 
-	const TMap<FArcAreaHandle, FArcAreaData>& AllAreas = Subsystem->GetAllAreas();
+	const TMap<FSmartObjectHandle, FArcAreaData>& AllAreas = Subsystem->GetAllAreas();
 	OutItems.Reserve(OutItems.Num() + AllAreas.Num());
 
-	for (const auto& [Handle, AreaData] : AllAreas)
+	for (const TPair<FSmartObjectHandle, FArcAreaData>& Pair : AllAreas)
 	{
+		const FArcAreaData& AreaData = Pair.Value;
+
 		// Tag filter
 		if (!AreaTagQuery.IsEmpty() && !AreaTagQuery.Matches(AreaData.AreaTags))
 		{
@@ -37,7 +39,7 @@ void FArcTQSGenerator_Areas::GenerateItems(const FArcTQSQueryContext& QueryConte
 		// Distance filter
 		if (MaxDistSq > 0.0f)
 		{
-			const float DistSq = FVector::DistSquared(QueryContext.QuerierLocation, AreaData.Location);
+			const float DistSq = FVector::DistSquared(Center, AreaData.Location);
 			if (DistSq > MaxDistSq)
 			{
 				continue;
@@ -49,7 +51,7 @@ void FArcTQSGenerator_Areas::GenerateItems(const FArcTQSQueryContext& QueryConte
 		Item.Location = AreaData.Location;
 
 		Item.ItemData = TemplateBag;
-		ArcTQS::Area::SetAreaHandle(Item.ItemData, Handle);
+		ArcTQS::Area::SetAreaHandle(Item.ItemData, Pair.Key);
 
 		OutItems.Add(MoveTemp(Item));
 	}
@@ -57,5 +59,5 @@ void FArcTQSGenerator_Areas::GenerateItems(const FArcTQSQueryContext& QueryConte
 
 void FArcTQSGenerator_Areas::GetOutputSchema(TArray<FPropertyBagPropertyDesc>& OutDescs) const
 {
-	OutDescs.Emplace(ArcTQS::Area::Names::AreaHandle, EPropertyBagPropertyType::Struct, FArcAreaHandle::StaticStruct());
+	OutDescs.Emplace(ArcTQS::Area::Names::AreaHandle, EPropertyBagPropertyType::Struct, FSmartObjectHandle::StaticStruct());
 }

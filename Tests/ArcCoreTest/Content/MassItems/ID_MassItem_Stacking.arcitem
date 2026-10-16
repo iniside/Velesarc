@@ -1,0 +1,46 @@
+{
+  "ItemId": "52EAA86145779C787783C797BF344A8D",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_Tags",
+      "ItemTags": [
+        "Test.Item.Tag"
+      ],
+      "AssetTags": [],
+      "GrantedTags": [],
+      "RequiredTags": [],
+      "DenyTags": []
+    },
+    {
+      "_structType": "ArcItemFragment_Stacks",
+      "InitialStacks": 1,
+      "bCreateInstance": true
+    }
+  ],
+  "StackMethod": {
+    "_structType": "ArcMassItemStackMethod_StackByType",
+    "MaxStacks": {
+      "Value": 10.0,
+      "Source": "None",
+      "InlineCurve": {
+        "Keys": [],
+        "DefaultValue": 3.4028235e38,
+        "PreInfinityExtrap": "RCCE_Constant",
+        "PostInfinityExtrap": "RCCE_Constant"
+      },
+      "Curve": {
+        "CurveTable": null,
+        "RowName": "None"
+      },
+      "RegistryType": "None",
+      "CustomScaling": {},
+      "MinValue": 0.0,
+      "MaxValue": 0.0,
+      "DataTable": {
+        "DataTable": null,
+        "RowName": "None"
+      },
+      "RangeRowName": "None"
+    }
+  }
+}

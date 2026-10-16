@@ -1,0 +1,32 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcMassItems Tests",
+	"Description": "CQTest module covering ArcMassItems.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcMassItemsTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcMassItems", "Enabled": true },
+		{ "Name": "ArcCore", "Enabled": true },
+		{ "Name": "ArcCoreTest", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcAbilityKit", "Enabled": true },
+		{ "Name": "ArcMassReplication", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

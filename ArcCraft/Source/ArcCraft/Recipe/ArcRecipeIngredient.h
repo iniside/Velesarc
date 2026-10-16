@@ -28,14 +28,13 @@
 #include "ArcRecipeIngredient.generated.h"
 
 struct FArcItemSpec;
-class UArcQualityTierTable;
 
 /**
  * Base ingredient requirement for a recipe slot.
  * Uses instanced struct pattern for extensibility — new ingredient types
  * can be added without modifying the recipe definition.
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Base ingredient requirement for a recipe slot; uses instanced struct pattern for extensibility."))
 struct ARCCRAFT_API FArcRecipeIngredient
 {
 	GENERATED_BODY()
@@ -53,15 +52,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	bool bConsumeOnCraft = true;
 
-	/** Returns true if the given item satisfies this ingredient requirement. */
-	virtual bool DoesItemSatisfy(
-		const FArcItemSpec& InItemSpec,
-		const UArcQualityTierTable* InTierTable) const;
+	/** An optional slot never blocks a craft; a filled one is consumed and feeds the craft like a required one. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	bool bOptional = false;
 
-	/** Get the quality multiplier that this specific item provides for this slot. */
-	virtual float GetItemQualityMultiplier(
-		const FArcItemSpec& InItemSpec,
-		const UArcQualityTierTable* InTierTable) const;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Eligibility",
+		meta = (ClampMin = "0.0", Tooltip = "Minimum rarity step the item must meet or exceed. 0 = no minimum."))
+	float MinRarityStep = 0.0f;
+
+	/** Returns true if the given item satisfies this ingredient requirement. */
+	virtual bool DoesItemSatisfy(const FArcItemSpec& InItemSpec) const;
+
+	/** Rarity step this item brings to the slot. */
+	float GetItemRarityStep(const FArcItemSpec& InItemSpec) const;
+
+	bool MeetsMinRarity(const FArcItemSpec& InItemSpec) const;
 
 	virtual ~FArcRecipeIngredient() = default;
 };
@@ -69,31 +74,29 @@ public:
 /**
  * Ingredient matched by a specific item definition.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Specific Item Ingredient"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Specific Item Ingredient", Tooltip = "Ingredient matched by a specific item definition."))
 struct ARCCRAFT_API FArcRecipeIngredient_ItemDef : public FArcRecipeIngredient
 {
 	GENERATED_BODY()
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly,
-		meta = (AllowedClasses = "/Script/ArcCore.ArcItemDefinition", DisplayThumbnail = false))
+		meta = (AllowedTypes = "ArcItem", Tooltip = "The specific item definition required for this ingredient slot."))
 	FArcNamedPrimaryAssetId ItemDefinitionId;
 
-	virtual bool DoesItemSatisfy(
-		const FArcItemSpec& InItemSpec,
-		const UArcQualityTierTable* InTierTable) const override;
+	/** Tags the item must NOT have (definition AssetTags plus instance tags). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FGameplayTagContainer DenyTags;
 
-	virtual float GetItemQualityMultiplier(
-		const FArcItemSpec& InItemSpec,
-		const UArcQualityTierTable* InTierTable) const override;
+	virtual bool DoesItemSatisfy(const FArcItemSpec& InItemSpec) const override;
 };
 
 /**
- * Ingredient matched by gameplay tags with optional quality tier requirement.
+ * Ingredient matched by gameplay tags.
  * The most flexible ingredient type — matches any item with the required tags
- * that doesn't have the deny tags, and optionally meets a minimum quality tier.
+ * that doesn't have the deny tags.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Tag-Based Ingredient"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Tag-Based Ingredient", Tooltip = "Ingredient matched by gameplay tags."))
 struct ARCCRAFT_API FArcRecipeIngredient_Tags : public FArcRecipeIngredient
 {
 	GENERATED_BODY()
@@ -107,16 +110,5 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FGameplayTagContainer DenyTags;
 
-	/** Minimum quality tier tag the item must match or exceed.
-	 *  If invalid, no minimum tier is required. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FGameplayTag MinimumTierTag;
-
-	virtual bool DoesItemSatisfy(
-		const FArcItemSpec& InItemSpec,
-		const UArcQualityTierTable* InTierTable) const override;
-
-	virtual float GetItemQualityMultiplier(
-		const FArcItemSpec& InItemSpec,
-		const UArcQualityTierTable* InTierTable) const override;
+	virtual bool DoesItemSatisfy(const FArcItemSpec& InItemSpec) const override;
 };

@@ -35,7 +35,7 @@ bool FArcWorldCondition_HasTag::Initialize(const UWorldConditionSchema& Schema)
 		return false;
 	}
 
-	SourceActorRef = ArcSchema->GetSourceActorRef();
+	SelfActorRef = ArcSchema->GetSelfActorRef();
 	bCanCacheResult = false; // Tags can change at runtime
 	return true;
 }
@@ -44,7 +44,7 @@ FWorldConditionResult FArcWorldCondition_HasTag::IsTrue(const FWorldConditionCon
 {
 	FWorldConditionResult Result(EWorldConditionResultValue::IsFalse, bCanCacheResult);
 
-	const AActor* Actor = Context.GetContextDataPtr<AActor>(SourceActorRef);
+	const AActor* Actor = Context.GetContextDataPtr<AActor>(SelfActorRef);
 	if (!Actor)
 	{
 		return Result;

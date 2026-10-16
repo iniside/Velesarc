@@ -10,7 +10,10 @@
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
+	"VersePath": "/ArcGame.com/ArcCore",
+	"VerseScope": "PublicUser",
 	"CanContainContent": false,
+	"CanContainVerse": true,
 	"IsBetaVersion": false,
 	"Installed": false,
 	"EditorCustomVirtualPath": "Arcx",
@@ -41,10 +44,6 @@
 		},
 		{
 			"Name": "MassGameplay",
-			"Enabled": true
-		},
-		{
-			"Name": "GameplayAbilities",
 			"Enabled": true
 		},
 		{
@@ -156,19 +155,11 @@
 			"Enabled": true
 		},
 		{
-			"Name": "Mover",
-			"Enabled": true
-		},
-		{
 			"Name": "DaySequence",
 			"Enabled": true
 		},
 		{
 			"Name": "Chooser",
-			"Enabled": true
-		},
-		{
-			"Name": "ChaosMover",
 			"Enabled": true
 		},
 		{
@@ -193,10 +184,6 @@
 		},
 		{
 			"Name": "MassAI",
-			"Enabled": true
-		},
-		{
-			"Name": "InstancedActors",
 			"Enabled": true
 		},
 		{

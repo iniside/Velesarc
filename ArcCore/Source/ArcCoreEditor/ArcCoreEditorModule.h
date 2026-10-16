@@ -26,12 +26,9 @@
 #include "Modules/ModuleManager.h"
 
 #include "Framework/MultiBox/MultiBoxExtender.h"
-#include "Widgets/Docking/SDockTab.h"
 
 #include "AssetToolsModule.h"
 #include "Toolkits/AssetEditorToolkit.h"
-
-#include "GameplayAbilitiesEditorModule.h"
 
 DECLARE_DELEGATE_RetVal_OneParam(TSharedPtr<FExtender>
 	, FArcOnPreGenerateToolbars
@@ -49,14 +46,10 @@ private:
 	TSharedPtr<FExtensibilityManager> ItemEditorToolBarExtensibilityManager;
 	FArcOnPreGenerateToolbars OnPreGenerateToolbars;
 
-	TWeakPtr<class SArcItemsConfigEditor> ItemsConfigEditor;
-	TWeakPtr<SDockTab> ItemsConfigEditorTab;
-
 	static EAssetTypeCategories::Type ArcAssetCategory;
 	static EAssetTypeCategories::Type InputAssetCategory;
 
 	TSharedPtr<class FArcInstancedStructPinGraphPinFactory> InstancedStructPinFactory;
-	TSharedPtr<class FArcScalableCurveFloatPinFactory> ScalableCurveFloatPinFactory;
 
 public:
 	static EAssetTypeCategories::Type GetArcAssetCategory()
@@ -92,8 +85,6 @@ public:
 private:
 	void RegisterAssetTypeAction(IAssetTools& AssetTools
 								 , TSharedRef<IAssetTypeActions> Action);
-
-	TSharedRef<SDockTab> SpawnItemsConfigEditor(const FSpawnTabArgs& TabArgs);
 
 	float PreviewLevel = 0;
 	float MaxPreviewLevel = 20;

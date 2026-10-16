@@ -1,0 +1,723 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTSplit.ush — the one bisection routine.
+
+	Split writers include the per-frame metric pass (ArcTerrainCBTSplitMerge.usf) and
+	the BaseMesh initial-bulk and motion catch-up refinement passes
+	(ArcTerrainCBTBaseMesh.usf). They share this file rather than a copy,
+	because the pointer rewiring below is the invariant the whole halfedge structure
+	rests on.
+
+	CONFORMANCE LIVES HERE, AND ONLY HERE. A bisector whose hypotenuse twin is coarser
+	cannot bisect against it, so ApplySplit walks the hypotenuse chain up to the first
+	twin at an equal depth (or to a boundary) and bisects the whole chain back down in
+	one call. No pass raises a subdivision request on a neighbour: a vote describes the
+	triangle that cast it, and the refinement front therefore advances into flat terrain
+	that never votes for itself.
+
+	The including pass must declare, with these names:
+		ByteAddressBuffer   CBTHeapSnapshot;
+		RWByteAddressBuffer CBTHeap, BisectorPool, BisectorNeighbors;
+		RWBuffer<uint>      BisectorCommands, PoolCounters, FaceLiveCount;
+		uint                PoolDepth, PoolCapacity, NumFaces, MaxSubdivisionDepth;
+		uint                MergePhaseCount, MergeFramePhase, StatsEnabled;
+
+	and may set ARC_SPLIT_APPLIED_COUNTER (which counter the applied bisections land
+	in) and ARC_SPLIT_TALLY_DETAIL (whether the per-reason deferral counters, which
+	describe the metric pass, are written). Latency outcome mapping defaults to the
+	normal SplitMerge counters and can be overridden by a specialized audit pass.
+=============================================================================*/
+
+#pragma once
+
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBTMergeDiamond.ush"
+
+#ifndef ARC_SPLIT_APPLIED_COUNTER
+#define ARC_SPLIT_APPLIED_COUNTER ARC_CBT_COUNTER_SPLIT_APPLIED
+#endif
+
+#ifndef ARC_SPLIT_TALLY_DETAIL
+#define ARC_SPLIT_TALLY_DETAIL 1
+#endif
+
+/** The sparse split consumer uses selected bits instead of the legacy phase scheduler to decide which
+ *  merge diamonds will actually write this frame. BaseMesh and legacy SplitMerge leave this disabled. */
+#ifndef ARC_SPLIT_BOUNDED_WORK
+#define ARC_SPLIT_BOUNDED_WORK 0
+#endif
+
+#ifndef ARC_SPLIT_LATENCY_APPLIED_COUNTER
+#define ARC_SPLIT_LATENCY_APPLIED_COUNTER ARC_CBT_LATENCY_SPLIT_APPLIED
+#endif
+
+#ifndef ARC_SPLIT_LATENCY_DEFERRED_COUNTER
+#define ARC_SPLIT_LATENCY_DEFERRED_COUNTER ARC_CBT_LATENCY_SPLIT_DEFERRED
+#endif
+
+#ifndef ARC_SPLIT_LATENCY_REFUSED_COUNTER
+#define ARC_SPLIT_LATENCY_REFUSED_COUNTER ARC_CBT_LATENCY_SPLIT_REFUSED
+#endif
+
+#ifndef ARC_SPLIT_LATENCY_POOL_FULL_COUNTER
+#define ARC_SPLIT_LATENCY_POOL_FULL_COUNTER ARC_CBT_LATENCY_POOL_FULL
+#endif
+
+/** ApplySplit outcomes. REFUSED is the only one that means the pool ran out: the parent stays live and
+ *  drawn, so the terrain is coarser there and never absent. Nothing is written on a refusal and the
+ *  metric's vote does not change, so the refusal holds — frame after frame it reproduces itself — until
+ *  merges elsewhere bring the pool back below the split ceiling; it cannot alternate with a split. */
+#define ARC_SPLIT_APPLIED  0u
+#define ARC_SPLIT_DEFERRED 1u
+#define ARC_SPLIT_REFUSED  2u
+
+void ArcTerrainTallyTopology(uint Counter, uint Amount)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	InterlockedAdd(PoolCounters[Counter], Amount, Ignored);
+}
+
+void ArcTerrainTallyTopologyMax(uint Counter, uint Value)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	InterlockedMax(PoolCounters[Counter], Value, Ignored);
+}
+
+/** One outcome per ApplySplit request, independent of arc.Terrain.CBT.Stats. An APPLIED request may
+ *  expand multiple bisectors through its conforming chain. The compile-time gate removes both this
+ *  buffer reference and every atomic from non-latency shader permutations. */
+void ArcTerrainTallyLatencySplit(uint Outcome)
+{
+#if ARC_CBT_LATENCY_AUDIT
+	uint Ignored = 0u;
+	const uint Counter = Outcome == ARC_SPLIT_APPLIED ? ARC_SPLIT_LATENCY_APPLIED_COUNTER
+		: (Outcome == ARC_SPLIT_REFUSED ? ARC_SPLIT_LATENCY_REFUSED_COUNTER
+			: ARC_SPLIT_LATENCY_DEFERRED_COUNTER);
+	InterlockedAdd(LatencyCounters[Counter], 1u, Ignored);
+	if (Outcome == ARC_SPLIT_REFUSED)
+	{
+		InterlockedExchange(LatencyCounters[ARC_SPLIT_LATENCY_POOL_FULL_COUNTER], 1u, Ignored);
+	}
+#endif
+}
+
+uint ResolveAllocatedSlot(int Depth, uint Ordinal)
+{
+	return cbt_DecodeFreeLeaf_RO(CBTHeapSnapshot, 0u, Depth, Ordinal);
+}
+
+struct FArcSplitChildren
+{
+	uint Child0;
+	uint Child1;
+};
+
+/**
+ * Bisect P, and its hypotenuse twin Q with it. child0 = (C0, M, C1) and child1 = (C1, M, C2), so
+ * child0's hypotenuse is the parent's RIGHT edge and child1's the parent's LEFT edge — every pointer
+ * below follows from that. Q must sit at P's own depth, or be ARC_BISECTOR_NULL for a boundary
+ * hypotenuse, whose two outer halves stay untwinned. Consumes 4 allocation ordinals from Ordinal, 2
+ * without a twin.
+ */
+FArcSplitChildren ArcTerrainBisectPair(int Depth, uint P, uint Q, uint Ordinal)
+{
+	const uint2 PNode = arc_LoadNodeID(BisectorPool, P);
+	const uint PFace = arc_LoadField(BisectorPool, P, ARC_BISECTOR_FACE);
+	const uint PRight = arc_LoadNeighbor(BisectorNeighbors, P, ARC_EDGE_RIGHT);
+	const uint PLeft = arc_LoadNeighbor(BisectorNeighbors, P, ARC_EDGE_LEFT);
+
+	const uint C0 = ResolveAllocatedSlot(Depth, Ordinal);
+	const uint C1 = ResolveAllocatedSlot(Depth, Ordinal + 1u);
+	uint D0 = ARC_BISECTOR_NULL;
+	uint D1 = ARC_BISECTOR_NULL;
+	if (arc_RefValid(Q))
+	{
+		D0 = ResolveAllocatedSlot(Depth, Ordinal + 2u);
+		D1 = ResolveAllocatedSlot(Depth, Ordinal + 3u);
+	}
+
+	arc_WriteBisector(BisectorPool, C0, leb_ShiftUp(PNode), PFace);
+	arc_WriteBisector(BisectorPool, C1, leb_ShiftUp(PNode) | uint2(1u, 0u), PFace);
+	arc_StoreNeighbor(BisectorNeighbors, C0, ARC_EDGE_HYP, PRight);
+	arc_StoreNeighbor(BisectorNeighbors, C0, ARC_EDGE_LEFT, arc_MakeRef(C1, ARC_EDGE_RIGHT));
+	arc_StoreNeighbor(BisectorNeighbors, C0, ARC_EDGE_RIGHT,
+		arc_RefValid(Q) ? arc_MakeRef(D1, ARC_EDGE_LEFT) : ARC_BISECTOR_NULL);
+	arc_StoreNeighbor(BisectorNeighbors, C1, ARC_EDGE_HYP, PLeft);
+	arc_StoreNeighbor(BisectorNeighbors, C1, ARC_EDGE_RIGHT, arc_MakeRef(C0, ARC_EDGE_LEFT));
+	arc_StoreNeighbor(BisectorNeighbors, C1, ARC_EDGE_LEFT,
+		arc_RefValid(Q) ? arc_MakeRef(D0, ARC_EDGE_RIGHT) : ARC_BISECTOR_NULL);
+
+	arc_RetireBisector(BisectorPool, P, ARC_RETIRE_SPLIT, C0, C1);
+	arc_SetLive(CBTHeap, Depth, P, 0u);
+	arc_SetLive(CBTHeap, Depth, C0, 1u);
+	arc_SetLive(CBTHeap, Depth, C1, 1u);
+	uint Ignored = 0u;
+	InterlockedAdd(FaceLiveCount[PFace], 1u, Ignored);
+
+	if (arc_RefValid(Q))
+	{
+		const uint2 QNode = arc_LoadNodeID(BisectorPool, Q);
+		const uint QFace = arc_LoadField(BisectorPool, Q, ARC_BISECTOR_FACE);
+		const uint QRight = arc_LoadNeighbor(BisectorNeighbors, Q, ARC_EDGE_RIGHT);
+		const uint QLeft = arc_LoadNeighbor(BisectorNeighbors, Q, ARC_EDGE_LEFT);
+
+		arc_WriteBisector(BisectorPool, D0, leb_ShiftUp(QNode), QFace);
+		arc_WriteBisector(BisectorPool, D1, leb_ShiftUp(QNode) | uint2(1u, 0u), QFace);
+		arc_StoreNeighbor(BisectorNeighbors, D0, ARC_EDGE_HYP, QRight);
+		arc_StoreNeighbor(BisectorNeighbors, D0, ARC_EDGE_LEFT, arc_MakeRef(D1, ARC_EDGE_RIGHT));
+		arc_StoreNeighbor(BisectorNeighbors, D0, ARC_EDGE_RIGHT, arc_MakeRef(C1, ARC_EDGE_LEFT));
+		arc_StoreNeighbor(BisectorNeighbors, D1, ARC_EDGE_HYP, QLeft);
+		arc_StoreNeighbor(BisectorNeighbors, D1, ARC_EDGE_RIGHT, arc_MakeRef(D0, ARC_EDGE_LEFT));
+		arc_StoreNeighbor(BisectorNeighbors, D1, ARC_EDGE_LEFT, arc_MakeRef(C0, ARC_EDGE_RIGHT));
+
+		arc_RetireBisector(BisectorPool, Q, ARC_RETIRE_SPLIT, D0, D1);
+		arc_SetLive(CBTHeap, Depth, Q, 0u);
+		arc_SetLive(CBTHeap, Depth, D0, 1u);
+		arc_SetLive(CBTHeap, Depth, D1, 1u);
+		InterlockedAdd(FaceLiveCount[QFace], 1u, Ignored);
+	}
+
+	FArcSplitChildren Children;
+	Children.Child0 = C0;
+	Children.Child1 = C1;
+	return Children;
+}
+
+struct FArcSplitChain
+{
+	/** Chain members, P included. */
+	uint Length;
+	/** The same-depth twin that closes the chain, or ARC_BISECTOR_NULL for a boundary hypotenuse. */
+	uint Terminal;
+	/** Members carrying a MERGE command the walk went through because that merge cannot fire. */
+	uint StaleMerges;
+	uint FailCounter;
+	bool bValid;
+};
+
+/**
+ * Measure P's hypotenuse chain.
+ *
+ * Writes nothing, and reads only what no thread of this pass writes:
+ * neighbour records (a bisection writes the records of the FRESH slots alone), the node ids and faces of
+ * live slots, and the command buffer. A chain step is one level coarser, so the walk cannot run longer
+ * than the depth it started at and a longer one means the link graph cycles.
+ */
+FArcSplitChain ArcTerrainWalkSplitChain(uint P, bool bMergePressureOverride)
+{
+	FArcSplitChain Chain;
+	Chain.Length = 1u;
+	Chain.Terminal = ARC_BISECTOR_NULL;
+	Chain.StaleMerges = 0u;
+	Chain.FailCounter = ARC_CBT_COUNTER_NUM;
+	Chain.bValid = true;
+
+	uint Current = P;
+	for (uint Step = 0u; Step < MaxSubdivisionDepth; ++Step)
+	{
+		const uint HypRef = arc_LoadNeighbor(BisectorNeighbors, Current, ARC_EDGE_HYP);
+		if (!arc_RefValid(HypRef))
+		{
+			return Chain;
+		}
+
+		const uint Twin = arc_RefIndex(HypRef);
+		const uint Edge = arc_RefEdge(HypRef);
+		if (Twin >= PoolCapacity || Edge > ARC_EDGE_LEFT)
+		{
+			Chain.FailCounter = ARC_CBT_COUNTER_SPLIT_NON_MUTUAL;
+			Chain.bValid = false;
+			return Chain;
+		}
+		if (arc_LoadField(BisectorPool, Twin, ARC_BISECTOR_FACE) >= NumFaces)
+		{
+			Chain.FailCounter = ARC_CBT_COUNTER_SPLIT_CHAIN_BADFACE;
+			Chain.bValid = false;
+			return Chain;
+		}
+
+		const uint BackRef = arc_LoadNeighbor(BisectorNeighbors, Twin, Edge);
+		if (!arc_RefValid(BackRef) || arc_RefIndex(BackRef) != Current
+			|| arc_RefEdge(BackRef) != ARC_EDGE_HYP)
+		{
+			Chain.FailCounter = ARC_CBT_COUNTER_SPLIT_NON_MUTUAL;
+			Chain.bValid = false;
+			return Chain;
+		}
+
+		// After the corruption guards, so a corrupt twin reports itself as corrupt and not as a merge.
+		uint MergeStatus = ARC_MERGE_STAGE_NO;
+		const uint TwinCommandBits = BisectorCommands[Twin];
+		const uint TwinCommand = arc_CommandKind(TwinCommandBits);
+		if (TwinCommand == ARC_CMD_MERGE)
+		{
+#if ARC_SPLIT_BOUNDED_WORK
+			bool bAnyMemberSelected = (TwinCommandBits & ARC_CMD_MERGE_SELECTED) != 0u;
+			if (!bAnyMemberSelected)
+			{
+				const FArcMergeDiamond MergeDiamond = ArcTerrainGatherMergeDiamond(Twin);
+				for (uint MemberIndex = 0u; MemberIndex < MergeDiamond.Count; ++MemberIndex)
+				{
+					bAnyMemberSelected = bAnyMemberSelected
+						|| (BisectorCommands[MergeDiamond.Members[MemberIndex]]
+							& ARC_CMD_MERGE_SELECTED) != 0u;
+				}
+				if (!bAnyMemberSelected)
+				{
+					// Every command comparison inside the authority check uses arc_CommandKind, so the
+					// selected high bit cannot be mistaken for a different low-bit command.
+					MergeStatus = ArcTerrainMergeStageStatus(Twin, MergeDiamond, false);
+				}
+			}
+			if (bAnyMemberSelected)
+			{
+				// Selection can only make the split yield. MergeStageCS will independently prove the
+				// complete record before it is allowed to write topology.
+				ArcTerrainTallyTopology(ARC_CBT_COUNTER_TOPO_SPLIT_SELECTED_DEFERRED, 1u);
+				MergeStatus = ARC_MERGE_STAGE_YES;
+			}
+#else
+			const FArcMergeDiamond MergeDiamond = ArcTerrainGatherMergeDiamond(Twin);
+			const bool bMergeScheduled =
+				ArcTerrainMergePhaseSelected(MergeDiamond, bMergePressureOverride);
+			MergeStatus = ArcTerrainMergeStageStatus(Twin, MergeDiamond, bMergeScheduled);
+#endif
+		}
+		if (MergeStatus != ARC_MERGE_STAGE_NO)
+		{
+			Chain.FailCounter = MergeStatus == ARC_MERGE_STAGE_YES
+				? ARC_CBT_COUNTER_SPLIT_TWIN_MERGING : ARC_CBT_COUNTER_SPLIT_TWIN_MERGEUNSURE;
+			Chain.bValid = false;
+			return Chain;
+		}
+		if (TwinCommand == ARC_CMD_MERGE)
+		{
+			Chain.StaleMerges += 1u;
+		}
+
+		if (Edge == ARC_EDGE_HYP)
+		{
+			Chain.Terminal = Twin;
+			return Chain;
+		}
+
+		Chain.Length += 1u;
+		Current = Twin;
+	}
+
+	Chain.FailCounter = ARC_CBT_COUNTER_SPLIT_CHAIN_OVERFLOW;
+	Chain.bValid = false;
+	return Chain;
+}
+
+/** Ordinals [0, Length) re-walk the chain from P; anything past it names the terminal. */
+uint ArcTerrainChainMember(uint P, FArcSplitChain Chain, uint Ordinal)
+{
+	if (Ordinal >= Chain.Length)
+	{
+		return Chain.Terminal;
+	}
+	uint Current = P;
+	for (uint Step = 0u; Step < Ordinal; ++Step)
+	{
+		Current = arc_RefIndex(arc_LoadNeighbor(BisectorNeighbors, Current, ARC_EDGE_HYP));
+	}
+	return Current;
+}
+
+/** Claims are taken in ascending index, so the claimed set is exactly the members below Bound. */
+void ArcTerrainReleaseChain(uint P, FArcSplitChain Chain, uint MemberNum, uint Bound)
+{
+	if (Bound == 0u)
+	{
+		return;
+	}
+	for (uint Scan = 0u; Scan < MemberNum; ++Scan)
+	{
+		const uint Member = ArcTerrainChainMember(P, Chain, Scan);
+		if (Member < Bound)
+		{
+			arc_ReleaseClaim(BisectorPool, Member);
+		}
+	}
+}
+
+/**
+ * Bisect P conformantly. The hypotenuse chain P -> coarser twin -> coarser twin -> ... is measured by a
+ * read-only walk, claimed in ASCENDING POOL INDEX, then bisected from its coarse end back down to P: each
+ * step hands the next one the child that inherited the edge it faces, so every pair the routine bisects
+ * is a same-depth diamond and the whole chain closes inside this call.
+ *
+ * THE CLAIM ORDER IS WHAT MAKES PROGRESS CERTAIN. Two threads whose chains overlap both go for the
+ * smallest index they share before anything else, so one of them takes it and finishes. Claiming in walk
+ * order instead lets the two halves of one same-depth diamond take each other's first member and both
+ * abort, every frame.
+ *
+ * ALL OR NOTHING. Every member is claimed before anything is written and the entire chain's slots come
+ * from ONE allocator reservation, so a lost claim or an exhausted pool leaves the tree exactly as it was.
+ * The only thing the claim phase can find moved since the walk is a retirement word, and that is exactly
+ * what the claim compare-exchange tests.
+ */
+uint ApplySplit(int Depth, uint P, bool bMergePressureOverride)
+{
+	if (arc_LoadField(BisectorPool, P, ARC_BISECTOR_FACE) >= NumFaces)
+	{
+#if ARC_SPLIT_TALLY_DETAIL
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_CHAIN_BADFACE, 1u);
+#endif
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+		return ARC_SPLIT_DEFERRED;
+	}
+
+	const uint2 PNode = arc_LoadNodeID(BisectorPool, P);
+	if (arc_NodeDepth(PNode) + 1u > MaxSubdivisionDepth)
+	{
+#if ARC_SPLIT_TALLY_DETAIL
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_MAX_DEPTH, 1u);
+#endif
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+		return ARC_SPLIT_DEFERRED;
+	}
+
+	bool bTwinDiffFace = false;
+#if ARC_SPLIT_TALLY_DETAIL
+	if (StatsEnabled != 0u)
+	{
+		const uint FirstRef = arc_LoadNeighbor(BisectorNeighbors, P, ARC_EDGE_HYP);
+		const uint FirstTwin = arc_RefIndex(FirstRef);
+		if (arc_RefValid(FirstRef) && FirstTwin < PoolCapacity && arc_RefEdge(FirstRef) <= ARC_EDGE_LEFT)
+		{
+			bTwinDiffFace = arc_LoadField(BisectorPool, FirstTwin, ARC_BISECTOR_FACE)
+				!= arc_LoadField(BisectorPool, P, ARC_BISECTOR_FACE);
+			ArcTerrainTallyTopology(
+				bTwinDiffFace ? ARC_CBT_COUNTER_SPLIT_TWIN_DIFF : ARC_CBT_COUNTER_SPLIT_TWIN_SAME, 1u);
+		}
+	}
+#endif
+
+	const FArcSplitChain Chain = ArcTerrainWalkSplitChain(P, bMergePressureOverride);
+	const uint MemberNum = Chain.Length + (arc_RefValid(Chain.Terminal) ? 1u : 0u);
+#if ARC_SPLIT_TALLY_DETAIL
+	if (Chain.StaleMerges != 0u)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_TWIN_STALEMERGE, Chain.StaleMerges);
+	}
+#endif
+
+	uint FailCounter = Chain.FailCounter;
+	uint Outcome = Chain.bValid ? ARC_SPLIT_APPLIED : ARC_SPLIT_DEFERRED;
+	uint Bound = 0u;
+
+	if (Outcome == ARC_SPLIT_APPLIED)
+	{
+		bool bFirst = true;
+		uint Highest = 0u;
+		for (uint Pick = 0u; Pick < MemberNum; ++Pick)
+		{
+			uint Next = ARC_BISECTOR_NULL;
+			for (uint Scan = 0u; Scan < MemberNum; ++Scan)
+			{
+				const uint Member = ArcTerrainChainMember(P, Chain, Scan);
+				if ((bFirst || Member > Highest) && Member < Next)
+				{
+					Next = Member;
+				}
+			}
+			if (!arc_RefValid(Next))
+			{
+				// Fewer distinct members than the walk counted: the link graph named one of them twice.
+				FailCounter = ARC_CBT_COUNTER_SPLIT_NON_MUTUAL;
+				Outcome = ARC_SPLIT_DEFERRED;
+				break;
+			}
+			if (!arc_TryClaimSplit(BisectorPool, Next))
+			{
+				FailCounter = ARC_CBT_COUNTER_SPLIT_LOST_ELECT;
+				Outcome = ARC_SPLIT_DEFERRED;
+				break;
+			}
+			Highest = Next;
+			bFirst = false;
+			Bound = Highest + 1u;
+		}
+	}
+
+	uint Ordinal = 0u;
+	if (Outcome == ARC_SPLIT_APPLIED)
+	{
+		const uint Need = 4u * Chain.Length - (arc_RefValid(Chain.Terminal) ? 0u : 2u);
+		const uint FreeCount = PoolCapacity - cbt_NodeCount_RO(CBTHeapSnapshot, 0u, Depth);
+		if (!arc_AllocSplitSlots(PoolCounters, FreeCount, PoolCapacity, Need, Ordinal))
+		{
+			Outcome = ARC_SPLIT_REFUSED;
+		}
+	}
+
+	if (Outcome != ARC_SPLIT_APPLIED)
+	{
+		ArcTerrainReleaseChain(P, Chain, MemberNum, Bound);
+#if ARC_SPLIT_TALLY_DETAIL
+		if (FailCounter != ARC_CBT_COUNTER_NUM)
+		{
+			ArcTerrainTallyTopology(FailCounter, 1u);
+		}
+		if (bTwinDiffFace)
+		{
+			ArcTerrainTallyTopology(Outcome == ARC_SPLIT_REFUSED ? ARC_CBT_COUNTER_SPLIT_DIFF_REFUSE
+				: ARC_CBT_COUNTER_SPLIT_DIFF_DEFER, 1u);
+		}
+#endif
+		ArcTerrainTallyLatencySplit(Outcome);
+		return Outcome;
+	}
+
+	uint Cursor = Ordinal;
+	uint Applied = 0u;
+	uint Partner = Chain.Terminal;
+	for (uint Index = 0u; Index < Chain.Length; ++Index)
+	{
+		const uint Level = Chain.Length - 1u - Index;
+		const FArcSplitChildren Children =
+			ArcTerrainBisectPair(Depth, ArcTerrainChainMember(P, Chain, Level), Partner, Cursor);
+		Cursor += arc_RefValid(Partner) ? 4u : 2u;
+		Applied += arc_RefValid(Partner) ? 2u : 1u;
+
+		if (Level > 0u)
+		{
+			// The next member down still names this one across its hypotenuse, and that edge became one
+			// of the two children just written. A bisection rewrites no member's own neighbour record, so
+			// re-walking to it after the write still lands on the chain the claim phase took.
+			const uint DownRef = arc_LoadNeighbor(BisectorNeighbors,
+				ArcTerrainChainMember(P, Chain, Level - 1u), ARC_EDGE_HYP);
+			Partner = arc_RefEdge(DownRef) == ARC_EDGE_RIGHT ? Children.Child0 : Children.Child1;
+		}
+	}
+
+#if ARC_SPLIT_TALLY_DETAIL
+	if (Chain.Length > 1u)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_CHAINED, 1u);
+		ArcTerrainTallyTopology(Chain.Length == 2u ? ARC_CBT_COUNTER_SPLIT_CHAIN_LEN2
+			: ARC_CBT_COUNTER_SPLIT_CHAIN_LEN3PLUS, 1u);
+	}
+#endif
+
+	// Counted in BISECTORS BISECTED, the same unit the classify pass votes in.
+	ArcTerrainTallyTopology(ARC_SPLIT_APPLIED_COUNTER, Applied);
+	ArcTerrainTallyLatencySplit(ARC_SPLIT_APPLIED);
+	return ARC_SPLIT_APPLIED;
+}
+
+#if ARC_SPLIT_BOUNDED_WORK
+
+bool ArcTerrainSplitTwinDiffFace(uint P)
+{
+	const uint FirstRef = arc_LoadNeighbor(BisectorNeighbors, P, ARC_EDGE_HYP);
+	const uint FirstTwin = arc_RefIndex(FirstRef);
+	return arc_RefValid(FirstRef) && FirstTwin < PoolCapacity && arc_RefEdge(FirstRef) <= ARC_EDGE_LEFT
+		&& arc_LoadField(BisectorPool, FirstTwin, ARC_BISECTOR_FACE)
+			!= arc_LoadField(BisectorPool, P, ARC_BISECTOR_FACE);
+}
+
+bool ArcTerrainSplitNeedChecked(FArcSplitChain Chain, out uint Need)
+{
+	Need = 0u;
+	if (!Chain.bValid || Chain.Length == 0u || Chain.Length > MaxSubdivisionDepth
+		|| (!arc_RefValid(Chain.Terminal) && Chain.Terminal != ARC_BISECTOR_NULL))
+	{
+		return false;
+	}
+	const uint TerminalDiscount = arc_RefValid(Chain.Terminal) ? 0u : 2u;
+	if (Chain.Length > 0xFFFFFFFFu / 4u)
+	{
+		return false;
+	}
+	Need = 4u * Chain.Length - TerminalDiscount;
+	return Need >= 2u && (Need & 1u) == 0u;
+}
+
+/** Prepare owns a complete immutable chain on success. Failed acquisition always releases its prefix. */
+bool ArcTerrainPrepareSplitTransaction(int Depth, uint P, out FArcSplitChain Chain,
+	out uint MemberNum)
+{
+	Chain.Length = 0u;
+	Chain.Terminal = ARC_BISECTOR_NULL;
+	Chain.StaleMerges = 0u;
+	Chain.FailCounter = ARC_CBT_COUNTER_NUM;
+	Chain.bValid = false;
+	MemberNum = 0u;
+
+	if (P >= PoolCapacity || arc_LoadField(BisectorPool, P, ARC_BISECTOR_FACE) >= NumFaces)
+	{
+#if ARC_SPLIT_TALLY_DETAIL
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_CHAIN_BADFACE, 1u);
+#endif
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+		return false;
+	}
+	const uint2 PNode = arc_LoadNodeID(BisectorPool, P);
+	if (arc_NodeDepth(PNode) + 1u > MaxSubdivisionDepth)
+	{
+#if ARC_SPLIT_TALLY_DETAIL
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_MAX_DEPTH, 1u);
+#endif
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+		return false;
+	}
+
+	const bool bTwinDiffFace = ArcTerrainSplitTwinDiffFace(P);
+#if ARC_SPLIT_TALLY_DETAIL
+	if (StatsEnabled != 0u)
+	{
+		const uint FirstRef = arc_LoadNeighbor(BisectorNeighbors, P, ARC_EDGE_HYP);
+		if (arc_RefValid(FirstRef) && arc_RefIndex(FirstRef) < PoolCapacity
+			&& arc_RefEdge(FirstRef) <= ARC_EDGE_LEFT)
+		{
+			ArcTerrainTallyTopology(
+				bTwinDiffFace ? ARC_CBT_COUNTER_SPLIT_TWIN_DIFF : ARC_CBT_COUNTER_SPLIT_TWIN_SAME, 1u);
+		}
+	}
+#endif
+
+	Chain = ArcTerrainWalkSplitChain(P, false);
+	MemberNum = Chain.Length + (arc_RefValid(Chain.Terminal) ? 1u : 0u);
+#if ARC_SPLIT_TALLY_DETAIL
+	if (Chain.StaleMerges != 0u)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_TWIN_STALEMERGE, Chain.StaleMerges);
+	}
+#endif
+
+	uint FailCounter = Chain.FailCounter;
+	uint Bound = 0u;
+	if (Chain.bValid)
+	{
+		bool bFirst = true;
+		uint Highest = 0u;
+		for (uint Pick = 0u; Pick < MemberNum; ++Pick)
+		{
+			uint Next = ARC_BISECTOR_NULL;
+			for (uint Scan = 0u; Scan < MemberNum; ++Scan)
+			{
+				const uint Member = ArcTerrainChainMember(P, Chain, Scan);
+				if ((bFirst || Member > Highest) && Member < Next)
+				{
+					Next = Member;
+				}
+			}
+			if (!arc_RefValid(Next))
+			{
+				FailCounter = ARC_CBT_COUNTER_SPLIT_NON_MUTUAL;
+				Chain.bValid = false;
+				break;
+			}
+			if (!arc_TryClaimSplit(BisectorPool, Next))
+			{
+				FailCounter = ARC_CBT_COUNTER_SPLIT_LOST_ELECT;
+				Chain.bValid = false;
+				break;
+			}
+			Highest = Next;
+			bFirst = false;
+			Bound = Highest + 1u;
+		}
+	}
+
+	if (!Chain.bValid)
+	{
+		ArcTerrainReleaseChain(P, Chain, MemberNum, Bound);
+#if ARC_SPLIT_TALLY_DETAIL
+		if (FailCounter != ARC_CBT_COUNTER_NUM)
+		{
+			ArcTerrainTallyTopology(FailCounter, 1u);
+		}
+		if (bTwinDiffFace)
+		{
+			ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_DIFF_DEFER, 1u);
+		}
+#endif
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+		return false;
+	}
+	return true;
+}
+
+/** Apply a chain whose claims and child-slot ordinal range were reserved by earlier passes. */
+uint ArcTerrainApplyPreparedSplit(int Depth, uint P, FArcSplitChain Chain, uint Ordinal)
+{
+	uint Cursor = Ordinal;
+	uint Applied = 0u;
+	uint Partner = Chain.Terminal;
+	for (uint Index = 0u; Index < Chain.Length; ++Index)
+	{
+		const uint Level = Chain.Length - 1u - Index;
+		const FArcSplitChildren Children =
+			ArcTerrainBisectPair(Depth, ArcTerrainChainMember(P, Chain, Level), Partner, Cursor);
+		Cursor += arc_RefValid(Partner) ? 4u : 2u;
+		Applied += arc_RefValid(Partner) ? 2u : 1u;
+		if (Level > 0u)
+		{
+			const uint DownRef = arc_LoadNeighbor(BisectorNeighbors,
+				ArcTerrainChainMember(P, Chain, Level - 1u), ARC_EDGE_HYP);
+			Partner = arc_RefEdge(DownRef) == ARC_EDGE_RIGHT ? Children.Child0 : Children.Child1;
+		}
+	}
+
+#if ARC_SPLIT_TALLY_DETAIL
+	if (Chain.Length > 1u)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_CHAINED, 1u);
+		ArcTerrainTallyTopology(Chain.Length == 2u ? ARC_CBT_COUNTER_SPLIT_CHAIN_LEN2
+			: ARC_CBT_COUNTER_SPLIT_CHAIN_LEN3PLUS, 1u);
+	}
+#endif
+	ArcTerrainTallyTopology(ARC_SPLIT_APPLIED_COUNTER, Applied);
+	ArcTerrainTallyLatencySplit(ARC_SPLIT_APPLIED);
+	return Applied;
+}
+
+FArcSplitChain ArcTerrainSplitDescriptorChain(uint Length, uint Terminal)
+{
+	FArcSplitChain Chain;
+	Chain.Length = Length;
+	Chain.Terminal = Terminal;
+	Chain.StaleMerges = 0u;
+	Chain.FailCounter = ARC_CBT_COUNTER_NUM;
+	Chain.bValid = true;
+	return Chain;
+}
+
+bool ArcTerrainSplitDescriptorMatches(uint P, FArcSplitChain Recorded, out FArcSplitChain Reproduced)
+{
+	Reproduced = ArcTerrainWalkSplitChain(P, false);
+	return Reproduced.bValid && Recorded.Length == Reproduced.Length
+		&& Recorded.Terminal == Reproduced.Terminal;
+}
+
+/** Release only the chain that the current immutable topology can reproduce. */
+uint ArcTerrainReleaseReproducedSplitClaims(uint P)
+{
+	if (P >= PoolCapacity)
+	{
+		return 0u;
+	}
+	const FArcSplitChain Chain = ArcTerrainWalkSplitChain(P, false);
+	if (!Chain.bValid)
+	{
+		return 0u;
+	}
+	const uint MemberNum = Chain.Length + (arc_RefValid(Chain.Terminal) ? 1u : 0u);
+	ArcTerrainReleaseChain(P, Chain, MemberNum, PoolCapacity);
+	return MemberNum;
+}
+
+#endif // ARC_SPLIT_BOUNDED_WORK

@@ -21,31 +21,14 @@
 
 #include "ArcBuilder.h"
 
-#include "Engine/GameInstance.h"
-#include "Engine/World.h"
-
 #define LOCTEXT_NAMESPACE "FArcBuilderModule"
 
-FArcBuilderDebugWindow FArcBuilderModule::GArcBuilderDebugWindow = FArcBuilderDebugWindow();
+DEFINE_LOG_CATEGORY(LogArcBuilder);
 
-void FArcBuilderModule::StartupModule()
-{
-#if WITH_EDITOR
-	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstance)
-	{
-		FArcBuilderModule::GArcBuilderDebugWindow.World = GameInstance->GetWorld();
-	});
-
-	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstance)
-	{
-		FArcBuilderModule::GArcBuilderDebugWindow.World = nullptr;
-	});
-#endif
-}
-
-void FArcBuilderModule::ShutdownModule()
-{
-}
+TAutoConsoleVariable<bool> CVarArcBuilderDisableRequirements(
+	TEXT("arc.Builder.DisableRequirements"),
+	false,
+	TEXT("Dev cheat: bypass all building placement requirements and resource costs."));
 
 #undef LOCTEXT_NAMESPACE
 	

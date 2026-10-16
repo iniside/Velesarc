@@ -50,8 +50,6 @@ public class ArcPersistence : ModuleRules
 			new string[]
 			{
 				"Core",
-				"ArcJson",
-				"StructUtils",
 				//"Boost"
 				// ... add other public dependencies that you statically link with here ...
 			}
@@ -62,6 +60,7 @@ public class ArcPersistence : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
+				"ArcJson",
 				"Engine",
 				"Slate",
 				"SlateCore",

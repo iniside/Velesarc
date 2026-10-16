@@ -17,7 +17,7 @@ struct FInteractionContext;
  * The targeting system discovers this component by searching the actor's
  * components for IInteractionTarget implementors. When BeginInteraction is
  * called, it resolves the smart object handle from the actor's underlying
- * Mass entity (via UInstancedActorsComponent or UMassAgentComponent),
+ * Mass entity (via UMassAgentComponent),
  * claims a slot, activates the behavior StateTree, and ticks it until
  * completion.
  */

@@ -23,12 +23,15 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "Items/ArcItemTypes.h"
-#include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
+#include "ItemFragments/ArcItemFragment_ItemStats.h"
 #include "Templates/SubclassOf.h"
+#include "ItemFragments/ArcItemFragment_GrantedMassAbilities.h"
+#include "Modifiers/ArcDirectModifier.h"
 #include "ArcCraft/Recipe/ArcCraftModifierSlot.h"
 
-class UGameplayEffect;
+struct FRandomStream;
+struct FArcCraftSlotSelector;
+class UArcEffectDefinition;
 
 /** Type tag for which field in FArcCraftModifierResult is valid. */
 enum class EArcCraftModifierResultType : uint8
@@ -52,72 +55,79 @@ struct FArcCraftModifierResult
 	FArcItemAttributeStat Stat;
 
 	/** Valid when Type == Ability. */
-	FArcAbilityEntry Ability;
+	FArcMassAbilityEntry Ability;
 
 	/** Valid when Type == Effect. */
-	TSubclassOf<UGameplayEffect> Effect;
+	TObjectPtr<UArcEffectDefinition> Effect;
 
-	/** Valid when Type == AttributeModifier. Backing GameplayEffect class. */
-	TSubclassOf<UGameplayEffect> AttributeModifierEffect;
-
-	/** Valid when Type == AttributeModifier. Tag->magnitude pairs for SetByCaller. */
-	TMap<FGameplayTag, float> AttributeModifierValues;
+	/** Valid when Type == AttributeModifier. Direct attribute modifiers (no backing GE). */
+	TArray<FArcDirectModifier> AttributeModifiers;
 };
 
 /**
  * Intermediate result from evaluating an output modifier.
  * Each entry represents exactly one atomic modifier result (stat, ability, or effect).
  * Compound modifiers (Random, Pool, Material) produce multiple entries.
- * Used only transiently during BuildOutputSpec — not serialized.
+ * Used only transiently during FArcCraftOutputBuilder::Build — not serialized.
  */
 struct FArcCraftPendingModifier
 {
-	/** Which slot tag this modifier wants. Empty = unslotted (always applies). */
-	FGameplayTag SlotTag;
+	/** Chair tags of the producing modifier. Empty = unslotted. */
+	FGameplayTagContainer SlotTags;
 
-	/** Weight/quality score used by HighestWeight selection. Higher = more desirable. */
+	/** Weight of the producing group (rule weight; the source Weight for pool entries and static sets).
+	 *  Read by the slot selectors. */
 	float EffectiveWeight = 0.0f;
 
-	/** Index of the original modifier in Recipe->OutputModifiers (-1 for sub-results). */
+	/** Index of the originating source in Recipe.ModifierSources (-1 for sub-results). */
 	int32 ModifierIndex = INDEX_NONE;
+
+	/** Group within the source: rule or pool-entry index, 0 for a static set, INDEX_NONE when ungrouped (transfer).
+	 *  (ModifierIndex, GroupIndex) names the group. */
+	int32 GroupIndex = INDEX_NONE;
+
+	/** The group's required ingredient tags that the consumed ingredients hold. */
+	FGameplayTagContainer MatchedTags;
+
+	/** Consumed amount of the slots holding any of the group's required tags over the total consumed amount;
+	 *  0 when the group has no tag requirements. */
+	float IngredientShare = 0.0f;
 
 	/** The calculated result to apply to the output item. */
 	FArcCraftModifierResult Result;
 };
 
 /**
- * Stateless utility for resolving pending modifiers through recipe-level slot configuration.
+ * Stateless utility that decides which pending modifiers apply, from the recipe's chairs and selector.
  *
- * The resolver implements a two-category pipeline:
+ * A group is the pending results sharing (ModifierIndex, GroupIndex).
+ *  - Ungrouped results (GroupIndex == INDEX_NONE, e.g. transfer) and the non-penalty results of a group without
+ *    bonus chair tags always apply.
+ *  - A group's bonus chair tags are the union of the SlotTags of its non-penalty slotted results. The selector
+ *    orders the groups; each takes one whole bonus chair (a chair without Modifier.Penalty whose SlotTags HasAll
+ *    the group's tags), the narrowest free one. A group sharing a bonus stat or effect with a placed group keeps
+ *    only the higher absolute value: a higher incoming group replaces the placed one, otherwise it is dropped.
+ *  - A placed group's unslotted results apply with it.
+ *  - Penalty chairs (Modifier.Penalty) are filled the same way, by the same selector, from the Modifier.Penalty
+ *    results of the placed groups; a penalty on a stat a placed bonus carries never lands, and one penalty stat
+ *    lands at most once.
+ *  - Without chairs no slotted result applies.
  *
- *  Unslotted modifiers (empty SlotTag) always apply — they bypass slots entirely.
- *
- *  Slotted modifiers compete for a limited number of slot "chairs":
- *   1. Each slot entry in ModifierSlots is one chair with a tag category.
- *      Duplicate tags are allowed (2× Offense = 2 chairs for offense modifiers).
- *   2. MaxUsableSlots limits how many chairs are actually available.
- *      If MaxUsableSlots < total slots, only that many get filled.
- *   3. SelectionMode decides which modifiers win when there are more
- *      candidates than available chairs (HighestWeight or Random).
- *   4. A modifier whose SlotTag doesn't match any slot definition is discarded.
- *
- * Returns indices into the PendingModifiers array that should be applied.
+ * A stat is identified by attribute and stat tags (item stat) or attribute and tag requirements (wearer modifier).
  */
 class ARCCRAFT_API FArcCraftSlotResolver
 {
 public:
 	/**
-	 * Resolve pending modifiers through recipe-level slot configuration.
-	 *
 	 * @param PendingModifiers   All evaluated pending modifiers.
-	 * @param Slots              Recipe's modifier slot definitions (each entry = one chair).
-	 * @param MaxUsableSlots     Hard cap on how many slots get filled (0 = all slots usable).
-	 * @param SelectionMode      How to pick which modifiers fill available slots.
-	 * @return                   Indices into PendingModifiers that should be applied.
+	 * @param Slots              Recipe's chairs.
+	 * @param Selector           Candidate order; null = HighestWeight.
+	 * @param Stream             The craft's stream, passed to the selector.
+	 * @return                   Ascending indices into PendingModifiers that apply.
 	 */
 	static TArray<int32> Resolve(
 		const TArray<FArcCraftPendingModifier>& PendingModifiers,
 		const TArray<FArcCraftModifierSlot>& Slots,
-		int32 MaxUsableSlots,
-		EArcCraftSlotSelection SelectionMode);
+		const FArcCraftSlotSelector* Selector,
+		const FRandomStream& Stream);
 };

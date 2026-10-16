@@ -21,7 +21,8 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "GameplayTagContainer.h"
 #include "Items/ArcItemSpec.h"
 #include "ArcCraft/Station/ArcCraftStationTypes.h"
@@ -32,14 +33,19 @@
  * Shared config for crafting station entities. Immutable after creation.
  * Deduplicates across entities sharing the same station configuration.
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Shared immutable config for crafting station entities; deduplicates across entities sharing the same station configuration."))
 struct ARCCRAFT_API FArcCraftStationConfigFragment : public FMassConstSharedFragment
 {
 	GENERATED_BODY()
 
-	/** Tags identifying this station type (e.g. "Station.Forge"). */
+	/** Tags identifying this station *type* (e.g. "Station.Forge", "Station.Hand").
+	 *  Recipe RequiredStationTags must be a subset of these. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station")
 	FGameplayTagContainer StationTags;
+
+	/** Recipe tier/category tags this station offers (matched against recipe RecipeTags). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station")
+	FGameplayTagContainer OfferedRecipeTags;
 
 	/** How time is tracked for crafting. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station")
@@ -49,9 +55,18 @@ struct ARCCRAFT_API FArcCraftStationConfigFragment : public FMassConstSharedFrag
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station", meta = (ClampMin = "0.1"))
 	float TickInterval = 0.5f;
 
-	/** Maximum entries in the craft queue. 0 = unlimited. */
+	/** Queue entries that craft simultaneously on this station. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station", meta = (ClampMin = "1"))
+	int32 ConcurrentCraftSlots = 1;
+
+	/** Queue length per slot. 0 = unlimited. Station capacity is the product of both. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station", meta = (ClampMin = "0"))
-	int32 MaxQueueSize = 5;
+	int32 QueueLengthPerSlot = 8;
+
+	int32 GetQueueCapacity() const
+	{
+		return QueueLengthPerSlot > 0 ? ConcurrentCraftSlots * QueueLengthPerSlot : 0;
+	}
 };
 
 template<>
@@ -66,12 +81,12 @@ struct TMassFragmentTraits<FArcCraftStationConfigFragment> final
 // ---------------------------------------------------------------------------
 
 /** Items deposited into the crafting station as ingredients. */
-USTRUCT()
+USTRUCT(meta = (Tooltip = "Items deposited into the crafting station as ingredients."))
 struct ARCCRAFT_API FArcCraftInputFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
+	UPROPERTY(meta = (Tooltip = "Items deposited into the crafting station as ingredients."))
 	TArray<FArcItemSpec> InputItems;
 };
 
@@ -87,13 +102,16 @@ struct TMassFragmentTraits<FArcCraftInputFragment> final
 // ---------------------------------------------------------------------------
 
 /** Completed crafted items waiting to be picked up. */
-USTRUCT()
+USTRUCT(meta = (Tooltip = "Completed crafted items waiting to be picked up."))
 struct ARCCRAFT_API FArcCraftOutputFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
+	UPROPERTY(meta = (Tooltip = "Completed crafted items waiting to be picked up."))
 	TArray<FArcItemSpec> OutputItems;
+
+	/** Set by craft tick processor when new output is added. Cleared by consumers. */
+	bool bOutputDirty = false;
 };
 
 template<>
@@ -108,17 +126,15 @@ struct TMassFragmentTraits<FArcCraftOutputFragment> final
 // ---------------------------------------------------------------------------
 
 /** The crafting queue on an entity. Replaces FArcCraftStationQueue for entity-backed stations. */
-USTRUCT()
+USTRUCT(meta = (Tooltip = "The crafting queue on an entity; replaces FArcCraftStationQueue for entity-backed stations."))
 struct ARCCRAFT_API FArcCraftQueueFragment : public FMassFragment
 {
 	GENERATED_BODY()
 
-	/** Active queue entries. */
+	/** Queue entries. Per-entry progress lives on the entry; up to
+	 *  FArcCraftStationConfigFragment::ConcurrentCraftSlots may be Active at once. */
 	UPROPERTY()
 	TArray<FArcCraftQueueEntry> Entries;
-
-	/** Index of the currently active entry (lowest priority). INDEX_NONE if idle. */
-	int32 ActiveEntryIndex = INDEX_NONE;
 };
 
 template<>
@@ -133,7 +149,7 @@ struct TMassFragmentTraits<FArcCraftQueueFragment> final
 // ---------------------------------------------------------------------------
 
 /** Tag identifying an entity as a crafting station. */
-USTRUCT()
+USTRUCT(meta = (Tooltip = "Tag identifying an entity as a crafting station."))
 struct ARCCRAFT_API FArcCraftStationTag : public FMassTag
 {
 	GENERATED_BODY()
@@ -144,7 +160,7 @@ struct ARCCRAFT_API FArcCraftStationTag : public FMassTag
  * The tick processor requires this tag — entities without it (InteractionCheck mode)
  * are never iterated, avoiding wasted processing.
  */
-USTRUCT()
+USTRUCT(meta = (Tooltip = "Tag added to craft station entities that use AutoTick time mode; entities without it are never iterated by the tick processor."))
 struct ARCCRAFT_API FArcCraftAutoTickTag : public FMassTag
 {
 	GENERATED_BODY()

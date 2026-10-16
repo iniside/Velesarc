@@ -38,7 +38,6 @@ public class ArcGun : ModuleRules
 				, "Slate"
 				, "SlateCore"
 				, "NetCore"
-				, "GameplayAbilities"
 				, "GameplayTasks"
 				, "GameplayTags"
 				, "GameplayDebugger"
@@ -54,6 +53,8 @@ public class ArcGun : ModuleRules
 				, "DataRegistry"
 				, "Niagara"
 				, "ArcCore"
+				, "ArcMassItemsRuntime"
+				, "ArcMassGameplayFramework"
 				, "TargetingSystem"
 				, "GameplayCameras"
 
@@ -68,7 +69,8 @@ public class ArcGun : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+				"ArcAbilityKit",
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
 		

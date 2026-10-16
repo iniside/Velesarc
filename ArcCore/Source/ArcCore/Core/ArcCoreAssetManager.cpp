@@ -20,18 +20,32 @@
  */
 
 #include "ArcCoreAssetManager.h"
-#include "AbilitySystem/ArcGameplayCueManager.h"
-#include "AbilitySystemGlobals.h"
-#include "GameMode/ArcExperienceData.h"
-#include "Pawn/ArcPawnData.h"
 #include "ArcCoreGameplayTags.h"
+#include "Core/ArcMassGameFrameworkTags.h"
 #include "ArcEventTags.h"
+#include "AssetRegistry/AssetBundleData.h"
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/AssetRegistryState.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "CoreGlobals.h"
 #include "GameplayTagsManager.h"
 #include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "HAL/PlatformTime.h"
+#include "JsonAssets/ArcJsonAssetFile.h"
+#include "JsonAssets/ArcJsonAssetPaths.h"
+#include "JsonAssets/ArcJsonAssetType.h"
+#include "JsonAssets/ArcJsonAssetsLog.h"
 #include "Misc/App.h"
+#include "Misc/Char.h"
 #include "Misc/CommandLine.h"
+#include "Misc/Paths.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Stats/StatsMisc.h"
+#include "StructUtils/InstancedStruct.h"
+#include "UObject/TextProperty.h"
+#include "UObject/UnrealType.h"
 
 const FName FArcBundles::Equipped("Equipped");
 
@@ -52,12 +66,228 @@ static FAutoConsoleCommand CVarDumpLoadedAssets(TEXT("Arc.DumpLoadedAssets")
 
 DEFINE_LOG_CATEGORY(LogArcAssetManager)
 
+namespace ArcCoreAssetManagerJsonPrivate
+{
+	const TCHAR* const IndexRoot = TEXT("/ArcJsonIndex");
+	const FName MarkerBundleName(TEXT("ArcJsonAsset"));
+	const FName SourcePathTag(TEXT("SourcePath"));
+	const FName DisplayNameTag(TEXT("DisplayName"));
+
+	struct FTypeStats
+	{
+		int32 Loaded = 0;
+		int32 Rejected = 0;
+		double Seconds = 0.0;
+	};
+
+	struct FParsedFile
+	{
+		FPrimaryAssetId Id;
+		const FArcJsonAssetTypeInfo* Type = nullptr;
+		FString Filename;
+		FInstancedStruct Record;
+	};
+
+	const FArcJsonAssetTypeInfo* FindRegisteredDefaultType(FPrimaryAssetType PrimaryAssetType)
+	{
+		for (const FArcJsonAssetTypeInfo& Type : ArcJsonAssets::GetTypes())
+		{
+			if (Type.PrimaryAssetType == PrimaryAssetType)
+			{
+				return &Type;
+			}
+		}
+		return nullptr;
+	}
+
+	template <typename KeyType>
+	void RemoveWaitingFilename(TMap<KeyType, TArray<FString>>& Waiting, const FString& Filename)
+	{
+		TArray<KeyType> Emptied;
+		for (TPair<KeyType, TArray<FString>>& Pair : Waiting)
+		{
+			Pair.Value.Remove(Filename);
+			if (Pair.Value.IsEmpty())
+			{
+				Emptied.Add(Pair.Key);
+			}
+		}
+		for (const KeyType& Key : Emptied)
+		{
+			Waiting.Remove(Key);
+		}
+	}
+
+	template <typename KeyType>
+	void RemoveWaitingUnderRoot(TMap<KeyType, TArray<FString>>& Waiting, const FArcJsonAssetContentRoot& Root)
+	{
+		for (TPair<KeyType, TArray<FString>>& Pair : Waiting)
+		{
+			Pair.Value.RemoveAll([&Root](const FString& Filename) -> bool
+			{
+				return ArcJsonAssetPaths::IsUnderRoot(Root, Filename);
+			});
+		}
+	}
+
+	// AddDynamicAsset registers an id only with a non-empty bundle list (AssetManager.cpp:1876); the marker has no asset paths, so nothing loads or cooks.
+	const FAssetBundleData& GetMarkerBundle()
+	{
+		static const FAssetBundleData Marker = []() -> FAssetBundleData
+		{
+			FAssetBundleData Result;
+			Result.Bundles.Add(FAssetBundleEntry(MarkerBundleName));
+			return Result;
+		}();
+		return Marker;
+	}
+
+	FString MakeIndexPackageName(const FPrimaryAssetId& Id)
+	{
+		return FString(IndexRoot) + TEXT("/") + Id.PrimaryAssetType.ToString() + TEXT("/") + Id.PrimaryAssetName.ToString();
+	}
+
+	FSoftObjectPath MakeIndexObjectPath(const FPrimaryAssetId& Id)
+	{
+		return FSoftObjectPath(FTopLevelAssetPath(FName(MakeIndexPackageName(Id)), Id.PrimaryAssetName));
+	}
+
+	FString ExportSearchableValue(const FProperty& Property, const void* Container)
+	{
+		FString Result;
+		if (const FTextProperty* TextProperty = CastField<FTextProperty>(&Property))
+		{
+			FTextStringHelper::WriteToBuffer(Result, TextProperty->GetPropertyValue_InContainer(Container), false, true);
+			return Result;
+		}
+		const void* ValuePtr = Property.ContainerPtrToValuePtr<void>(Container);
+		Property.ExportTextItem_Direct(Result, ValuePtr, ValuePtr, nullptr, PPF_None);
+		return Result;
+	}
+
+	void CollectFiles(const FArcJsonAssetContentRoot& Root, TArray<FString>& OutFilenames)
+	{
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+		PlatformFile.IterateDirectoryRecursively(*Root.ContentDir, [&OutFilenames](const TCHAR* Path, bool bIsDirectory) -> bool
+		{
+			if (!bIsDirectory && ArcJsonAssets::FindTypeByFilename(Path))
+			{
+				OutFilenames.Add(ArcJsonAssetPaths::NormalizeFilename(Path));
+			}
+			return true;
+		});
+	}
+
+	bool ParseFile(const FString& Filename, FParsedFile& OutParsed)
+	{
+		const FArcJsonAssetTypeInfo* Type = ArcJsonAssets::FindTypeByFilename(Filename);
+		if (!Type)
+		{
+			UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls has no registered JSON asset type", *Filename);
+			return false;
+		}
+		FString PackagePath;
+		if (!ArcJsonAssetPaths::ToPackagePath(ArcJsonAssetPaths::GetContentRoots(), Filename, PackagePath))
+		{
+			UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls is not under a mounted content root", *Filename);
+			return false;
+		}
+
+		FInstancedStruct Record;
+		if (!ArcJsonAssetFile::ReadRecordFile(*Type, Filename, Record))
+		{
+			return false;
+		}
+
+		FString IdError;
+		const FPrimaryAssetId Id = ArcJsonAssets::MakeRecordId(*Type, Record, &IdError);
+		if (!Id.IsValid())
+		{
+			UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls: %ls", *Filename, *IdError);
+			return false;
+		}
+
+		OutParsed.Id = Id;
+		OutParsed.Type = Type;
+		OutParsed.Filename = Filename;
+		OutParsed.Record = MoveTemp(Record);
+		return true;
+	}
+
+	void IndexParsed(UAssetManager& AssetManager, TConstArrayView<FParsedFile> ParsedFiles)
+	{
+		if (ParsedFiles.IsEmpty())
+		{
+			return;
+		}
+
+		const FArcJsonAssetContentRoots& Roots = ArcJsonAssetPaths::GetContentRoots();
+		FAssetRegistryState State;
+		for (const FParsedFile& Parsed : ParsedFiles)
+		{
+			const FPrimaryAssetId& Id = Parsed.Id;
+			const UScriptStruct* Struct = Parsed.Record.GetScriptStruct();
+			FString SourcePath;
+			ArcJsonAssetPaths::ToPackagePath(Roots, Parsed.Filename, SourcePath);
+
+			const FString TypeName = Id.PrimaryAssetType.ToString();
+			const FString AssetName = Id.PrimaryAssetName.ToString();
+			FAssetDataTagMap Tags;
+			Tags.Add(FPrimaryAssetId::PrimaryAssetTypeTag, TypeName);
+			Tags.Add(FPrimaryAssetId::PrimaryAssetNameTag, AssetName);
+			Tags.Add(SourcePathTag, SourcePath);
+			Tags.Add(DisplayNameTag, FPaths::GetBaseFilename(Parsed.Filename));
+			for (TFieldIterator<FProperty> It(Struct); It; ++It)
+			{
+				if (It->HasAnyPropertyFlags(CPF_AssetRegistrySearchable))
+				{
+					Tags.Add(It->GetFName(), ExportSearchableValue(**It, Parsed.Record.GetMemory()));
+				}
+			}
+			if (Parsed.Type->AddAssetRegistryTags)
+			{
+				Parsed.Type->AddAssetRegistryTags(Parsed.Record, Tags);
+			}
+
+			State.AddAssetData(new FAssetData(
+				FName(MakeIndexPackageName(Id)),
+				FName(FString(IndexRoot) + TEXT("/") + TypeName),
+				Id.PrimaryAssetName,
+				FTopLevelAssetPath(Struct),
+				MoveTemp(Tags)));
+		}
+
+		IAssetRegistry::GetChecked().AppendState(State, UE::AssetRegistry::EAppendMode::Append);
+
+		for (const FParsedFile& Parsed : ParsedFiles)
+		{
+			AssetManager.AddDynamicAsset(Parsed.Id, MakeIndexObjectPath(Parsed.Id), GetMarkerBundle());
+		}
+	}
+
+	void DumpCommand(const TArray<FString>& Args)
+	{
+		const UArcCoreAssetManager* AssetManager = Cast<UArcCoreAssetManager>(UAssetManager::GetIfInitialized());
+		if (!AssetManager)
+		{
+			UE_LOGF(LogArcJsonAssets, Warning, "ArcJsonAssets.Dump: the Arc asset manager is not initialized");
+			return;
+		}
+		AssetManager->DumpJsonRecords(Args.Num() > 0 ? FPrimaryAssetType(FName(*Args[0])) : FPrimaryAssetType());
+	}
+
+	FAutoConsoleCommand DumpConsoleCommand(
+		TEXT("ArcJsonAssets.Dump"),
+		TEXT("ArcJsonAssets.Dump [PrimaryAssetType]: logs every JSON asset record with its file, export, primary asset path and index tags."),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&DumpCommand));
+}
+
 TSharedPtr<FStreamableHandle> FArcAssetManagerStartupJob::DoJob() const
 {
 	const double JobStartTime = FPlatformTime::Seconds();
 
 	TSharedPtr<FStreamableHandle> Handle;
-	UE_LOG(LogArcAssetManager, Display, TEXT("Startup job \"%s\" starting"), *JobName);
+	UE_LOGF(LogArcAssetManager, Display,"Startup job \"%ls\" starting", *JobName);
 	JobFunc(*this, Handle);
 
 	if (Handle.IsValid())
@@ -69,10 +299,9 @@ TSharedPtr<FStreamableHandle> FArcAssetManagerStartupJob::DoJob() const
 		Handle->BindUpdateDelegate(FStreamableUpdateDelegate());
 	}
 
-	UE_LOG(LogArcAssetManager
+	UE_LOGF(LogArcAssetManager
 		, Display
-		, TEXT("Startup job \"%s\" took %.2f seconds to complete")
-		, *JobName
+		,"Startup job \"%ls\" took %.2f seconds to complete", *JobName
 		, FPlatformTime::Seconds() - JobStartTime);
 
 	return Handle;
@@ -80,7 +309,6 @@ TSharedPtr<FStreamableHandle> FArcAssetManagerStartupJob::DoJob() const
 
 UArcCoreAssetManager::UArcCoreAssetManager()
 {
-	DefaultPawnData = nullptr;
 }
 
 UArcCoreAssetManager& UArcCoreAssetManager::Get()
@@ -92,9 +320,9 @@ UArcCoreAssetManager& UArcCoreAssetManager::Get()
 		return *Singleton;
 	}
 
-	UE_LOG(LogArcAssetManager
+	UE_LOGF(LogArcAssetManager
 		, Fatal
-		, TEXT( "Invalid AssetManagerClassName in DefaultEngine.ini.  It must be set to ArcAssetManager!"));
+		, "Invalid AssetManagerClassName in DefaultEngine.ini.  It must be set to ArcAssetManager!");
 
 	// Fatal error above prevents this from being called.
 	return *NewObject<UArcCoreAssetManager>();
@@ -158,71 +386,535 @@ void UArcCoreAssetManager::AddLoadedAsset(const UObject* Asset)
 void UArcCoreAssetManager::RemoveLoadedAsset(const UObject* Asset)
 {
 	LoadedAssets.Remove(Asset);
-	// uint32* Ptr = LoadedAssets.Find(Asset);
-	// if(Ptr)
-	//{
-	//	int32 Num = *Ptr;
-	//	if(Num == 1)
-	//	{
-	//		LoadedAssets.Remove(Asset);
-	//		return;
-	//	}
-	//	else
-	//	{
-	//		Num = Num - 1;
-	//		if(Num <= 0)
-	//		{
-	//			LoadedAssets.Remove(Asset);
-	//			return;
-	//		}
-	//		LoadedAssets.FindOrAdd(Asset) = Num;
-	//	}
-	// }
 }
 
 void UArcCoreAssetManager::DumpLoadedAssets()
 {
-	UE_LOG(LogArcAssetManager
+	UE_LOGF(LogArcAssetManager
 		, Log
-		, TEXT("========== Start Dumping Loaded Assets =========="));
+		,"========== Start Dumping Loaded Assets ==========");
 
 	for (const UObject* LoadedAsset : Get().LoadedAssets)
 	{
-		UE_LOG(LogArcAssetManager
+		UE_LOGF(LogArcAssetManager
 			, Log
-			, TEXT("  %s")
-			, *GetNameSafe(LoadedAsset));
+			,"  %ls", *GetNameSafe(LoadedAsset));
 	}
 
-	UE_LOG(LogArcAssetManager
+	UE_LOGF(LogArcAssetManager
 		, Log
-		, TEXT("... %d assets in loaded pool")
-		, Get().LoadedAssets.Num());
-	UE_LOG(LogArcAssetManager
+		,"... %d assets in loaded pool", Get().LoadedAssets.Num());
+	UE_LOGF(LogArcAssetManager
 		, Log
-		, TEXT("========== Finish Dumping Loaded Assets =========="));
+		,"========== Finish Dumping Loaded Assets ==========");
 }
 
 void UArcCoreAssetManager::StartInitialLoading()
 {
 	Super::StartInitialLoading();
 
-	LoadGameData();
-	STARTUP_JOB(InitializeAbilitySystem());
+	STARTUP_JOB(InitializeNativeGameplayTags());
 	STARTUP_JOB(InitializeGameplayCueManager());
 
 	DoAllStartupJobs();
+
+	if (!IsRunningCookCommandlet())
+	{
+		JsonContentRootChangedHandle = ArcJsonAssetPaths::OnContentRootChanged().AddUObject(
+			this, &UArcCoreAssetManager::HandleJsonContentRootChanged);
+		CallOrRegister_OnCompletedInitialScan(
+			FSimpleMulticastDelegate::FDelegate::CreateUObject(this, &UArcCoreAssetManager::HandleJsonInitialScanCompleted));
+	}
 }
 
-void UArcCoreAssetManager::InitializeAbilitySystem()
+void UArcCoreAssetManager::BeginDestroy()
 {
-	SCOPED_BOOT_TIMING("UArcCoreAssetManager::InitializeAbilitySystem");
+	ArcJsonAssetPaths::OnContentRootChanged().Remove(JsonContentRootChangedHandle);
+	JsonContentRootChangedHandle.Reset();
+	Super::BeginDestroy();
+}
+
+const void* UArcCoreAssetManager::FindJsonRecord(const FPrimaryAssetId& Id, const UScriptStruct& Struct) const
+{
+	check(IsInGameThread());
+	const FInstancedStruct* Record = JsonRecords.Find(Id);
+	if (!Record)
+	{
+		return nullptr;
+	}
+	const FArcJsonAssetTypeInfo* Type = FindJsonRecordType(Id.PrimaryAssetType);
+	if (!Type || Type->Struct != &Struct)
+	{
+		UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: FindJsonRecord: %ls is a %ls record, requested as %ls",
+			*Id.ToString(), Type && Type->Struct ? *Type->Struct->GetName() : TEXT("<unregistered>"), *Struct.GetName());
+		return nullptr;
+	}
+	return Record->GetMemory();
+}
+
+TArray<FPrimaryAssetType> UArcCoreAssetManager::GetJsonRecordTypes() const
+{
+	check(IsInGameThread());
+	TArray<FPrimaryAssetType> Result;
+	for (const FArcJsonAssetTypeInfo& Type : ArcJsonAssets::GetTypes())
+	{
+		Result.Add(Type.PrimaryAssetType);
+	}
+	for (const TPair<FPrimaryAssetType, FJsonTypeUse>& Pair : JsonCustomTypes)
+	{
+		Result.Add(Pair.Key);
+	}
+	Result.Sort([](const FPrimaryAssetType& A, const FPrimaryAssetType& B) -> bool
+	{
+		return A.LexicalLess(B);
+	});
+	return Result;
+}
+
+const FArcJsonAssetTypeInfo* UArcCoreAssetManager::FindJsonRecordType(FPrimaryAssetType PrimaryAssetType) const
+{
+	check(IsInGameThread());
+	if (const FJsonTypeUse* Use = JsonCustomTypes.Find(PrimaryAssetType))
+	{
+		return ArcJsonAssets::FindTypeByExtension(Use->Extension);
+	}
+	return ArcCoreAssetManagerJsonPrivate::FindRegisteredDefaultType(PrimaryAssetType);
+}
+
+FString UArcCoreAssetManager::GetJsonRecordFilename(const FPrimaryAssetId& Id) const
+{
+	if (!FindJsonRecordType(Id.PrimaryAssetType))
+	{
+		return FString();
+	}
+	FAssetData AssetData;
+	FString SourcePath;
+	FString Filename;
+	if (!GetPrimaryAssetData(Id, AssetData)
+		|| !AssetData.GetTagValue(ArcCoreAssetManagerJsonPrivate::SourcePathTag, SourcePath)
+		|| !ArcJsonAssetPaths::ToFilename(ArcJsonAssetPaths::GetContentRoots(), SourcePath, Filename))
+	{
+		return FString();
+	}
+	return Filename;
+}
+
+TArray<FArcJsonRecordEntry> UArcCoreAssetManager::GetJsonRecordEntries(FPrimaryAssetType PrimaryAssetType) const
+{
+	TArray<FArcJsonRecordEntry> Result;
+	if (!FindJsonRecordType(PrimaryAssetType))
+	{
+		return Result;
+	}
+	TArray<FPrimaryAssetId> Ids;
+	GetPrimaryAssetIdList(PrimaryAssetType, Ids);
+	for (const FPrimaryAssetId& Id : Ids)
+	{
+		FAssetData AssetData;
+		FString DisplayName;
+		if (GetPrimaryAssetData(Id, AssetData) && AssetData.GetTagValue(ArcCoreAssetManagerJsonPrivate::DisplayNameTag, DisplayName))
+		{
+			Result.Add({ Id, DisplayName });
+		}
+	}
+	Result.Sort([](const FArcJsonRecordEntry& A, const FArcJsonRecordEntry& B) -> bool
+	{
+		return A.DisplayName == B.DisplayName ? A.Id.ToString() < B.Id.ToString() : A.DisplayName < B.DisplayName;
+	});
+	return Result;
+}
+
+bool UArcCoreAssetManager::ReindexJsonFile(const FString& Filename)
+{
+	check(IsInGameThread());
+	if (!bJsonInitialIndexCompleted)
+	{
+		return false;
+	}
+	ArcCoreAssetManagerJsonPrivate::FParsedFile Parsed;
+	if (!ArcCoreAssetManagerJsonPrivate::ParseFile(ArcJsonAssetPaths::NormalizeFilename(Filename), Parsed)
+		|| !AcceptJsonId(Parsed.Id, *Parsed.Type, Parsed.Filename, nullptr))
+	{
+		return false;
+	}
+	ArcCoreAssetManagerJsonPrivate::IndexParsed(*this, MakeArrayView(&Parsed, 1));
+	StoreJsonRecord(Parsed.Id, *Parsed.Type, MoveTemp(Parsed.Record));
+	JsonRecordChanged.Broadcast(Parsed.Id);
+	return true;
+}
+
+bool UArcCoreAssetManager::RemoveJsonFile(const FString& Filename)
+{
+	check(IsInGameThread());
+	if (!bJsonInitialIndexCompleted)
+	{
+		return false;
+	}
+	const FString Normalized = ArcJsonAssetPaths::NormalizeFilename(Filename);
+	ForgetJsonDuplicate(Normalized);
+	const FPrimaryAssetId* Found = JsonFilenameToId.Find(Normalized);
+	if (!Found)
+	{
+		return false;
+	}
+	const FPrimaryAssetId Id = *Found;
+	RemoveJsonRecord(Id, Normalized);
+	return true;
+}
+
+void UArcCoreAssetManager::DumpJsonRecords(FPrimaryAssetType PrimaryAssetType) const
+{
+	TArray<FPrimaryAssetId> Ids;
+	for (const FPrimaryAssetType& Type : GetJsonRecordTypes())
+	{
+		if (!PrimaryAssetType.IsValid() || Type == PrimaryAssetType)
+		{
+			GetPrimaryAssetIdList(Type, Ids);
+		}
+	}
+	Ids.Sort([](const FPrimaryAssetId& A, const FPrimaryAssetId& B) -> bool
+	{
+		return A.ToString() < B.ToString();
+	});
+
+	UE_LOGF(LogArcJsonAssets, Display, "ArcJsonAssets.Dump: %d records", Ids.Num());
+	for (const FPrimaryAssetId& Id : Ids)
+	{
+		const FArcJsonAssetTypeInfo* Type = FindJsonRecordType(Id.PrimaryAssetType);
+		FString Export(TEXT("<not stored>"));
+		const void* RecordMemory = Type && Type->Struct ? FindJsonRecord(Id, *Type->Struct) : nullptr;
+		if (RecordMemory)
+		{
+			FInstancedStruct Record;
+			Record.InitializeAs(Type->Struct, static_cast<const uint8*>(RecordMemory));
+			const TArray<uint8> ExportUtf8 = ArcJsonAssetFile::FormatRecord(Record);
+			Export = ExportUtf8.IsEmpty()
+				? FString(TEXT("<format failed>"))
+				: FString::ConstructFromPtrSize(reinterpret_cast<const UTF8CHAR*>(ExportUtf8.GetData()), ExportUtf8.Num());
+		}
+
+		FString Tags;
+		FAssetData AssetData;
+		if (GetPrimaryAssetData(Id, AssetData))
+		{
+			for (const TPair<FName, FString>& Tag : AssetData.TagsAndValues.CopyMap())
+			{
+				Tags += FString::Printf(TEXT("\n    %s = %s"), *Tag.Key.ToString(), *Tag.Value);
+			}
+		}
+
+		UE_LOGF(LogArcJsonAssets, Display, "%ls\n  file: %ls\n  primary asset path: %ls\n  tags:%ls\n  record: %ls",
+			*Id.ToString(), *GetJsonRecordFilename(Id), *GetPrimaryAssetPath(Id).ToString(), Tags.IsEmpty() ? TEXT(" none") : *Tags, *Export);
+	}
+}
+
+#if WITH_EDITOR
+void UArcCoreAssetManager::ReinitializeFromConfig()
+{
+	// Upstream requires an empty AssetPathMap and resets CachedAssetBundles (AssetManager.cpp:5494-5497), so JSON ids leave before Super and come back after.
+	TArray<TPair<FPrimaryAssetId, FSoftObjectPath>> JsonAssets;
+	for (const FPrimaryAssetType& Type : GetJsonRecordTypes())
+	{
+		TArray<FPrimaryAssetId> Ids;
+		GetPrimaryAssetIdList(Type, Ids);
+		for (const FPrimaryAssetId& Id : Ids)
+		{
+			JsonAssets.Emplace(Id, GetPrimaryAssetPath(Id));
+		}
+	}
+	for (const TPair<FPrimaryAssetId, FSoftObjectPath>& Entry : JsonAssets)
+	{
+		AddDynamicAsset(Entry.Key, Entry.Value, FAssetBundleData());
+	}
+
+	Super::ReinitializeFromConfig();
+
+	for (const TPair<FPrimaryAssetId, FSoftObjectPath>& Entry : JsonAssets)
+	{
+		AddDynamicAsset(Entry.Key, Entry.Value, ArcCoreAssetManagerJsonPrivate::GetMarkerBundle());
+	}
+}
+#endif
+
+void UArcCoreAssetManager::HandleJsonInitialScanCompleted()
+{
+	check(IsInGameThread());
+	if (bJsonInitialIndexCompleted)
+	{
+		return;
+	}
+	bJsonInitialIndexCompleted = true;
+	const FArcJsonAssetContentRoots Roots = ArcJsonAssetPaths::GetContentRoots();
+	IndexJsonRoots(Roots.Roots, true);
+}
+
+void UArcCoreAssetManager::HandleJsonContentRootChanged(const FArcJsonAssetContentRoot& Root, bool bMounted)
+{
+	check(IsInGameThread());
+	if (!bJsonInitialIndexCompleted)
+	{
+		return;
+	}
+	if (bMounted)
+	{
+		IndexJsonRoots(MakeArrayView(&Root, 1), false);
+		return;
+	}
+
+	TArray<FString> Filenames;
+	for (const TPair<FString, FPrimaryAssetId>& Pair : JsonFilenameToId)
+	{
+		if (ArcJsonAssetPaths::IsUnderRoot(Root, Pair.Key))
+		{
+			Filenames.Add(Pair.Key);
+		}
+	}
+	ArcCoreAssetManagerJsonPrivate::RemoveWaitingUnderRoot(JsonDuplicateFilenames, Root);
+	ArcCoreAssetManagerJsonPrivate::RemoveWaitingUnderRoot(JsonTypeConflictFilenames, Root);
+	for (const FString& Filename : Filenames)
+	{
+		RemoveJsonFile(Filename);
+	}
+}
+
+void UArcCoreAssetManager::IndexJsonRoots(TConstArrayView<FArcJsonAssetContentRoot> Roots, bool bAlwaysLogSummary)
+{
+	if (ArcJsonAssets::GetTypes().IsEmpty())
+	{
+		return;
+	}
+
+	const double WalkStart = FPlatformTime::Seconds();
+	TArray<FString> Filenames;
+	for (const FArcJsonAssetContentRoot& Root : Roots)
+	{
+		ArcCoreAssetManagerJsonPrivate::CollectFiles(Root, Filenames);
+	}
+	Filenames.Sort();
+	const double WalkSeconds = FPlatformTime::Seconds() - WalkStart;
+
+	TMap<FPrimaryAssetType, ArcCoreAssetManagerJsonPrivate::FTypeStats> Stats;
+	TArray<ArcCoreAssetManagerJsonPrivate::FParsedFile> Accepted;
+	FJsonPendingIndex Pending;
+	for (const FString& Filename : Filenames)
+	{
+		const double FileStart = FPlatformTime::Seconds();
+		const FArcJsonAssetTypeInfo* Type = ArcJsonAssets::FindTypeByFilename(Filename);
+		if (!Type)
+		{
+			continue;
+		}
+		ArcCoreAssetManagerJsonPrivate::FTypeStats& TypeStats = Stats.FindOrAdd(Type->PrimaryAssetType);
+		ArcCoreAssetManagerJsonPrivate::FParsedFile Parsed;
+		if (ArcCoreAssetManagerJsonPrivate::ParseFile(Filename, Parsed) && AcceptJsonId(Parsed.Id, *Parsed.Type, Parsed.Filename, &Pending))
+		{
+			Pending.Owners.Add(TPair<FString, FName>(Parsed.Type->Extension, Parsed.Id.PrimaryAssetName), FJsonPendingOwner{ Parsed.Id, Parsed.Filename });
+			if (Parsed.Id.PrimaryAssetType != Parsed.Type->PrimaryAssetType)
+			{
+				Pending.TypeExtensions.Add(Parsed.Id.PrimaryAssetType, Parsed.Type->Extension);
+			}
+			Accepted.Add(MoveTemp(Parsed));
+			++TypeStats.Loaded;
+		}
+		else
+		{
+			++TypeStats.Rejected;
+		}
+		TypeStats.Seconds += FPlatformTime::Seconds() - FileStart;
+	}
+
+	const double IndexStart = FPlatformTime::Seconds();
+	ArcCoreAssetManagerJsonPrivate::IndexParsed(*this, Accepted);
+	const double IndexSeconds = FPlatformTime::Seconds() - IndexStart;
+
+	for (ArcCoreAssetManagerJsonPrivate::FParsedFile& Parsed : Accepted)
+	{
+		StoreJsonRecord(Parsed.Id, *Parsed.Type, MoveTemp(Parsed.Record));
+	}
+	for (const ArcCoreAssetManagerJsonPrivate::FParsedFile& Parsed : Accepted)
+	{
+		JsonRecordChanged.Broadcast(Parsed.Id);
+	}
+
+	for (const FArcJsonAssetTypeInfo& Type : ArcJsonAssets::GetTypes())
+	{
+		const ArcCoreAssetManagerJsonPrivate::FTypeStats* TypeStats = Stats.Find(Type.PrimaryAssetType);
+		if (!TypeStats && !bAlwaysLogSummary)
+		{
+			continue;
+		}
+		const ArcCoreAssetManagerJsonPrivate::FTypeStats Values = TypeStats ? *TypeStats : ArcCoreAssetManagerJsonPrivate::FTypeStats();
+		UE_LOGF(LogArcJsonAssets, Display,
+			"ArcJsonAssets: %ls (.%ls) loaded %d, rejected %d, %.1f ms parse (shared: %.1f ms walk, %.1f ms index, %d roots)",
+			*Type.PrimaryAssetType.ToString(), *Type.Extension, Values.Loaded, Values.Rejected, Values.Seconds * 1000.0,
+			WalkSeconds * 1000.0, IndexSeconds * 1000.0, Roots.Num());
+	}
+}
+
+bool UArcCoreAssetManager::AcceptJsonId(const FPrimaryAssetId& Id, const FArcJsonAssetTypeInfo& Type, const FString& Filename, const FJsonPendingIndex* Pending)
+{
+	ForgetJsonDuplicate(Filename);
+	const FPrimaryAssetType IdType = Id.PrimaryAssetType;
+	if (IdType != Type.PrimaryAssetType)
+	{
+		if (const FArcJsonAssetTypeInfo* DefaultOwner = ArcCoreAssetManagerJsonPrivate::FindRegisteredDefaultType(IdType))
+		{
+			UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls: type %ls is the default type of .%ls records",
+				*Filename, *IdType.ToString(), *DefaultOwner->Extension);
+			return false;
+		}
+		FPrimaryAssetTypeInfo AssetTypeInfo;
+		if (GetPrimaryAssetTypeInfo(IdType, AssetTypeInfo) && !AssetTypeInfo.bIsDynamicAsset)
+		{
+			UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls: type %ls is a scanned asset manager type", *Filename, *IdType.ToString());
+			return false;
+		}
+		const FString* PendingExtension = Pending ? Pending->TypeExtensions.Find(IdType) : nullptr;
+		const FJsonTypeUse* Use = JsonCustomTypes.Find(IdType);
+		const FString* OwnerExtension = PendingExtension ? PendingExtension : (Use ? &Use->Extension : nullptr);
+		if (OwnerExtension && !OwnerExtension->Equals(Type.Extension, ESearchCase::IgnoreCase))
+		{
+			UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls: type %ls is used by .%ls records", *Filename, *IdType.ToString(), **OwnerExtension);
+			JsonTypeConflictFilenames.FindOrAdd(IdType).AddUnique(Filename);
+			return false;
+		}
+	}
+
+	// Keyed by extension and GUID, not id: a copy whose type was edited is still a duplicate.
+	const FJsonPendingOwner* PendingOwner = Pending ? Pending->Owners.Find(TPair<FString, FName>(Type.Extension, Id.PrimaryAssetName)) : nullptr;
+	FPrimaryAssetId OwnerId;
+	FString Owner;
+	if (PendingOwner)
+	{
+		OwnerId = PendingOwner->Id;
+		Owner = PendingOwner->Filename;
+	}
+	else
+	{
+		Owner = FindJsonGuidOwner(Type, Id.PrimaryAssetName, OwnerId);
+	}
+	if (!Owner.IsEmpty() && Owner != Filename)
+	{
+		UE_LOGF(LogArcJsonAssets, Error, "ArcJsonAssets: %ls: GUID of %ls is already used by %ls (%ls)",
+			*Filename, *Id.ToString(), *Owner, *OwnerId.ToString());
+		JsonDuplicateFilenames.FindOrAdd(OwnerId).AddUnique(Filename);
+		return false;
+	}
+
+	if (const FPrimaryAssetId* PreviousId = JsonFilenameToId.Find(Filename))
+	{
+		if (*PreviousId != Id)
+		{
+			const FPrimaryAssetId Previous = *PreviousId;
+			if (Previous.PrimaryAssetName == Id.PrimaryAssetName)
+			{
+				TArray<FString> Waiting;
+				if (JsonDuplicateFilenames.RemoveAndCopyValue(Previous, Waiting))
+				{
+					JsonDuplicateFilenames.FindOrAdd(Id).Append(Waiting);
+				}
+			}
+			RemoveJsonRecord(Previous, Filename);
+		}
+	}
+	JsonFilenameToId.Add(Filename, Id);
+	return true;
+}
+
+FString UArcCoreAssetManager::FindJsonGuidOwner(const FArcJsonAssetTypeInfo& Type, FName Guid, FPrimaryAssetId& OutOwnerId) const
+{
+	const FPrimaryAssetId DefaultId(Type.PrimaryAssetType, Guid);
+	FString Owner = GetJsonRecordFilename(DefaultId);
+	if (!Owner.IsEmpty())
+	{
+		OutOwnerId = DefaultId;
+		return Owner;
+	}
+	for (const TPair<FPrimaryAssetType, FJsonTypeUse>& Pair : JsonCustomTypes)
+	{
+		if (!Pair.Value.Extension.Equals(Type.Extension, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+		const FPrimaryAssetId CustomId(Pair.Key, Guid);
+		Owner = GetJsonRecordFilename(CustomId);
+		if (!Owner.IsEmpty())
+		{
+			OutOwnerId = CustomId;
+			return Owner;
+		}
+	}
+	return FString();
+}
+
+void UArcCoreAssetManager::StoreJsonRecord(const FPrimaryAssetId& Id, const FArcJsonAssetTypeInfo& Type, FInstancedStruct&& Record)
+{
+	if (FInstancedStruct* Existing = JsonRecords.Find(Id))
+	{
+		const UScriptStruct* Struct = Existing->GetScriptStruct();
+		check(Struct && Struct == Record.GetScriptStruct());
+		Struct->CopyScriptStruct(Existing->GetMutableMemory(), Record.GetMemory());
+		return;
+	}
+	JsonRecords.Add(Id, MoveTemp(Record));
+	if (Id.PrimaryAssetType != Type.PrimaryAssetType)
+	{
+		FJsonTypeUse& Use = JsonCustomTypes.FindOrAdd(Id.PrimaryAssetType);
+		Use.Extension = Type.Extension;
+		++Use.IdCount;
+	}
+}
+
+void UArcCoreAssetManager::RemoveJsonRecord(const FPrimaryAssetId& Id, const FString& Filename)
+{
+	JsonFilenameToId.Remove(Filename);
+	AddDynamicAsset(Id, ArcCoreAssetManagerJsonPrivate::MakeIndexObjectPath(Id), FAssetBundleData());
+	bool bTypeLeftUse = false;
+	if (JsonRecords.Remove(Id) > 0)
+	{
+		if (FJsonTypeUse* Use = JsonCustomTypes.Find(Id.PrimaryAssetType))
+		{
+			--Use->IdCount;
+			if (Use->IdCount <= 0)
+			{
+				JsonCustomTypes.Remove(Id.PrimaryAssetType);
+				bTypeLeftUse = true;
+			}
+		}
+	}
+	JsonRecordChanged.Broadcast(Id);
+
+	TArray<FString> Waiting;
+	JsonDuplicateFilenames.RemoveAndCopyValue(Id, Waiting);
+	if (bTypeLeftUse)
+	{
+		TArray<FString> TypeWaiting;
+		JsonTypeConflictFilenames.RemoveAndCopyValue(Id.PrimaryAssetType, TypeWaiting);
+		Waiting.Append(TypeWaiting);
+	}
+	for (const FString& WaitingFilename : Waiting)
+	{
+		if (FPaths::FileExists(WaitingFilename))
+		{
+			ReindexJsonFile(WaitingFilename);
+		}
+	}
+}
+
+void UArcCoreAssetManager::ForgetJsonDuplicate(const FString& Filename)
+{
+	ArcCoreAssetManagerJsonPrivate::RemoveWaitingFilename(JsonDuplicateFilenames, Filename);
+	ArcCoreAssetManagerJsonPrivate::RemoveWaitingFilename(JsonTypeConflictFilenames, Filename);
+}
+
+void UArcCoreAssetManager::InitializeNativeGameplayTags()
+{
+	SCOPED_BOOT_TIMING("UArcCoreAssetManager::InitializeNativeGameplayTags");
 
 	FArcCoreGameplayTags::InitializeNativeTags();
-	UAbilitySystemGlobals::Get().InitGlobalData();
+	FArcMassGameFrameworkTags::InitializeNativeTags();
 	Arcx::EventTags::InitializeNativeEventTagsBase();
 
-	UAbilitySystemGlobals::Get().InitGlobalData();
 	UGameplayTagsManager& Manager = UGameplayTagsManager::Get();
 	// Notify manager that we are done adding native tags.
 	Manager.DoneAddingNativeTags();
@@ -230,36 +922,7 @@ void UArcCoreAssetManager::InitializeAbilitySystem()
 
 void UArcCoreAssetManager::InitializeGameplayCueManager()
 {
-	SCOPED_BOOT_TIMING("UArcCoreAssetManager::InitializeGameplayCueManager");
-
-	UArcGameplayCueManager* GCM = UArcGameplayCueManager::Get();
-	check(GCM);
-	GCM->LoadAlwaysLoadedCues();
-}
-
-void UArcCoreAssetManager::LoadGameData()
-{
-	if (DefaultGameData.Get())
-	{
-		// GameData has already been loaded.
-		return;
-	}
-
-	UE_LOG(LogStats
-		, Log
-		, TEXT("Loading GameData: %s ...")
-		, *DefaultGameData.ToString());
-	SCOPE_LOG_TIME_IN_SECONDS(TEXT("    ... GameData loaded!")
-		, nullptr);
-
-	const UArcExperienceData* LoadedGameData = GetAsset(DefaultGameData);
-	if (!LoadedGameData)
-	{
-		UE_LOG(LogArcAssetManager
-			, Error
-			, TEXT("Failed to load GameData asset [%s]!")
-			, *DefaultGameData.ToString());
-	}
+	// GAS retired (Bucket D 7); UArcGameplayCueManager initialization no longer needed.
 }
 
 UPrimaryDataAsset* UArcCoreAssetManager::LoadGameDataOfClass(TSubclassOf<UPrimaryDataAsset> DataClass
@@ -284,10 +947,9 @@ UPrimaryDataAsset* UArcCoreAssetManager::LoadGameDataOfClass(TSubclassOf<UPrimar
 		SlowTask.MakeDialog(bShowCancelButton
 			, bAllowInPIE);
 #endif
-		UE_LOG(LogArcAssetManager
+		UE_LOGF(LogArcAssetManager
 			, Log
-			, TEXT("Loading GameData: %s ...")
-			, *DataClassPath.ToString());
+			,"Loading GameData: %ls ...", *DataClassPath.ToString());
 		SCOPE_LOG_TIME_IN_SECONDS(TEXT("    ... GameData loaded!")
 			, nullptr);
 
@@ -322,11 +984,10 @@ UPrimaryDataAsset* UArcCoreAssetManager::LoadGameDataOfClass(TSubclassOf<UPrimar
 	{
 		// It is not acceptable to fail to load any GameData asset. It will result in soft
 		// failures that are hard to diagnose.
-		UE_LOG(LogArcAssetManager
+		UE_LOGF(LogArcAssetManager
 			, Fatal
-			, TEXT( "Failed to load GameData asset at %s. Type %s. This is not recoverable and likely means you do not "
-				"have the correct data to run %s.")
-			, *DataClassPath.ToString()
+			, "Failed to load GameData asset at %ls. Type %ls. This is not recoverable and likely means you do not "
+				"have the correct data to run %ls.", *DataClassPath.ToString()
 			, *PrimaryAssetType.ToString()
 			, FApp::GetProjectName());
 	}
@@ -390,10 +1051,9 @@ void UArcCoreAssetManager::DoAllStartupJobs()
 
 	StartupJobs.Empty();
 
-	UE_LOG(LogArcAssetManager
+	UE_LOGF(LogArcAssetManager
 		, Display
-		, TEXT("All startup jobs took %.2f seconds to complete")
-		, FPlatformTime::Seconds() - AllStartupJobsStartTime);
+		,"All startup jobs took %.2f seconds to complete", FPlatformTime::Seconds() - AllStartupJobsStartTime);
 }
 
 void UArcCoreAssetManager::UpdateInitialGameContentLoadPercent(float GameContentPercent)
@@ -409,7 +1069,7 @@ void UArcCoreAssetManager::SetExperienceBundlesSync(UWorld* InWorld, const TArra
 {
 	TArray<FName> OldBundles;
 	ENetMode NetMode = InWorld->GetNetMode();
-	
+
 	if (NetMode == ENetMode::NM_Standalone)
 	{
 		for (const FName& BundleName : ExperienceBundles)
@@ -433,7 +1093,7 @@ void UArcCoreAssetManager::SetExperienceBundlesSync(UWorld* InWorld, const TArra
 			ExperienceBundles.AddUnique(Bundle);
 		}
 	}
-	
+
 	if (NetMode == ENetMode::NM_DedicatedServer)
 	{
 		for (const FName& BundleName : ExperienceBundles)
@@ -451,7 +1111,7 @@ void UArcCoreAssetManager::SetExperienceBundlesSync(UWorld* InWorld, const TArra
 			ExperienceBundles.AddUnique(Bundle);
 		}
 	}
-	
+
 	if (NetMode == ENetMode::NM_Client)
 	{
 		for (const FName& BundleName : ExperienceBundles)
@@ -480,7 +1140,7 @@ void UArcCoreAssetManager::SetExperienceBundlesSync(UWorld* InWorld, const TArra
 	TSharedPtr<FStreamableHandle> Handle = ChangeBundleStateForMatchingPrimaryAssets(ExperienceBundles, OldBundles);
 	if (Handle.IsValid())
 	{
-		Handle->WaitUntilComplete();	
+		Handle->WaitUntilComplete();
 	}
 }
 
@@ -499,15 +1159,9 @@ void UArcCoreAssetManager::PreBeginPIE(bool bStartSimulate)
 		SlowTask.MakeDialog(bShowCancelButton
 			, bAllowInPIE);
 
-		// const UArcGameData& LocalGameDataCommon = GetGameData();
-
 		// Intentionally after GetGameData to avoid counting GameData time in this timer
 		SCOPE_LOG_TIME_IN_SECONDS(TEXT("PreBeginPIE asset preloading complete")
 			, nullptr);
-
-		// You could add preloading of anything else needed for the experience we'll be
-		// using here (e.g., by grabbing the default experience from the world settings +
-		// the experience override in developer settings)
 	}
 }
 #endif

@@ -8,7 +8,10 @@
 #include "UObject/Object.h"
 #include "InteractableTargetInterface.h"
 #include "InteractionTypes.h"
+#include "Mass/EntityHandle.h"
 #include "ArcCoreAsyncMessageTypes.generated.h"
+
+class UInputMappingContext;
 
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcCoreGenericTagMessage
@@ -28,7 +31,16 @@ struct ARCCORE_API FArcInteractionAcquiredMessage
 	TScriptInterface<IInteractionTarget> Target;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
+	FMassEntityHandle EntityHandle;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
+	FVector Location = FVector::ZeroVector;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
 	FInteractionQueryResults QueryResults;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Interaction")
+	TObjectPtr<UInputMappingContext> MappingContext = nullptr;
 };
 
 USTRUCT(BlueprintType)

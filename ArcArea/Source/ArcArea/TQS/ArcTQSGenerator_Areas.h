@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "TargetQuery/ArcTQSGenerator.h"
+#include "ArcTQSGenerator.h"
 #include "ArcTQSGenerator_Areas.generated.h"
 
 /**
@@ -16,14 +16,18 @@ struct ARCAREA_API FArcTQSGenerator_Areas : public FArcTQSGenerator
 {
 	GENERATED_BODY()
 
+	UPROPERTY(EditAnywhere, Category = "Generator", meta = (ArcTQSRequiredBinding))
+	FVector Center = FVector::ZeroVector;
+
 	/** Filter areas by their gameplay tags. */
 	UPROPERTY(EditAnywhere, Category = "Generator")
 	FGameplayTagQuery AreaTagQuery;
 
-	/** Maximum distance from querier. 0 = unlimited. */
+	/** Maximum distance from Center. 0 = unlimited. */
 	UPROPERTY(EditAnywhere, Category = "Generator", meta = (ClampMin = 0.0))
 	float MaxDistance = 0.0f;
 
 	virtual void GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const override;
 	virtual void GetOutputSchema(TArray<FPropertyBagPropertyDesc>& OutDescs) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Areas; }
 };

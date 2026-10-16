@@ -1,0 +1,59 @@
+/**
+ * This file is part of Velesarc
+ * Copyright (C) 2025-2025 Lukasz Baran
+ *
+ * Licensed under the European Union Public License (EUPL), Version 1.2 or -
+ * as soon as they will be approved by the European Commission - later versions
+ * of the EUPL (the "License");
+ *
+ * You may not use this work except in compliance with the License.
+ * You may get a copy of the License at:
+ *
+ * https://eupl.eu/
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ */
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "SGraphNode.h"
+#include "Widgets/DeclarativeSyntaxSupport.h"
+
+class UArcRecipeGraphNode;
+class SVerticalBox;
+
+/**
+ * Slate widget for a single UArcRecipeGraphNode in the recipe dependency graph.
+ *
+ * Subclasses SGraphNode directly (not SGraphNodeDefault) so we control the
+ * Construct signature. The inherited UpdateGraphNode() already wires title color
+ * through SGraphNode::GetNodeTitleColor() -> GraphNode->GetNodeTitleColor(), so
+ * per-type coloring (teal/orange/indigo) works for free once GraphNode is set.
+ *
+ * TagGroup nodes get an extra member-list body injected via CreateBelowPinControls().
+ */
+class SArcRecipeGraphNode : public SGraphNode
+{
+public:
+	SLATE_BEGIN_ARGS(SArcRecipeGraphNode) {}
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs, UArcRecipeGraphNode* InNode);
+
+protected:
+	// SGraphNode interface
+	/** For TagGroup nodes: appends a small vertical list of member item ids. */
+	virtual void CreateBelowPinControls(TSharedPtr<SVerticalBox> MainBox) override;
+	// End SGraphNode interface
+
+	// SWidget interface
+	/** Live-fades render opacity when the owning node is marked Dimmed by the view. */
+	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
+	// End SWidget interface
+};

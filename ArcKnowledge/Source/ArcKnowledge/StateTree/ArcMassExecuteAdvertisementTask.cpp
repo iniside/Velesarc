@@ -5,7 +5,7 @@
 #include "ArcKnowledgeSubsystem.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeLinker.h"
 
@@ -27,7 +27,7 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 
 	if (!InstanceData.AdvertisementHandle.IsValid())
 	{
-		UE_LOG(LogArcAdvertisement, Warning, TEXT("ExecuteAdvertisementTask: Invalid advertisement handle."));
+		UE_LOGF(LogArcAdvertisement, Warning,"ExecuteAdvertisementTask: Invalid advertisement handle.");
 		return EStateTreeRunStatus::Failed;
 	}
 
@@ -47,7 +47,7 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 	const FArcKnowledgeEntry* Entry = KnowledgeSubsystem->GetKnowledgeEntry(InstanceData.AdvertisementHandle);
 	if (!Entry)
 	{
-		UE_LOG(LogArcAdvertisement, Warning, TEXT("ExecuteAdvertisementTask: Advertisement entry not found for handle."));
+		UE_LOGF(LogArcAdvertisement, Warning,"ExecuteAdvertisementTask: Advertisement entry not found for handle.");
 		return EStateTreeRunStatus::Failed;
 	}
 
@@ -55,7 +55,7 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 	const FArcAdvertisementInstruction_StateTree* Instruction = Entry->Instruction.GetPtr<FArcAdvertisementInstruction_StateTree>();
 	if (!Instruction || !Instruction->StateTreeReference.GetStateTree())
 	{
-		UE_LOG(LogArcAdvertisement, Warning, TEXT("ExecuteAdvertisementTask: Advertisement has no valid StateTree instruction."));
+		UE_LOGF(LogArcAdvertisement, Warning,"ExecuteAdvertisementTask: Advertisement has no valid StateTree instruction.");
 		return EStateTreeRunStatus::Failed;
 	}
 
@@ -67,6 +67,17 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 		ContextActor = const_cast<AActor*>(ActorFragment->Get());
 	}
 
+	// Resolve source entity location from its transform fragment (if available)
+	FVector SourceEntityLocation = FVector::ZeroVector;
+	if (Entry->SourceEntity.IsValid())
+	{
+		const FMassEntityManager& EntityManager = MassCtx.GetEntityManager();
+		if (const FTransformFragment* SourceTransform = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entry->SourceEntity))
+		{
+			SourceEntityLocation = SourceTransform->GetTransform().GetLocation();
+		}
+	}
+
 	// Set up the execution context — Owner is the subsystem, ContextActor is optional
 	InstanceData.ExecutionContext.SetOwner(KnowledgeSubsystem);
 	InstanceData.ExecutionContext.SetExecutingEntity(EntityHandle);
@@ -74,11 +85,13 @@ EStateTreeRunStatus FArcMassExecuteAdvertisementTask::EnterState(FStateTreeExecu
 	InstanceData.ExecutionContext.SetContextActor(ContextActor);
 	InstanceData.ExecutionContext.SetAdvertisementHandle(InstanceData.AdvertisementHandle);
 	InstanceData.ExecutionContext.SetAdvertisementPayload(Entry->Payload);
+	InstanceData.ExecutionContext.SetKnowledgeLocation(Entry->Location);
+	InstanceData.ExecutionContext.SetSourceEntityLocation(SourceEntityLocation);
 
 	// Activate the StateTree — pass Mass execution context for fragment resolution
 	if (!InstanceData.ExecutionContext.Activate(*Instruction, &MassCtx.GetMassEntityExecutionContext()))
 	{
-		UE_LOG(LogArcAdvertisement, Warning, TEXT("ExecuteAdvertisementTask: Failed to activate advertisement StateTree."));
+		UE_LOGF(LogArcAdvertisement, Warning,"ExecuteAdvertisementTask: Failed to activate advertisement StateTree.");
 		return EStateTreeRunStatus::Failed;
 	}
 

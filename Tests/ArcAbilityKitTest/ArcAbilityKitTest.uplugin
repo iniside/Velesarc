@@ -1,0 +1,28 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcAbilityKit Tests",
+	"Description": "CQTest module covering ArcAbilityKit.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcAbilityKitTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcAbilityKit", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcMassItems", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

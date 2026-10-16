@@ -21,10 +21,7 @@
 
 #include "ArcGunItemInstance.h"
 #include "Engine/AssetManager.h"
-#include "ArcGunAttributeSet.h"
-#include "Items/ArcItemDefinition.h"
-#include "Items/ArcItemsComponent.h"
-#include "Items/ArcItemsStoreComponent.h"
+#include "Items/ArcItemDefinitionData.h"
 
 void FArcItemInstance_GunMagazineAmmo::SetAmmo(int32 NewAmmo)
 {

@@ -22,7 +22,7 @@ Both modes support post-spawn initializers, entity tracking, and async event bro
 2. Set **SpawnMode** to `Default`.
 3. Add one or more entries to **EntityTypes** (each entry is an `FMassSpawnedEntityType` with a `UMassEntityConfigAsset` reference and a proportion weight).
 4. Set **Count** to the number of entities to spawn.
-5. Assign a **SpawnQuery** (`UArcTQSQueryDefinition`) — this TQS query runs to determine spawn locations.
+5. Assign a **SpawnQuery** (`FArcTQSQueryReference` to a `UArcTQSQueryDefinition`, with its parameters) — this TQS query runs to determine spawn locations. See `docs/reference/arctqs.md`.
 6. Leave **bAutoSpawnOnBeginPlay** enabled (default) to spawn on level start.
 7. Optionally add **PostSpawnInitializers** to customize entities after spawn.
 

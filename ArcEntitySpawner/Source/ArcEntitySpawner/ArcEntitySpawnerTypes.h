@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "ArcEntitySpawnerTypes.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogArcEntitySpawner, Log, All);

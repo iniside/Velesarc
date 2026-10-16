@@ -2,7 +2,7 @@
 
 #include "ArcMassPostAdvertisementTask.h"
 #include "MassStateTreeExecutionContext.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "StateTreeLinker.h"
 

@@ -29,156 +29,13 @@
 
 #include "ClassViewerFilter.h"
 #include "SDetailsDiff.h"
-#include "Items/ArcItemsStoreComponent.h"
 
-UArcInputActionConfig_Factory::UArcInputActionConfig_Factory()
-{
-	SupportedClass = UArcInputActionConfig::StaticClass();
-	bEditAfterNew = true;
-	bCreateNew = true;
-}
+// UArcInputActionConfig_Factory retired with the ArcCore Input cluster (Bucket B Cluster 1).
 
-UObject* UArcInputActionConfig_Factory::FactoryCreateNew(UClass* Class
-														 , UObject* InParent
-														 , FName Name
-														 , EObjectFlags Flags
-														 , UObject* Context
-														 , FFeedbackContext* Warn)
-{
-	check(Class->IsChildOf(UArcInputActionConfig::StaticClass()));
-	return NewObject<UArcInputActionConfig>(InParent
-		, Class
-		, Name
-		, Flags | RF_Transactional
-		, Context);
-}
+// PawnData asset definition / factory retired with UArcPawnData (Phase B).
+// Experience asset definitions/factories retired with the Experience cluster (Bucket B Cluster 2).
 
-EAssetCommandResult UArcAssetDefinition_PawnData::PerformAssetDiff(const FAssetDiffArgs& DiffArgs) const
-{
-	const bool bIsSingleAsset = (DiffArgs.OldAsset->GetFName() == DiffArgs.NewAsset->GetFName());
-	static const FText BasicWindowTitle = FText::FromString("Arc PawnData Diff");
-
-	const FText WindowTitle = FText::FromString("Arc PawnData Diff");
-	// !bIsSingleAsset ? BasicWindowTitle : FText::Format(LOCTEXT("DataAsset Diff", "{0} - DataAsset Diff"), FText::FromString(DiffArgs.NewAsset->GetName()));
-
-	SDetailsDiff::CreateDiffWindow(WindowTitle
-		, DiffArgs.OldAsset
-		, DiffArgs.NewAsset
-		, DiffArgs.OldRevision
-		, DiffArgs.NewRevision);
-
-	return EAssetCommandResult::Handled;
-}
-
-UArcPawnData_Factory::UArcPawnData_Factory()
-{
-	SupportedClass = UArcPawnData::StaticClass();
-	bEditAfterNew = true;
-	bCreateNew = true;
-}
-
-UObject* UArcPawnData_Factory::FactoryCreateNew(UClass* Class
-												, UObject* InParent
-												, FName Name
-												, EObjectFlags Flags
-												, UObject* Context
-												, FFeedbackContext* Warn)
-{
-	check(Class->IsChildOf(UArcPawnData::StaticClass()));
-	return NewObject<UArcPawnData>(InParent
-		, Class
-		, Name
-		, Flags | RF_Transactional
-		, Context);
-}
-
-UArcExperienceActionSet_Factory::UArcExperienceActionSet_Factory()
-{
-	SupportedClass = UArcExperienceActionSet::StaticClass();
-	bEditAfterNew = true;
-	bCreateNew = true;
-}
-
-UObject* UArcExperienceActionSet_Factory::FactoryCreateNew(UClass* Class
-	, UObject* InParent
-	, FName Name
-	, EObjectFlags Flags
-	, UObject* Context
-	, FFeedbackContext* Warn)
-{
-	check(Class->IsChildOf(UArcExperienceActionSet::StaticClass()));
-	return NewObject<UArcExperienceActionSet>(InParent
-		, Class
-		, Name
-		, Flags | RF_Transactional
-		, Context);
-}
-
-UArcExperienceDefinition_Factory::UArcExperienceDefinition_Factory()
-{
-	SupportedClass = UArcExperienceDefinition::StaticClass();
-	bEditAfterNew = true;
-	bCreateNew = true;
-}
-
-UObject* UArcExperienceDefinition_Factory::FactoryCreateNew(UClass* Class
-															, UObject* InParent
-															, FName Name
-															, EObjectFlags Flags
-															, UObject* Context
-															, FFeedbackContext* Warn)
-{
-	check(Class->IsChildOf(UArcExperienceDefinition::StaticClass()));
-	return NewObject<UArcExperienceDefinition>(InParent
-		, Class
-		, Name
-		, Flags | RF_Transactional
-		, Context);
-}
-
-UArcExperienceData_Factory::UArcExperienceData_Factory()
-{
-	SupportedClass = UArcExperienceData::StaticClass();
-	bEditAfterNew = true;
-	bCreateNew = true;
-}
-
-UObject* UArcExperienceData_Factory::FactoryCreateNew(UClass* Class
-													  , UObject* InParent
-													  , FName Name
-													  , EObjectFlags Flags
-													  , UObject* Context
-													  , FFeedbackContext* Warn)
-{
-	check(Class->IsChildOf(UArcExperienceData::StaticClass()));
-	return NewObject<UArcExperienceData>(InParent
-		, Class
-		, Name
-		, Flags | RF_Transactional
-		, Context);
-}
-
-UArcAbilitySet_Factory::UArcAbilitySet_Factory()
-{
-	SupportedClass = UArcAbilitySet::StaticClass();
-	bEditAfterNew = true;
-	bCreateNew = true;
-}
-
-UObject* UArcAbilitySet_Factory::FactoryCreateNew(UClass* Class
-												  , UObject* InParent
-												  , FName Name
-												  , EObjectFlags Flags
-												  , UObject* Context
-												  , FFeedbackContext* Warn)
-{
-	check(Class->IsChildOf(UArcAbilitySet::StaticClass()));
-	return NewObject<UArcAbilitySet>(InParent
-		, Class
-		, Name
-		, Flags | RF_Transactional
-		, Context);
-}
+// UArcAbilitySet_Factory retired with GAS keystone (Bucket D 7).
 
 class FArcBlueprintParentFilter : public IClassViewerFilter
 {
@@ -255,7 +112,7 @@ bool UArcComponentFactory::ConfigureProperties()
 	const bool bPressedOk = SClassPickerDialog::PickClass(TitleText
 		, Options
 		, ChosenClass
-		, UArcQuickBarComponentBlueprint::StaticClass());
+		, UBlueprint::StaticClass());
 
 	if (bPressedOk)
 	{
@@ -293,7 +150,7 @@ UObject* UArcComponentFactory::FactoryCreateNew(UClass* Class
 		UClass* BlueprintGeneratedClass = nullptr;
 
 		IKismetCompilerInterface& KismetCompilerModule = FModuleManager::LoadModuleChecked<IKismetCompilerInterface>(
-			"KismetCompiler");
+			KISMET_COMPILER_MODULENAME);
 		KismetCompilerModule.GetBlueprintTypesForClass(ParentClass
 			, BlueprintClass
 			, BlueprintGeneratedClass);
@@ -308,36 +165,5 @@ UObject* UArcComponentFactory::FactoryCreateNew(UClass* Class
 	}
 }
 
-UArcQuickBarComponent_Factory::UArcQuickBarComponent_Factory()
-{
-	bCreateNew = true;
-	bEditAfterNew = true;
-	BlueprintClassType = UArcQuickBarComponentBlueprint::StaticClass();
-	SupportedClass = UArcQuickBarComponentBlueprint::StaticClass();
-	ParentClass = UArcQuickBarComponent::StaticClass();
-	BaseClass = UArcQuickBarComponent::StaticClass();
-}
-
-UFactory* FArcAssetTypeActions_QuickBarComponent::GetFactoryForBlueprintType(UBlueprint* InBlueprint) const
-{
-	UArcQuickBarComponent_Factory* GameplayAbilitiesBlueprintFactory = NewObject<UArcQuickBarComponent_Factory>();
-	GameplayAbilitiesBlueprintFactory->ParentClass = TSubclassOf<UArcQuickBarComponent>(*InBlueprint->GeneratedClass);
-	return GameplayAbilitiesBlueprintFactory;
-}
-
-UArcItemsStoreComponent_Factory::UArcItemsStoreComponent_Factory()
-{
-	bCreateNew = true;
-	bEditAfterNew = true;
-	BlueprintClassType = UArcItemsStoreComponentBlueprint::StaticClass();
-	SupportedClass = UArcItemsStoreComponentBlueprint::StaticClass();
-	ParentClass = UArcItemsStoreComponent::StaticClass();
-	BaseClass = UArcItemsStoreComponent::StaticClass();
-}
-
-UFactory* FArcAssetTypeActions_ItemsStoreComponent::GetFactoryForBlueprintType(UBlueprint* InBlueprint) const
-{
-	UArcItemsStoreComponent_Factory* GameplayAbilitiesBlueprintFactory = NewObject<UArcItemsStoreComponent_Factory>();
-	GameplayAbilitiesBlueprintFactory->ParentClass = TSubclassOf<UArcItemsStoreComponent>(*InBlueprint->GeneratedClass);
-	return GameplayAbilitiesBlueprintFactory;
-}
+// UArcItemsStoreComponent_Factory + FArcAssetTypeActions_ItemsStoreComponent retired
+// with UArcItemsStoreComponent (plan step 8c).

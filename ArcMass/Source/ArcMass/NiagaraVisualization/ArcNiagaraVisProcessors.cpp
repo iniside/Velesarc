@@ -4,8 +4,9 @@
 
 #include "ArcNiagaraVisFragments.h"
 #include "ArcNiagaraRenderStateHelper.h"
-#include "MassEntityFragments.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityFragments.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "NiagaraSystem.h"
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,7 @@
 UArcNiagaraVisInitObserver::UArcNiagaraVisInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcNiagaraVisTag::StaticStruct();
+	ObservedTypes.Add(FArcNiagaraVisTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -24,6 +25,7 @@ void UArcNiagaraVisInitObserver::ConfigureQueries(const TSharedRef<FMassEntityMa
 {
 	ObserverQuery.AddRequirement<FArcNiagaraVisFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	ObserverQuery.AddRequirement<FArcNiagaraVisParamsFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
 	ObserverQuery.AddConstSharedRequirement<FArcNiagaraVisConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcNiagaraVisTag>(EMassFragmentPresence::All);
 }
@@ -36,17 +38,20 @@ void UArcNiagaraVisInitObserver::Execute(FMassEntityManager& EntityManager, FMas
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraVisInit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[&EntityManager, World](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcNiagaraVisFragment> VisFragments = Ctx.GetMutableFragmentView<FArcNiagaraVisFragment>();
+			TArrayView<FArcNiagaraVisParamsFragment> ParamsFragments = Ctx.GetMutableFragmentView<FArcNiagaraVisParamsFragment>();
 			const FArcNiagaraVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcNiagaraVisConfigFragment>();
 
 			// Resolve soft pointer — must be loaded
 			UNiagaraSystem* System = Config.NiagaraSystem.LoadSynchronous();
 			if (!System)
 			{
-				UE_LOG(LogMass, Warning, TEXT("ArcNiagaraVisInitObserver: NiagaraSystem is null or failed to load."));
+				UE_LOGF(LogMass, Warning,"ArcNiagaraVisInitObserver: NiagaraSystem is null or failed to load.");
 				return;
 			}
 
@@ -64,7 +69,12 @@ void UArcNiagaraVisInitObserver::Execute(FMassEntityManager& EntityManager, FMas
 
 				// Create helper, initialize Niagara system, create render state
 				auto* Helper = new FArcNiagaraRenderStateHelper(Entity, &EntityManager);
-				Helper->Initialize(*World, *System, Config.bCastShadow);
+				FArcNiagaraVisParamsFragment* InitialParameters = ParamsFragments.IsEmpty() ? nullptr : &ParamsFragments[EntityIt];
+				Helper->Initialize(*World, *System, Config.bCastShadow, InitialParameters, Config.bAutoActivate);
+				if (InitialParameters != nullptr && Helper->IsInitialized())
+				{
+					InitialParameters->bDirty = false;
+				}
 				Helper->CreateNiagaraRenderState();
 
 				VisFragment.RenderStateHelper = Helper;
@@ -79,7 +89,7 @@ void UArcNiagaraVisInitObserver::Execute(FMassEntityManager& EntityManager, FMas
 UArcNiagaraVisDeinitObserver::UArcNiagaraVisDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcNiagaraVisTag::StaticStruct();
+	ObservedTypes.Add(FArcNiagaraVisTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -92,6 +102,8 @@ void UArcNiagaraVisDeinitObserver::ConfigureQueries(const TSharedRef<FMassEntity
 
 void UArcNiagaraVisDeinitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraVisDeinit);
+
 	ObserverQuery.ForEachEntityChunk(Context,
 		[](FMassExecutionContext& Ctx)
 		{
@@ -130,11 +142,14 @@ void UArcNiagaraVisDynamicDataProcessor::ConfigureQueries(const TSharedRef<FMass
 	EntityQuery.AddRequirement<FArcNiagaraVisFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FArcNiagaraVisParamsFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
+	EntityQuery.AddConstSharedRequirement<FArcNiagaraVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcNiagaraVisTag>(EMassFragmentPresence::All);
 }
 
 void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcNiagaraVisDynamicData);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[](FMassExecutionContext& Ctx)
 		{
@@ -142,6 +157,8 @@ void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManag
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			TArrayView<FArcNiagaraVisParamsFragment> ParamsFragments = Ctx.GetMutableFragmentView<FArcNiagaraVisParamsFragment>();
 			const bool bHasParams = ParamsFragments.Num() > 0;
+			const FArcNiagaraVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcNiagaraVisConfigFragment>();
+			const FTransform& ComponentTransform = Config.ComponentTransform;
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -165,8 +182,9 @@ void UArcNiagaraVisDynamicDataProcessor::Execute(FMassEntityManager& EntityManag
 					}
 				}
 
-				Helper->UpdateTransform(Transform.GetTransform());
-				Helper->SendDynamicRenderData(Transform.GetTransform());
+				FTransform FinalTransform = ComponentTransform * Transform.GetTransform();
+				Helper->UpdateTransform(FinalTransform);
+				Helper->SendDynamicRenderData(FinalTransform);
 			}
 		});
 

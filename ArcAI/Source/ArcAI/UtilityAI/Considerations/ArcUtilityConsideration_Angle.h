@@ -20,5 +20,12 @@ struct ARCAI_API FArcUtilityConsideration_Angle : public FArcUtilityConsideratio
 	UPROPERTY(EditAnywhere, Category = "Consideration", meta = (ClampMin = 1.0, ClampMax = 180.0))
 	float MaxAngleDegrees = 180.0f;
 
-	virtual float Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+	virtual FArcUtilityConsiderationResult Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const override;
+
+#if WITH_EDITOR
+	virtual EArcUtilityConsiderationRequirements GetRequirements() const override
+	{
+		return EArcUtilityConsiderationRequirements::TargetLocation;
+	}
+#endif
 };

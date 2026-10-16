@@ -5,7 +5,8 @@
 #include "MassCommonFragments.h"
 #include "MassActorSubsystem.h"
 #include "MassEntityTemplateRegistry.h"
-#include "MassEntityUtils.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
 
 // ---------------------------------------------------------------------------
 // UArcMobileVisEntityTrait
@@ -14,7 +15,7 @@
 void UArcMobileVisEntityTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {
 	BuildContext.RequireFragment<FTransformFragment>();
-	BuildContext.RequireFragment<FMassActorFragment>();
+	BuildContext.AddFragment<FMassActorFragment>();
 
 	BuildContext.AddFragment<FArcMobileVisLODFragment>();
 	BuildContext.AddFragment<FArcMobileVisRepFragment>();
@@ -27,6 +28,11 @@ void UArcMobileVisEntityTrait::BuildTemplate(FMassEntityTemplateBuildContext& Bu
 
 	const FConstSharedStruct DistConfig = EntityManager.GetOrCreateConstSharedFragment(DistanceConfig);
 	BuildContext.AddConstSharedFragment(DistConfig);
+
+	FArcMobileVisTemplateIDFragment TemplateIDFrag;
+	TemplateIDFrag.TemplateID = BuildContext.GetTemplateID();
+	const FConstSharedStruct TemplateIDShared = EntityManager.GetOrCreateConstSharedFragment(TemplateIDFrag);
+	BuildContext.AddConstSharedFragment(TemplateIDShared);
 }
 
 // ---------------------------------------------------------------------------

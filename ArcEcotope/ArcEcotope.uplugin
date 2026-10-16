@@ -1,0 +1,36 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Arc Ecotope",
+	"Description": "Persistent editor-simulated ecotope state.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"CanContainVerse": false,
+	"IsExperimentalVersion": true,
+	"EnabledByDefault": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcEcotope",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name": "ArcEcotopeEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcEcotopeSamplerEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcTerrain", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "DebugDraw", "Enabled": true }
+	]
+}

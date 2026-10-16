@@ -20,15 +20,6 @@
 			"Name": "ArcPersistence",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "ArcPersistenceTest",
-			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"TargetAllowList": [
-				"Editor",
-				"Program"
-			]
 		}
 	],
 	"Plugins": [

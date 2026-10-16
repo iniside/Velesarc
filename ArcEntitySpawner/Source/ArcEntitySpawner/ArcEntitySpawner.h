@@ -3,15 +3,16 @@
 #pragma once
 
 #include "GameFramework/Actor.h"
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "MassSpawnerTypes.h"
 #include "ArcEntitySpawnerTypes.h"
+#include "ArcTQSQueryReference.h"
 #include "ArcEntitySpawner.generated.h"
 
 struct FStreamableHandle;
 struct FArcTQSTargetItem;
 struct FArcTQSQueryInstance;
-class UArcTQSQueryDefinition;
 class UMassAgentComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FArcEntitySpawnerOnSpawningFinished);
@@ -140,9 +141,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Mass|Spawn|Default", meta = (EditCondition = "SpawnMode == EArcEntitySpawnMode::Default", EditConditionHides))
 	float SpawningCountScale = 1.0f;
 
-	/** TQS query definition for generating spawn locations. */
+	/** TQS query for generating spawn locations. */
 	UPROPERTY(EditAnywhere, Category = "Mass|Spawn|Default", meta = (EditCondition = "SpawnMode == EArcEntitySpawnMode::Default", EditConditionHides))
-	TObjectPtr<UArcTQSQueryDefinition> SpawnQuery;
+	FArcTQSQueryReference SpawnQuery;
 
 	/** Whether to auto-spawn on BeginPlay in Default mode. */
 	UPROPERTY(EditAnywhere, Category = "Mass|Spawn|Default", meta = (EditCondition = "SpawnMode == EArcEntitySpawnMode::Default", EditConditionHides))

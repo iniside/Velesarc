@@ -24,12 +24,15 @@
 #include "SGraphPin.h"
 #include "UObject/PrimaryAssetId.h"
 #include "ArcNamedPrimaryAssetId.h"
+#include "ArcPrimaryAssetIdSources.h"
 
 class FAssetThumbnail;
 class FDetailWidgetRow;
 class IDetailChildrenBuilder;
 class IPropertyHandle;
 class SBorder;
+class SSearchableComboBox;
+class SWidget;
 
 class FArcNamedPrimaryAssetIdCustomization : public IPropertyTypeCustomization
 {
@@ -53,6 +56,19 @@ private:
 	FPrimaryAssetId GetCurrentPrimaryAssetId() const;
 	void UpdateThumbnail();
 	void OnOpenAssetEditor();
+
+	bool HasSourcesForAllowedTypes() const;
+	TSharedRef<SWidget> MakeSourceSelector(IPropertyTypeCustomizationUtils& StructCustomizationUtils);
+	void RefreshSourceOptions();
+	TSharedRef<SWidget> MakeSourceOptionWidget(TSharedPtr<FString> Option) const;
+	void OnSourceSelectionChanged(TSharedPtr<FString> Selection, ESelectInfo::Type SelectInfo);
+	void SetIdWithDisplayName(const FPrimaryAssetId& AssetId, const FString& DisplayName);
+	FText GetSourceDisplayText() const;
+	bool IsSourceSelectorEditable() const;
+	bool CanSourceBrowse() const;
+	EVisibility GetSourceBrowseVisibility() const;
+	void OnSourceBrowseTo();
+	void OnSourceClear();
 
 	/** Gets the border brush to show around the thumbnail, changes when the user hovers on it. */
 	const FSlateBrush* GetThumbnailBorder() const;
@@ -83,5 +99,15 @@ private:
 
 	/** The border surrounding the thumbnail image. */
 	TSharedPtr<SBorder> ThumbnailBorder;
+
+	TSharedPtr<SSearchableComboBox> SourceComboBox;
+
+	TArray<TSharedPtr<FString>> SourceOptions;
+
+	TArray<FArcPrimaryAssetIdSourceEntry> SourceOptionEntries;
+
+	mutable FPrimaryAssetId CachedDisplayId;
+
+	mutable FString CachedDisplayName;
 	
 };

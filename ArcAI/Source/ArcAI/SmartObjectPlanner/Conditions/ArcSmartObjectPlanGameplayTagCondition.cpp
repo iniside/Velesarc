@@ -4,7 +4,7 @@
 
 #include "GameplayTagAssetInterface.h"
 #include "MassActorSubsystem.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "Engine/World.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
 

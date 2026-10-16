@@ -5,12 +5,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "ArcAreaTypes.h"
-#include "MassEntityTypes.h"
+#include "ArcTQSQueryReference.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcAreaPopulationSpawner.generated.h"
 
 class UArcAreaPopulationDefinition;
 class UArcAreaSubsystem;
-class UArcTQSQueryDefinition;
 class UBillboardComponent;
 
 /**
@@ -42,10 +43,10 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
-	void OnSlotStateChanged(const FArcAreaSlotHandle& SlotHandle, EArcAreaSlotState NewState);
+	void OnSlotStateChanged(const FSmartObjectSlotHandle& SlotHandle, EArcAreaSlotState NewState);
 
-	void SpawnForSlot(const FArcAreaSlotHandle& SlotHandle);
-	void ExecuteSpawn(const FArcAreaSlotHandle& SlotHandle, const FGameplayTag& RoleTag, const FVector& SpawnLocation);
+	void SpawnForSlot(const FSmartObjectSlotHandle& SlotHandle);
+	void ExecuteSpawn(const FSmartObjectSlotHandle& SlotHandle, const FGameplayTag& RoleTag, const FVector& SpawnLocation);
 
 	/** Population definition asset. */
 	UPROPERTY(EditAnywhere, Category = "Population")
@@ -58,7 +59,7 @@ private:
 	 * If not set, entities spawn at the area's exact location.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Population")
-	TObjectPtr<UArcTQSQueryDefinition> SpawnLocationQuery;
+	FArcTQSQueryReference SpawnLocationQuery;
 
 	/** Delay before initial vacancy scan after BeginPlay (seconds). Allows areas to register first. */
 	UPROPERTY(EditAnywhere, Category = "Population", meta = (ClampMin = 0.0))

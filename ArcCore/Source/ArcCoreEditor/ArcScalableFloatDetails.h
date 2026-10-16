@@ -20,11 +20,12 @@
  */
 
 #pragma once
+#include "Curves/CurveOwnerInterface.h"
 #include "DataRegistryId.h"
 #include "IPropertyTypeCustomization.h"
 #include "PropertyEditorModule.h"
 
-class FArcScalableFloatDetails : public IPropertyTypeCustomization
+class FArcScalableFloatDetails : public IPropertyTypeCustomization, public FCurveOwnerInterface
 {
 public:
 	static TSharedRef<IPropertyTypeCustomization> MakeInstance();
@@ -34,14 +35,16 @@ public:
 	FArcScalableFloatDetails()
 		: PreviewLevel(0.f)
 		, MinPreviewLevel(DefaultMinPreviewLevel)
-		, MaxPreviewLevel(DefaultMaxPreviewLevel) 
+		, MaxPreviewLevel(DefaultMaxPreviewLevel)
+		, bSourceRefreshQueued(false)
+		, bSourceModeResetQueued(false)
 	{
 	}
 
 protected:
 
 	virtual void CustomizeHeader( TSharedRef<class IPropertyHandle> StructPropertyHandle, class FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& StructCustomizationUtils ) override;
-	virtual void CustomizeChildren( TSharedRef<class IPropertyHandle> StructPropertyHandle, class IDetailChildrenBuilder& StructBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils ) override;              
+	virtual void CustomizeChildren( TSharedRef<class IPropertyHandle> StructPropertyHandle, class IDetailChildrenBuilder& StructBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils ) override;
 
 	bool IsEditable() const;
 	void UpdatePreviewLevels();
@@ -58,7 +61,7 @@ protected:
 	void OnBrowseTo();
 	void OnClear();
 	void OnUseSelected();
-	
+
 	// Registry Type selector
 	TSharedRef<SWidget> CreateRegistryTypeWidget();
 	FString GetRegistryTypeValueString() const;
@@ -78,6 +81,53 @@ protected:
 	FText GetRowNameComboBoxContentTooltip() const;
 	void OnRowNameChanged();
 
+	// Range source widgets (InlineRange / DataTableRange / DataRegistryRange)
+	TSharedRef<SWidget> CreateRangeWidget();
+	EVisibility GetRangeWidgetVisibility() const;
+	EVisibility GetDataTableRangePickerVisibility() const;
+	EVisibility GetInlineRangeVisibility() const;
+	bool IsRangeSource() const;
+
+	// DataTableRange picker callbacks
+	TSharedRef<SWidget> GetDataTableRangePicker();
+	void OnSelectDataTableRange(const FAssetData& AssetData);
+	FText GetDataTableRangeText() const;
+	FText GetDataTableRangeTooltip() const;
+	bool OnShouldFilterDataTableRangeAsset(const FAssetData& AssetData) const;
+
+	// DataTableRange row picker (PropertyComboBox backed by actual row names from selected DataTable)
+	TSharedRef<SWidget> CreateDataTableRangeRowWidget();
+	void GetDataTableRangeRowStrings(TArray<TSharedPtr<FString>>& OutStrings, TArray<TSharedPtr<class SToolTip>>& OutToolTips, TArray<bool>& OutRestrictedItems) const;
+	FString GetDataTableRangeRowValueString() const;
+
+	// DataRegistryRange picker callbacks
+	TSharedRef<SWidget> CreateRangeRegistryTypeWidget();
+	TSharedRef<SWidget> CreateRangeRegistryRowWidget();
+	EVisibility GetDataRegistryRangeVisibility() const;
+	FText GetRangeRegistryRowText() const;
+	FDataRegistryId GetRangeRegistryId(FPropertyAccess::Result* OutResult = nullptr) const;
+	void SetRangeRegistryId(FDataRegistryId NewId);
+
+	// CustomScaling slot visibility
+	EVisibility GetCustomScalingVisibility() const;
+
+	// Inline curve widget
+	TSharedRef<SWidget> CreateInlineCurveWidget();
+	EVisibility GetInlineCurveVisibility() const;
+	FRichCurve* GetInlineRichCurve() const;
+
+	// FCurveOwnerInterface overrides
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	virtual TArray<FRichCurveEditInfoConst> GetCurves() const override;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	virtual void GetCurves(TAdderReserverRef<FRichCurveEditInfoConst> Curves) const override;
+	virtual TArray<FRichCurveEditInfo> GetCurves() override;
+	virtual void ModifyOwner() override;
+	virtual TArray<const UObject*> GetOwners() const override;
+	virtual void MakeTransactional() override;
+	virtual void OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos) override;
+	virtual bool IsValidCurve(FRichCurveEditInfo CurveInfo) override;
+
 	// Preview widgets
 	EVisibility GetPreviewVisibility() const;
 	float GetPreviewLevel() const;
@@ -92,13 +142,33 @@ protected:
 	void SetRegistryId(FDataRegistryId NewId);
 	void GetCustomRowNames(TArray<FName>& OutRows) const;
 
+	// Reads the current EArcScalableFloatSource value from SourceProperty (uint8 cast).
+	uint8 GetSourceValue() const;
+
+	// Source-mode reset — fired when the Source combo changes.
+	void OnSourceModeChanged();
+	void ApplySourceModeReset();
+
 	TSharedPtr<IPropertyHandle> ValueProperty;
 	TSharedPtr<IPropertyHandle> CurveTableHandleProperty;
 	TSharedPtr<IPropertyHandle> CurveTableProperty;
 	TSharedPtr<IPropertyHandle> RowNameProperty;
 	TSharedPtr<IPropertyHandle> RegistryTypeProperty;
+	TSharedPtr<IPropertyHandle> SourceProperty;
 	TSharedPtr<IPropertyHandle> CustomScalingProperty;
 	TSharedPtr<IPropertyTypeCustomization> InstancedStructCustomization;
+
+	// New range-source child handles
+	TSharedPtr<IPropertyHandle> MinValueProperty;
+	TSharedPtr<IPropertyHandle> MaxValueProperty;
+	TSharedPtr<IPropertyHandle> DataTableProperty;
+	TSharedPtr<IPropertyHandle> DataTableRowNameProperty;
+	TSharedPtr<IPropertyHandle> RangeRowNameProperty;
+
+	// Inline curve editing
+	TSharedPtr<IPropertyHandle> InlineCurveProperty;
+	TSharedPtr<class SCurveEditor> CurveWidget;
+	TArray<TWeakObjectPtr<UObject>> CurveOwnerObjects;
 
 	TWeakPtr<IPropertyUtilities> PropertyUtilities;
 
@@ -106,4 +176,5 @@ protected:
 	float MinPreviewLevel;
 	float MaxPreviewLevel;
 	bool bSourceRefreshQueued;
+	bool bSourceModeResetQueued;
 };

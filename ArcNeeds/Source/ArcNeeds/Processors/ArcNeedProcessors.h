@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "MassProcessor.h"
+#include "Mass/Processor.h"
 #include "Fragments/ArcNeedFragment.h"
 #include "ArcNeedProcessors.generated.h"
 

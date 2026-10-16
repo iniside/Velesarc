@@ -7,7 +7,7 @@
 #include "AsyncMessageWorldSubsystem.h"
 #include "MassActorSubsystem.h"
 #include "MassEntitySubsystem.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 #include "Engine/Engine.h"
 #include "Perception/ArcAISense_GameplayAbility.h"
 

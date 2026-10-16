@@ -22,15 +22,10 @@
 #pragma once
 
 #include "Engine/DataAsset.h"
-#include "StructUtils/InstancedStruct.h"
-#include "Items/Fragments/ArcItemFragment.h"
+
 #include "ArcTargetingObject.generated.h"
 
 class UTargetingPreset;
-class UArcAbilityTargetingComponent;
-struct FArcCustomTraceDataHandle;
-struct FGameplayAbilityTargetDataHandle;
-class AArcTargetingVisualizationActor;
 
 UCLASS(BlueprintType)
 class ARCCORE_API UArcTargetingObject : public UDataAsset
@@ -45,40 +40,4 @@ public:
 	UPROPERTY(EditDefaultsOnly)
 	TObjectPtr<UTargetingPreset> TargetingVerification;
 
-};
-
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
-struct ARCCORE_API FArcItemFragment_TargetingObjectPreset : public FArcItemFragment
-{
-	GENERATED_BODY()
-	
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game", DisplayThumbnail = "false"))
-	TObjectPtr<UArcTargetingObject> TargetingObject;
-	
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game", MustImplement = "/Script/ArcCore.ArcAoEVisualizationInterface"))
-	TSoftClassPtr<AActor> VisualizationActor;
-};
-
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
-struct ARCCORE_API FArcItemFragment_TargetingPreset : public FArcItemFragment
-{
-	GENERATED_BODY()
-	
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AssetBundles = "Game", DisplayThumbnail = "false"))
-	TObjectPtr<UTargetingPreset> TargetingPreset;
-	
-	UPROPERTY(EditAnywhere, meta = (AssetBundles = "Game", MustImplement = "/Script/ArcCore.ArcAoEVisualizationInterface"))
-	TSoftClassPtr<AActor> VisualizationActor;
-};
-
-USTRUCT(BlueprintType, meta = (Category = "Gameplay Ability"))
-struct ARCCORE_API FArcItemFragment_GlobalTargeting : public FArcItemFragment
-{
-	GENERATED_BODY()
-	
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (Categories = "GlobalTargeting"))
-	FGameplayTag TargetingTag;
 };

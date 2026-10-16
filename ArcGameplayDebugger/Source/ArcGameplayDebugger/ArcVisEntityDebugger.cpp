@@ -3,16 +3,23 @@
 #include "ArcVisEntityDebugger.h"
 
 #include "imgui.h"
-#include "ArcMass/ArcMassEntityVisualization.h"
-#include "ArcMass/ArcVisLifecycle.h"
-#include "ArcMass/ArcMassLifecycle.h"
-#include "DrawDebugHelpers.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
+#include "ArcMass/Physics/ArcMassPhysicsBodyConfig.h"
+#include "ArcMass/Lifecycle/ArcMassLifecycle.h"
+#include "ArcVisEntityDebuggerDrawComponent.h"
+#include "GameFramework/Actor.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
-#include "MassDebugger.h"
+#include "Mass/Debugger.h"
+#include "MassDebuggerWorld.h"
 #include "MassEntitySubsystem.h"
+#include "Mesh/ArcRenderMeshFragments.h"
+#include "ArcMass/Visualization/ArcMassVisualizationConfigFragments.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/StaticMesh.h"
+#include "MassSubsystemBase.h"
 
 namespace Arcx::GameplayDebugger::VisEntity
 {
@@ -40,56 +47,48 @@ namespace Arcx::GameplayDebugger::VisEntity
 		return &MassSub->GetMutableEntityManager();
 	}
 
-	const char* GetVisStateString(bool bIsActor, int32 ISMInstanceId)
+	const char* GetVisStateString(bool bHasMeshRendering, bool bHasPhysicsBody)
 	{
-		if (bIsActor)
+		if (bHasMeshRendering && bHasPhysicsBody)
 		{
-			return "Full Actor";
+			return "Mesh + Physics";
 		}
-		if (ISMInstanceId != INDEX_NONE)
+		if (bHasMeshRendering)
 		{
-			return "ISM Mesh";
+			return "Mesh Only";
 		}
 		return "No Visualization";
 	}
 
-	ImVec4 GetVisStateColor(bool bIsActor, int32 ISMInstanceId)
+	ImVec4 GetVisStateColor(bool bHasMeshRendering)
 	{
-		if (bIsActor)
+		if (bHasMeshRendering)
 		{
-			return ImVec4(0.3f, 1.0f, 0.3f, 1.0f);    // Green
+			return ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
 		}
-		if (ISMInstanceId != INDEX_NONE)
-		{
-			return ImVec4(0.4f, 0.7f, 1.0f, 1.0f);     // Blue
-		}
-		return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);         // Gray
+		return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
 	}
 
-	const char* GetLifecyclePhaseString(EArcLifecyclePhase Phase)
+	const char* GetLifecyclePhaseString(uint8 Phase)
 	{
-		switch (Phase)
-		{
-		case EArcLifecyclePhase::Start:   return "Start";
-		case EArcLifecyclePhase::Growing: return "Growing";
-		case EArcLifecyclePhase::Grown:   return "Grown";
-		case EArcLifecyclePhase::Dying:   return "Dying";
-		case EArcLifecyclePhase::Dead:    return "Dead";
-		default: return "Unknown";
-		}
+		static char Buf[16];
+		FCStringAnsi::Snprintf(Buf, sizeof(Buf), "Phase %d", Phase);
+		return Buf;
 	}
 
-	ImVec4 GetLifecyclePhaseColor(EArcLifecyclePhase Phase)
+	ImVec4 GetLifecyclePhaseColor(uint8 Phase)
 	{
-		switch (Phase)
-		{
-		case EArcLifecyclePhase::Start:   return ImVec4(0.8f, 0.8f, 0.3f, 1.0f);  // Yellow
-		case EArcLifecyclePhase::Growing: return ImVec4(0.3f, 1.0f, 0.3f, 1.0f);  // Green
-		case EArcLifecyclePhase::Grown:   return ImVec4(0.3f, 0.8f, 1.0f, 1.0f);  // Cyan
-		case EArcLifecyclePhase::Dying:   return ImVec4(1.0f, 0.6f, 0.3f, 1.0f);  // Orange
-		case EArcLifecyclePhase::Dead:    return ImVec4(1.0f, 0.3f, 0.3f, 1.0f);  // Red
-		default: return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-		}
+		static const ImVec4 Palette[] = {
+			ImVec4(0.71f, 0.71f, 0.71f, 1.0f), // grey
+			ImVec4(0.39f, 0.78f, 0.39f, 1.0f), // green
+			ImVec4(0.39f, 0.78f, 0.39f, 1.0f), // green
+			ImVec4(0.86f, 0.78f, 0.20f, 1.0f), // yellow
+			ImVec4(0.86f, 0.31f, 0.31f, 1.0f), // red
+			ImVec4(0.59f, 0.59f, 1.00f, 1.0f), // blue
+			ImVec4(0.78f, 0.59f, 1.00f, 1.0f), // purple
+		};
+		static const int32 PaletteSize = UE_ARRAY_COUNT(Palette);
+		return Palette[Phase % PaletteSize];
 	}
 }
 
@@ -100,12 +99,16 @@ void FArcVisEntityDebugger::Initialize()
 	CachedEntities.Reset();
 	LastRefreshTime = 0.f;
 	RefreshEntityList();
+	RefreshHolderList();
 }
 
 void FArcVisEntityDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	CachedEntities.Reset();
 	SelectedEntityIndex = INDEX_NONE;
+	CachedHolders.Reset();
+	SelectedHolderIndex = INDEX_NONE;
 }
 
 void FArcVisEntityDebugger::RefreshEntityList()
@@ -136,41 +139,99 @@ void FArcVisEntityDebugger::RefreshEntityList()
 			Entry.Entity = Entity;
 
 			const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
-			if (Rep)
-			{
-				Entry.bIsActorRepresentation = Rep->bIsActorRepresentation;
-			}
 
 			if (const FTransformFragment* TransformFrag = Manager->GetFragmentDataPtr<FTransformFragment>(Entity))
 			{
 				Entry.Location = TransformFrag->GetTransform().GetLocation();
 			}
 
-			// Build label: show actor name if available, otherwise entity handle
-			FString ActorName;
-			if (Rep && Rep->bIsActorRepresentation)
-			{
-				if (const FMassActorFragment* ActorFrag = Manager->GetFragmentDataPtr<FMassActorFragment>(Entity))
-				{
-					if (const AActor* Actor = ActorFrag->Get())
-					{
-						ActorName = Actor->GetName();
-					}
-				}
-			}
-
-			if (!ActorName.IsEmpty())
-			{
-				Entry.Label = FString::Printf(TEXT("%s [E%d]"), *ActorName, Entity.Index);
-			}
-			else
-			{
-				const char* State = Rep ? (Rep->bIsActorRepresentation ? "ACT" : "ISM") : "???";
-				Entry.Label = FString::Printf(TEXT("E%d (%hs)"), Entity.Index, State);
-			}
+			const char* State = Rep ? (Rep->bHasMeshRendering ? "MESH" : "---") : "???";
+			Entry.Label = FString::Printf(TEXT("E%d (%hs)"), Entity.Index, State);
 		}
 	}
 #endif
+}
+
+void FArcVisEntityDebugger::RefreshHolderList()
+{
+	CachedHolders.Reset();
+
+	UWorld* World = Arcx::GameplayDebugger::VisEntity::GetDebugWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FMassEntityManager* Manager = Arcx::GameplayDebugger::VisEntity::GetEntityManager();
+	if (!Manager)
+	{
+		return;
+	}
+
+	UArcEntityVisualizationSubsystem* VisSub = World->GetSubsystem<UArcEntityVisualizationSubsystem>();
+	if (!VisSub)
+	{
+		return;
+	}
+
+	const TMap<FIntVector, TMap<FArcISMHolderKey, FMassEntityHandle>>& CellHolders = VisSub->GetCellISMHolders();
+
+	for (const TPair<FIntVector, TMap<FArcISMHolderKey, FMassEntityHandle>>& CellPair : CellHolders)
+	{
+		for (const TPair<FArcISMHolderKey, FMassEntityHandle>& HolderPair : CellPair.Value)
+		{
+			if (!Manager->IsEntityValid(HolderPair.Value))
+			{
+				continue;
+			}
+
+			FHolderEntityEntry& Entry = CachedHolders.AddDefaulted_GetRef();
+			Entry.Entity = HolderPair.Value;
+			Entry.Cell = CellPair.Key;
+			const FArcVisualizationMeshFragment* VisMeshFrag = Manager->GetConstSharedFragmentDataPtr<FArcVisualizationMeshFragment>(HolderPair.Value);
+			Entry.bCastShadow = VisMeshFrag ? (bool)VisMeshFrag->CastShadow : false;
+
+			if (HolderPair.Key.Mesh.IsValid())
+			{
+				Entry.MeshName = HolderPair.Key.Mesh->GetName();
+			}
+			else
+			{
+				Entry.MeshName = TEXT("(null)");
+			}
+
+			const FArcRenderISMFragment* ISMFrag = Manager->GetFragmentDataPtr<FArcRenderISMFragment>(HolderPair.Value);
+			if (ISMFrag)
+			{
+				Entry.InstanceCount = ISMFrag->PerInstanceSMData.Num();
+			}
+		}
+	}
+
+	// Build reverse map: scan vis entities for FArcVisISMInstanceFragment referencing holders
+	for (int32 VisIdx = 0; VisIdx < CachedEntities.Num(); ++VisIdx)
+	{
+		const FVisEntityEntry& VisEntry = CachedEntities[VisIdx];
+		if (!Manager->IsEntityValid(VisEntry.Entity))
+		{
+			continue;
+		}
+
+		const FArcVisISMInstanceFragment* ISMInstFrag = Manager->GetFragmentDataPtr<FArcVisISMInstanceFragment>(VisEntry.Entity);
+		if (!ISMInstFrag || !ISMInstFrag->HolderEntity.IsValid())
+		{
+			continue;
+		}
+
+		for (int32 HolderIdx = 0; HolderIdx < CachedHolders.Num(); ++HolderIdx)
+		{
+			if (CachedHolders[HolderIdx].Entity == ISMInstFrag->HolderEntity)
+			{
+				CachedHolders[HolderIdx].ReferencingVisEntityIndices.Add(VisIdx);
+				break;
+			}
+		}
+	}
 }
 
 void FArcVisEntityDebugger::Draw()
@@ -180,6 +241,7 @@ void FArcVisEntityDebugger::Draw()
 	if (!ImGui::Begin("Arc Entity Visualization", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -210,38 +272,115 @@ void FArcVisEntityDebugger::Draw()
 		{
 			LastRefreshTime = CurrentTime;
 			RefreshEntityList();
+			RefreshHolderList();
 		}
 	}
 
 	ImGui::Separator();
 
-	// Split into two panes
-	float PanelWidth = ImGui::GetContentRegionAvail().x;
-	float LeftPanelWidth = PanelWidth * 0.35f;
-
-	// Left panel: entity list
-	if (ImGui::BeginChild("VisEntityListPanel", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+	// Handle pending navigation requests
+	bool bForceVisTab = false;
+	bool bForceHolderTab = false;
+	if (PendingVisEntityNavIndex != INDEX_NONE)
 	{
-		DrawEntityListPanel();
+		bForceVisTab = true;
 	}
-	ImGui::EndChild();
-
-	ImGui::SameLine();
-
-	// Right panel: entity detail
-	if (ImGui::BeginChild("VisEntityDetailPanel", ImVec2(0, 0), ImGuiChildFlags_Borders))
+	if (PendingHolderNavIndex != INDEX_NONE)
 	{
-		DrawEntityDetailPanel();
+		bForceHolderTab = true;
 	}
-	ImGui::EndChild();
+
+	if (ImGui::BeginTabBar("DebuggerTabs"))
+	{
+		ImGuiTabItemFlags VisFlags = bForceVisTab ? ImGuiTabItemFlags_SetSelected : 0;
+		ImGuiTabItemFlags HolderFlags = bForceHolderTab ? ImGuiTabItemFlags_SetSelected : 0;
+
+		if (ImGui::BeginTabItem("Vis Entities", nullptr, VisFlags))
+		{
+			if (PendingVisEntityNavIndex != INDEX_NONE)
+			{
+				SelectedEntityIndex = PendingVisEntityNavIndex;
+				PendingVisEntityNavIndex = INDEX_NONE;
+			}
+
+			float PanelWidth = ImGui::GetContentRegionAvail().x;
+			float LeftPanelWidth = PanelWidth * 0.35f;
+
+			if (ImGui::BeginChild("VisEntityListPanel", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+			{
+				DrawEntityListPanel();
+			}
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			if (ImGui::BeginChild("VisEntityDetailPanel", ImVec2(0, 0), ImGuiChildFlags_Borders))
+			{
+				DrawEntityDetailPanel();
+			}
+			ImGui::EndChild();
+
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Holder Entities", nullptr, HolderFlags))
+		{
+			if (PendingHolderNavIndex != INDEX_NONE)
+			{
+				SelectedHolderIndex = PendingHolderNavIndex;
+				PendingHolderNavIndex = INDEX_NONE;
+			}
+
+			float PanelWidth = ImGui::GetContentRegionAvail().x;
+			float LeftPanelWidth = PanelWidth * 0.35f;
+
+			if (ImGui::BeginChild("HolderListPanel", ImVec2(LeftPanelWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+			{
+				DrawHolderListPanel();
+			}
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			if (ImGui::BeginChild("HolderDetailPanel", ImVec2(0, 0), ImGuiChildFlags_Borders))
+			{
+				DrawHolderDetailPanel();
+			}
+			ImGui::EndChild();
+
+			ImGui::EndTabItem();
+		}
+
+		ImGui::EndTabBar();
+	}
 
 	ImGui::End();
 
-	// World drawing
-	DrawSelectedEntityInWorld();
-	if (bShowGrid)
+	// Build unified draw data from all active visualizations
 	{
-		DrawGridVisualization();
+		UWorld* DrawWorld = Arcx::GameplayDebugger::VisEntity::GetDebugWorld();
+		FArcVisEntityDebugDrawData DrawData;
+
+		if (DrawWorld)
+		{
+			FMassEntityManager* DrawManager = Arcx::GameplayDebugger::VisEntity::GetEntityManager();
+			if (DrawManager)
+			{
+				DrawSelectedEntityInWorld(*DrawManager, DrawData);
+				DrawSelectedHolderInWorld(*DrawManager, *DrawWorld, DrawData);
+				if (bShowGrid)
+				{
+					DrawGridVisualization(*DrawManager, *DrawWorld, DrawData);
+				}
+			}
+
+			EnsureDrawActor(DrawWorld);
+		}
+
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->UpdateVisData(DrawData);
+		}
 	}
 #endif
 }
@@ -270,9 +409,7 @@ void FArcVisEntityDebugger::DrawEntityListPanel()
 			ImGui::PushID(i);
 
 			// Color-code by visualization state
-			ImVec4 Color = Entry.bIsActorRepresentation
-				? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
-				: ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
+			ImVec4 Color = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
 			ImGui::PushStyleColor(ImGuiCol_Text, Color);
 
 			const bool bSelected = (SelectedEntityIndex == i);
@@ -286,6 +423,124 @@ void FArcVisEntityDebugger::DrawEntityListPanel()
 		}
 	}
 	ImGui::EndChild();
+#endif
+}
+
+void FArcVisEntityDebugger::DrawHolderListPanel()
+{
+#if WITH_MASSENTITY_DEBUG
+	ImGui::Text("ISM Holder Entities");
+	ImGui::Separator();
+
+	ImGui::InputText("Filter##Holder", HolderFilterBuf, IM_ARRAYSIZE(HolderFilterBuf));
+
+	FString Filter = FString(ANSI_TO_TCHAR(HolderFilterBuf)).ToLower();
+
+	int32 TotalInstances = 0;
+	for (const FHolderEntityEntry& Entry : CachedHolders)
+	{
+		TotalInstances += Entry.InstanceCount;
+	}
+	ImGui::Text("Holders: %d  |  Total Instances: %d", CachedHolders.Num(), TotalInstances);
+	ImGui::Separator();
+
+	if (ImGui::BeginChild("HolderScroll", ImVec2(0, 0)))
+	{
+		for (int32 i = 0; i < CachedHolders.Num(); ++i)
+		{
+			const FHolderEntityEntry& Entry = CachedHolders[i];
+
+			if (!Filter.IsEmpty() && !Entry.MeshName.ToLower().Contains(Filter))
+			{
+				continue;
+			}
+
+			ImGui::PushID(i);
+
+			ImVec4 Color = Entry.InstanceCount > 0
+				? ImVec4(1.0f, 0.8f, 0.2f, 1.0f)
+				: ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+			ImGui::PushStyleColor(ImGuiCol_Text, Color);
+
+			FString Label = FString::Printf(TEXT("%s [%d] (%d,%d,%d)"),
+				*Entry.MeshName, Entry.InstanceCount,
+				Entry.Cell.X, Entry.Cell.Y, Entry.Cell.Z);
+
+			const bool bSelected = (SelectedHolderIndex == i);
+			if (ImGui::Selectable(TCHAR_TO_ANSI(*Label), bSelected))
+			{
+				SelectedHolderIndex = i;
+			}
+
+			ImGui::PopStyleColor();
+			ImGui::PopID();
+		}
+	}
+	ImGui::EndChild();
+#endif
+}
+
+void FArcVisEntityDebugger::DrawHolderDetailPanel()
+{
+#if WITH_MASSENTITY_DEBUG
+	if (SelectedHolderIndex == INDEX_NONE || !CachedHolders.IsValidIndex(SelectedHolderIndex))
+	{
+		ImGui::TextDisabled("Select a holder entity from the list");
+		return;
+	}
+
+	FMassEntityManager* Manager = Arcx::GameplayDebugger::VisEntity::GetEntityManager();
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FHolderEntityEntry& Entry = CachedHolders[SelectedHolderIndex];
+
+	if (!Manager->IsEntityActive(Entry.Entity))
+	{
+		ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Holder entity is no longer active");
+		return;
+	}
+
+	ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Holder Entity %d (SN:%d)",
+		Entry.Entity.Index, Entry.Entity.SerialNumber);
+
+	ImGui::Spacing();
+
+	if (ImGui::CollapsingHeader("Holder Info", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::Text("Mesh: %s", TCHAR_TO_ANSI(*Entry.MeshName));
+		ImGui::Text("Instance Count: %d", Entry.InstanceCount);
+		ImGui::Text("Cell: (%d, %d, %d)", Entry.Cell.X, Entry.Cell.Y, Entry.Cell.Z);
+		ImGui::Text("Cast Shadow: %s", Entry.bCastShadow ? "true" : "false");
+	}
+
+	if (ImGui::CollapsingHeader("Referencing Vis Entities", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		if (Entry.ReferencingVisEntityIndices.IsEmpty())
+		{
+			ImGui::TextDisabled("No vis entities reference this holder");
+		}
+		else
+		{
+			ImGui::Text("%d entities:", Entry.ReferencingVisEntityIndices.Num());
+			for (int32 VisIdx : Entry.ReferencingVisEntityIndices)
+			{
+				if (!CachedEntities.IsValidIndex(VisIdx))
+				{
+					continue;
+				}
+				const FVisEntityEntry& VisEntry = CachedEntities[VisIdx];
+				ImGui::PushID(VisIdx);
+				if (ImGui::SmallButton(TCHAR_TO_ANSI(*VisEntry.Label)))
+				{
+					PendingVisEntityNavIndex = VisIdx;
+				}
+				ImGui::PopID();
+			}
+		}
+	}
 #endif
 }
 
@@ -346,25 +601,16 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 		const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 		if (Rep)
 		{
-			const char* StateStr = Arcx::GameplayDebugger::VisEntity::GetVisStateString(Rep->bIsActorRepresentation, Rep->ISMInstanceId);
-			ImVec4 StateColor = Arcx::GameplayDebugger::VisEntity::GetVisStateColor(Rep->bIsActorRepresentation, Rep->ISMInstanceId);
+			const FArcMassPhysicsBodyFragment* PhysBodyFrag = Manager->GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+			const bool bHasPhysicsBody = PhysBodyFrag && PhysBodyFrag->Body != nullptr;
+			const char* StateStr = Arcx::GameplayDebugger::VisEntity::GetVisStateString(Rep->bHasMeshRendering, bHasPhysicsBody);
+			ImVec4 StateColor = Arcx::GameplayDebugger::VisEntity::GetVisStateColor(Rep->bHasMeshRendering);
 			ImGui::TextColored(StateColor, "State: %s", StateStr);
 
-			ImGui::Text("Grid Coords: (%d, %d, %d)", Rep->GridCoords.X, Rep->GridCoords.Y, Rep->GridCoords.Z);
-
-			if (!Rep->bIsActorRepresentation)
-			{
-				ImGui::Text("ISM Instance ID: %d", Rep->ISMInstanceId);
-				ImGui::Text("Partition Slot: %d", Rep->PartitionSlotIndex);
-				if (Rep->CurrentISMMesh)
-				{
-					ImGui::Text("ISM Mesh: %s", TCHAR_TO_ANSI(*Rep->CurrentISMMesh->GetName()));
-				}
-				else
-				{
-					ImGui::TextDisabled("ISM Mesh: (base config)");
-				}
-			}
+			ImGui::Text("Mesh Grid: (%d, %d, %d)", Rep->MeshGridCoords.X, Rep->MeshGridCoords.Y, Rep->MeshGridCoords.Z);
+			ImGui::Text("Physics Grid: (%d, %d, %d)", Rep->PhysicsGridCoords.X, Rep->PhysicsGridCoords.Y, Rep->PhysicsGridCoords.Z);
+			ImGui::Text("Mesh Rendering: %s", Rep->bHasMeshRendering ? "Active" : "Inactive");
+			ImGui::Text("Physics Body: %s", bHasPhysicsBody ? "Attached" : "None");
 		}
 		else
 		{
@@ -377,20 +623,23 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 		{
 			ImGui::Spacing();
 			ImGui::TextDisabled("Config:");
-			if (Config->StaticMesh)
+			const FArcMassStaticMeshConfigFragment* MeshFrag = Manager->GetConstSharedFragmentDataPtr<FArcMassStaticMeshConfigFragment>(Entity);
+			if (MeshFrag && MeshFrag->Mesh.IsValid())
 			{
-				ImGui::Text("  Base Mesh: %s", TCHAR_TO_ANSI(*Config->StaticMesh->GetName()));
-			}
-			if (Config->ActorClass)
-			{
-				ImGui::Text("  Actor Class: %s", TCHAR_TO_ANSI(*Config->ActorClass->GetName()));
+				ImGui::Text("  Base Mesh: %s", TCHAR_TO_ANSI(*MeshFrag->Mesh->GetName()));
 			}
 			ImGui::Text("  Cast Shadows: %s", Config->bCastShadows ? "true" : "false");
+			const FArcMassPhysicsBodyConfigFragment* PhysConfig = Manager->GetConstSharedFragmentDataPtr<FArcMassPhysicsBodyConfigFragment>(Entity);
+			ImGui::Text("  Physics Config: %s", PhysConfig ? "true" : "false");
+			if (PhysConfig)
+			{
+				ImGui::Text("  Body Type: %s", PhysConfig->BodyType == EArcMassPhysicsBodyType::Dynamic ? "Dynamic" : "Static");
+			}
 		}
 	}
 
 	// === LIFECYCLE ===
-	const FArcVisLifecycleFragment* LCFrag = Manager->GetFragmentDataPtr<FArcVisLifecycleFragment>(Entity);
+	const FArcLifecycleFragment* LCFrag = Manager->GetFragmentDataPtr<FArcLifecycleFragment>(Entity);
 	if (LCFrag)
 	{
 		if (ImGui::CollapsingHeader("Lifecycle", ImGuiTreeNodeFlags_DefaultOpen))
@@ -400,13 +649,13 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 			ImGui::Text("Previous Phase: %s", Arcx::GameplayDebugger::VisEntity::GetLifecyclePhaseString(LCFrag->PreviousPhase));
 			ImGui::Text("Time in Phase: %.1fs", LCFrag->PhaseTimeElapsed);
 
-			const FArcVisLifecycleConfigFragment* LCConfig = Manager->GetConstSharedFragmentDataPtr<FArcVisLifecycleConfigFragment>(Entity);
+			const FArcLifecycleConfigFragment* LCConfig = Manager->GetConstSharedFragmentDataPtr<FArcLifecycleConfigFragment>(Entity);
 			if (LCConfig)
 			{
-				float PhaseDuration = LCConfig->GetPhaseDuration(LCFrag->CurrentPhase);
+				const float PhaseDuration = LCConfig->GetPhaseDuration(LCFrag->CurrentPhase);
 				if (PhaseDuration > 0.f)
 				{
-					float Progress = FMath::Clamp(LCFrag->PhaseTimeElapsed / PhaseDuration, 0.f, 1.f);
+					const float Progress = FMath::Clamp(LCFrag->PhaseTimeElapsed / PhaseDuration, 0.f, 1.f);
 					ImGui::ProgressBar(Progress, ImVec2(-1, 0),
 						TCHAR_TO_ANSI(*FString::Printf(TEXT("%.1f / %.1f"), LCFrag->PhaseTimeElapsed, PhaseDuration)));
 				}
@@ -414,28 +663,41 @@ void FArcVisEntityDebugger::DrawEntityDetailPanel()
 				{
 					ImGui::TextDisabled("  Duration: indefinite");
 				}
-
-				ImGui::TextDisabled("Auto Tick: %s", LCConfig->bDisableAutoTick ? "disabled" : "enabled");
 			}
 		}
 	}
 
-	// Also check non-vis lifecycle
-	const FArcLifecycleFragment* BaseLCFrag = Manager->GetFragmentDataPtr<FArcLifecycleFragment>(Entity);
-	if (BaseLCFrag && !LCFrag)
+	// === ISM HOLDER LINK ===
+	const FArcVisISMInstanceFragment* ISMInstFrag = Manager->GetFragmentDataPtr<FArcVisISMInstanceFragment>(Entity);
+	if (ISMInstFrag && ISMInstFrag->HolderEntity.IsValid())
 	{
-		if (ImGui::CollapsingHeader("Lifecycle (Base)", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("ISM Holder", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			ImVec4 PhaseColor = Arcx::GameplayDebugger::VisEntity::GetLifecyclePhaseColor(BaseLCFrag->CurrentPhase);
-			ImGui::TextColored(PhaseColor, "Phase: %s", Arcx::GameplayDebugger::VisEntity::GetLifecyclePhaseString(BaseLCFrag->CurrentPhase));
-			ImGui::Text("Previous Phase: %s", Arcx::GameplayDebugger::VisEntity::GetLifecyclePhaseString(BaseLCFrag->PreviousPhase));
-			ImGui::Text("Time in Phase: %.1fs", BaseLCFrag->PhaseTimeElapsed);
+			ImGui::Text("Holder Entity: E%d", ISMInstFrag->HolderEntity.Index);
+			ImGui::Text("Instance Index: %d", ISMInstFrag->InstanceIndex);
+
+			for (int32 HolderIdx = 0; HolderIdx < CachedHolders.Num(); ++HolderIdx)
+			{
+				if (CachedHolders[HolderIdx].Entity == ISMInstFrag->HolderEntity)
+				{
+					const FHolderEntityEntry& HolderEntry = CachedHolders[HolderIdx];
+					ImGui::Text("Mesh: %s", TCHAR_TO_ANSI(*HolderEntry.MeshName));
+					ImGui::Text("Total Instances on Holder: %d", HolderEntry.InstanceCount);
+					ImGui::Text("Siblings: %d", FMath::Max(0, HolderEntry.ReferencingVisEntityIndices.Num() - 1));
+
+					if (ImGui::SmallButton("Go to Holder"))
+					{
+						PendingHolderNavIndex = HolderIdx;
+					}
+					break;
+				}
+			}
 		}
 	}
 #endif
 }
 
-void FArcVisEntityDebugger::DrawSelectedEntityInWorld()
+void FArcVisEntityDebugger::DrawSelectedEntityInWorld(FMassEntityManager& Manager, FArcVisEntityDebugDrawData& OutDrawData)
 {
 #if WITH_MASSENTITY_DEBUG
 	if (SelectedEntityIndex == INDEX_NONE || !CachedEntities.IsValidIndex(SelectedEntityIndex))
@@ -443,83 +705,130 @@ void FArcVisEntityDebugger::DrawSelectedEntityInWorld()
 		return;
 	}
 
-	UWorld* World = Arcx::GameplayDebugger::VisEntity::GetDebugWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	FMassEntityManager* Manager = Arcx::GameplayDebugger::VisEntity::GetEntityManager();
-	if (!Manager)
-	{
-		return;
-	}
-
 	const FVisEntityEntry& Entry = CachedEntities[SelectedEntityIndex];
 	const FMassEntityHandle Entity = Entry.Entity;
 
-	if (!Manager->IsEntityActive(Entity))
+	if (!Manager.IsEntityActive(Entity))
 	{
 		return;
 	}
 
 	FVector Location = Entry.Location;
-	if (const FTransformFragment* TransformFrag = Manager->GetFragmentDataPtr<FTransformFragment>(Entity))
+	if (const FTransformFragment* TransformFrag = Manager.GetFragmentDataPtr<FTransformFragment>(Entity))
 	{
 		Location = TransformFrag->GetTransform().GetLocation();
 	}
 
-	const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
+	const FArcVisRepresentationFragment* Rep = Manager.GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 	FColor ShapeColor = FColor::Yellow;
 	if (Rep)
 	{
-		ShapeColor = Rep->bIsActorRepresentation ? FColor::Green : FColor::Cyan;
+		ShapeColor = FColor::Cyan;
 	}
 
-	// Draw a diamond/sphere at entity location
-	DrawDebugSphere(World, Location, 60.f, 16, ShapeColor, false, -1.f, 0, 3.f);
-
-	// Draw vertical line for visibility
-	DrawDebugLine(World, Location, Location + FVector(0, 0, 300.f), ShapeColor, false, -1.f, 0, 2.f);
-
-	// Draw label
 	FString Label = FString::Printf(TEXT("E%d"), Entity.Index);
 	if (Rep)
 	{
-		Label += Rep->bIsActorRepresentation ? TEXT(" [ACT]") : TEXT(" [ISM]");
+		Label += Rep->bHasMeshRendering ? TEXT(" [MESH]") : TEXT(" [---]");
 	}
-	DrawDebugString(World, Location + FVector(0, 0, 320.f), Label, nullptr, FColor::White, -1.f, true, 1.2f);
+
+	OutDrawData.bHasSelectedEntity = true;
+	OutDrawData.SelectedEntity.Location = Location;
+	OutDrawData.SelectedEntity.Color = ShapeColor;
+	OutDrawData.SelectedEntity.Label = Label;
 #endif
 }
 
-void FArcVisEntityDebugger::DrawGridVisualization()
+void FArcVisEntityDebugger::DrawSelectedHolderInWorld(FMassEntityManager& Manager, UWorld& World, FArcVisEntityDebugDrawData& OutDrawData)
 {
 #if WITH_MASSENTITY_DEBUG
-	UWorld* World = Arcx::GameplayDebugger::VisEntity::GetDebugWorld();
-	if (!World)
+	if (SelectedHolderIndex == INDEX_NONE || !CachedHolders.IsValidIndex(SelectedHolderIndex))
 	{
 		return;
 	}
 
-	UArcEntityVisualizationSubsystem* Subsystem = World->GetSubsystem<UArcEntityVisualizationSubsystem>();
+	const FHolderEntityEntry& Entry = CachedHolders[SelectedHolderIndex];
+	if (!Manager.IsEntityActive(Entry.Entity))
+	{
+		return;
+	}
+
+	UArcEntityVisualizationSubsystem* VisSub = World.GetSubsystem<UArcEntityVisualizationSubsystem>();
+	if (!VisSub)
+	{
+		return;
+	}
+
+	const float CellSize = VisSub->GetMeshGrid().CellSize;
+	const float HalfCell = CellSize * 0.5f;
+
+	OutDrawData.bHasSelectedHolder = true;
+
+	OutDrawData.SelectedHolder.CellCenter = FVector(
+		Entry.Cell.X * CellSize + HalfCell,
+		Entry.Cell.Y * CellSize + HalfCell,
+		Entry.Cell.Z * CellSize + HalfCell);
+	OutDrawData.SelectedHolder.CellHalfExtent = FVector(HalfCell * 0.85f);
+
+	const FArcRenderISMFragment* ISMFrag = Manager.GetFragmentDataPtr<FArcRenderISMFragment>(Entry.Entity);
+	if (ISMFrag)
+	{
+		for (TSparseArray<FInstancedStaticMeshInstanceData>::TConstIterator It(ISMFrag->PerInstanceSMData); It; ++It)
+		{
+			FArcVisEntityDebugHolderInstance& Inst = OutDrawData.SelectedHolder.Instances.AddDefaulted_GetRef();
+			Inst.Location = FVector(It->Transform.GetOrigin());
+		}
+	}
+
+	for (int32 VisIdx : Entry.ReferencingVisEntityIndices)
+	{
+		if (CachedEntities.IsValidIndex(VisIdx))
+		{
+			const FVisEntityEntry& VisEntry = CachedEntities[VisIdx];
+			if (Manager.IsEntityValid(VisEntry.Entity))
+			{
+				const FTransformFragment* TransformFrag = Manager.GetFragmentDataPtr<FTransformFragment>(VisEntry.Entity);
+				FVector Loc = TransformFrag ? TransformFrag->GetTransform().GetLocation() : VisEntry.Location;
+				OutDrawData.SelectedHolder.ReferencingEntityLocations.Add(Loc);
+			}
+		}
+	}
+#endif
+}
+
+void FArcVisEntityDebugger::DrawGridVisualization(FMassEntityManager& Manager, UWorld& World, FArcVisEntityDebugDrawData& OutDrawData)
+{
+#if WITH_MASSENTITY_DEBUG
+	UArcEntityVisualizationSubsystem* Subsystem = World.GetSubsystem<UArcEntityVisualizationSubsystem>();
 	if (!Subsystem)
 	{
 		return;
 	}
 
-	FMassEntityManager* Manager = Arcx::GameplayDebugger::VisEntity::GetEntityManager();
-	if (!Manager)
-	{
-		return;
-	}
+	OutDrawData.bShowGrid = true;
 
-	const FArcVisualizationGrid& Grid = Subsystem->GetGrid();
+	DrawSingleGrid(&World, Subsystem->GetMeshGrid(), Subsystem->GetLastMeshPlayerCell(),
+		Subsystem->GetMeshActivationRadiusCells(), Subsystem->GetMeshDeactivationRadiusCells(),
+		FColor::Green, FColor::Orange, &Manager, true, OutDrawData);
+
+	DrawSingleGrid(&World, Subsystem->GetPhysicsGrid(), Subsystem->GetLastPhysicsPlayerCell(),
+		Subsystem->GetPhysicsActivationRadiusCells(), Subsystem->GetPhysicsDeactivationRadiusCells(),
+		FColor::Yellow, FColor::Red, &Manager, false, OutDrawData);
+#endif
+}
+
+void FArcVisEntityDebugger::DrawSingleGrid(UWorld* World, const FArcVisualizationGrid& Grid, const FIntVector& PlayerCell,
+	int32 ActivationCells, int32 DeactivationCells, FColor InActiveColor, FColor BoundaryColor,
+	FMassEntityManager* Manager, bool bIsMeshGrid, FArcVisEntityDebugDrawData& OutDrawData)
+{
+#if WITH_MASSENTITY_DEBUG
 	const float CellSize = Grid.CellSize;
 	const float HalfCell = CellSize * 0.5f;
-	const FIntVector PlayerCell = Subsystem->GetLastPlayerCell();
+	// Offset physics grid drawing slightly to avoid overlap with mesh grid
+	const float ZOffset = bIsMeshGrid ? 0.f : 50.f;
 
-	// Draw all cells that contain entities
-	for (const auto& CellPair : Grid.CellEntities)
+	// Build occupied cell data
+	for (const TPair<FIntVector, TArray<FMassEntityHandle>>& CellPair : Grid.CellEntities)
 	{
 		const FIntVector& CellCoord = CellPair.Key;
 		const TArray<FMassEntityHandle>& Entities = CellPair.Value;
@@ -527,11 +836,11 @@ void FArcVisEntityDebugger::DrawGridVisualization()
 		const FVector CellCenter(
 			CellCoord.X * CellSize + HalfCell,
 			CellCoord.Y * CellSize + HalfCell,
-			CellCoord.Z * CellSize + HalfCell
+			CellCoord.Z * CellSize + HalfCell + ZOffset
 		);
 
 		// Determine cell state from first valid entity
-		bool bIsActorCell = false;
+		bool bHasMesh = false;
 		for (const FMassEntityHandle& Entity : Entities)
 		{
 			if (Manager->IsEntityValid(Entity))
@@ -539,51 +848,132 @@ void FArcVisEntityDebugger::DrawGridVisualization()
 				const FArcVisRepresentationFragment* Rep = Manager->GetFragmentDataPtr<FArcVisRepresentationFragment>(Entity);
 				if (Rep)
 				{
-					bIsActorCell = Rep->bIsActorRepresentation;
+					bHasMesh = Rep->bHasMeshRendering;
 					break;
 				}
 			}
 		}
 
-		const FColor DrawColor = bIsActorCell ? FColor::Green : FColor::Blue;
-		DrawDebugBox(World, CellCenter, FVector(HalfCell * 0.9f), DrawColor, false, -1.f, 0, 2.f);
+		// Determine if cell is in activation or hysteresis zone
+		const int32 DXPlayer = FMath::Abs(CellCoord.X - PlayerCell.X);
+		const int32 DYPlayer = FMath::Abs(CellCoord.Y - PlayerCell.Y);
+		const int32 DZPlayer = FMath::Abs(CellCoord.Z - PlayerCell.Z);
+		const int32 MaxDist = FMath::Max3(DXPlayer, DYPlayer, DZPlayer);
+		const bool bIsActive = MaxDist <= ActivationCells;
+		const bool bIsInHysteresis = !bIsActive && MaxDist <= DeactivationCells;
+		const FColor DrawColor = bIsActive ? FColor::Green : (bIsInHysteresis ? FColor::Cyan : FColor::Blue);
 
-		// Entity count label
-		const FString CountLabel = FString::Printf(TEXT("%d %s"), Entities.Num(), bIsActorCell ? TEXT("ACT") : TEXT("ISM"));
-		DrawDebugString(World, CellCenter + FVector(0, 0, HalfCell * 0.7f), CountLabel, nullptr,
-			bIsActorCell ? FColor::Green : FColor::Cyan, -1.f, true, 1.f);
+		const TCHAR* GridPrefix = bIsMeshGrid ? TEXT("M") : TEXT("P");
+		const TCHAR* StateStr = bHasMesh ? TEXT("MESH") : TEXT("---");
+		const FString CountLabel = FString::Printf(TEXT("[%s] %d %s"), GridPrefix, Entities.Num(), StateStr);
+
+		FArcVisEntityDebugGridCell& OccupiedCell = OutDrawData.OccupiedCells.AddDefaulted_GetRef();
+		OccupiedCell.Center = CellCenter;
+		OccupiedCell.HalfExtent = FVector(HalfCell * 0.9f);
+		OccupiedCell.Color = DrawColor;
+		OccupiedCell.Thickness = 2.f;
+		OccupiedCell.CountLabel = CountLabel;
 	}
 
-	// Draw player cell highlight
+	// Player cell highlight
 	if (PlayerCell != FIntVector(TNumericLimits<int32>::Max()))
 	{
 		const FVector PlayerCellCenter(
 			PlayerCell.X * CellSize + HalfCell,
 			PlayerCell.Y * CellSize + HalfCell,
-			PlayerCell.Z * CellSize + HalfCell
+			PlayerCell.Z * CellSize + HalfCell + ZOffset
 		);
-		DrawDebugBox(World, PlayerCellCenter, FVector(HalfCell * 0.95f), FColor::White, false, -1.f, 0, 3.f);
 
-		// Draw swap radius boundary
-		const int32 RadiusCells = Subsystem->GetSwapRadiusCells();
+		OutDrawData.bHasPlayerCell = true;
+		OutDrawData.PlayerCell.Center = PlayerCellCenter;
+		OutDrawData.PlayerCell.HalfExtent = FVector(HalfCell * 0.95f);
+		OutDrawData.PlayerCell.Color = FColor::White;
+		OutDrawData.PlayerCell.Thickness = 3.f;
+
+		// Activation radius boundary
 		TArray<FIntVector> ActiveCells;
-		Grid.GetCellsInRadius(PlayerCell, RadiusCells, ActiveCells);
+		Grid.GetCellsInRadius(PlayerCell, ActivationCells, ActiveCells);
 
 		for (const FIntVector& Cell : ActiveCells)
 		{
 			const int32 DX = FMath::Abs(Cell.X - PlayerCell.X);
 			const int32 DY = FMath::Abs(Cell.Y - PlayerCell.Y);
 			const int32 DZ = FMath::Abs(Cell.Z - PlayerCell.Z);
-			if (DX == RadiusCells || DY == RadiusCells || DZ == RadiusCells)
+			if (DX == ActivationCells || DY == ActivationCells || DZ == ActivationCells)
 			{
 				const FVector EdgeCellCenter(
 					Cell.X * CellSize + HalfCell,
 					Cell.Y * CellSize + HalfCell,
-					Cell.Z * CellSize + HalfCell
+					Cell.Z * CellSize + HalfCell + ZOffset
 				);
-				DrawDebugBox(World, EdgeCellCenter, FVector(HalfCell), FColor::Orange, false, -1.f, 0, 1.f);
+				FArcVisEntityDebugGridCell& BoundaryCell = OutDrawData.BoundaryCells.AddDefaulted_GetRef();
+				BoundaryCell.Center = EdgeCellCenter;
+				BoundaryCell.HalfExtent = FVector(HalfCell);
+				BoundaryCell.Color = InActiveColor;
+				BoundaryCell.Thickness = 1.f;
+			}
+		}
+
+		// Deactivation radius boundary (hysteresis edge)
+		TArray<FIntVector> DeactivationBoundaryCells;
+		Grid.GetCellsInRadius(PlayerCell, DeactivationCells, DeactivationBoundaryCells);
+
+		for (const FIntVector& Cell : DeactivationBoundaryCells)
+		{
+			const int32 DX = FMath::Abs(Cell.X - PlayerCell.X);
+			const int32 DY = FMath::Abs(Cell.Y - PlayerCell.Y);
+			const int32 DZ = FMath::Abs(Cell.Z - PlayerCell.Z);
+			if (DX == DeactivationCells || DY == DeactivationCells || DZ == DeactivationCells)
+			{
+				const FVector EdgeCellCenter(
+					Cell.X * CellSize + HalfCell,
+					Cell.Y * CellSize + HalfCell,
+					Cell.Z * CellSize + HalfCell + ZOffset
+				);
+				FArcVisEntityDebugGridCell& BoundaryCell = OutDrawData.BoundaryCells.AddDefaulted_GetRef();
+				BoundaryCell.Center = EdgeCellCenter;
+				BoundaryCell.HalfExtent = FVector(HalfCell);
+				BoundaryCell.Color = BoundaryColor;
+				BoundaryCell.Thickness = 1.f;
 			}
 		}
 	}
 #endif
+}
+
+void FArcVisEntityDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("VisEntityDebuggerDraw"));
+#endif
+
+	UArcVisEntityDebuggerDrawComponent* NewComponent = NewObject<UArcVisEntityDebuggerDrawComponent>(NewActor, UArcVisEntityDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcVisEntityDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

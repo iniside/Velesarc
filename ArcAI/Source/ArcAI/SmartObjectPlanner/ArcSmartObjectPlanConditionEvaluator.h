@@ -1,6 +1,7 @@
 #pragma once
 
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
+#include "Math/Vector.h"
 
 #include "ArcSmartObjectPlanConditionEvaluator.generated.h"
 

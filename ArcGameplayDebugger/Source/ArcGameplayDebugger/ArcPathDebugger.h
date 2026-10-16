@@ -2,8 +2,15 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "UObject/WeakObjectPtr.h"
+
+class AActor;
+class UWorld;
+class UArcPathDebuggerDrawComponent;
+struct FArcPathDebugDrawData;
 
 class FArcPathDebugger
 {
@@ -18,8 +25,11 @@ private:
 	void DrawEntityListPanel();
 	void DrawEntityDetailPanel();
 	void DrawPathInWorld();
+	void DrawNavMeshOverlay(UWorld* World, FArcPathDebugDrawData& OutData);
 
 	void RefreshEntityList();
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 
 	struct FEntityEntry
 	{
@@ -39,4 +49,10 @@ private:
 	bool bDrawForces = true;
 	bool bDrawShortPath = true;
 	bool bDrawAvoidance = true;
+	bool bDrawNavMesh = false;
+	float NavMeshZOffset = 10.f;
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcPathDebuggerDrawComponent> DrawComponent;
+
 };

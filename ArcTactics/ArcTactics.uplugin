@@ -1,0 +1,40 @@
+{
+	"FileVersion": 3,
+	"Version": 2,
+	"VersionName": "0.2",
+	"FriendlyName": "ArcTactics",
+	"Description": "Mass-native utility selection and ability usage.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": true,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcTactics",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcTacticsEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "MassAI", "Enabled": true },
+		{ "Name": "PropertyBindingUtils", "Enabled": true },
+		{ "Name": "PropertyAccessEditor", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "ArcCore", "Enabled": true },
+		{ "Name": "ArcAI", "Enabled": true },
+		{ "Name": "ArcTargetQuery", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcMassItems", "Enabled": true },
+		{ "Name": "ArcAbilityKit", "Enabled": true },
+		{ "Name": "ArcKnowledge", "Enabled": true },
+		{ "Name": "ToolsetRegistry", "Enabled": true, "TargetAllowList": [ "Editor" ] }
+	]
+}

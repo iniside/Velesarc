@@ -1,14 +1,21 @@
 ﻿#include "ArcMassSightPerception.h"
 
 #include "MassEntityTemplateRegistry.h"
-#include "MassExecutionContext.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 
 #include "MassEntitySubsystem.h"
 
 #include "Engine/World.h"
+#include "MassWorldUtils.h"
+#include "ArcAISignals.h"
+#include "MassSignalSubsystem.h"
 
-void UArcPerceptionSightPerceiverTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+void ArcMassPerception::ApplySightPerceiver(
+	FMassEntityTemplateBuildContext& BuildContext,
+	const UWorld& World,
+	const FArcPerceptionSightSenseConfigFragment& SightConfig)
 {
 	BuildContext.RequireFragment<FTransformFragment>();
 	BuildContext.AddFragment<FArcMassSightPerceptionResult>();
@@ -18,11 +25,21 @@ void UArcPerceptionSightPerceiverTrait::BuildTemplate(FMassEntityTemplateBuildCo
 	BuildContext.AddConstSharedFragment(ConfigFragment);
 }
 
-void UArcPerceptionSightPerceivableTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+void ArcMassPerception::ApplySightPerceivable(FMassEntityTemplateBuildContext& BuildContext)
 {
 	BuildContext.RequireFragment<FTransformFragment>();
 	BuildContext.RequireFragment<FArcMassSpatialHashFragment>();
 	BuildContext.AddTag<FArcMassSightPerceivableTag>();
+}
+
+void UArcPerceptionSightPerceiverTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+{
+	ArcMassPerception::ApplySightPerceiver(BuildContext, World, SightConfig);
+}
+
+void UArcPerceptionSightPerceivableTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
+{
+	ArcMassPerception::ApplySightPerceivable(BuildContext);
 }
 
 void UArcMassSightPerceptionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -108,6 +125,8 @@ void UArcMassSightPerceptionProcessor::Execute(FMassEntityManager& EntityManager
         return;
     }
 
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassSightPerception);
+
     const float DeltaTime = Context.GetDeltaTimeSeconds();
 
     PerceptionQuery.ForEachEntityChunk(Context,
@@ -135,6 +154,7 @@ void UArcMassSightPerceptionProcessor::ProcessPerceptionChunk(
     TArrayView<FArcMassSightPerceptionResult> ResultList)
 {
     const FMassSpatialHashGrid& Grid = SpatialHash->GetSpatialHashGrid();
+    UMassSignalSubsystem* SignalSubsystem = EntityManager.GetWorld()->GetSubsystem<UMassSignalSubsystem>();
 
 	UWorld* World = EntityManager.GetWorld();
 	double CurrentTime = World->GetTimeSeconds();
@@ -252,12 +272,19 @@ void UArcMassSightPerceptionProcessor::ProcessPerceptionChunk(
     		PerceptionSubsystem->BroadcastEntityPerceived(Entity, NewEntity, TAG_AI_Perception_Sense_Sight);
     	}
 
+    	bool bPerceptionChanged = !NewlyPerceivedSet.IsEmpty();
     	for (const FMassEntityHandle& OldEntity : RemovedEntities)
     	{
     		if (!NewlyPerceivedSet.Contains(OldEntity))
     		{
     			PerceptionSubsystem->BroadcastEntityLostFromPerception(Entity, OldEntity, TAG_AI_Perception_Sense_Sight);
+    			bPerceptionChanged = true;
     		}
+    	}
+
+    	if (bPerceptionChanged && SignalSubsystem)
+    	{
+    		SignalSubsystem->SignalEntityDeferred(Context, UE::ArcAI::Signals::PerceptionChanged, Entity);
     	}
 
     	// Append newly perceived entities to the result
@@ -277,6 +304,7 @@ void UArcMassSightPerceptionProcessor::ProcessPerceptionChunk(
 
 UArcMassSightPerceptionObserver::UArcMassSightPerceptionObserver()
     : ObserverQuery(*this)
+    , CleanupQuery(*this)
 {
     ObservedType = FArcMassSightPerceivableTag::StaticStruct();
     ObservedOperations = EMassObservedOperationFlags::Remove;
@@ -286,6 +314,7 @@ UArcMassSightPerceptionObserver::UArcMassSightPerceptionObserver()
 void UArcMassSightPerceptionObserver::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
     ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+    CleanupQuery.AddRequirement<FArcMassSightPerceptionResult>(EMassFragmentAccess::ReadWrite);
 }
 
 void UArcMassSightPerceptionObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -301,6 +330,10 @@ void UArcMassSightPerceptionObserver::Execute(FMassEntityManager& EntityManager,
     {
         return;
     }
+
+    TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassSightPerception);
+
+    UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
 
     TArray<FMassEntityHandle> DestroyedEntities;
 
@@ -320,11 +353,8 @@ void UArcMassSightPerceptionObserver::Execute(FMassEntityManager& EntityManager,
 
     // Clean up sight results
     {
-        FMassEntityQuery CleanupQuery;
-        CleanupQuery.AddRequirement<FArcMassSightPerceptionResult>(EMassFragmentAccess::ReadWrite);
-	
         CleanupQuery.ForEachEntityChunk(Context,
-            [&DestroyedEntities, PerceptionSubsystem](FMassExecutionContext& Ctx)
+            [&DestroyedEntities, PerceptionSubsystem, SignalSubsystem](FMassExecutionContext& Ctx)
             {
                 TArrayView<FArcMassSightPerceptionResult> ResultList = Ctx.GetMutableFragmentView<FArcMassSightPerceptionResult>();
 	
@@ -333,6 +363,7 @@ void UArcMassSightPerceptionObserver::Execute(FMassEntityManager& EntityManager,
                     FArcMassSightPerceptionResult& Result = ResultList[EntityIt];
                     FMassEntityHandle PerceiverEntity = Ctx.GetEntity(EntityIt);
 	
+                    bool bPerceptionChanged = false;
                     for (int32 i = Result.PerceivedEntities.Num() - 1; i >= 0; --i)
                     {
                         if (DestroyedEntities.Contains(Result.PerceivedEntities[i].Entity))
@@ -343,7 +374,13 @@ void UArcMassSightPerceptionObserver::Execute(FMassEntityManager& EntityManager,
                                 TAG_AI_Perception_Sense_Sight);
 	
                             Result.PerceivedEntities.RemoveAtSwap(i);
+                            bPerceptionChanged = true;
                         }
+                    }
+
+                    if (bPerceptionChanged && SignalSubsystem)
+                    {
+                        SignalSubsystem->SignalEntityDeferred(Ctx, UE::ArcAI::Signals::PerceptionChanged, PerceiverEntity);
                     }
                 }
             });

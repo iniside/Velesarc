@@ -1,0 +1,781 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTTopologyWork.usf — bounded sparse topology pipeline.
+
+	MergeWindowArgsCS advances a persistent ordinal cursor over the frozen CBT,
+	MergeSelectCS admits at most one authoritative record per complete unanimous
+	diamond. SplitRawArgsCS, six priority admission passes and SplitFinalizeArgsCS
+	bound split requests before sparse split apply resolves conflicts; separate
+	stage and commit passes collapse only the validated merge records.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+
+ByteAddressBuffer CBTHeapSnapshot;
+RWByteAddressBuffer CBTHeap;
+RWByteAddressBuffer BisectorPool;
+RWByteAddressBuffer BisectorNeighbors;
+RWBuffer<uint> BisectorCommands;
+RWBuffer<uint> BisectorPromote;
+RWBuffer<uint> PoolCounters;
+#if ARC_CBT_LATENCY_AUDIT
+RWBuffer<uint> LatencyCounters;
+#endif
+RWBuffer<uint> FaceLiveCount;
+RWBuffer<uint> FaceRoots;
+RWBuffer<uint> RawSplitRequests;
+RWBuffer<uint> SplitPriorityBySlot;
+RWBuffer<uint> SplitBucketCandidates;
+RWBuffer<uint> SplitBucketCounts;
+RWBuffer<uint> AdmittedSplitRequests;
+RWStructuredBuffer<uint4> PreparedSplitDescriptors;
+RWStructuredBuffer<uint4> SelectedDiamonds;
+RWBuffer<uint> WorkCounters;
+RWBuffer<uint> WindowMetadata;
+RWBuffer<uint> WorkIndirectArgs;
+RWBuffer<uint> MergeScanCursor;
+
+uint PoolDepth;
+uint PoolCapacity;
+uint NumFaces;
+uint MaxSubdivisionDepth;
+uint MergePhaseCount;
+uint MergeFramePhase;
+uint NormalScanBudget;
+uint PressureScanBudget;
+uint SelectedCapacity;
+uint SplitApplyBudget;
+uint SplitAllocationBudget;
+uint PriorityBucket;
+uint StatsEnabled;
+
+#include "/Plugin/ArcTerrain/ArcTerrainCBTMergeDiamond.ush"
+#define ARC_SPLIT_BOUNDED_WORK 1
+#include "/Plugin/ArcTerrain/ArcTerrainCBTSplit.ush"
+
+#define ARC_TOPO_WORK_RAW_SPLIT_COUNT   0u
+#define ARC_TOPO_WORK_SELECTED_COUNT    1u
+#define ARC_TOPO_WORK_ADMITTED_COUNT    2u
+
+#define ARC_TOPO_WINDOW_START           0u
+#define ARC_TOPO_WINDOW_COUNT           1u
+#define ARC_TOPO_WINDOW_LIVE            2u
+#define ARC_TOPO_WINDOW_END             3u
+#define ARC_TOPO_WINDOW_WRAPPED         4u
+#define ARC_TOPO_WINDOW_CURSOR_RESET    5u
+#define ARC_TOPO_WINDOW_ACTIVE_BUDGET   6u
+#define ARC_TOPO_WINDOW_PRESSURE        7u
+
+#define ARC_TOPO_ARGS_SELECT            0u
+#define ARC_TOPO_ARGS_RAW_SPLIT         3u
+#define ARC_TOPO_ARGS_ADMITTED_SPLIT    6u
+#define ARC_TOPO_ARGS_SELECTED          9u
+#define ARC_TOPO_ARGS_CLAIM_AUDIT       12u
+
+// PoolDepth <= 21 leaves this bit free for the persistent sweep-history flag.
+#define ARC_TOPO_CURSOR_POSITION_MASK   0x7FFFFFFFu
+#define ARC_TOPO_CURSOR_SAW_SELECTION   0x80000000u
+
+#define ARC_SPLIT_DESCRIPTOR_PHYSICAL_REFUSED 0xFFFFFFFCu
+#define ARC_SPLIT_DESCRIPTOR_BUDGET_DEFERRED  0xFFFFFFFDu
+#define ARC_SPLIT_DESCRIPTOR_PREPARED         0xFFFFFFFEu
+#define ARC_SPLIT_DESCRIPTOR_INVALID          0xFFFFFFFFu
+
+void ArcTerrainTopologyTally(uint Counter, uint Amount)
+{
+	if (StatsEnabled != 0u)
+	{
+		uint Ignored = 0u;
+		InterlockedAdd(PoolCounters[Counter], Amount, Ignored);
+	}
+}
+
+void ArcTerrainWriteDispatchArgs(uint Offset, uint WorkCount)
+{
+	WorkIndirectArgs[Offset + 0u] = (WorkCount + ARC_CBT_TOPOLOGY_THREADS - 1u)
+		/ ARC_CBT_TOPOLOGY_THREADS;
+	WorkIndirectArgs[Offset + 1u] = 1u;
+	WorkIndirectArgs[Offset + 2u] = 1u;
+}
+
+[numthreads(1, 1, 1)]
+void MergeWindowArgsCS()
+{
+	const uint LiveCount = cbt_NodeCount_RO(CBTHeapSnapshot, 0u, (int)PoolDepth);
+	const uint NormalBudget = clamp(NormalScanBudget, 1u, PoolCapacity);
+	const uint PressureBudget = clamp(PressureScanBudget, NormalBudget, PoolCapacity);
+	const bool bPressure = PoolCounters[ARC_CBT_COUNTER_SPLIT_POOL_FULL] != 0u;
+	const uint ActiveBudget = bPressure ? PressureBudget : NormalBudget;
+
+	WindowMetadata[ARC_TOPO_WINDOW_LIVE] = LiveCount;
+	WindowMetadata[ARC_TOPO_WINDOW_ACTIVE_BUDGET] = ActiveBudget;
+	WindowMetadata[ARC_TOPO_WINDOW_PRESSURE] = bPressure ? 1u : 0u;
+	if (StatsEnabled != 0u)
+	{
+		PoolCounters[ARC_CBT_COUNTER_TOPO_NORMAL_BUDGET] = NormalBudget;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_PRESSURE_BUDGET] = PressureBudget;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_ACTIVE_BUDGET] = ActiveBudget;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_PRESSURE_ACTIVE] = bPressure ? 1u : 0u;
+		PoolCounters[ARC_CBT_COUNTER_MERGE_PHASE_COUNT] = 1u;
+		PoolCounters[ARC_CBT_COUNTER_MERGE_FRAME_PHASE] = 0u;
+		PoolCounters[ARC_CBT_COUNTER_MERGE_PRESSURE_OVERRIDE] = 0u;
+	}
+
+	if (LiveCount == 0u)
+	{
+		WindowMetadata[ARC_TOPO_WINDOW_START] = 0u;
+		WindowMetadata[ARC_TOPO_WINDOW_COUNT] = 0u;
+		WindowMetadata[ARC_TOPO_WINDOW_END] = 0u;
+		WindowMetadata[ARC_TOPO_WINDOW_WRAPPED] = 0u;
+		WindowMetadata[ARC_TOPO_WINDOW_CURSOR_RESET] = 1u;
+		MergeScanCursor[0] = 0u;
+		ArcTerrainWriteDispatchArgs(ARC_TOPO_ARGS_SELECT, 0u);
+		return;
+	}
+
+	const uint CursorState = MergeScanCursor[0];
+	const uint RawStart = CursorState & ARC_TOPO_CURSOR_POSITION_MASK;
+	const bool bCursorReset = RawStart >= LiveCount;
+	const uint Start = bCursorReset ? 0u : RawStart;
+	const uint Count = min(ActiveBudget, LiveCount - Start);
+	const bool bWrapped = Start + Count == LiveCount;
+	const uint End = bWrapped ? 0u : Start + Count;
+	const uint SelectionState = bCursorReset ? 0u : (CursorState & ARC_TOPO_CURSOR_SAW_SELECTION);
+
+	WindowMetadata[ARC_TOPO_WINDOW_START] = Start;
+	WindowMetadata[ARC_TOPO_WINDOW_COUNT] = Count;
+	WindowMetadata[ARC_TOPO_WINDOW_END] = End;
+	WindowMetadata[ARC_TOPO_WINDOW_WRAPPED] = bWrapped ? 1u : 0u;
+	WindowMetadata[ARC_TOPO_WINDOW_CURSOR_RESET] = bCursorReset ? 1u : 0u;
+	MergeScanCursor[0] = End | SelectionState;
+	ArcTerrainWriteDispatchArgs(ARC_TOPO_ARGS_SELECT, Count);
+
+	if (StatsEnabled != 0u)
+	{
+		PoolCounters[ARC_CBT_COUNTER_TOPO_CURSOR_START] = Start;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_CURSOR_END] = End;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_CURSOR_WRAPPED] = bWrapped ? 1u : 0u;
+	}
+}
+
+/** Publishes the raw Classify append count. The same triplet is consumed by all six filtered passes. */
+[numthreads(1, 1, 1)]
+void SplitRawArgsCS()
+{
+	const uint RawCount = min(WorkCounters[ARC_TOPO_WORK_RAW_SPLIT_COUNT], PoolCapacity);
+	WorkCounters[ARC_TOPO_WORK_RAW_SPLIT_COUNT] = RawCount;
+	ArcTerrainWriteDispatchArgs(ARC_TOPO_ARGS_RAW_SPLIT, RawCount);
+}
+
+bool ArcTerrainFrozenSlotLive(uint Slot)
+{
+	return Slot < PoolCapacity
+		&& cbt_HeapRead_RO(CBTHeapSnapshot, 0u, (int)PoolDepth, arc_PoolNode((int)PoolDepth, Slot)) != 0u;
+}
+
+/** False only for the losing endpoint of one exact frozen same-depth mutual hypotenuse pair. */
+bool ArcTerrainSplitRequestWinsTwin(uint Slot, uint Priority)
+{
+	const uint TwinRef = arc_LoadNeighbor(BisectorNeighbors, Slot, ARC_EDGE_HYP);
+	if (!arc_RefValid(TwinRef) || arc_RefEdge(TwinRef) != ARC_EDGE_HYP)
+	{
+		return true;
+	}
+
+	const uint Twin = arc_RefIndex(TwinRef);
+	if (Twin >= PoolCapacity || Twin == Slot || !ArcTerrainFrozenSlotLive(Twin))
+	{
+		return true;
+	}
+	const uint BackRef = arc_LoadNeighbor(BisectorNeighbors, Twin, ARC_EDGE_HYP);
+	if (!arc_RefValid(BackRef) || arc_RefEdge(BackRef) != ARC_EDGE_HYP || arc_RefIndex(BackRef) != Slot)
+	{
+		return true;
+	}
+	if (arc_NodeDepth(arc_LoadNodeID(BisectorPool, Twin))
+		!= arc_NodeDepth(arc_LoadNodeID(BisectorPool, Slot)))
+	{
+		return true;
+	}
+	if (arc_CommandKind(BisectorCommands[Twin]) != ARC_CMD_SPLIT)
+	{
+		return true;
+	}
+
+	const uint TwinPriority = SplitPriorityBySlot[Twin];
+	if (TwinPriority == 0u)
+	{
+		return true;
+	}
+	return Priority > TwinPriority || (Priority == TwinPriority && Slot < Twin);
+}
+
+/** One of six passes. Each filters the same raw list into one bounded priority segment. */
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void SplitAdmissionCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint RawCount = min(WorkCounters[ARC_TOPO_WORK_RAW_SPLIT_COUNT], PoolCapacity);
+	if (DispatchThreadId.x >= RawCount)
+	{
+		return;
+	}
+
+	const uint Slot = RawSplitRequests[DispatchThreadId.x];
+	if (Slot >= PoolCapacity)
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY, 1u);
+		return;
+	}
+	const uint Priority = SplitPriorityBySlot[Slot];
+	if (Priority != PriorityBucket)
+	{
+		return;
+	}
+	if (!ArcTerrainFrozenSlotLive(Slot))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY, 1u);
+		return;
+	}
+	if (Priority == 0u || Priority > 6u || arc_CommandKind(BisectorCommands[Slot]) != ARC_CMD_SPLIT)
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY, 1u);
+		return;
+	}
+	if (!ArcTerrainSplitRequestWinsTwin(Slot, Priority))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_DUPLICATE, 1u);
+		return;
+	}
+
+	const uint BucketIndex = Priority - 1u;
+	uint CandidateIndex = 0u;
+	InterlockedAdd(SplitBucketCounts[BucketIndex], 1u, CandidateIndex);
+	if (CandidateIndex < SplitApplyBudget)
+	{
+		SplitBucketCandidates[BucketIndex * SplitApplyBudget + CandidateIndex] = Slot;
+	}
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_CANONICAL_BUCKET_BASE + BucketIndex, 1u);
+}
+
+bool ArcTerrainReserveSelectedDiamond(uint Limit, out uint OutIndex)
+{
+	OutIndex = 0u;
+	for (;;)
+	{
+		const uint Current = WorkCounters[ARC_TOPO_WORK_SELECTED_COUNT];
+		if (Current >= Limit)
+		{
+			return false;
+		}
+		uint Original = 0u;
+		InterlockedCompareExchange(WorkCounters[ARC_TOPO_WORK_SELECTED_COUNT], Current, Current + 1u,
+			Original);
+		if (Original == Current)
+		{
+			OutIndex = Current;
+			return true;
+		}
+	}
+}
+
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void MergeSelectCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint ScanCount = WindowMetadata[ARC_TOPO_WINDOW_COUNT];
+	if (DispatchThreadId.x >= ScanCount)
+	{
+		return;
+	}
+
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SCAN_ORDINALS, 1u);
+	const uint Ordinal = WindowMetadata[ARC_TOPO_WINDOW_START] + DispatchThreadId.x;
+	const uint Slot = arc_DecodeSlot(CBTHeapSnapshot, (int)PoolDepth, Ordinal);
+	if (Slot >= PoolCapacity || arc_CommandKind(BisectorCommands[Slot]) != ARC_CMD_MERGE)
+	{
+		return;
+	}
+
+	const FArcMergeFastCanonical FastCanonical = ArcTerrainTryFastMergeCanonical(Slot);
+	if (FastCanonical.bResolved && FastCanonical.Canonical != Slot)
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_FAST_REJECTS, 1u);
+		return;
+	}
+
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_FULL_GATHERS, 1u);
+	const FArcMergeDiamond Diamond = ArcTerrainGatherMergeDiamond(Slot);
+	if (!Diamond.bComplete || Slot != ArcTerrainMergeCanonicalMember(Diamond))
+	{
+		return;
+	}
+
+	for (uint MemberIndex = 0u; MemberIndex < Diamond.Count; ++MemberIndex)
+	{
+		if (arc_CommandKind(BisectorCommands[Diamond.Members[MemberIndex]]) != ARC_CMD_MERGE)
+		{
+			return;
+		}
+	}
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_MERGE_PHASE_CANDIDATE, Diamond.Count);
+
+	const uint ReservationLimit = min(SelectedCapacity, ScanCount);
+	uint SelectedIndex = 0u;
+	if (!ArcTerrainReserveSelectedDiamond(ReservationLimit, SelectedIndex))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_OVERFLOW, 1u);
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_MERGE_PHASE_DEFERRED, Diamond.Count);
+		return;
+	}
+
+	SelectedDiamonds[SelectedIndex] = ArcTerrainOrderMergeDiamond(Diamond);
+	DeviceMemoryBarrier();
+	for (uint MemberIndex = 0u; MemberIndex < Diamond.Count; ++MemberIndex)
+	{
+		uint Ignored = 0u;
+		InterlockedOr(BisectorCommands[Diamond.Members[MemberIndex]], ARC_CMD_MERGE_SELECTED, Ignored);
+	}
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_DIAMONDS, 1u);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_MEMBERS, Diamond.Count);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_MERGE_PHASE_SELECTED, Diamond.Count);
+}
+
+void ArcTerrainAdmitBucket(uint Priority, uint Limit, inout uint AdmittedCount, inout uint Consumed)
+{
+	const uint Available = min(SplitBucketCounts[Priority - 1u], SplitApplyBudget);
+	const uint RemainingInBucket = Available - min(Consumed, Available);
+	const uint RemainingCapacity = Limit - min(AdmittedCount, Limit);
+	const uint Take = min(RemainingInBucket, RemainingCapacity);
+	for (uint Index = 0u; Index < Take; ++Index)
+	{
+		AdmittedSplitRequests[AdmittedCount + Index] =
+			SplitBucketCandidates[(Priority - 1u) * SplitApplyBudget + Consumed + Index];
+	}
+	Consumed += Take;
+	AdmittedCount += Take;
+}
+
+/** Compacts the guarded reserve plus globally prioritized remainder and publishes the consumer triplets. */
+[numthreads(1, 1, 1)]
+void SplitFinalizeArgsCS()
+{
+	const uint Budget = clamp(SplitApplyBudget, 1u, PoolCapacity);
+	const uint GuardedQuota = (Budget + 3u) / 4u;
+	uint Consumed[7];
+	[unroll]
+	for (uint Index = 0u; Index < 7u; ++Index)
+	{
+		Consumed[Index] = 0u;
+	}
+
+	uint AdmittedCount = 0u;
+	ArcTerrainAdmitBucket(5u, GuardedQuota, AdmittedCount, Consumed[5]);
+	ArcTerrainAdmitBucket(3u, GuardedQuota, AdmittedCount, Consumed[3]);
+	ArcTerrainAdmitBucket(1u, GuardedQuota, AdmittedCount, Consumed[1]);
+	const uint GuardedAdmitted = AdmittedCount;
+
+	[unroll]
+	for (int Priority = 6; Priority >= 1; --Priority)
+	{
+		ArcTerrainAdmitBucket((uint)Priority, Budget, AdmittedCount, Consumed[Priority]);
+	}
+
+	uint CanonicalCount = 0u;
+	[unroll]
+	for (uint Priority = 1u; Priority <= 6u; ++Priority)
+	{
+		CanonicalCount += SplitBucketCounts[Priority - 1u];
+		if (StatsEnabled != 0u)
+		{
+			PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_ADMITTED_BUCKET_BASE + Priority - 1u]
+				= Consumed[Priority];
+		}
+	}
+	WorkCounters[ARC_TOPO_WORK_ADMITTED_COUNT] = AdmittedCount;
+	ArcTerrainWriteDispatchArgs(ARC_TOPO_ARGS_ADMITTED_SPLIT, AdmittedCount);
+
+	const uint ScanCount = min(WindowMetadata[ARC_TOPO_WINDOW_COUNT], SelectedCapacity);
+	const uint SelectedCount = min(WorkCounters[ARC_TOPO_WORK_SELECTED_COUNT], ScanCount);
+	WorkCounters[ARC_TOPO_WORK_SELECTED_COUNT] = SelectedCount;
+	ArcTerrainWriteDispatchArgs(ARC_TOPO_ARGS_SELECTED, SelectedCount);
+
+	if (StatsEnabled != 0u)
+	{
+		PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_CANONICAL] = CanonicalCount;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_ADMITTED] = AdmittedCount;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_DEFERRED] = CanonicalCount - AdmittedCount;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_GUARDED_QUOTA] = GuardedQuota;
+		PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_GUARDED_ADMITTED] = GuardedAdmitted;
+		ArcTerrainWriteDispatchArgs(ARC_TOPO_ARGS_CLAIM_AUDIT,
+			min(cbt_NodeCount_RO(CBTHeapSnapshot, 0u, (int)PoolDepth), PoolCapacity));
+	}
+
+	const bool bWrapped = WindowMetadata[ARC_TOPO_WINDOW_WRAPPED] != 0u;
+	const uint CursorPosition = WindowMetadata[ARC_TOPO_WINDOW_END];
+	const bool bSawSelection = (MergeScanCursor[0] & ARC_TOPO_CURSOR_SAW_SELECTION) != 0u
+		|| SelectedCount != 0u;
+	if (bWrapped)
+	{
+		if (!bSawSelection)
+		{
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_FULL_WRAP_NO_SELECT, 1u);
+		}
+		MergeScanCursor[0] = CursorPosition;
+	}
+	else
+	{
+		MergeScanCursor[0] = CursorPosition | (bSawSelection ? ARC_TOPO_CURSOR_SAW_SELECTION : 0u);
+	}
+}
+
+/** Six priority-tier passes run high-to-low. Only the matching pass may publish an owning descriptor. */
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void SplitPrepareCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	const uint SplitCount = min(WorkCounters[ARC_TOPO_WORK_ADMITTED_COUNT], SplitApplyBudget);
+	if (DispatchThreadId.x >= SplitCount)
+	{
+		return;
+	}
+
+	const uint Slot = AdmittedSplitRequests[DispatchThreadId.x];
+	if (Slot >= PoolCapacity)
+	{
+		if (PriorityBucket == 6u)
+		{
+			PreparedSplitDescriptors[DispatchThreadId.x] =
+				uint4(Slot, 0u, ARC_BISECTOR_NULL, ARC_SPLIT_DESCRIPTOR_INVALID);
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY, 1u);
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_PREPARE_FAILED, 1u);
+		}
+		return;
+	}
+	if (SplitPriorityBySlot[Slot] != PriorityBucket)
+	{
+		return;
+	}
+	PreparedSplitDescriptors[DispatchThreadId.x] =
+		uint4(Slot, 0u, ARC_BISECTOR_NULL, ARC_SPLIT_DESCRIPTOR_INVALID);
+	const bool bFrozenLive =
+		cbt_HeapRead_RO(CBTHeapSnapshot, 0u, Depth, arc_PoolNode(Depth, Slot)) != 0u;
+	if (!bFrozenLive || arc_CommandKind(BisectorCommands[Slot]) != ARC_CMD_SPLIT)
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_LOST_ENTRY, 1u);
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_PREPARE_FAILED, 1u);
+		return;
+	}
+
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_CONSUMED, 1u);
+	FArcSplitChain Chain;
+	uint MemberNum = 0u;
+	if (!ArcTerrainPrepareSplitTransaction(Depth, Slot, Chain, MemberNum))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_PREPARE_FAILED, 1u);
+		return;
+	}
+	PreparedSplitDescriptors[DispatchThreadId.x] =
+		uint4(Slot, Chain.Length, Chain.Terminal, ARC_SPLIT_DESCRIPTOR_PREPARED);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_PREPARED, 1u);
+}
+
+bool ArcTerrainSplitRangeFits(uint Base, uint Need, uint Ceiling)
+{
+	return Need <= Ceiling && Base <= Ceiling - Need;
+}
+
+/** One deterministic thread assigns disjoint frozen-free ordinals in admitted-list order. */
+[numthreads(1, 1, 1)]
+void SplitReserveCS()
+{
+	const uint SplitCount = min(WorkCounters[ARC_TOPO_WORK_ADMITTED_COUNT], SplitApplyBudget);
+	const uint LiveCount = cbt_NodeCount_RO(CBTHeapSnapshot, 0u, (int)PoolDepth);
+	const uint FreeCount = PoolCapacity - min(LiveCount, PoolCapacity);
+	const uint SeedReserve = arc_SeedReserve(PoolCapacity, FreeCount);
+	const uint PhysicalCeiling = FreeCount >= SeedReserve ? FreeCount - SeedReserve : 0u;
+	const uint SplitStart = PoolCounters[ARC_CBT_COUNTER_ALLOC_CURSOR];
+	const uint SaturatingBudgetEnd = SplitStart
+		+ min(SplitAllocationBudget, 0xFFFFFFFFu - SplitStart);
+	const uint BudgetCeiling = min(PhysicalCeiling, SaturatingBudgetEnd);
+	uint Cursor = SplitStart;
+
+	for (uint DescriptorIndex = 0u; DescriptorIndex < SplitCount; ++DescriptorIndex)
+	{
+		uint4 Descriptor = PreparedSplitDescriptors[DescriptorIndex];
+		if (Descriptor.w != ARC_SPLIT_DESCRIPTOR_PREPARED)
+		{
+			continue;
+		}
+		const FArcSplitChain Chain = ArcTerrainSplitDescriptorChain(Descriptor.y, Descriptor.z);
+		uint Need = 0u;
+		if (!ArcTerrainSplitNeedChecked(Chain, Need))
+		{
+			Descriptor.w = ARC_SPLIT_DESCRIPTOR_BUDGET_DEFERRED;
+			PreparedSplitDescriptors[DescriptorIndex] = Descriptor;
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_MALFORMED, 1u);
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_BUDGET_DEFERRED, 1u);
+			continue;
+		}
+
+		if (ArcTerrainSplitRangeFits(Cursor, Need, BudgetCeiling))
+		{
+			Descriptor.w = Cursor;
+			Cursor += Need;
+			PreparedSplitDescriptors[DescriptorIndex] = Descriptor;
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_RESERVED, 1u);
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_ALLOCATED_SLOTS, Need);
+		}
+		else if (!ArcTerrainSplitRangeFits(Cursor, Need, PhysicalCeiling))
+		{
+			Descriptor.w = ARC_SPLIT_DESCRIPTOR_PHYSICAL_REFUSED;
+			PreparedSplitDescriptors[DescriptorIndex] = Descriptor;
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_PHYSICAL_REFUSED, 1u);
+			uint Ignored = 0u;
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_ALLOC_REFUSED], 1u, Ignored);
+		}
+		else
+		{
+			Descriptor.w = ARC_SPLIT_DESCRIPTOR_BUDGET_DEFERRED;
+			PreparedSplitDescriptors[DescriptorIndex] = Descriptor;
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_BUDGET_DEFERRED, 1u);
+		}
+	}
+	PoolCounters[ARC_CBT_COUNTER_ALLOC_CURSOR] = Cursor;
+}
+
+/** Consume each owning descriptor exactly once: mutate the full chain or release every reproducible claim. */
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void SplitApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint SplitCount = min(WorkCounters[ARC_TOPO_WORK_ADMITTED_COUNT], SplitApplyBudget);
+	if (DispatchThreadId.x >= SplitCount)
+	{
+		return;
+	}
+
+	uint4 Descriptor = PreparedSplitDescriptors[DispatchThreadId.x];
+	const uint State = Descriptor.w;
+	if (State == ARC_SPLIT_DESCRIPTOR_INVALID)
+	{
+		return;
+	}
+	const bool bKnownOwningState = State < PoolCapacity
+		|| State == ARC_SPLIT_DESCRIPTOR_PREPARED
+		|| State == ARC_SPLIT_DESCRIPTOR_BUDGET_DEFERRED
+		|| State == ARC_SPLIT_DESCRIPTOR_PHYSICAL_REFUSED;
+	const FArcSplitChain Recorded = ArcTerrainSplitDescriptorChain(Descriptor.y, Descriptor.z);
+	FArcSplitChain Reproduced;
+	const bool bMatches = Descriptor.x < PoolCapacity && bKnownOwningState
+		&& ArcTerrainSplitDescriptorMatches(Descriptor.x, Recorded, Reproduced);
+	uint Need = 0u;
+	const bool bNeedValid = bMatches && ArcTerrainSplitNeedChecked(Recorded, Need);
+	const uint LiveCount = cbt_NodeCount_RO(CBTHeapSnapshot, 0u, (int)PoolDepth);
+	const uint FreeCount = PoolCapacity - min(LiveCount, PoolCapacity);
+	const uint SeedReserve = arc_SeedReserve(PoolCapacity, FreeCount);
+	const uint PhysicalCeiling = FreeCount >= SeedReserve ? FreeCount - SeedReserve : 0u;
+	const bool bReservedRangeValid = State < PoolCapacity && bNeedValid
+		&& ArcTerrainSplitRangeFits(State, Need, PhysicalCeiling);
+
+	if (bReservedRangeValid)
+	{
+		ArcTerrainApplyPreparedSplit((int)PoolDepth, Descriptor.x, Recorded, State);
+		PreparedSplitDescriptors[DispatchThreadId.x].w = ARC_SPLIT_DESCRIPTOR_INVALID;
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_APPLIED_DESCRIPTOR, 1u);
+		return;
+	}
+
+	ArcTerrainReleaseReproducedSplitClaims(Descriptor.x);
+	PreparedSplitDescriptors[DispatchThreadId.x].w = ARC_SPLIT_DESCRIPTOR_INVALID;
+	if (State == ARC_SPLIT_DESCRIPTOR_BUDGET_DEFERRED && bMatches && bNeedValid)
+	{
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_RELEASED_DESCRIPTOR, 1u);
+		return;
+	}
+	if (State == ARC_SPLIT_DESCRIPTOR_PHYSICAL_REFUSED && bMatches && bNeedValid)
+	{
+#if ARC_SPLIT_TALLY_DETAIL
+		if (ArcTerrainSplitTwinDiffFace(Descriptor.x))
+		{
+			ArcTerrainTallyTopology(ARC_CBT_COUNTER_SPLIT_DIFF_REFUSE, 1u);
+		}
+#endif
+		ArcTerrainTallyLatencySplit(ARC_SPLIT_REFUSED);
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_RELEASED_DESCRIPTOR, 1u);
+		return;
+	}
+
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_MALFORMED, 1u);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SPLIT_RELEASED_DESCRIPTOR, 1u);
+	ArcTerrainTallyLatencySplit(ARC_SPLIT_DEFERRED);
+}
+
+/** Stats-only global proof that SplitApply left no frozen-live slot claimed and still live. */
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void SplitClaimAuditCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint LiveCount = min(cbt_NodeCount_RO(CBTHeapSnapshot, 0u, (int)PoolDepth), PoolCapacity);
+	const uint Ordinal = DispatchThreadId.x;
+	if (Ordinal >= LiveCount)
+	{
+		return;
+	}
+	const int Depth = (int)PoolDepth;
+	const uint Slot = arc_DecodeSlot(CBTHeapSnapshot, Depth, Ordinal);
+	if (Slot < PoolCapacity
+		&& cbt_HeapRead_RW(CBTHeap, 0u, Depth, arc_PoolNode(Depth, Slot)) != 0u
+		&& arc_LoadField(BisectorPool, Slot, ARC_BISECTOR_RETIRE) == ARC_RETIRE_SPLIT)
+	{
+		uint Ignored = 0u;
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_HELD_CLAIMS], 1u, Ignored);
+	}
+}
+
+bool ArcTerrainSelectedRecordShape(uint4 Members, out uint MemberCount)
+{
+	MemberCount = 0u;
+	const bool bSecondPairNull = Members.z == ARC_BISECTOR_NULL;
+	if (Members.x == ARC_BISECTOR_NULL || Members.y == ARC_BISECTOR_NULL
+		|| bSecondPairNull != (Members.w == ARC_BISECTOR_NULL))
+	{
+		return false;
+	}
+
+	MemberCount = bSecondPairNull ? 2u : 4u;
+	for (uint MemberIndex = 0u; MemberIndex < MemberCount; ++MemberIndex)
+	{
+		if (Members[MemberIndex] >= PoolCapacity)
+		{
+			return false;
+		}
+		for (uint OtherIndex = 0u; OtherIndex < MemberIndex; ++OtherIndex)
+		{
+			if (Members[MemberIndex] == Members[OtherIndex])
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+/** Validate the entire published record before changing any member. */
+bool ArcTerrainSelectedRecordReady(uint4 Members, uint MemberCount)
+{
+	bool bReady = true;
+	const int Depth = (int)PoolDepth;
+	for (uint MemberIndex = 0u; MemberIndex < MemberCount; ++MemberIndex)
+	{
+		const uint Member = Members[MemberIndex];
+		const uint Command = BisectorCommands[Member];
+		if (arc_CommandKind(Command) != ARC_CMD_MERGE
+			|| (Command & ARC_CMD_MERGE_SELECTED) == 0u)
+		{
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_MISSING_BIT, 1u);
+			bReady = false;
+		}
+		if (cbt_HeapRead_RW(CBTHeap, 0u, Depth, arc_PoolNode(Depth, Member)) == 0u)
+		{
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_NONLIVE, 1u);
+			bReady = false;
+		}
+		if (arc_LoadField(BisectorPool, Member, ARC_BISECTOR_RETIRE) != ARC_RETIRE_LIVE)
+		{
+			ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_CLAIMED, 1u);
+			bReady = false;
+		}
+	}
+	return bReady;
+}
+
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void MergeStageCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint SelectedCount = min(WorkCounters[ARC_TOPO_WORK_SELECTED_COUNT], SelectedCapacity);
+	if (DispatchThreadId.x >= SelectedCount)
+	{
+		return;
+	}
+
+	const uint4 Members = SelectedDiamonds[DispatchThreadId.x];
+	uint MemberCount = 0u;
+	if (!ArcTerrainSelectedRecordShape(Members, MemberCount))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_MISSING_BIT, 1u);
+		return;
+	}
+	if (arc_LoadField(BisectorPool, Members.x, ARC_BISECTOR_FACE) >= NumFaces
+		|| (MemberCount == 4u
+			&& arc_LoadField(BisectorPool, Members.z, ARC_BISECTOR_FACE) >= NumFaces))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_SELECTED_MISSING_BIT, 1u);
+		return;
+	}
+	if (!ArcTerrainSelectedRecordReady(Members, MemberCount))
+	{
+		return;
+	}
+
+	uint Ignored = 0u;
+	const uint Partner0 = MemberCount == 4u ? Members.z : ARC_BISECTOR_NULL;
+	ArcTerrainStageMergedPair(Members.x, Members.y, Partner0);
+	arc_SetLive(CBTHeap, (int)PoolDepth, Members.y, 0u);
+	InterlockedAdd(FaceLiveCount[arc_LoadField(BisectorPool, Members.x, ARC_BISECTOR_FACE)],
+		0xFFFFFFFFu, Ignored);
+	if (MemberCount == 4u)
+	{
+		ArcTerrainStageMergedPair(Members.z, Members.w, Members.x);
+		arc_SetLive(CBTHeap, (int)PoolDepth, Members.w, 0u);
+		InterlockedAdd(FaceLiveCount[arc_LoadField(BisectorPool, Members.z, ARC_BISECTOR_FACE)],
+			0xFFFFFFFFu, Ignored);
+	}
+
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_MERGE_APPLIED, MemberCount);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_STAGED_DIAMONDS, 1u);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_STAGED_MEMBERS, MemberCount);
+}
+
+bool ArcTerrainMergePairStageProven(uint Even, uint Odd, uint Partner)
+{
+	return BisectorPromote[Even] == ARC_EDGE_RIGHT
+		&& arc_LoadField(BisectorPool, Even, ARC_BISECTOR_SUCC_A) == Partner
+		&& arc_LoadField(BisectorPool, Even, ARC_BISECTOR_SUCC_B) == Odd
+		&& arc_LoadField(BisectorPool, Odd, ARC_BISECTOR_RETIRE) == ARC_RETIRE_MERGED
+		&& arc_LoadField(BisectorPool, Odd, ARC_BISECTOR_SUCC_A) == Even
+		&& arc_LoadField(BisectorPool, Odd, ARC_BISECTOR_SUCC_B) == ARC_BISECTOR_NULL;
+}
+
+[numthreads(ARC_CBT_TOPOLOGY_THREADS, 1, 1)]
+void MergeCommitSparseCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint SelectedCount = min(WorkCounters[ARC_TOPO_WORK_SELECTED_COUNT], SelectedCapacity);
+	if (DispatchThreadId.x >= SelectedCount)
+	{
+		return;
+	}
+
+	const uint4 Members = SelectedDiamonds[DispatchThreadId.x];
+	uint MemberCount = 0u;
+	if (!ArcTerrainSelectedRecordShape(Members, MemberCount))
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_STALE_COMMIT, 1u);
+		return;
+	}
+
+	const uint Partner0 = MemberCount == 4u ? Members.z : ARC_BISECTOR_NULL;
+	const bool bStageProven = ArcTerrainMergePairStageProven(Members.x, Members.y, Partner0)
+		&& (MemberCount == 2u || ArcTerrainMergePairStageProven(Members.z, Members.w, Members.x));
+	if (!bStageProven)
+	{
+		ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_STALE_COMMIT, 1u);
+		return;
+	}
+
+	ArcTerrainCommitMergedPair(Members.x);
+	if (MemberCount == 4u)
+	{
+		ArcTerrainCommitMergedPair(Members.z);
+	}
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_COMMITTED_DIAMONDS, 1u);
+	ArcTerrainTopologyTally(ARC_CBT_COUNTER_TOPO_COMMITTED_MEMBERS, MemberCount);
+}

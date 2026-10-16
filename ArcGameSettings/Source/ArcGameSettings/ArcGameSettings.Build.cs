@@ -32,7 +32,6 @@ public class ArcGameSettings : ModuleRules
                 "GameFeatures",
                 "EnhancedInput",
                 "UMG",
-                "StructUtils"
             }
         );
 

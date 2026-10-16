@@ -111,6 +111,7 @@ void UE::ArcMass::Projectile::DispatchHitNotifications(const TArray<FPendingHitN
 		HitContext.HitResult = Pending.HitResult;
 		HitContext.Instigator = Pending.Instigator;
 		HitContext.Velocity = Pending.Velocity;
+		HitContext.TargetEntity = Pending.TargetEntity;
 		HitContext.bExpired = Pending.bExpired;
 
 		// Notify visualization actor

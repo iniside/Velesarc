@@ -22,17 +22,16 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Items/ArcItemId.h"
 #include "Items/ArcItemSpec.h"
+#include "Mass/EntityHandle.h"
 
 #include "ArcCraftItemSource.generated.h"
 
-class UArcCraftStationComponent;
-class UArcRecipeDefinition;
-class UArcItemsStoreComponent;
-class UArcCraftVisEntityComponent;
+struct FArcRecipeDefinitionData;
 struct FArcCraftInputFragment;
 struct FMassEntityManager;
-struct FMassEntityHandle;
+class UScriptStruct;
 
 /**
  * Base instanced struct for ingredient sourcing.
@@ -41,229 +40,97 @@ struct FMassEntityHandle;
  * Override this to create custom item sources (e.g. searching nearby containers,
  * pulling from a shared storage network, etc.).
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Base instanced struct for ingredient sourcing. Defines how a crafting station obtains items for recipes."))
 struct ARCCRAFT_API FArcCraftItemSource
 {
 	GENERATED_BODY()
 
 public:
-	/**
-	 * Get all items available from this source as specs.
-	 * Used for recipe discovery and UI display.
-	 */
-	virtual TArray<FArcItemSpec> GetAvailableItems(
-		const UArcCraftStationComponent* Station,
-		const UObject* Instigator) const;
+	virtual bool AcceptsDeposits() const
+	{
+		return false;
+	}
+
+	/** Moves Stacks of ItemId from the instigator's StoreType store into the station input, synchronously. Moving every stack keeps ItemId; moving part of the stack splits it and the moved spec gets a new ItemId. */
+	virtual bool DepositItem_Mass(
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		const UScriptStruct* StoreType,
+		FArcItemId ItemId,
+		int32 Stacks) const
+	{
+		return false;
+	}
 
 	/**
-	 * Check if a recipe's ingredients can be satisfied without consuming anything.
+	 * Mass-side: move an item from this source's station input back to the instigator's store.
+	 * Pushes a deferred command via EntityManager.Defer(); callable outside a processor.
+	 * Withdrawing part of the spec splits it: the withdrawn part gets a new ItemId.
+	 * Default: false (source has no station-side input to withdraw from).
 	 */
-	virtual bool CanSatisfyRecipe(
-		const UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator) const;
-
-	/**
-	 * Consume ingredients for a recipe.
-	 * @param OutMatchedItems   Filled with matched item specs per ingredient slot.
-	 * @param OutQualityMults   Filled with quality multiplier per ingredient slot.
-	 * @return true if all ingredients were consumed successfully.
-	 */
-	virtual bool ConsumeIngredients(
-		UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator,
-		TArray<FArcItemSpec>& OutMatchedItems,
-		TArray<float>& OutQualityMults) const;
-
-	/**
-	 * Deposit an item into this source's storage.
-	 * Used when players add ingredients to a station.
-	 */
-	virtual bool DepositItem(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& Item,
-		const UObject* Instigator);
-
-	/**
-	 * Withdraw an item from this source's storage by index.
-	 * Removes the item (or reduces its amount) from the station and returns the withdrawn spec.
-	 * @param ItemIndex  Index into the source's available items array.
-	 * @param Stacks     Number of stacks to withdraw. 0 = all.
-	 * @param OutSpec    Filled with the withdrawn item spec on success.
-	 * @return true if the item was successfully withdrawn.
-	 */
-	virtual bool WithdrawItem(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator);
+	virtual bool WithdrawItem_Mass(
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		FArcItemId ItemId,
+		int32 Stacks) const
+	{
+		return false;
+	}
 
 	virtual ~FArcCraftItemSource() = default;
 
-protected:
-	/** Shared logic: match and optionally consume recipe ingredients from a spec array.
-	 *  When bConsume is true, matched items are removed from the Items array. */
+public:
+	/** Match and optionally consume recipe ingredients from a spec array.
+	 *  When bConsume is true, matched items are removed from the Items array.
+	 *  Required slots are matched first, then optional slots, each by first match from the specs left.
+	 *  A slot draws its Amount from one or more specs of one item definition and equal instance tags
+	 *  (rarities may differ); the first such group whose specs together cover Amount wins. An unmatched required
+	 *  slot fails the call; an unmatched optional slot stays empty. Outputs are in slot order:
+	 *  OutMatchedItems the first drawn spec (default spec when empty), OutSlotRaritySteps the
+	 *  amount-weighted step of the drawn specs (1 when empty), OutSlotFilled whether the slot drew. */
 	static bool MatchAndConsumeFromSpecs(
 		TArray<FArcItemSpec>& Items,
-		const UArcRecipeDefinition* Recipe,
+		const FArcRecipeDefinitionData& Recipe,
 		bool bConsume,
 		TArray<FArcItemSpec>* OutMatchedItems = nullptr,
-		TArray<float>* OutQualityMults = nullptr);
+		TArray<float>* OutSlotRaritySteps = nullptr,
+		TArray<bool>* OutSlotFilled = nullptr);
 
-	/** Shared logic: match and optionally consume from an items store.
-	 *  Converts store items to specs, then delegates to MatchAndConsumeFromSpecs. */
-	static bool MatchAndConsumeFromStore(
-		UArcItemsStoreComponent* ItemsStore,
-		const UArcRecipeDefinition* Recipe,
-		bool bConsume,
-		TArray<FArcItemSpec>* OutMatchedItems = nullptr,
-		TArray<float>* OutQualityMults = nullptr);
-};
-
-/**
- * Item source that uses a UArcItemsStoreComponent on the instigator (player).
- * This is the simplest source — ingredients come from the player's inventory.
- */
-USTRUCT(BlueprintType, meta = (DisplayName = "Instigator Inventory"))
-struct ARCCRAFT_API FArcCraftItemSource_InstigatorStore : public FArcCraftItemSource
-{
-	GENERATED_BODY()
-
-public:
-	/** Which items store class to look for on the instigator actor. */
-	UPROPERTY(EditAnywhere, Category = "Source")
-	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
-
-	virtual TArray<FArcItemSpec> GetAvailableItems(
-		const UArcCraftStationComponent* Station,
-		const UObject* Instigator) const override;
-
-	virtual bool CanSatisfyRecipe(
-		const UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator) const override;
-
-	virtual bool ConsumeIngredients(
-		UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator,
-		TArray<FArcItemSpec>& OutMatchedItems,
-		TArray<float>& OutQualityMults) const override;
-
-	virtual bool DepositItem(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& Item,
-		const UObject* Instigator) override;
-
-	virtual bool WithdrawItem(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator) override;
-
-	virtual ~FArcCraftItemSource_InstigatorStore() override = default;
-
-protected:
-	UArcItemsStoreComponent* GetItemsStore(const UObject* Instigator) const;
-};
-
-/**
- * Item source that uses a UArcItemsStoreComponent on the station's owning actor.
- * Items must be deposited into the station first.
- */
-USTRUCT(BlueprintType, meta = (DisplayName = "Station Storage"))
-struct ARCCRAFT_API FArcCraftItemSource_StationStore : public FArcCraftItemSource
-{
-	GENERATED_BODY()
-
-public:
-	/** Which items store class to look for on the station's owner actor. */
-	UPROPERTY(EditAnywhere, Category = "Source")
-	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
-
-	virtual TArray<FArcItemSpec> GetAvailableItems(
-		const UArcCraftStationComponent* Station,
-		const UObject* Instigator) const override;
-
-	virtual bool CanSatisfyRecipe(
-		const UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator) const override;
-
-	virtual bool ConsumeIngredients(
-		UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator,
-		TArray<FArcItemSpec>& OutMatchedItems,
-		TArray<float>& OutQualityMults) const override;
-
-	virtual bool DepositItem(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& Item,
-		const UObject* Instigator) override;
-
-	virtual bool WithdrawItem(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator) override;
-
-	virtual ~FArcCraftItemSource_StationStore() override = default;
-
-protected:
-	UArcItemsStoreComponent* GetStationStore(const UArcCraftStationComponent* Station) const;
 };
 
 /**
  * Item source that reads/writes directly to the entity's FArcCraftInputFragment.
- * The source of truth is the Mass entity fragment — not the actor-side store.
- *
- * When the actor is alive (vis active), changes are also mirrored to the
- * UArcItemsStoreComponent for UI display. When the actor is despawned,
- * only the entity fragment persists — the processor reads it directly.
+ * The source of truth is the Mass entity fragment — the actor-side mirror retired
+ * with UArcItemsStoreComponent (plan step 8b-craft).
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage", Tooltip = "Item source that reads and writes directly to the entity's FArcCraftInputFragment."))
 struct ARCCRAFT_API FArcCraftItemSource_EntityStore : public FArcCraftItemSource
 {
 	GENERATED_BODY()
 
 public:
-	virtual TArray<FArcItemSpec> GetAvailableItems(
-		const UArcCraftStationComponent* Station,
-		const UObject* Instigator) const override;
+	virtual bool AcceptsDeposits() const override
+	{
+		return true;
+	}
 
-	virtual bool CanSatisfyRecipe(
-		const UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator) const override;
+	virtual bool DepositItem_Mass(
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		const UScriptStruct* StoreType,
+		FArcItemId ItemId,
+		int32 Stacks) const override;
 
-	virtual bool ConsumeIngredients(
-		UArcCraftStationComponent* Station,
-		const UArcRecipeDefinition* Recipe,
-		const UObject* Instigator,
-		TArray<FArcItemSpec>& OutMatchedItems,
-		TArray<float>& OutQualityMults) const override;
-
-	virtual bool DepositItem(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& Item,
-		const UObject* Instigator) override;
-
-	virtual bool WithdrawItem(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator) override;
+	virtual bool WithdrawItem_Mass(
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		FArcItemId ItemId,
+		int32 Stacks) const override;
 
 	virtual ~FArcCraftItemSource_EntityStore() override = default;
-
-private:
-	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
-	FArcCraftInputFragment* GetInputFragment(const UArcCraftStationComponent* Station) const;
-	UArcItemsStoreComponent* GetMirrorInputStore(const UArcCraftStationComponent* Station) const;
 };
+

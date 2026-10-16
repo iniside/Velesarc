@@ -22,9 +22,8 @@
 #include "UI/ArcReticleWidget.h"
 
 #include "ArcGunStateComponent.h"
-#include "ArcWorldDelegates.h"
 #include "GameFramework/PlayerState.h"
-#include "Player/ArcCorePlayerState.h"
+#include "Player/ArcMassPlayerState.h"
 #include "Targeting/ArcTargetingSourceContext.h"
 #include "TargetingSystem/TargetingSubsystem.h"
 
@@ -37,12 +36,11 @@ void UArcReticleWidget::NativeConstruct()
 
 	if (GunComponent == nullptr)
 	{
-		UArcWorldDelegates::Get(GetOwningPlayerState())->AddActorOnComponentBeginPlay(
-			FArcComponentChannelKey(GetOwningPlayerState(), UArcGunStateComponent::StaticClass())
-				, FArcGenericActorComponentDelegate::FDelegate::CreateUObject(
-					this, &UArcReticleWidget::HandleGunStateComponentBeginPlay
-				)
-			);
+		// 4h Phase 2b: previously subscribed to UArcWorldDelegates::OnComponentBeginPlay
+		// to wait for ArcGunStateComponent to register. The hub is retired with no
+		// replacement; the widget now silently no-ops when the gun component is not
+		// yet ready. Reimplement on UGameplayMessageSubsystem if this callback is
+		// required for end-game UI.
 		return;
 	}
 	
@@ -77,7 +75,7 @@ void UArcReticleWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	{
 		FArcTargetingSourceContext Context;
 		Context.SourceActor = GetOwningPlayer()->GetPawn();
-		Context.InstigatorActor = GetOwningPlayer()->GetPlayerState<AArcCorePlayerState>();
+		Context.InstigatorActor = GetOwningPlayer()->GetPlayerState<AArcMassPlayerState>();
 		Context.SourceObject = this;
 		
 		UTargetingSubsystem* TargetingSubsystem = UTargetingSubsystem::Get(GetWorld());
@@ -222,25 +220,6 @@ void UArcReticleWidget::ComputeSwayAngleImpl(float Sway
 	OnSwayChanged(CalculatedSpread);
 }
 
-//void UArcReticleWidget::HandleOnWeaponFireHit(
-//			UGameplayAbility* InAbility
-//			, const FArcSelectedGun& SelectedGun
-//			, const FGameplayAbilityTargetDataHandle& InHits
-//			, UArcTargetingObject* InTrace
-//			, const FGameplayAbilitySpecHandle& RequestHandle)
-//{
-//	if(InHits.Num() == 0)
-//	{
-//		return;
-//	}
-//	
-//	if(const FHitResult* HitResult = InHits.Get(0)->GetHitResult())
-//	{
-//		FVector HitLocation = HitResult->bBlockingHit ? HitResult->ImpactPoint : HitResult->TraceEnd;
-//		OnWeaponFireHit(HitLocation);
-//	}
-//}
-
 void UArcReticleWidget::HandleOnWeaponFireHit(
 			const FArcGunShotInfo& ShotInfo)
 {
@@ -253,22 +232,6 @@ void UArcReticleWidget::HandleOnWeaponFireHit(
 	{
 		FVector HitLocation = HitResult->bBlockingHit ? HitResult->ImpactPoint : HitResult->TraceEnd;
 		OnWeaponFireHit(HitLocation);
-	}
-}
-
-void UArcReticleWidget::HandleGunStateComponentBeginPlay(UActorComponent* InComponent)
-{
-	UArcWorldDelegates::Get(GetOwningPlayerState())->RemoveActorOnComponentBeginPlay(
-	FArcComponentChannelKey(GetOwningPlayerState(), UArcGunStateComponent::StaticClass())
-		, GunStateComponentBeginPlayDelegate);
-
-	if (UArcGunStateComponent* GunComponent = Cast<UArcGunStateComponent>(InComponent))
-	{
-		WeaponSpreadDelegate = GunComponent->AddOnSpreadChanged(FRecoilSpreadChanged::FDelegate::CreateUObject(
-		this, &UArcReticleWidget::ComputeSpreadAngle));
-
-		GunComponent->AddOnPreShoot(FArcOnShootFired::FDelegate::CreateUObject(
-			this, &UArcReticleWidget::HandleOnWeaponFireHit));
 	}
 }
 

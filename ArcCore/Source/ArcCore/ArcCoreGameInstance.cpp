@@ -22,17 +22,7 @@
 
 
 #include "ArcCoreGameInstance.h"
-#include "ArcCoreGameplayTags.h"
-#include "Components/GameFrameworkComponentManager.h"
-#include "Core/ArcCoreAssetManager.h"
-#include "Development/ArcDeveloperSettings.h"
-#include "GameMode/ArcExperienceDefinition.h"
-#include "GameMode/ArcUserFacingExperienceDefinition.h"
-#include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
-#include "Misc/AssertionMacros.h"
-#include "Misc/CommandLine.h"
-#include "Templates/Casts.h"
 
 UArcCoreGameInstance::UArcCoreGameInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -43,112 +33,12 @@ void UArcCoreGameInstance::Init()
 {
 	Super::Init();
 
-	// Register our custom init states
-	UGameFrameworkComponentManager* ComponentManager = GetSubsystem<UGameFrameworkComponentManager>(this);
-
-	if (ensure(ComponentManager))
-	{
-		const FArcCoreGameplayTags& GameplayTags = FArcCoreGameplayTags::Get();
-
-		ComponentManager->RegisterInitState(GameplayTags.InitState_Spawned
-			, false
-			, FGameplayTag());
-		ComponentManager->RegisterInitState(GameplayTags.InitState_DataAvailable
-			, false
-			, GameplayTags.InitState_Spawned);
-		ComponentManager->RegisterInitState(GameplayTags.InitState_DataInitialized
-			, false
-			, GameplayTags.InitState_DataAvailable);
-		ComponentManager->RegisterInitState(GameplayTags.InitState_GameplayReady
-			, false
-			, GameplayTags.InitState_DataInitialized);
-	}
-
-	//TODO: Extend it check for similiar states in PlayerStateExtension
+	// Init-state tag chain registration moved to UArcMassFrameworkInitStateSubsystem.
 }
 
 void UArcCoreGameInstance::Shutdown()
 {
 	Super::Shutdown();
-}
-
-const TSoftObjectPtr<UArcExperienceDefinition>& UArcCoreGameInstance::GetSelectedGameExperience() const
-{
-	TSoftObjectPtr<UArcExperienceDefinition> NewExperience;
-	UWorld* World = GetWorld();
-
-	FURL WorldURL = World->URL;
-
-	FString Options(TEXT(""));
-	FString	Error(TEXT(""));
-	for( int32 i=0; i<WorldURL.Op.Num(); i++ )
-	{
-		Options += TEXT("?");
-		Options += WorldURL.Op[i];
-	}
-	
-	FPrimaryAssetId ExperienceId;
-	FString ExperienceIdSource;
-
-	if (!ExperienceId.IsValid() && UGameplayStatics::HasOption(Options, TEXT("Experience")))
-	{
-		const FString ExperienceFromOptions = UGameplayStatics::ParseOption(Options, TEXT("Experience"));
-		ExperienceId = FPrimaryAssetId(FPrimaryAssetType(UArcExperienceDefinition::StaticClass()->GetFName()), FName(*ExperienceFromOptions));
-		ExperienceIdSource = TEXT("OptionsString");
-	}
-
-	// "UserExperience="
-	if (!ExperienceId.IsValid() && UGameplayStatics::HasOption(Options, TEXT("UserExperience")))
-	{
-		const FString ExperienceFromOptions = UGameplayStatics::ParseOption(Options, TEXT("UserExperience"));
-		UArcCoreAssetManager& AssetManager = UArcCoreAssetManager::Get();
-		FPrimaryAssetId UserExperienceId = FPrimaryAssetId::FromString(ExperienceFromOptions);
-		
-		TSharedPtr<FStreamableHandle> Handle = AssetManager.LoadPrimaryAsset(UserExperienceId);
-		if (ensure(Handle.IsValid()))
-		{
-			Handle->WaitUntilComplete();
-		}
-		UArcUserFacingExperienceDefinition* UserFacing = Cast<UArcUserFacingExperienceDefinition>(Handle->GetLoadedAsset());
-		ExperienceIdSource = "User Facing Experience";
-		ExperienceId = UserFacing->ExperienceID;
-		
-	}
-	// see if the command line wants to set the experience
-	if (!ExperienceId.IsValid())
-	{
-		FString ExperienceFromCommandLine;
-		if (FParse::Value(FCommandLine::Get(), TEXT("Experience="), ExperienceFromCommandLine))
-		{
-			ExperienceId = FPrimaryAssetId::ParseTypeAndName(ExperienceFromCommandLine);
-			if (!ExperienceId.PrimaryAssetType.IsValid())
-			{
-				ExperienceId = FPrimaryAssetId(FPrimaryAssetType(UArcExperienceDefinition::StaticClass()->GetFName()), FName(*ExperienceFromCommandLine));
-			}
-			ExperienceIdSource = TEXT("CommandLine");
-		}
-	}
-
-	// see if the world settings has a default experience
-	if (!ExperienceId.IsValid())
-	{
-		if (AArcCoreWorldSettings* TypedWorldSettings = Cast<AArcCoreWorldSettings>(World->GetWorldSettings()))
-		{
-			ExperienceId = TypedWorldSettings->GetDefaultExperience();
-			ExperienceIdSource = TEXT("WorldSettings");
-		}
-	}
-	
-#if WITH_EDITOR
-	if (!ExperienceId.IsValid() && World->IsPlayInEditor())
-	{
-		ExperienceId = GetDefault<UArcDeveloperSettings>()->ExperienceOverride;
-		ExperienceIdSource = TEXT("DeveloperSettings");
-	}
-#endif
-	SelectedGameExperienceId = ExperienceId;
-	SelectedGameExperience = TSoftObjectPtr<UArcExperienceDefinition>(UAssetManager::Get().GetPrimaryAssetPath(ExperienceId));
-	return SelectedGameExperience;
 }
 
 FGuid UArcCoreGameInstance::GetAvatarId() const
@@ -215,7 +105,7 @@ TArray<FArcCoreAvatarEntry> UArcCoreAvatarSubsystem::GetAvatarsForExperience(con
 			Result.Add(AvatarEntry);
 		}
 	}
-	
+
 	return Result;
 }
 
@@ -244,7 +134,7 @@ UArcCorePersistenceEditorSettings::UArcCorePersistenceEditorSettings()
 
 FName UArcCorePersistenceEditorSettings::GetCategoryName() const
 {
-	return FApp::GetProjectName();
+	return FName(TEXT("Arc Game"));
 }
 
 #undef LOCTEXT_NAMESPACE

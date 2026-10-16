@@ -21,12 +21,44 @@
 
 #include "ArcPersistenceModule.h"
 
+#include "UObject/UObjectGlobals.h"
+#include "UObject/Class.h"
+
 void FArcPersistenceModule::StartupModule()
 {
+#if WITH_EDITOR
+	ObjectsReplacedHandle = FCoreUObjectDelegates::OnObjectsReplaced.AddRaw(
+		this, &FArcPersistenceModule::OnObjectsReplaced);
+#endif
 }
 
 void FArcPersistenceModule::ShutdownModule()
 {
+	PlanCache.SaveGamePlans.Empty();
+	PlanCache.AllPropertyPlans.Empty();
+
+#if WITH_EDITOR
+	if (ObjectsReplacedHandle.IsValid())
+	{
+		FCoreUObjectDelegates::OnObjectsReplaced.Remove(ObjectsReplacedHandle);
+		ObjectsReplacedHandle.Reset();
+	}
+#endif
 }
+
+#if WITH_EDITOR
+void FArcPersistenceModule::OnObjectsReplaced(const TMap<UObject*, UObject*>& ReplacementMap)
+{
+	for (const TPair<UObject*, UObject*>& Pair : ReplacementMap)
+	{
+		const UStruct* OldStruct = Cast<UStruct>(Pair.Key);
+		if (OldStruct != nullptr)
+		{
+			PlanCache.SaveGamePlans.Remove(OldStruct);
+			PlanCache.AllPropertyPlans.Remove(OldStruct);
+		}
+	}
+}
+#endif
 
 IMPLEMENT_MODULE(FArcPersistenceModule, ArcPersistence)

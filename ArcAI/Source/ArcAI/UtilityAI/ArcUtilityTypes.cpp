@@ -4,7 +4,7 @@
 
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 
 FVector FArcUtilityTarget::GetLocation(const FMassEntityManager* EntityManager) const
 {

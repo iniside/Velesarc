@@ -7,7 +7,7 @@
 #endif
 
 #include "NavigationData.h"
-#include "ArcMass/ArcMassInfluenceMapping.h"
+#include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcInfluenceQueryFilter)
 
@@ -34,7 +34,7 @@ dtReal FArcInfluenceRecastQueryFilter::getVirtualCost(
 		curRef, curTile, curPoly,
 		nextRef, nextTile, nextPoly);
 
-	if (!InfluenceSubsystem || CostMultiplier == 0.f)
+	if ((!InfluenceSubsystem && !TiledGrid) || CostMultiplier == 0.f)
 	{
 		return BaseCost;
 	}
@@ -48,7 +48,22 @@ dtReal FArcInfluenceRecastQueryFilter::getVirtualCost(
 	};
 	const FVector WorldPos = Recast2UnrealPoint(Mid);
 
-	const float Influence = InfluenceSubsystem->QueryInfluence(GridIndex, WorldPos, Channel);
+	float Influence = 0.f;
+	if (TiledGrid)
+	{
+		// No team means no enemy: IsVisibleToOtherTeam would otherwise match every plane,
+		// penalising the whole map instead of nothing.
+		if (QuerierTeamId == INDEX_NONE)
+		{
+			return BaseCost;
+		}
+		Influence = TiledGrid->IsCellVisibleToOtherTeam(TiledGrid->WorldToCell(WorldPos), QuerierTeamId) ? 1.f : 0.f;
+	}
+	else
+	{
+		Influence = InfluenceSubsystem->QueryInfluence(GridIndex, WorldPos, Channel);
+	}
+
 	if (Influence <= 0.f)
 	{
 		return BaseCost;

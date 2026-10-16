@@ -72,10 +72,8 @@ public:
 
 struct FArcItemFragment_GunStats;
 
-class AArcCorePlayerController;
-class UArcCoreAbilitySystemComponent;
+class AArcMassPlayerController;
 class APawn;
-class AArcPlayerCameraManager;
 class UCameraComponent;
 class UCurveFloat;
 class UInputAction;
@@ -95,10 +93,7 @@ protected:
 	FGameplayTag AimTag;
 
 	UPROPERTY()
-	TObjectPtr<AArcCorePlayerController> ArcPC = nullptr;
-
-	UPROPERTY()
-	TObjectPtr<UArcCoreAbilitySystemComponent> ArcASC = nullptr;
+	TObjectPtr<AArcMassPlayerController> ArcPC = nullptr;
 
 	UPROPERTY()
 	TObjectPtr<APawn> CharacterOwner = nullptr;

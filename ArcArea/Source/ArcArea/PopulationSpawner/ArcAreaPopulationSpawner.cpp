@@ -4,12 +4,13 @@
 #include "ArcAreaPopulationTypes.h"
 #include "ArcAreaSubsystem.h"
 #include "ArcAreaTypes.h"
-#include "ArcAreaSlotDefinition.h"
 #include "MassSpawnerSubsystem.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityConfigAsset.h"
-#include "MassCommands.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
+#include "Mass/Commands.h"
+#include "ArcMass/Spawner/ArcMassSpawnerSubsystem.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
+#include "ArcTQSQuerySubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Components/BillboardComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -71,10 +72,10 @@ void AArcAreaPopulationSpawner::BeginPlay()
 		}
 
 		// Scan all currently registered areas for vacant slots
-		for (const auto& [AreaHandle, AreaData] : AreaSubInner->GetAllAreas())
+		for (const TPair<FSmartObjectHandle, FArcAreaData>& Pair : AreaSubInner->GetAllAreas())
 		{
-			const TArray<FArcAreaSlotHandle> VacantSlots = AreaSubInner->GetVacantSlots(AreaHandle);
-			for (const FArcAreaSlotHandle& SlotHandle : VacantSlots)
+			const TArray<FSmartObjectSlotHandle> VacantSlots = AreaSubInner->GetVacantSlots(Pair.Key);
+			for (const FSmartObjectSlotHandle& SlotHandle : VacantSlots)
 			{
 				SpawnForSlot(SlotHandle);
 			}
@@ -103,7 +104,7 @@ void AArcAreaPopulationSpawner::EndPlay(const EEndPlayReason::Type EndPlayReason
 	Super::EndPlay(EndPlayReason);
 }
 
-void AArcAreaPopulationSpawner::OnSlotStateChanged(const FArcAreaSlotHandle& SlotHandle, EArcAreaSlotState NewState)
+void AArcAreaPopulationSpawner::OnSlotStateChanged(const FSmartObjectSlotHandle& SlotHandle, EArcAreaSlotState NewState)
 {
 	if (NewState == EArcAreaSlotState::Vacant)
 	{
@@ -111,7 +112,7 @@ void AArcAreaPopulationSpawner::OnSlotStateChanged(const FArcAreaSlotHandle& Slo
 	}
 }
 
-void AArcAreaPopulationSpawner::SpawnForSlot(const FArcAreaSlotHandle& SlotHandle)
+void AArcAreaPopulationSpawner::SpawnForSlot(const FSmartObjectSlotHandle& SlotHandle)
 {
 	UArcAreaSubsystem* AreaSub = GetWorld()->GetSubsystem<UArcAreaSubsystem>();
 	if (!AreaSub || !PopulationDefinition)
@@ -119,20 +120,19 @@ void AArcAreaPopulationSpawner::SpawnForSlot(const FArcAreaSlotHandle& SlotHandl
 		return;
 	}
 
-	const FArcAreaData* AreaData = AreaSub->GetAreaData(SlotHandle.AreaHandle);
+	const FArcAreaData* AreaData = AreaSub->GetAreaData(SlotHandle.GetSmartObjectHandle());
 	if (!AreaData)
 	{
 		return;
 	}
 
-	// Get slot definition for requirements
-	if (!AreaData->SlotDefinitions.IsValidIndex(SlotHandle.SlotIndex))
+	const FArcAreaSlotRuntime* SlotRuntime = AreaData->Slots.Find(SlotHandle);
+	if (!SlotRuntime)
 	{
 		return;
 	}
-	const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[SlotHandle.SlotIndex];
 
-	// Find a matching population entry by checking each entry's RoleTag against the slot's RequirementQuery
+	// Find a matching population entry by checking each entry's RoleTag against the slot's effective user filter
 	const FArcAreaPopulationEntry* MatchingEntry = nullptr;
 	for (const FArcAreaPopulationEntry& Entry : PopulationDefinition->Entries)
 	{
@@ -141,10 +141,9 @@ void AArcAreaPopulationSpawner::SpawnForSlot(const FArcAreaSlotHandle& SlotHandl
 			continue;
 		}
 
-		// Check if this entry's role matches the slot's requirement query
 		FGameplayTagContainer RoleTags;
 		RoleTags.AddTag(Entry.RoleTag);
-		if (SlotDef.RequirementQuery.IsEmpty() || SlotDef.RequirementQuery.Matches(RoleTags))
+		if (SlotRuntime->MatchesUserTags(RoleTags))
 		{
 			// Check MaxCount
 			const int32 CurrentCount = SpawnedCounts.FindRef(Entry.RoleTag);
@@ -164,7 +163,7 @@ void AArcAreaPopulationSpawner::SpawnForSlot(const FArcAreaSlotHandle& SlotHandl
 	const FGameplayTag RoleTag = MatchingEntry->RoleTag;
 	const FVector AreaLocation = AreaData->Location;
 
-	if (SpawnLocationQuery)
+	if (SpawnLocationQuery.IsValid())
 	{
 		UArcTQSQuerySubsystem* TQSSub = GetWorld()->GetSubsystem<UArcTQSQuerySubsystem>();
 		if (!TQSSub)
@@ -180,7 +179,7 @@ void AArcAreaPopulationSpawner::SpawnForSlot(const FArcAreaSlotHandle& SlotHandl
 		QueryContext.World = GetWorld();
 
 		TWeakObjectPtr<AArcAreaPopulationSpawner> WeakThis(this);
-		const FArcAreaSlotHandle CapturedSlot = SlotHandle;
+		const FSmartObjectSlotHandle CapturedSlot = SlotHandle;
 
 		const int32 QueryId = TQSSub->RunQuery(
 			SpawnLocationQuery,
@@ -214,7 +213,7 @@ void AArcAreaPopulationSpawner::SpawnForSlot(const FArcAreaSlotHandle& SlotHandl
 	}
 }
 
-void AArcAreaPopulationSpawner::ExecuteSpawn(const FArcAreaSlotHandle& SlotHandle, const FGameplayTag& RoleTag, const FVector& SpawnLocation)
+void AArcAreaPopulationSpawner::ExecuteSpawn(const FSmartObjectSlotHandle& SlotHandle, const FGameplayTag& RoleTag, const FVector& SpawnLocation)
 {
 	if (!PopulationDefinition)
 	{
@@ -233,54 +232,26 @@ void AArcAreaPopulationSpawner::ExecuteSpawn(const FArcAreaSlotHandle& SlotHandl
 		return;
 	}
 
+	UArcMassEntityConfigAsset* ArcCfg = Cast<UArcMassEntityConfigAsset>(const_cast<UMassEntityConfigAsset*>(EntityConfig));
+	if (!ArcCfg)
+	{
+		UE_LOGF(LogTemp, Warning,"AArcAreaPopulationSpawner::ExecuteSpawn: EntityConfig '%ls' is not UArcMassEntityConfigAsset — skipping.",
+			*GetNameSafe(EntityConfig));
+		return;
+	}
+
 	UWorld* World = GetWorld();
-	UMassSpawnerSubsystem* SpawnerSub = World->GetSubsystem<UMassSpawnerSubsystem>();
-	if (!SpawnerSub)
+	UArcMassSpawnerSubsystem* ArcSpawner = World ? World->GetSubsystem<UArcMassSpawnerSubsystem>() : nullptr;
+	if (!ArcSpawner)
 	{
 		return;
 	}
 
-	FMassEntityManager& EntityManager = SpawnerSub->GetEntityManagerChecked();
-	const FMassEntityTemplate& EntityTemplate = EntityConfig->GetOrCreateEntityTemplate(*World);
-
-	if (EntityManager.IsProcessing())
-	{
-		// SpawnEntities is a synchronous API — defer via Mass command buffer.
-		// The lambda executes after the current processing phase completes.
-		TWeakObjectPtr<AArcAreaPopulationSpawner> WeakThis(this);
-		EntityManager.Defer().PushCommand<FMassDeferredCreateCommand>(
-			[WeakThis, SlotHandle, RoleTag, SpawnLocation](FMassEntityManager& Manager)
-			{
-				AArcAreaPopulationSpawner* Self = WeakThis.Get();
-				if (!Self)
-				{
-					return;
-				}
-				// Re-enter through ExecuteSpawn — IsProcessing() will be false now
-				Self->ExecuteSpawn(SlotHandle, RoleTag, SpawnLocation);
-			});
-		return;
-	}
-
-	TArray<FMassEntityHandle> SpawnedEntities;
-	TSharedPtr<FMassEntityManager::FEntityCreationContext> CreationContext =
-		SpawnerSub->SpawnEntities(EntityTemplate, 1, SpawnedEntities);
-
-	if (SpawnedEntities.IsEmpty())
+	const FMassEntityHandle Entity = ArcSpawner->SpawnEntity(ArcCfg, FTransform(SpawnLocation));
+	if (!Entity.IsValid())
 	{
 		return;
 	}
-
-	// Set spawn location
-	if (FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(SpawnedEntities[0]))
-	{
-		FTransform SpawnTransform = FTransform::Identity;
-		SpawnTransform.SetLocation(SpawnLocation);
-		TransformFrag->SetTransform(SpawnTransform);
-	}
-
-	// Release creation context — observers fire (including area assignment observers)
-	CreationContext.Reset();
 
 	// Track spawned count
 	SpawnedCounts.FindOrAdd(RoleTag)++;

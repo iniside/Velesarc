@@ -45,3 +45,31 @@ void FArcStateTreeMassEntityCurrentPositionPropertyFunction::Execute(FStateTreeE
 
 	DrawDebugSphere(Context.GetWorld(), InstanceData.Input.GetCachedEntityPosition(), 32.f, 10, FColor::Red, false, 20.f);
 }
+
+void FArcStateTreeGetLocationFromMassEntityPropertyFunction::Execute(FStateTreeExecutionContext& Context) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (!InstanceData.Input.IsValid())
+	{
+		return;
+	}
+	
+	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
+	UMassEntitySubsystem* MassSubsystem = MassCtx.GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+	FTransformFragment* TransformFragment = EntityManager.GetFragmentDataPtr<FTransformFragment>(InstanceData.Input);
+	if (!TransformFragment)
+	{
+		return;
+	}
+	
+	InstanceData.Output.EndOfPathPosition = TransformFragment->GetTransform().GetLocation();
+	InstanceData.Output.EndOfPathIntent = InstanceData.EndOfPathIntent;
+}
+
+void FArcEntityWrapperFromMassEntityPropertyFunction::Execute(FStateTreeExecutionContext& Context) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.Output.EntityHandle = InstanceData.Input;
+}

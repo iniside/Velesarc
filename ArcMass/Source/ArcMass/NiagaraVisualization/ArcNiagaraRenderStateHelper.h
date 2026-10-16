@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ComponentInterfaces.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "NiagaraSystemInstanceController.h"
 #include "NiagaraSceneProxy.h"
 #include "NiagaraUserRedirectionParameterStore.h"
@@ -46,7 +46,12 @@ public:
 	virtual ~FArcNiagaraRenderStateHelper();
 
 	/** Initialize the Niagara system instance. Must be called before CreateRenderState. */
-	void Initialize(UWorld& World, UNiagaraSystem& System, bool bCastShadow);
+	void Initialize(
+		UWorld& World,
+		UNiagaraSystem& System,
+		bool bCastShadow,
+		const FArcNiagaraVisParamsFragment* InitialParameters,
+		bool bAutoActivate);
 
 	/** Create scene proxy and register with the renderer. */
 	void CreateNiagaraRenderState();
@@ -114,7 +119,6 @@ public:
 	virtual float GetStreamingScale() const override;
 	virtual void OnRenderAssetFirstLodChange(const UStreamableRenderAsset* RenderAsset, int32 FirstLodIndex) override;
 	virtual UStreamableRenderAsset* GetStreamableNaniteAsset() const override;
-	virtual void GetStreamableRenderAssetInfo(TArray<FStreamingRenderAssetPrimitiveInfo>& StreamableRenderAssets) const override;
 	virtual void GetStreamingRenderAssetInfo(FStreamingTextureLevelContext& LevelContext, TArray<FStreamingRenderAssetPrimitiveInfo>& OutStreamingRenderAssets) const override;
 #if WITH_EDITOR
 	virtual HHitProxy* CreateMeshHitProxy(int32 SectionIndex, int32 MaterialIndex) override;

@@ -28,18 +28,11 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "ArcGameDelegates.generated.h"
 
-class UArcExperienceDefinition;
-class UWorld;
-
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnArcLevelExperienceLoaded, const UArcExperienceDefinition* /*Experience*/, UWorld* /* World*/);
 /**
- * 
+ *
  */
 UCLASS()
 class ARCCORE_API UArcGameDelegates : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
-
-public:
-	DEFINE_ARC_DELEGATE(FOnArcLevelExperienceLoaded, OnExperienceLoaded);
 };

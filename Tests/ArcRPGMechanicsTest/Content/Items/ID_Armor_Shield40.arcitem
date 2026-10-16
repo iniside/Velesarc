@@ -1,0 +1,52 @@
+{
+  "ItemId": "19DCB309496113C8A043C4BB6B710289",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_ItemStats",
+      "DefaultStats": [
+        {
+          "Type": "Additive",
+          "Value": {
+            "Value": 40.0,
+            "Source": "None",
+            "InlineCurve": {
+              "Keys": [],
+              "DefaultValue": 3.4028235e38,
+              "PreInfinityExtrap": "RCCE_Constant",
+              "PostInfinityExtrap": "RCCE_Constant"
+            },
+            "Curve": {
+              "CurveTable": null,
+              "RowName": "None"
+            },
+            "RegistryType": "None",
+            "CustomScaling": {},
+            "MinValue": 0.0,
+            "MaxValue": 0.0,
+            "DataTable": {
+              "DataTable": null,
+              "RowName": "None"
+            },
+            "RangeRowName": "None"
+          },
+          "Stat": {
+            "FragmentType": "/Script/ArcRPGMechanics.ArcRPGAttributeSet_ItemArmor",
+            "PropertyName": "Armor"
+          },
+          "StatTags": [
+            "ArcEffect.Damage.Physical"
+          ]
+        }
+      ],
+      "bCreateInstance": true
+    },
+    {
+      "_structType": "ArcItemFragment_Tags",
+      "ItemTags": [],
+      "AssetTags": [],
+      "GrantedTags": [],
+      "RequiredTags": [],
+      "DenyTags": []
+    }
+  ]
+}

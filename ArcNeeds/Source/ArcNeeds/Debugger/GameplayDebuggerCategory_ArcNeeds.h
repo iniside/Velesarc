@@ -7,8 +7,8 @@
 #if WITH_GAMEPLAY_DEBUGGER
 
 #include "GameplayDebuggerCategory.h"
-#include "MassEntityHandle.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/EntityManager.h"
 
 class FGameplayDebuggerCategory_ArcNeeds : public FGameplayDebuggerCategory
 {

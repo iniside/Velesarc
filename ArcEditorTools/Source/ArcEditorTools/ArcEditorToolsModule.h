@@ -27,6 +27,12 @@
 #include "IPropertyAccessEditor.h"
 #include "ArcPropertyBindingWidgetArgs.h"
 
+class FSlateStyleSet;
+
+class SDockTab;
+class FSpawnTabArgs;
+class FArcHeightmapGraphNodeFactory;
+
 class ARCEDITORTOOLS_API IArcEditorTools : public IModuleInterface
 {
 
@@ -75,4 +81,10 @@ public:
 	 */
 	virtual TSharedRef<SWidget> MakePropertyBindingWidget(const TArray<FBindingContextStruct>& InBindingContextStructs, const FArcPropertyBindingWidgetArgs& InArgs = FArcPropertyBindingWidgetArgs()) const override;
 
+private:
+	TSharedRef<SDockTab> SpawnMassProcessorBrowserTab(const FSpawnTabArgs& Args);
+	static const FName MassProcessorBrowserTabId;
+
+	TSharedPtr<FSlateStyleSet> StyleSet;
+	TSharedPtr<FArcHeightmapGraphNodeFactory> HeightmapNodeFactory;
 };

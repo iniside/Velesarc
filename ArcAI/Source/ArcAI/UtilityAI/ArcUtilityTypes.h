@@ -3,11 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "StateTreeTypes.h"
+#include "Abilities/ArcAbilityHandle.h"
 #include "ArcUtilityTypes.generated.h"
 
 struct FMassEntityManager;
+class UArcAbilityDefinition;
 
 UENUM(BlueprintType)
 enum class EArcUtilityTargetType : uint8
@@ -37,6 +39,8 @@ enum class EArcUtilityScoringStatus : uint8
 	Aborted
 };
 
+// Per-candidate axis: anything that varies inside an enumeration loop (one entry
+// per candidate target, and for the ability pair, per candidate ability) belongs here.
 USTRUCT(BlueprintType)
 struct ARCAI_API FArcUtilityTarget
 {
@@ -54,10 +58,29 @@ struct ARCAI_API FArcUtilityTarget
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector Location = FVector::ZeroVector;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	double TargetLastSeenTime = 0.0;
+
+	// A position to act from, distinct from the target's own Location (e.g. cover point).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bHasExecutionPosition = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector ExecutionPosition = FVector::ZeroVector;
+
+	// The specific granted ability this candidate would use.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FArcAbilityHandle AbilityHandle;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TObjectPtr<const UArcAbilityDefinition> AbilityDefinition = nullptr;
+
 	FVector GetLocation(const FMassEntityManager* EntityManager = nullptr) const;
 	AActor* GetActor(const FMassEntityManager* EntityManager = nullptr) const;
 };
 
+// Per-request: one instance per FArcUtilityScoringInstance; the scoring loop
+// mutates only EntryIndex. Anything that varies per candidate goes on FArcUtilityTarget instead.
 USTRUCT(BlueprintType)
 struct ARCAI_API FArcUtilityContext
 {
@@ -70,6 +93,7 @@ struct ARCAI_API FArcUtilityContext
 	TWeakObjectPtr<UWorld> World;
 	FMassEntityManager* EntityManager = nullptr;
 	int32 EntryIndex = INDEX_NONE;
+	bool bHasEligibleTarget = false;
 };
 
 USTRUCT(BlueprintType)

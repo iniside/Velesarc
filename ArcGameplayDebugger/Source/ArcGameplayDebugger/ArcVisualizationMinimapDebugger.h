@@ -4,10 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "imgui.h"
+#include "Mass/EntityQuery.h"
 
 class UArcEntityVisualizationSubsystem;
 class UArcMobileVisSubsystem;
 struct FMassEntityManager;
+struct FMassExecutionContext;
 
 class FArcVisualizationMinimapDebugger
 {
@@ -26,7 +28,14 @@ private:
 
 	// --- Canvas drawing ---
 	void DrawGrid();
+	void DrawGridLines(float CellSize, ImU32 LineColor);
 	void DrawEntities();
+	void DrawSourceEntities();
+	void DrawRadiusCircles();
+	void DrawMobileEntities();
+	void DrawMobileRadiusCircles();
+	void DrawMobileRegions();
+	void DrawMobileEntityCells();
 	void DrawHUD();
 	void HandleInput();
 
@@ -50,18 +59,42 @@ private:
 	ImVec2 PanStartMouse = {0, 0};
 	FVector2D PanStartOffset = FVector2D::ZeroVector;
 
-	// --- Display toggles ---
-	bool bShowStaticGrid = true;
-	bool bShowMobileGrid = true;
+	// --- Display toggles (row 1: static vis) ---
+	bool bShowMeshGrid = true;
+	bool bShowPhysicsGrid = true;
 	bool bShowActiveCells = true;
 
+	// --- Display toggles (row 2: mobile vis) ---
+	bool bShowMobileGrid = true;
+	bool bShowMobileEntities = true;
+	bool bShowMobileRadii = true;
+	bool bShowMobileRegions = false;
+
 	// --- Stats ---
-	int32 StaticEntityCount = 0;
-	int32 StaticCellCount = 0;
+	int32 MeshGridEntityCount = 0;
+	int32 MeshGridCellCount = 0;
+	int32 PhysicsGridEntityCount = 0;
+	int32 PhysicsGridCellCount = 0;
 	int32 MobileEntityCount = 0;
 	int32 MobileCellCount = 0;
-	float StaticCellSize = 0.0f;
+	int32 PhysicsEntityCount = 0;
+	int32 MeshEntityCount = 0;
+	int32 SourceEntityCount = 0;
+	float MeshGridCellSize = 0.0f;
+	float PhysicsGridCellSize = 0.0f;
 	float MobileCellSize = 0.0f;
+
+	// --- Mobile LOD counters ---
+	int32 MobileActorCount = 0;
+	int32 MobileISMCount = 0;
+	int32 MobileNoneCount = 0;
+
+	// --- Mobile radius config (cached per frame from first entity's shared fragment) ---
+	float MobileActorRadius = 0.0f;
+	float MobileISMRadius = 0.0f;
+
+	// --- Source entity positions (collected each frame for radius drawing) ---
+	TArray<FVector> SourceEntityPositions;
 
 	// --- Hovered entity ---
 	bool bHasHoveredEntity = false;

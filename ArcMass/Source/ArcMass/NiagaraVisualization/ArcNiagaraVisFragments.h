@@ -3,7 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcNiagaraVisFragments.generated.h"
 
 class UNiagaraSystem;
@@ -36,6 +37,9 @@ struct ARCMASS_API FArcNiagaraVisConfigFragment : public FMassConstSharedFragmen
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization")
 	bool bCastShadow = false;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization")
+	bool bAutoActivate = true;
+
 	/** Use fixed bounds instead of dynamic bounds from simulation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization")
 	bool bFixedBounds = false;
@@ -43,6 +47,10 @@ struct ARCMASS_API FArcNiagaraVisConfigFragment : public FMassConstSharedFragmen
 	/** Fixed bounds to use when bFixedBounds is true. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization", meta = (EditCondition = "bFixedBounds"))
 	FBox FixedBounds = FBox(ForceInit);
+
+	/** Local-space offset applied to the Niagara system relative to the entity origin. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NiagaraVisualization")
+	FTransform ComponentTransform = FTransform::Identity;
 };
 
 template<>

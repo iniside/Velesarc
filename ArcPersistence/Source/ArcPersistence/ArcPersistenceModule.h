@@ -21,11 +21,41 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "Serialization/ArcReflectionSerializer.h"
+
+class UObject;
+class UStruct;
+
+/**
+ * Per-UStruct cached reflection plans, owned by the module for its lifetime.
+ * Two maps: one for SaveGame-only plans, one for all-property plans.
+ *
+ * Values are held by TUniquePtr so the FArcTypePlan storage address is stable across
+ * map rehashes. FArcPlanEntry::NestedPlan / InnerNestedPlan point into this cache; a
+ * by-value TMap would rehash on a recursive insert and dangle those pointers.
+ */
+struct FArcTypePlanCache
+{
+	TMap<const UStruct*, TUniquePtr<FArcTypePlan>> SaveGamePlans;
+	TMap<const UStruct*, TUniquePtr<FArcTypePlan>> AllPropertyPlans;
+};
 
 class FArcPersistenceModule : public IModuleInterface
 {
 public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
+
+	/** Cached reflection plans, keyed by UStruct*. Accessed only on the game thread. */
+	FArcTypePlanCache PlanCache;
+
+private:
+#if WITH_EDITOR
+	/** Evicts cached plans for UStructs replaced by a Blueprint recompile. */
+	void OnObjectsReplaced(const TMap<UObject*, UObject*>& ReplacementMap);
+
+	FDelegateHandle ObjectsReplacedHandle;
+#endif
 };

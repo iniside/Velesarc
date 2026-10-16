@@ -3,8 +3,8 @@
 #include "ArcNiagaraRenderStateHelper.h"
 
 #include "ArcNiagaraVisFragments.h"
-#include "MassEntityFragments.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityFragments.h"
+#include "Mass/EntityManager.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSceneProxy.h"
 #include "NiagaraSystem.h"
@@ -18,6 +18,7 @@
 #include "SceneInterface.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
+#include "Misc/LargeWorldRenderPosition.h"
 #include "RenderingThread.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -37,6 +38,16 @@ static USceneComponent* GetSharedAnchorComponent()
 		SharedAnchor = TStrongObjectPtr<USceneComponent>(NewObject<USceneComponent>(GetTransientPackage()));
 	}
 	return SharedAnchor.Get();
+}
+
+namespace ArcNiagaraRenderStateHelperPrivate
+{
+	static FTransform ToTileRelative(const FNiagaraSystemInstance& SystemInstance, const FTransform& WorldTransform)
+	{
+		FTransform TileRelative = WorldTransform;
+		TileRelative.AddToTranslation(FVector(SystemInstance.GetLWCTile()) * -FLargeWorldRenderScalar::GetTileSize());
+		return TileRelative;
+	}
 }
 
 /** Orphaned helpers — systems whose entities have been destroyed but whose
@@ -144,7 +155,12 @@ FArcNiagaraRenderStateHelper::~FArcNiagaraRenderStateHelper()
 // Initialize
 // ---------------------------------------------------------------------------
 
-void FArcNiagaraRenderStateHelper::Initialize(UWorld& World, UNiagaraSystem& System, bool bCastShadow)
+void FArcNiagaraRenderStateHelper::Initialize(
+	UWorld& World,
+	UNiagaraSystem& System,
+	bool bCastShadow,
+	const FArcNiagaraVisParamsFragment* InitialParameters,
+	bool bAutoActivate)
 {
 	EnsureWorldCleanupRegistered();
 
@@ -161,7 +177,7 @@ void FArcNiagaraRenderStateHelper::Initialize(UWorld& World, UNiagaraSystem& Sys
 
 	if (!System.IsReadyToRun())
 	{
-		UE_LOG(LogMass, Warning, TEXT("ArcNiagara: System %s is not ready to run"), *GetNameSafe(&System));
+		UE_LOGF(LogMass, Warning,"ArcNiagara: System %ls is not ready to run", *GetNameSafe(&System));
 		return;
 	}
 
@@ -179,7 +195,16 @@ void FArcNiagaraRenderStateHelper::Initialize(UWorld& World, UNiagaraSystem& Sys
 		/*WarmupTickDelta=*/ 0.f
 	);
 
-	Controller->Activate(FNiagaraSystemInstance::EResetMode::ResetAll);
+	if (InitialParameters != nullptr)
+	{
+		ApplyParameterOverrides(*InitialParameters);
+	}
+
+	if (bAutoActivate)
+	{
+		GetSharedAnchorComponent()->SetWorldTransform(CachedTransform);
+		Controller->Activate(FNiagaraSystemInstance::EResetMode::ResetAll);
+	}
 
 	// Sync render time — without this, EngineTimeSinceRendered is huge and
 	// systems with scalability/LOD settings may throttle or cull themselves.
@@ -206,11 +231,12 @@ void FArcNiagaraRenderStateHelper::CreateRenderState(FRegisterComponentContext* 
 	check(Scene);
 	CachedScene = Scene;
 
-	// Set the system instance's world transform before creating the proxy
+	// Set the system instance's transform before creating the proxy
 	// so that renderers created during proxy construction have the correct position.
 	if (FNiagaraSystemInstance* SystemInstance = Controller->GetSystemInstance_Unsafe())
 	{
-		SystemInstance->SetWorldTransform(GetTransform());
+		const FTransform WorldTransform = GetTransform();
+		SystemInstance->SetTileRelativeTransform(ArcNiagaraRenderStateHelperPrivate::ToTileRelative(*SystemInstance, WorldTransform));
 	}
 
 	// Fill the Niagara-specific proxy descriptor
@@ -227,9 +253,7 @@ void FArcNiagaraRenderStateHelper::CreateRenderState(FRegisterComponentContext* 
 	ProxyDesc.Component = nullptr;
 	ProxyDesc.PrimitiveComponentInterface = this;
 	ProxyDesc.Owner = EntityManager->GetOwner();
-#if !WITH_STATE_STREAM
 	ProxyDesc.World = WeakWorld.Get();
-#endif
 	ProxyDesc.Scene = Scene;
 	ProxyDesc.FeatureLevel = WeakWorld->GetFeatureLevel();
 	ProxyDesc.CustomPrimitiveData = &CustomPrimitiveData;
@@ -307,7 +331,7 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData(const FTransform& Trans
 	FNiagaraSystemRenderData* ProxyRenderData = NiagaraProxy->GetSystemRenderData();
 	if (!ProxyRenderData)
 	{
-		UE_LOG(LogMass, Warning, TEXT("ArcNiagara: Proxy has no RenderData!"));
+		UE_LOGF(LogMass, Warning,"ArcNiagara: Proxy has no RenderData!");
 		return;
 	}
 
@@ -335,18 +359,18 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData(const FTransform& Trans
 	{
 		LastLogTime = WeakWorld->GetTimeSeconds();
 		const int32 NumRenderers = ProxyRenderData->GetNumRenderers();
-		UE_LOG(LogMass, Log, TEXT("ArcNiagara: System=%s Renderers=%d RenderingEnabled=%d IsSolo=%d"),
+		UE_LOGF(LogMass, Log,"ArcNiagara: System=%ls Renderers=%d RenderingEnabled=%d IsSolo=%d",
 			*GetNameSafe(SystemAsset.Get()),
 			NumRenderers,
 			ProxyRenderData->IsRenderingEnabled_GT() ? 1 : 0,
 			SystemInstance ? (SystemInstance->IsSolo() ? 1 : 0) : -1);
 		if (SystemInstance)
 		{
-			UE_LOG(LogMass, Log, TEXT("ArcNiagara: ExecState=%d TickCount=%d NumEmitters=%d Transform=%s"),
+			UE_LOGF(LogMass, Log,"ArcNiagara: ExecState=%d TickCount=%d NumEmitters=%d Transform=%ls",
 				static_cast<int32>(SystemInstance->GetActualExecutionState()),
 				SystemInstance->GetTickCount(),
 				SystemInstance->GetEmitters().Num(),
-				*SystemInstance->GetWorldTransform().GetTranslation().ToString());
+				*SystemInstance->GetWorldSpaceTransform().GetTranslation().ToString());
 			// Log per-emitter particle counts
 			for (int32 i = 0; i < SystemInstance->GetEmitters().Num(); ++i)
 			{
@@ -355,7 +379,7 @@ void FArcNiagaraRenderStateHelper::SendDynamicRenderData(const FTransform& Trans
 				int32 nump = EmitterInst.GetNumParticles();
 				bool bIsInittialized = EmitterInst.GetParticleData().IsInitialized() ? 1 : 0;
 				
-				UE_LOG(LogMass, Log, TEXT("ArcNiagara:   Emitter[%d] Particles=%d IsComplete=%d IsDisabled=%d DataInit=%d"),
+				UE_LOGF(LogMass, Log,"ArcNiagara:   Emitter[%d] Particles=%d IsComplete=%d IsDisabled=%d DataInit=%d",
 					i,
 					EmitterInst.GetNumParticles(),
 					EmitterInst.IsComplete() ? 1 : 0,
@@ -406,12 +430,12 @@ void FArcNiagaraRenderStateHelper::UpdateTransform(const FTransform& Transform)
 		return;
 	}
 
-	// Update the Niagara system instance's world transform so particles spawn at the
+	// Update the Niagara system instance's transform so particles spawn at the
 	// correct location. The shared anchor component transform is synced in
 	// SendDynamicRenderData() right before ManualTick.
 	if (FNiagaraSystemInstance* SystemInstance = Controller->GetSystemInstance_Unsafe())
 	{
-		SystemInstance->SetWorldTransform(Transform);
+		SystemInstance->SetTileRelativeTransform(ArcNiagaraRenderStateHelperPrivate::ToTileRelative(*SystemInstance, Transform));
 	}
 
 	// Update cached bounds
@@ -733,10 +757,6 @@ void FArcNiagaraRenderStateHelper::OnRenderAssetFirstLodChange(const UStreamable
 UStreamableRenderAsset* FArcNiagaraRenderStateHelper::GetStreamableNaniteAsset() const
 {
 	return nullptr;
-}
-
-void FArcNiagaraRenderStateHelper::GetStreamableRenderAssetInfo(TArray<FStreamingRenderAssetPrimitiveInfo>& /*StreamableRenderAssets*/) const
-{
 }
 
 void FArcNiagaraRenderStateHelper::GetStreamingRenderAssetInfo(FStreamingTextureLevelContext& /*LevelContext*/, TArray<FStreamingRenderAssetPrimitiveInfo>& /*OutStreamingRenderAssets*/) const

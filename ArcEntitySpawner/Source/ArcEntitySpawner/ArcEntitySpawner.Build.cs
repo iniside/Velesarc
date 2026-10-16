@@ -15,18 +15,19 @@ public class ArcEntitySpawner : ModuleRules
 				, "Engine"
 				, "MassActors"
 				, "MassCommon"
+				, "MassCore"
 				, "MassEntity"
 				, "MassSimulation"
 				, "MassSpawner"
 				, "MassSignals"
 				, "MassAIBehavior"
 				, "GameplayTags"
-				, "StructUtils"
 				, "StateTreeModule"
 				, "GameplayStateTreeModule"
 				, "ArcAI"
 				, "ArcMass"
 				, "ArcPersistence"
+				, "ArcTargetQuery"
 			}
 		);
 

@@ -1,0 +1,42 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTDispatchArgs.usf — per-bisector dispatch sizing, GPU-side.
+
+	One thread turns last frame's live bisector count into the indirect dispatch
+	args the classify and apply passes share, and resets this frame's allocation
+	cursor. No CPU readback anywhere in the update.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBTCounters.ush"
+
+Buffer<uint> NodeCounter;
+RWBuffer<uint> RWDispatchArgs;
+RWBuffer<uint> PoolCounters;
+
+uint ThreadsPerGroup;
+
+[numthreads(1, 1, 1)]
+void FillDispatchArgsCS()
+{
+	const uint LiveCount = NodeCounter[0];
+	RWDispatchArgs[0] = (LiveCount + ThreadsPerGroup - 1u) / ThreadsPerGroup;
+	RWDispatchArgs[1] = 1u;
+	RWDispatchArgs[2] = 1u;
+
+	// Resetting here is what makes a drained value mean "this frame". LIVE_BISECTORS is skipped because
+	// the batch pass publishes it LATER in the same frame; the InterlockedMin slots reset to that
+	// identity, not to zero. Any counter a late pass writes belongs in the same exception list.
+	for (uint Counter = 0u; Counter < ARC_CBT_COUNTER_NUM; ++Counter)
+	{
+		if (Counter != ARC_CBT_COUNTER_LIVE_BISECTORS)
+		{
+			PoolCounters[Counter] = 0u;
+		}
+	}
+	PoolCounters[ARC_CBT_COUNTER_DEPTH_MIN] = 0xFFFFFFFFu;
+	PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_DISTM_MIN] = 0xFFFFFFFFu;
+	PoolCounters[ARC_CBT_PROBE_B_KEY] = 0xFFFFFFFFu;
+	PoolCounters[ARC_CBT_PROBE_D_KEY] = 0xFFFFFFFFu;
+}

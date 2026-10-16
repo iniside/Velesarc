@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Engine/EngineTypes.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanConditionEvaluator.h"
 
 #include "ArcSmartObjectPlanTraceCondition.generated.h"
@@ -17,7 +18,7 @@ struct FArcSmartObjectPlanTraceCondition : public FArcSmartObjectPlanConditionEv
 
 	/** Trace channel to use. */
 	UPROPERTY(EditAnywhere)
-	TEnumAsByte<ECollisionChannel> TraceChannel;
+	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_Visibility;
 
 	/** Height offset applied to both start and end points. */
 	UPROPERTY(EditAnywhere)

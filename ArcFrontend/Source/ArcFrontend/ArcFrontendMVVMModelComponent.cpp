@@ -21,20 +21,32 @@
 
 #include "ArcFrontendMVVMModelComponent.h"
 
+#include "MVVM/ArcViewModelSlotWidgetInterface.h"
 #include "ArcCoreGameplayTags.h"
+#include "MVVMGameSubsystem.h"
 #include "MVVMViewModelBase.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/GameFrameworkComponentManager.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/PlayerState.h"
-#include "Player/ArcHeroComponentBase.h"
+#include "GameFramework/PlayerController.h"
+#include "StructUtils/InstancedStruct.h"
+#include "Types/MVVMViewModelCollection.h"
+#include "Types/MVVMViewModelContext.h"
+#include "GameFramework/ArcActorFeatureUtils.h"
+#include "Player/ArcMassPlayerStateExtensionComponent.h"
+#include "Core/ArcMassGameFrameworkTags.h"
 
-UObject* UArcFrontendMVVMComponentResolver::CreateInstance(const UClass* ExpectedType
-														   , const UUserWidget* UserWidget
-														   , const UMVVMView* View) const
+UObject* UArcFrontendMVVMComponentResolver::CreateInstance(const UClass* /*ExpectedType*/,
+	const UUserWidget* UserWidget, const UMVVMView* /*View*/) const
 {
+	if (!UserWidget) { return nullptr; }
+	APlayerState* PS = UserWidget->GetOwningPlayerState();
+	if (!PS) { return nullptr; }
+	UArcFrontendMVVMModelComponent* Comp = PS->FindComponentByClass<UArcFrontendMVVMModelComponent>();
+	if (!Comp) { return nullptr; }
 	UMVVMViewModelBase* ViewModel = nullptr;
-	UserWidget->GetOwningPlayerState()->FindComponentByClass<UArcFrontendMVVMModelComponent>()->FindViewModel(ViewModelTag, ViewModel);
-
+	Comp->FindViewModel(ViewModelTag, ViewModel);
 	return ViewModel;
 }
 
@@ -103,6 +115,40 @@ UWorld* UArcFrontendMVVMModel::GetWorld() const
 	return Comp->GetWorld();
 }
 
+void FArcFrontendMVVMStructModel::CreateViewModels(UArcFrontendMVVMModelComponent& Component)
+{
+	// Default: no view models. Derived structs override to push their VMs.
+}
+
+void FArcFrontendMVVMStructModel::Initialize(UArcFrontendMVVMModelComponent& Component)
+{
+}
+
+void FArcFrontendMVVMStructModel::Tick(float DeltaTime, UArcFrontendMVVMModelComponent& Component)
+{
+}
+
+void FArcFrontendMVVMStructModel::Deinitialize(UArcFrontendMVVMModelComponent& Component)
+{
+}
+
+UMVVMViewModelCollectionObject* UArcFrontendMVVMModelComponent::GetGlobalViewModelCollection() const
+{
+	UGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
+	if (!GI)
+	{
+		return nullptr;
+	}
+
+	UMVVMGameSubsystem* MVVMSubsystem = GI->GetSubsystem<UMVVMGameSubsystem>();
+	if (!MVVMSubsystem)
+	{
+		return nullptr;
+	}
+
+	return MVVMSubsystem->GetViewModelCollection();
+}
+
 UArcFrontendMVVMModelComponent::UArcFrontendMVVMModelComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -113,47 +159,58 @@ UArcFrontendMVVMModelComponent::UArcFrontendMVVMModelComponent()
 void UArcFrontendMVVMModelComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	
-	const FArcCoreGameplayTags& InitTags = FArcCoreGameplayTags::Get();
-	UGameFrameworkComponentManager* GFCM = UGameFrameworkComponentManager::GetForActor(GetOwner());
-	
-	if (GFCM)
+
+	// No UI view-models on a headless server.
+	if (GetNetMode() == NM_DedicatedServer)
 	{
-		RequestHandle = GFCM->AddExtensionHandler(GetOwner()->GetClass()
-		, UGameFrameworkComponentManager::FExtensionHandlerDelegate::CreateUObject(this, &UArcFrontendMVVMModelComponent::HandleOnGameplayReady));
+		return;
 	}
+
+	InitStateHandle = ArcActorFeatureUtils::RegisterFeatureInitStateDelegate<UArcMassPlayerStateExtensionComponent>(
+		GetOwner(),
+		ArcActorFeatureUtils::TFeatureDelegate<UArcMassPlayerStateExtensionComponent>::CreateUObject(
+			this, &UArcFrontendMVVMModelComponent::OnPlayerStateDataInitialized),
+		FArcMassGameFrameworkTags::Get().InitState_DataInitialized,
+		/*bCallImmediately*/ true,
+		/*bCallOnce*/        true);
 }
 
 void UArcFrontendMVVMModelComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	RequestHandle.Reset();
-	
+	ArcActorFeatureUtils::UnregisterFeatureInitStateDelegate(GetOwner(), InitStateHandle);
+
+	for (FInstancedStruct& Entry : StructModels)
+	{
+		FArcFrontendMVVMStructModel* StructModel = Entry.GetMutablePtr<FArcFrontendMVVMStructModel>();
+		if (StructModel)
+		{
+			StructModel->Deinitialize(*this);
+		}
+	}
+
+	if (UMVVMViewModelCollectionObject* Collection = GetGlobalViewModelCollection())
+	{
+		for (const FMVVMViewModelContext& Ctx : RegisteredGlobalContexts)
+		{
+			Collection->RemoveViewModel(Ctx);
+		}
+	}
+	RegisteredGlobalContexts.Empty();
+
 	Super::EndPlay(EndPlayReason);
 }
 
-void UArcFrontendMVVMModelComponent::HandleOnGameplayReady(AActor* Actor, FName EventName)
+void UArcFrontendMVVMModelComponent::OnPlayerStateDataInitialized(UArcMassPlayerStateExtensionComponent* /*PSExt*/)
 {
-	UGameFrameworkComponentManager* GFCM = UGameFrameworkComponentManager::GetForActor(GetOwner());
-	if (!GFCM)
+	// UI view-models exist only for the local player. The global MVVM collection is a
+	// GameInstance singleton shared by every PlayerState's component; registering from
+	// remote PlayerStates collides on ContextName and makes EndPlay removal unsafe.
+	APlayerState* PS = GetOwner<APlayerState>();
+	if (!PS || !PS->GetPlayerController() || !PS->GetPlayerController()->IsLocalController())
 	{
 		return;
 	}
-	
-	if (Actor != GetOwner())
-	{
-		return;
-	}
-	
-	if (EventName != UArcHeroComponentBase::NAME_PlayerHeroPlayerStateInitialized)
-	{
-		return;
-	}
-	
-	if (RequestHandle.IsValid())
-	{
-		RequestHandle.Reset();
-	}
-	
+
 	for (TSubclassOf<UArcFrontendMVVMModel> ModelClass : ModelClasses)
 	{
 		UArcFrontendMVVMModel* ModelInstance = NewObject<UArcFrontendMVVMModel>(this, ModelClass);
@@ -165,21 +222,40 @@ void UArcFrontendMVVMModelComponent::HandleOnGameplayReady(AActor* Actor, FName 
 		{
 			ModelTickForAll.Add(ModelInstance);
 		}
-		
+
 		if (ModelInstance->bTickForLocalOnly)
 		{
-			ModelTickForAll.Add(ModelInstance);
+			ModelTickLocal.Add(ModelInstance);
 		}
 	}
 
-	if (ModelTickForAll.IsEmpty() && ModelTickLocal.IsEmpty())
+	for (int32 Idx = 0; Idx < StructModels.Num(); ++Idx)
 	{
-		SetComponentTickEnabled(false);
+		FInstancedStruct& Entry = StructModels[Idx];
+		FArcFrontendMVVMStructModel* StructModel = Entry.GetMutablePtr<FArcFrontendMVVMStructModel>();
+		if (!StructModel)
+		{
+			continue;
+		}
+
+		StructModel->CreateViewModels(*this);
+		StructModel->Initialize(*this);
+
+		if (StructModel->bTickForAll)
+		{
+			StructTickForAllIndices.Add(Idx);
+		}
+		if (StructModel->bTickForLocalOnly)
+		{
+			StructTickLocalIndices.Add(Idx);
+		}
 	}
-	else
-	{
-		SetComponentTickEnabled(true);
-	}
+
+	bool bNeedsTick = !ModelTickForAll.IsEmpty()
+		|| !ModelTickLocal.IsEmpty()
+		|| !StructTickForAllIndices.IsEmpty()
+		|| !StructTickLocalIndices.IsEmpty();
+	SetComponentTickEnabled(bNeedsTick);
 }
 
 void UArcFrontendMVVMModelComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -200,6 +276,30 @@ void UArcFrontendMVVMModelComponent::TickComponent(float DeltaTime, enum ELevelT
 	{
 		Model->Tick(DeltaTime);
 	}
+
+	if (APlayerState* StructPS = GetOwner<APlayerState>())
+	{
+		if (StructPS->GetPlayerController())
+		{
+			for (int32 Idx : StructTickLocalIndices)
+			{
+				FArcFrontendMVVMStructModel* StructModel = StructModels[Idx].GetMutablePtr<FArcFrontendMVVMStructModel>();
+				if (StructModel)
+				{
+					StructModel->Tick(DeltaTime, *this);
+				}
+			}
+		}
+	}
+
+	for (int32 Idx : StructTickForAllIndices)
+	{
+		FArcFrontendMVVMStructModel* StructModel = StructModels[Idx].GetMutablePtr<FArcFrontendMVVMStructModel>();
+		if (StructModel)
+		{
+			StructModel->Tick(DeltaTime, *this);
+		}
+	}
 }
 
 bool UArcFrontendMVVMModelComponent::FindViewModel(FGameplayTag ViewModelTag, UMVVMViewModelBase*& ViewModel)
@@ -218,4 +318,107 @@ void UArcFrontendMVVMModelComponent::AddViewModel(FGameplayTag ViewModelTag
 	, UMVVMViewModelBase* InViewModel)
 {
 	ViewModels.FindOrAdd(ViewModelTag) = InViewModel;
+}
+
+void UArcFrontendMVVMModelComponent::RemoveViewModel(FGameplayTag ViewModelTag)
+{
+	ViewModels.Remove(ViewModelTag);
+}
+
+void UArcFrontendMVVMModelComponent::RegisterViewModel(UMVVMViewModelBase* VM, FName ContextName, FGameplayTag RegistrationTag)
+{
+	if (!VM)
+	{
+		return;
+	}
+
+	if (!ContextName.IsNone())
+	{
+		UMVVMViewModelCollectionObject* Collection = GetGlobalViewModelCollection();
+		if (Collection)
+		{
+			FMVVMViewModelContext Ctx;
+			Ctx.ContextClass = VM->GetClass();
+			Ctx.ContextName = ContextName;
+			if (Collection->AddViewModelInstance(Ctx, VM))
+			{
+				RegisteredGlobalContexts.Add(Ctx);
+			}
+		}
+	}
+
+	if (RegistrationTag.IsValid())
+	{
+		AddViewModel(RegistrationTag, VM);
+	}
+}
+
+void UArcFrontendMVVMModelComponent::CreateAndRegisterViewModels(TConstArrayView<FArcViewModelSpec> Specs)
+{
+	for (const FArcViewModelSpec& Spec : Specs)
+	{
+		if (!Spec.ViewModelClass)
+		{
+			continue;
+		}
+
+		UMVVMViewModelBase* VM = NewObject<UMVVMViewModelBase>(this, Spec.ViewModelClass);
+		RegisterViewModel(VM, Spec.ContextName, Spec.RegistrationTag);
+	}
+}
+
+UMVVMViewModelBase* UArcFrontendMVVMModelComponent::FindViewModelByContext(FName ContextName, TSubclassOf<UMVVMViewModelBase> Class) const
+{
+	UMVVMViewModelCollectionObject* Collection = GetGlobalViewModelCollection();
+	if (!Collection)
+	{
+		return nullptr;
+	}
+
+	FMVVMViewModelContext Ctx;
+	Ctx.ContextClass = Class;
+	Ctx.ContextName = ContextName;
+	return Collection->FindViewModelInstance(Ctx);
+}
+
+UObject* UArcFrontendMVVMWidgetSlotResolver::CreateInstance(const UClass* ExpectedType, const UUserWidget* UserWidget, const UMVVMView* /*View*/) const
+{
+	if (!UserWidget || !UserWidget->Implements<UArcViewModelSlotWidget>())
+	{
+		return nullptr;
+	}
+
+	const FGameplayTag SlotTag = IArcViewModelSlotWidget::Execute_GetViewModelSlotTag(const_cast<UUserWidget*>(UserWidget));
+	if (!SlotTag.IsValid())
+	{
+		return nullptr;
+	}
+
+	APlayerState* PS = UserWidget->GetOwningPlayerState();
+	if (!PS)
+	{
+		return nullptr;
+	}
+
+	UArcFrontendMVVMModelComponent* Comp = PS->FindComponentByClass<UArcFrontendMVVMModelComponent>();
+	if (!Comp)
+	{
+		return nullptr;
+	}
+
+	UMVVMViewModelBase* ViewModel = nullptr;
+	Comp->FindViewModel(SlotTag, ViewModel);
+
+	// Guard the engine's IsA(ExpectedType) contract explicitly: the tag map is
+	// untyped (UMVVMViewModelBase*), so a misconfigured binding could resolve a
+	// VM whose class != the widget's declared source type. Return null + log
+	// rather than hand back a wrong-type VM the engine would silently reject.
+	if (ViewModel && ExpectedType && !ViewModel->IsA(ExpectedType))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ArcFrontend slot resolver: VM '%s' for tag '%s' is not a '%s'"),
+			*ViewModel->GetClass()->GetName(), *SlotTag.ToString(), *ExpectedType->GetName());
+		return nullptr;
+	}
+
+	return ViewModel;
 }

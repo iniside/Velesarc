@@ -1,0 +1,18 @@
+{
+  "ItemId": "D0EA5983477B1C42D9F6CC86C6C002D9",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_SocketSlots",
+      "Slots": [
+        {
+          "SlotId": "SlotId.Equipment.Socket.01",
+          "ItemType": "ArcItem",
+          "RequiredItemTags": [],
+          "SlotName": "",
+          "DefaultSocketItemDefinition": "ArcItem:383A654C495DF2DEF0131186DE861F20"
+        }
+      ],
+      "Preset": null
+    }
+  ]
+}

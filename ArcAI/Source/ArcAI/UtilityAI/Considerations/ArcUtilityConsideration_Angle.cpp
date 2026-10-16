@@ -1,16 +1,16 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "UtilityAI/Considerations/ArcUtilityConsideration_Angle.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 
-float FArcUtilityConsideration_Angle::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+FArcUtilityConsiderationResult FArcUtilityConsideration_Angle::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	const FVector TargetLoc = Target.GetLocation(Context.EntityManager);
 	const FVector Direction = (TargetLoc - Context.QuerierLocation).GetSafeNormal();
 
 	if (Direction.IsNearlyZero())
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
 	const float Dot = FVector::DotProduct(Context.QuerierForward, Direction);
@@ -20,8 +20,8 @@ float FArcUtilityConsideration_Angle::Score(const FArcUtilityTarget& Target, con
 
 	if (AngleDeg >= MaxAngleDegrees)
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
-	return 1.0f - (AngleDeg / MaxAngleDegrees);
+	return FArcUtilityConsiderationResult::Accept(1.0f - (AngleDeg / MaxAngleDegrees));
 }

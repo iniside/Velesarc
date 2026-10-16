@@ -3,13 +3,27 @@
 #include "ArcBuildIngredient.h"
 
 #include "Items/ArcItemData.h"
-#include "Items/ArcItemDefinition.h"
 #include "Items/Fragments/ArcItemFragment_Tags.h"
 #include "Items/ArcItemsHelpers.h"
+#include "Fragments/ArcMassItemStoreFragment.h"
 
 bool FArcBuildIngredient::DoesItemSatisfy(const FArcItemData* InItemData) const
 {
 	return InItemData != nullptr;
+}
+
+int32 FArcBuildIngredient::CountAvailable(const FArcMassItemStoreFragment& Store) const
+{
+	int32 Total = 0;
+	for (const FArcMassReplicatedItem& ReplicatedItem : Store.ReplicatedItems.Items)
+	{
+		const FArcItemData* Item = ReplicatedItem.ToItem();
+		if (Item != nullptr && Item->GetItemId().IsValid() && Item->Stacks > 0 && DoesItemSatisfy(Item))
+		{
+			Total += static_cast<int32>(Item->Stacks);
+		}
+	}
+	return Total;
 }
 
 bool FArcBuildIngredient_ItemDef::DoesItemSatisfy(const FArcItemData* InItemData) const

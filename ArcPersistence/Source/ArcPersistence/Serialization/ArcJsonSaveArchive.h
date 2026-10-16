@@ -22,20 +22,22 @@
 #pragma once
 
 #include "ArcSaveArchive.h"
-#include "ArcJsonIncludes.h"
+
+struct yyjson_mut_doc;
+struct yyjson_mut_val;
 
 /**
  * JSON-backed implementation of FArcSaveArchive.
- * Builds a nlohmann::json object tree, then serializes to a UTF-8 byte buffer on Finalize().
+ * Builds a yyjson mutable document, then serializes it to a pretty UTF-8 byte buffer on Finalize().
  */
 class ARCPERSISTENCE_API FArcJsonSaveArchive : public FArcSaveArchive
 {
 public:
-	FArcJsonSaveArchive() = default;
-	virtual ~FArcJsonSaveArchive() override = default;
+	FArcJsonSaveArchive();
+	virtual ~FArcJsonSaveArchive() override;
 
-	FArcJsonSaveArchive(FArcJsonSaveArchive&&) = default;
-	FArcJsonSaveArchive& operator=(FArcJsonSaveArchive&&) = default;
+	FArcJsonSaveArchive(FArcJsonSaveArchive&&);
+	FArcJsonSaveArchive& operator=(FArcJsonSaveArchive&&);
 	FArcJsonSaveArchive(const FArcJsonSaveArchive&) = delete;
 	FArcJsonSaveArchive& operator=(const FArcJsonSaveArchive&) = delete;
 
@@ -88,26 +90,16 @@ public:
 
 	virtual TArray<uint8> Finalize() override;
 
-	// ── Public accessor (testing) ───────────────────────────────────────
-
-	const nlohmann::json& GetJsonObject() const { return Root; }
-
 private:
-	/** Returns the current write target: top of ScopeStack, or Root if stack is empty. */
-	nlohmann::json& Current();
+	struct FDocDeleter
+	{
+		void operator()(yyjson_mut_doc* InDoc) const;
+	};
 
-	/** The top-level JSON object being built. */
-	nlohmann::json Root = nlohmann::json::object();
+	yyjson_mut_val* Current() const;
 
-	/** Stack of pointers into the JSON tree for nested struct/array scoping. */
-	TArray<nlohmann::json*> ScopeStack;
-
-	/**
-	 * Temporary storage for array elements.
-	 * When BeginArrayElement is called we create a temp object here and push its address
-	 * onto ScopeStack. On EndArrayElement we move it into the parent array.
-	 * Uses TUniquePtr for pointer stability — TArray reallocation won't invalidate
-	 * pointers held in ScopeStack for outer nested elements.
-	 */
-	TArray<TUniquePtr<nlohmann::json>> TempElements;
+	TUniquePtr<yyjson_mut_doc, FDocDeleter> Doc;
+	yyjson_mut_val* Root = nullptr;
+	yyjson_mut_val* Envelope = nullptr;
+	TArray<yyjson_mut_val*> ScopeStack;
 };

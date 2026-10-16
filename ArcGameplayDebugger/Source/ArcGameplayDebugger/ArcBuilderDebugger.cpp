@@ -1,22 +1,26 @@
-﻿// Copyright Lukasz Baran. All Rights Reserved.
+// Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcBuilderDebugger.h"
 
 #include "imgui.h"
 #include "ArcBuildingDefinition.h"
-#include "ArcBuilderComponent.h"
+#include "ArcBuilderSubsystem.h"
 #include "ArcBuildIngredient.h"
 #include "ArcBuildSnappingMethod.h"
 #include "ArcBuildResourceConsumption.h"
 #include "ArcBuildRequirement.h"
+#include "ArcBuildPostPlaceAction.h"
+#include "ArcTargetingPreset.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Engine.h"
+#include "Engine/LocalPlayer.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
-#include "MassEntityConfigAsset.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
 #include "Engine/GameViewportClient.h"
+#include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInterface.h"
 
 void FArcBuilderDebugger::Initialize()
@@ -36,7 +40,7 @@ void FArcBuilderDebugger::Uninitialize()
 	SelectedDefinitionIndex = -1;
 }
 
-UArcBuilderComponent* FArcBuilderDebugger::FindLocalPlayerBuilderComponent() const
+UArcBuilderSubsystem* FArcBuilderDebugger::FindLocalPlayerBuilderSubsystem() const
 {
 	if (!GEngine || !GEngine->GameViewport)
 	{
@@ -55,27 +59,13 @@ UArcBuilderComponent* FArcBuilderDebugger::FindLocalPlayerBuilderComponent() con
 		return nullptr;
 	}
 
-	// Search on controller, pawn, and player state.
-	TArray<AActor*, TInlineAllocator<3>> ActorsToSearch;
-	ActorsToSearch.Add(PC);
-	if (APawn* Pawn = PC->GetPawn())
+	ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+	if (!LocalPlayer)
 	{
-		ActorsToSearch.Add(Pawn);
-	}
-	if (APlayerState* PS = PC->GetPlayerState<APlayerState>())
-	{
-		ActorsToSearch.Add(PS);
+		return nullptr;
 	}
 
-	for (AActor* Actor : ActorsToSearch)
-	{
-		if (UArcBuilderComponent* Comp = Actor->FindComponentByClass<UArcBuilderComponent>())
-		{
-			return Comp;
-		}
-	}
-
-	return nullptr;
+	return LocalPlayer->GetSubsystem<UArcBuilderSubsystem>();
 }
 
 void FArcBuilderDebugger::RefreshBuildingDefinitions()
@@ -114,7 +104,7 @@ void FArcBuilderDebugger::ApplyFilter()
 
 void FArcBuilderDebugger::Draw()
 {
-	UArcBuilderComponent* BuilderComp = FindLocalPlayerBuilderComponent();
+	UArcBuilderSubsystem* BuilderSubsystem = FindLocalPlayerBuilderSubsystem();
 
 	ImGui::SetNextWindowSize(ImVec2(750, 550), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Builder Debugger", &bShow))
@@ -123,15 +113,16 @@ void FArcBuilderDebugger::Draw()
 		return;
 	}
 
-	if (!BuilderComp)
+	if (!BuilderSubsystem)
 	{
-		ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "No UArcBuilderComponent found on local player.");
+		ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "No UArcBuilderSubsystem found on local player.");
 		ImGui::End();
 		return;
 	}
 
-	// Placement status bar
-	DrawPlacementControls(BuilderComp);
+	DrawStatus(BuilderSubsystem);
+	DrawPlacementControls(BuilderSubsystem);
+	DrawToolBuildings(BuilderSubsystem);
 
 	ImGui::Separator();
 
@@ -167,7 +158,7 @@ void FArcBuilderDebugger::Draw()
 	// Left: definitions list
 	if (ImGui::BeginChild("DefList", ImVec2(ListWidth, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
 	{
-		DrawDefinitionsList(BuilderComp);
+		DrawDefinitionsList(BuilderSubsystem);
 	}
 	ImGui::EndChild();
 
@@ -188,7 +179,7 @@ void FArcBuilderDebugger::Draw()
 
 		if (SelectedDef)
 		{
-			DrawDefinitionDetail(SelectedDef, BuilderComp);
+			DrawDefinitionDetail(SelectedDef, BuilderSubsystem);
 		}
 		else
 		{
@@ -200,29 +191,116 @@ void FArcBuilderDebugger::Draw()
 	ImGui::End();
 }
 
-void FArcBuilderDebugger::DrawPlacementControls(UArcBuilderComponent* BuilderComp)
+void FArcBuilderDebugger::DrawStatus(UArcBuilderSubsystem* BuilderSubsystem)
 {
-	if (BuilderComp->IsPlacing())
+	// Tool registration is informational only — placement never gates on it.
+	if (BuilderSubsystem->IsToolRegistered())
+	{
+		ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "Tool Registered");
+	}
+	else
+	{
+		ImGui::TextDisabled("No Tool");
+	}
+}
+
+void FArcBuilderDebugger::DrawPlacementControls(UArcBuilderSubsystem* BuilderSubsystem)
+{
+	if (BuilderSubsystem->IsPlacing())
 	{
 		ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "Placement Active");
 		ImGui::SameLine();
+		if (BuilderSubsystem->DidMeetPlacementRequirements())
+		{
+			ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "Requirements Met");
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Requirements NOT Met");
+		}
+		ImGui::SameLine();
 		if (ImGui::Button("Place Object"))
 		{
-			BuilderComp->PlaceObject();
+			BuilderSubsystem->ConfirmPlacement();
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Cancel"))
 		{
-			BuilderComp->EndPlacement();
+			BuilderSubsystem->CancelPlacement();
 		}
 	}
 	else
 	{
 		ImGui::TextDisabled("Not placing.");
 	}
+
+	// Cheat: bypass placement requirements + resource costs (needed when placing without inventory).
+	if (IConsoleVariable* DisableReqCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("arc.Builder.DisableRequirements")))
+	{
+		bool bDisableRequirements = DisableReqCVar->GetBool();
+		if (ImGui::Checkbox("Disable Requirements (cheat)", &bDisableRequirements))
+		{
+			DisableReqCVar->Set(bDisableRequirements);
+		}
+	}
+
+	// Grid controls (real subsystem getters/setters — no local mirrors).
+	if (ImGui::CollapsingHeader("Grid Controls"))
+	{
+		const char* GridModeNames[] = { "Off", "Global", "Relative" };
+		int CurrentMode = static_cast<int>(BuilderSubsystem->GetGridMode());
+		ImGui::SetNextItemWidth(150.f);
+		if (ImGui::Combo("Grid Mode", &CurrentMode, GridModeNames, IM_ARRAYSIZE(GridModeNames)))
+		{
+			BuilderSubsystem->SetGridMode(static_cast<EArcBuilderGridMode>(CurrentMode));
+		}
+
+		int GridSize = BuilderSubsystem->GetGridSize();
+		ImGui::SetNextItemWidth(150.f);
+		if (ImGui::InputInt("Grid Size", &GridSize))
+		{
+			BuilderSubsystem->SetGridSize(FMath::Max(GridSize, 1));
+		}
+	}
 }
 
-void FArcBuilderDebugger::DrawDefinitionsList(UArcBuilderComponent* BuilderComp)
+void FArcBuilderDebugger::DrawToolBuildings(UArcBuilderSubsystem* BuilderSubsystem)
+{
+	if (!BuilderSubsystem->IsToolRegistered())
+	{
+		return;
+	}
+
+	if (ImGui::CollapsingHeader("Tool Buildings", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		const TArray<TObjectPtr<UArcBuildingDefinition>>& Available = BuilderSubsystem->GetAvailableBuildings();
+
+		if (Available.Num() == 0)
+		{
+			ImGui::TextDisabled("(registered tool offers no buildings)");
+		}
+
+		for (int32 i = 0; i < Available.Num(); ++i)
+		{
+			UArcBuildingDefinition* Def = Available[i];
+			if (!Def)
+			{
+				continue;
+			}
+
+			ImGui::PushID(i);
+			ImGui::BulletText("%s", TCHAR_TO_ANSI(*GetNameSafe(Def)));
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Place"))
+			{
+				BuilderSubsystem->StartPlacement(Def);
+			}
+			ImGui::PopID();
+		}
+	}
+}
+
+void FArcBuilderDebugger::DrawDefinitionsList(UArcBuilderSubsystem* BuilderSubsystem)
 {
 	const ImGuiTableFlags TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit ;
 	if (ImGui::BeginTable("DefsTable", 2, TableFlags))
@@ -248,7 +326,7 @@ void FArcBuilderDebugger::DrawDefinitionsList(UArcBuilderComponent* BuilderComp)
 				SelectedDefinitionIndex = bSelected ? -1 : i;
 			}
 
-			// Place button
+			// Place button (always enabled — placement no longer gates on tool state)
 			ImGui::TableNextColumn();
 			if (ImGui::SmallButton("Place"))
 			{
@@ -257,7 +335,7 @@ void FArcBuilderDebugger::DrawDefinitionsList(UArcBuilderComponent* BuilderComp)
 					UArcBuildingDefinition* BuildDef = Cast<UArcBuildingDefinition>(CachedBuildingDefinitions[SourceIdx].GetAsset());
 					if (BuildDef)
 					{
-						BuilderComp->BeginPlacementFromDefinition(BuildDef);
+						BuilderSubsystem->StartPlacement(BuildDef);
 					}
 				}
 			}
@@ -269,12 +347,17 @@ void FArcBuilderDebugger::DrawDefinitionsList(UArcBuilderComponent* BuilderComp)
 	}
 }
 
-void FArcBuilderDebugger::DrawDefinitionDetail(UArcBuildingDefinition* BuildDef, UArcBuilderComponent* BuilderComp)
+void FArcBuilderDebugger::DrawDefinitionDetail(UArcBuildingDefinition* BuildDef, UArcBuilderSubsystem* BuilderSubsystem)
 {
 	// Identity
 	ImGui::Text("Name: %s", TCHAR_TO_ANSI(*GetNameSafe(BuildDef)));
 	ImGui::Text("Display: %s", TCHAR_TO_ANSI(*BuildDef->DisplayName.ToString()));
+	if (!BuildDef->Description.IsEmpty())
+	{
+		ImGui::Text("Description: %s", TCHAR_TO_ANSI(*BuildDef->Description.ToString()));
+	}
 	ImGui::Text("BuildingId: %s", TCHAR_TO_ANSI(*BuildDef->BuildingId.ToString(EGuidFormats::DigitsWithHyphens)));
+	ImGui::Text("BuildingType: %s", TCHAR_TO_ANSI(*BuildDef->BuildingType.ToString()));
 
 	if (BuildDef->BuildingTags.Num() > 0)
 	{
@@ -302,6 +385,20 @@ void FArcBuilderDebugger::DrawDefinitionDetail(UArcBuildingDefinition* BuildDef,
 	{
 		ImGui::Text("MeetMaterial: %s", TCHAR_TO_ANSI(*GetNameSafe(BuildDef->RequirementMeetMaterial)));
 		ImGui::Text("FailMaterial: %s", TCHAR_TO_ANSI(*GetNameSafe(BuildDef->RequirementFailedMaterial)));
+		ImGui::Text("Icon: %s", TCHAR_TO_ANSI(*BuildDef->Icon.ToString()));
+	}
+
+	// Targeting
+	if (ImGui::CollapsingHeader("Targeting"))
+	{
+		if (BuildDef->PlacementTargetingPreset)
+		{
+			ImGui::Text("PlacementPreset: %s", TCHAR_TO_ANSI(*GetNameSafe(BuildDef->PlacementTargetingPreset)));
+		}
+		else
+		{
+			ImGui::TextDisabled("(none, subsystem default preset)");
+		}
 	}
 
 	// Ingredients
@@ -381,6 +478,26 @@ void FArcBuilderDebugger::DrawDefinitionDetail(UArcBuildingDefinition* BuildDef,
 		}
 	}
 
+	// Post-Place Actions
+	if (ImGui::CollapsingHeader("Post-Place Actions"))
+	{
+		if (BuildDef->PostPlaceActions.Num() == 0)
+		{
+			ImGui::TextDisabled("(none)");
+		}
+		else
+		{
+			for (int32 i = 0; i < BuildDef->PostPlaceActions.Num(); ++i)
+			{
+				const TInstancedStruct<FArcBuildPostPlaceAction>& ActionStruct = BuildDef->PostPlaceActions[i];
+				if (ActionStruct.IsValid())
+				{
+					ImGui::BulletText("[%d] %s", i, TCHAR_TO_ANSI(*GetNameSafe(ActionStruct.GetScriptStruct())));
+				}
+			}
+		}
+	}
+
 	// Sockets
 	if (ImGui::CollapsingHeader("Sockets"))
 	{
@@ -404,23 +521,23 @@ void FArcBuilderDebugger::DrawDefinitionDetail(UArcBuildingDefinition* BuildDef,
 
 	ImGui::Separator();
 
-	// Action buttons
+	// Action buttons — always enabled (placement no longer gates on tool state).
 	if (ImGui::Button("Begin Placement"))
 	{
-		BuilderComp->BeginPlacementFromDefinition(BuildDef);
+		BuilderSubsystem->StartPlacement(BuildDef);
 	}
 
-	if (BuilderComp->IsPlacing())
+	if (BuilderSubsystem->IsPlacing())
 	{
 		ImGui::SameLine();
 		if (ImGui::Button("Place Object##Detail"))
 		{
-			BuilderComp->PlaceObject();
+			BuilderSubsystem->ConfirmPlacement();
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Cancel##Detail"))
 		{
-			BuilderComp->EndPlacement();
+			BuilderSubsystem->CancelPlacement();
 		}
 	}
 }

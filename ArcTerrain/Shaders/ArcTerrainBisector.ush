@@ -1,0 +1,379 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainBisector.ush — explicit halfedge bisector pool (HPG 2024).
+
+	One bisector per halfedge-adjacent LEB triangle, allocated from a pool whose
+	occupancy IS the CBT bitfield (ArcTerrainCBT.ush): bit set == live bisector,
+	root count == live bisector count, cbt_DecodeNode maps a dispatch ordinal to a
+	pool index. The base mesh is a static world-covering grid of faces; a face is one
+	square carved into the two depth-1 LEB roots (node ids 2 and 3), so the geometry
+	decode is still leb_DecodeNodeCorners on the node id.
+
+	REFERENCES. A neighbour reference is (PoolIndex << 2) | EdgeSlot, where EdgeSlot
+	names the edge FROM THE TARGET'S SIDE. Carrying the target's slot is what makes
+	the structure independent of how the base mesh is glued: on a translation-symmetric
+	square grid the legs pair Right-to-Right, which the classic libleb same-depth
+	neighbour recursion (Left-to-Right) cannot express.
+
+	EDGES. A bisector is (C0, C1, C2) with the hypotenuse C0-C2 and the apex C1:
+		HYP   = C0-C2, RIGHT = C0-C1, LEFT = C1-C2.
+	Bisection at M = mid(C0,C2) produces child0 = (C0, M, C1) and child1 = (C1, M, C2)
+	(the libleb splitting matrix), so child0's hypotenuse is the parent's RIGHT edge and
+	child1's is the parent's LEFT edge. Every pointer rule below follows from that.
+
+	DEPTH INVARIANT. Any edge is the hypotenuse of depth d or a leg of depth d-1, so a
+	reference's edge slot alone tells the depth relation: slot HYP on my HYP means the
+	twin is at my depth (a splittable diamond); slot != HYP on my HYP means the twin is
+	one level coarser and must split first; slot HYP on one of my legs means that
+	neighbour is one level finer.
+
+	CONFORMANCE. A face side is cut into dyadic intervals, and interval level m is LEB
+	depth 2m+1 (the interval is a triangle LEG) or 2m+2 (it is a HYPOTENUSE) — both
+	describe the SAME segment. A one-level depth difference across an edge is therefore
+	crack-free, and only a difference of INTERVALS is a T-junction. That is what the
+	depth invariant above enforces pointer by pointer, without a map of the sides.
+
+	BOUNDARY. A halfedge on the outer edge of the face grid has no twin and stores
+	ARC_BISECTOR_NULL. Subdivision does not cross it and conformance has no partner
+	there, because nothing is drawn on the other side.
+=============================================================================*/
+
+#pragma once
+
+#include "/Plugin/ArcTerrain/ArcTerrainCBT.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBTCounters.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainLEB.ush"
+
+#define ARC_BISECTOR_NULL 0xFFFFFFFFu
+
+#define ARC_EDGE_HYP   0u
+#define ARC_EDGE_RIGHT 1u
+#define ARC_EDGE_LEFT  2u
+
+/** Bisector record stride (bytes) and field offsets. The node id occupies two words (see FLEBNode);
+ *  24 of the 32 bytes are used. */
+#define ARC_BISECTOR_STRIDE   32u
+#define ARC_BISECTOR_NODEID   0u
+#define ARC_BISECTOR_FACE     8u
+#define ARC_BISECTOR_RETIRE   12u
+#define ARC_BISECTOR_SUCC_A   16u
+#define ARC_BISECTOR_SUCC_B   20u
+
+/** Neighbour record stride (bytes): three references, indexed by edge slot. */
+#define ARC_NEIGHBOR_STRIDE 12u
+
+/** Retire kinds. A retired slot keeps its record readable for the rest of the frame so the link pass
+ *  can redirect references through it; it becomes allocatable only once the next frame's frozen heap
+ *  shows its bit clear. */
+#define ARC_RETIRE_LIVE     0u
+#define ARC_RETIRE_SPLIT    1u
+#define ARC_RETIRE_MERGED   2u
+#define ARC_RETIRE_DEPARTED 3u
+
+/** Per-bisector subdivision command, written by the classify pass. Ordered so that an
+ *  InterlockedMax resolves every conflict in favour of refinement. */
+#define ARC_CMD_KEEP  0u
+#define ARC_CMD_MERGE 1u
+#define ARC_CMD_SPLIT 2u
+
+/** The bounded merge selector reserves the high bit without changing the classify command stored in the
+ *  low bits. Legacy and base-mesh command buffers never set it. */
+#define ARC_CMD_KIND_MASK      0x00000003u
+#define ARC_CMD_MERGE_SELECTED 0x80000000u
+
+uint arc_CommandKind(uint Command) { return Command & ARC_CMD_KIND_MASK; }
+
+uint arc_MakeRef(uint Index, uint Edge) { return (Index << 2u) | Edge; }
+uint arc_RefIndex(uint Ref)             { return Ref >> 2u; }
+uint arc_RefEdge(uint Ref)              { return Ref & 3u; }
+bool arc_RefValid(uint Ref)             { return Ref != ARC_BISECTOR_NULL; }
+
+uint arc_NodeDepth(uint2 NodeID)        { return leb_NodeDepth(NodeID); }
+
+/** Sides, in the order FaceNeighbors uses: -X, +X, -Y, +Y. Root A's RIGHT leg is x=0 and its LEFT leg
+ *  y=0; root B's are x=1 and y=1 — so the neighbour across side s is reached at side s^1. */
+uint arc_OppositeSide(uint Side)        { return Side ^ 1u; }
+
+// --- Record access ----------------------------------------------------------
+
+uint arc_LoadField(RWByteAddressBuffer Pool, uint Index, uint FieldOffset)
+{
+	return Pool.Load(Index * ARC_BISECTOR_STRIDE + FieldOffset);
+}
+
+uint arc_LoadFieldRO(ByteAddressBuffer Pool, uint Index, uint FieldOffset)
+{
+	return Pool.Load(Index * ARC_BISECTOR_STRIDE + FieldOffset);
+}
+
+void arc_StoreField(RWByteAddressBuffer Pool, uint Index, uint FieldOffset, uint Value)
+{
+	Pool.Store(Index * ARC_BISECTOR_STRIDE + FieldOffset, Value);
+}
+
+uint2 arc_LoadNodeID(RWByteAddressBuffer Pool, uint Index)
+{
+	return Pool.Load2(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_NODEID);
+}
+
+uint2 arc_LoadNodeIDRO(ByteAddressBuffer Pool, uint Index)
+{
+	return Pool.Load2(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_NODEID);
+}
+
+void arc_WriteBisector(RWByteAddressBuffer Pool, uint Index, uint2 NodeID, uint Face)
+{
+	Pool.Store4(Index * ARC_BISECTOR_STRIDE, uint4(NodeID.x, NodeID.y, Face, ARC_RETIRE_LIVE));
+	Pool.Store2(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_SUCC_A,
+		uint2(ARC_BISECTOR_NULL, ARC_BISECTOR_NULL));
+}
+
+/** Exclusive right to bisect Index, taken by moving its retirement word off LIVE. The split pass reaches
+ *  bisectors it does not own a thread for, so this is what keeps two conforming chains that meet on one
+ *  bisector from both splitting it; nothing reads a retirement word until the pass after. */
+bool arc_TryClaimSplit(RWByteAddressBuffer Pool, uint Index)
+{
+	uint Original = 0u;
+	Pool.InterlockedCompareExchange(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_RETIRE,
+		ARC_RETIRE_LIVE, ARC_RETIRE_SPLIT, Original);
+	return Original == ARC_RETIRE_LIVE;
+}
+
+void arc_ReleaseClaim(RWByteAddressBuffer Pool, uint Index)
+{
+	arc_StoreField(Pool, Index, ARC_BISECTOR_RETIRE, ARC_RETIRE_LIVE);
+}
+
+void arc_RetireBisector(RWByteAddressBuffer Pool, uint Index, uint Kind, uint SuccA, uint SuccB)
+{
+	Pool.Store(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_RETIRE, Kind);
+	Pool.Store(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_SUCC_A, SuccA);
+	Pool.Store(Index * ARC_BISECTOR_STRIDE + ARC_BISECTOR_SUCC_B, SuccB);
+}
+
+uint arc_LoadNeighbor(RWByteAddressBuffer Neighbors, uint Index, uint Edge)
+{
+	return Neighbors.Load(Index * ARC_NEIGHBOR_STRIDE + (Edge << 2u));
+}
+
+void arc_StoreNeighbor(RWByteAddressBuffer Neighbors, uint Index, uint Edge, uint Ref)
+{
+	Neighbors.Store(Index * ARC_NEIGHBOR_STRIDE + (Edge << 2u), Ref);
+}
+
+// --- Pool occupancy (the CBT bitfield) --------------------------------------
+
+FCBTNode arc_PoolNode(int PoolDepth, uint Index)
+{
+	return cbt_CreateNode((1u << (uint)PoolDepth) + Index, PoolDepth);
+}
+
+bool arc_IsLive(RWByteAddressBuffer Heap, int PoolDepth, uint Index)
+{
+	return cbt_HeapRead_RW(Heap, 0u, PoolDepth, arc_PoolNode(PoolDepth, Index)) == 1u;
+}
+
+void arc_SetLive(RWByteAddressBuffer Heap, int PoolDepth, uint Index, uint BitValue)
+{
+	cbt_HeapWriteBitField(Heap, 0u, PoolDepth, arc_PoolNode(PoolDepth, Index), BitValue);
+}
+
+/** Ordinal -> pool index against a frozen, reduced heap. */
+uint arc_DecodeSlot(ByteAddressBuffer Heap, int PoolDepth, uint Ordinal)
+{
+	return cbt_DecodeLeaf_RO(Heap, 0u, PoolDepth, Ordinal);
+}
+
+// --- Allocation -------------------------------------------------------------
+// The counter index space lives in ArcTerrainCBTCounters.ush. Allocation reserves Count consecutive
+// ORDINALS and resolves each to a free pool slot against the FROZEN heap, so two allocators never
+// collide and a slot released this frame is not reused until the next.
+//
+// SPLIT AND THE ROOT SEED EAT THE SAME FREE LIST FROM OPPOSITE ENDS. An ordinal indexes the frozen
+// heap's free-slot enumeration [0, FreeCount), so a reserve expressed in POOL CAPACITY would fall
+// outside that range under pressure. Split takes ordinal o directly and is refused past
+// FreeCount - Reserve; the seed takes ordinal m, resolves it as FreeCount - 1 - m, and is refused past
+// Reserve. The two ranges are disjoint at any FreeCount, so a refusal on one side cannot starve the
+// other.
+//
+// NEITHER CURSOR MOVES ON A REFUSAL. A conforming chain reserves four slots per member, so a plain
+// advance-then-test would let one unfundable chain push the cursor far past the ceiling and refuse every
+// smaller split behind it for the rest of the frame, with the free list still holding slots.
+//
+// MERGE IS NOT AN ALLOCATOR. A collapsed pair keeps the even child's slot for its parent, so the one
+// operation that returns slots to the free list never draws from it, and a pool with nothing free can
+// still collapse.
+
+/** Free slots the split allocator may not touch, held for the root seed's two per unseeded face. Taken
+ *  from the free list, so the budget shrinks with the list. The clamp to FreeCount is a tautology below
+ *  the floor of 2 — there no allocator of any kind can be funded — and it strands nothing, because the
+ *  collapse path allocates nothing. A frame that wants more shows up in ARC_CBT_COUNTER_SEED_REFUSED. */
+uint arc_SeedReserve(uint PoolCapacity, uint FreeCount)
+{
+	return min(max(FreeCount >> 1u, 2u), FreeCount);
+}
+
+/** Free count below which classify stops raising SPLIT at all. A SHARE OF CAPACITY, deliberately: it is
+ *  a hysteresis floor, and it does hold ~1/64 of the pool unrefined so the collapse path has room to
+ *  work with. Sized against the free list it would release at the first freed slot and the next frame's
+ *  split votes would re-saturate immediately. */
+uint arc_SplitSuppressFreeCount(uint PoolCapacity)
+{
+	return max(PoolCapacity >> 6u, 8u);
+}
+
+/** Reserve Count consecutive ordinals on one cursor, or leave it exactly where it was. A losing
+ *  compare-exchange re-reads the cursor and retries; a lost retry always observes a strictly larger
+ *  Current, so the ceiling test bounds the loop on its own. */
+bool arc_ReserveOrdinals(RWBuffer<uint> Counters, uint Cursor, uint Ceiling, uint Count,
+	out uint OutOrdinal)
+{
+	OutOrdinal = 0u;
+	uint Current = Counters[Cursor];
+	[allow_uav_condition]
+	for (;;)
+	{
+		if (Current + Count > Ceiling)
+		{
+			return false;
+		}
+		uint Original = 0u;
+		InterlockedCompareExchange(Counters[Cursor], Current, Current + Count, Original);
+		if (Original == Current)
+		{
+			OutOrdinal = Current;
+			return true;
+		}
+		Current = Original;
+	}
+}
+
+bool arc_AllocSplitSlots(RWBuffer<uint> Counters, uint FreeCount, uint PoolCapacity, uint Count,
+	out uint OutOrdinal)
+{
+	if (arc_ReserveOrdinals(Counters, ARC_CBT_COUNTER_ALLOC_CURSOR,
+			FreeCount - arc_SeedReserve(PoolCapacity, FreeCount), Count, OutOrdinal))
+	{
+		return true;
+	}
+	uint Ignored = 0u;
+	InterlockedAdd(Counters[ARC_CBT_COUNTER_ALLOC_REFUSED], 1u, Ignored);
+	return false;
+}
+
+bool arc_AllocSeedSlots(RWBuffer<uint> Counters, uint FreeCount, uint PoolCapacity, uint Count,
+	out uint OutOrdinal)
+{
+	if (arc_ReserveOrdinals(Counters, ARC_CBT_COUNTER_SEED_CURSOR,
+			arc_SeedReserve(PoolCapacity, FreeCount), Count, OutOrdinal))
+	{
+		return true;
+	}
+	uint Ignored = 0u;
+	InterlockedAdd(Counters[ARC_CBT_COUNTER_SEED_REFUSED], 1u, Ignored);
+	return false;
+}
+
+/** Seed ordinal -> ordinal in the same free list, counted down from its top end. */
+uint arc_SeedFreeOrdinal(uint FreeCount, uint SeedOrdinal)
+{
+	return FreeCount - 1u - SeedOrdinal;
+}
+
+// --- Reference resolution ---------------------------------------------------
+// One hop is enough: a slot retires at most once per frame, and the link pass runs after every
+// retirement, so no live reference survives the frame pointing at a retired slot.
+//
+// A merge keeps the even child's slot for its parent, and that slot carries no retirement record — the
+// index a neighbour holds is still right, the edge is not. The per-frame promote table below supplies
+// the edge for exactly those slots; the retirement record supplies both for the odd child, whose slot
+// is freed.
+
+/** Promote entry: the edge a merged parent's slot now presents where its even child's hypotenuse was.
+ *  ARC_EDGE_HYP doubles as "not promoted" — a child's hypotenuse always becomes a leg of its parent. */
+#define ARC_PROMOTE_NONE ARC_EDGE_HYP
+
+uint arc_ResolveRef(RWByteAddressBuffer Pool, uint Ref)
+{
+	if (!arc_RefValid(Ref))
+	{
+		return Ref;
+	}
+
+	const uint Target = arc_RefIndex(Ref);
+	const uint Edge = arc_RefEdge(Ref);
+	const uint Retire = arc_LoadField(Pool, Target, ARC_BISECTOR_RETIRE);
+
+	if (Retire == ARC_RETIRE_DEPARTED)
+	{
+		return ARC_BISECTOR_NULL;
+	}
+	if (Retire == ARC_RETIRE_SPLIT)
+	{
+		// The target's RIGHT edge became its child0's hypotenuse, its LEFT edge its child1's.
+		if (Edge == ARC_EDGE_RIGHT)
+		{
+			return arc_MakeRef(arc_LoadField(Pool, Target, ARC_BISECTOR_SUCC_A), ARC_EDGE_HYP);
+		}
+		if (Edge == ARC_EDGE_LEFT)
+		{
+			return arc_MakeRef(arc_LoadField(Pool, Target, ARC_BISECTOR_SUCC_B), ARC_EDGE_HYP);
+		}
+		return Ref;
+	}
+	if (Retire == ARC_RETIRE_MERGED)
+	{
+		// The target's hypotenuse was a leg of its parent: child0's hyp is the parent's RIGHT edge,
+		// child1's is the parent's LEFT edge.
+		if (Edge == ARC_EDGE_HYP)
+		{
+			const uint Parent = arc_LoadField(Pool, Target, ARC_BISECTOR_SUCC_A);
+			// Parity lives in the low word, so one dword is enough here.
+			const uint TargetNodeLow = arc_LoadField(Pool, Target, ARC_BISECTOR_NODEID);
+			return arc_MakeRef(Parent, (TargetNodeLow & 1u) != 0u ? ARC_EDGE_LEFT : ARC_EDGE_RIGHT);
+		}
+		return Ref;
+	}
+	return Ref;
+}
+
+/**
+ * Redirects one live bisector's three references through everything that changed hands this frame.
+ * A promoted holder's OWN hypotenuse is skipped: the merge always writes it fresh, so it is the one
+ * reference into a promoted slot that the table must not rewrite.
+ */
+void arc_FixupRefs(RWByteAddressBuffer Pool, RWByteAddressBuffer Neighbors, RWBuffer<uint> Promote,
+	uint Slot)
+{
+	const bool bPromoted = Promote[Slot] != ARC_PROMOTE_NONE;
+	for (uint Edge = 0u; Edge < 3u; ++Edge)
+	{
+		if (bPromoted && Edge == ARC_EDGE_HYP)
+		{
+			continue;
+		}
+
+		const uint Ref = arc_LoadNeighbor(Neighbors, Slot, Edge);
+		uint Resolved = arc_ResolveRef(Pool, Ref);
+		if (arc_RefValid(Resolved) && arc_RefEdge(Resolved) == ARC_EDGE_HYP)
+		{
+			const uint TargetEdge = Promote[arc_RefIndex(Resolved)];
+			if (TargetEdge != ARC_PROMOTE_NONE)
+			{
+				Resolved = arc_MakeRef(arc_RefIndex(Resolved), TargetEdge);
+			}
+		}
+		if (Resolved != Ref)
+		{
+			arc_StoreNeighbor(Neighbors, Slot, Edge, Resolved);
+		}
+	}
+}
+
+// --- Sibling / diamond navigation -------------------------------------------
+// child0 (even node id) keeps the sibling across its LEFT edge and the half-hypotenuse of its
+// parent across its RIGHT edge; child1 (odd) is the mirror.
+
+uint arc_SiblingEdge(uint2 NodeID)      { return (NodeID.x & 1u) != 0u ? ARC_EDGE_RIGHT : ARC_EDGE_LEFT; }
+uint arc_HalfHypotenuseEdge(uint2 NodeID) { return (NodeID.x & 1u) != 0u ? ARC_EDGE_LEFT : ARC_EDGE_RIGHT; }

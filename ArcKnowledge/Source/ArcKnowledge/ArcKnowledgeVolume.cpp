@@ -49,7 +49,7 @@ void AArcKnowledgeVolume::BeginPlay()
 	const bool bHasDefinitionEntries = Definition && !Definition->InitialKnowledge.IsEmpty();
 	if (EffectiveTags.IsEmpty() && InitialKnowledge.IsEmpty() && !bHasDefinitionEntries)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AArcKnowledgeVolume '%s' has no tags, definition, or initial knowledge set."), *GetName());
+		UE_LOGF(LogTemp, Warning, "AArcKnowledgeVolume '%ls' has no tags, definition, or initial knowledge set.", *GetName());
 		return;
 	}
 

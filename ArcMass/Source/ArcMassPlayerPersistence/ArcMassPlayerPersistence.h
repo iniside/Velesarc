@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcMassPlayerPersistence.generated.h"
 
 /** Marks a player's Mass entity for player-scoped fragment persistence. */

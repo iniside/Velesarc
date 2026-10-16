@@ -31,9 +31,9 @@ public class ArcKnowledge : ModuleRules
 				"Engine",
 				"InputCore",
 				"GameplayTags",
-				"StructUtils",
 				"MassCommon",
 				"MassEntity",
+				"MassCore",
 				"MassSignals",
 				"MassSpawner",
 				"MassAIBehavior",
@@ -41,10 +41,10 @@ public class ArcKnowledge : ModuleRules
 				"GameplayStateTreeModule",
 				"ArcCore",
 				"ArcMass",
-				"ArcAI",
 				"StateTreeModule",
 				"MassAIBehavior",
-				"MassActors"
+				"MassActors",
+				"ArcTargetQuery"
 			}
 		);
 

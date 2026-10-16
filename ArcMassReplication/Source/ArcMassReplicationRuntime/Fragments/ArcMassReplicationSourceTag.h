@@ -1,0 +1,14 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "ArcMassReplicationSourceTag.generated.h"
+
+USTRUCT()
+struct ARCMASSREPLICATIONRUNTIME_API FArcMassReplicationSourceTag : public FMassTag
+{
+	GENERATED_BODY()
+};

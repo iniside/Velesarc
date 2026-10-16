@@ -13,9 +13,10 @@ public class ArcMCP : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"HTTP",
 			"Json",
 			"JsonUtilities",
-			"ECABridge"
+			"ToolsetRegistry"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
@@ -28,13 +29,11 @@ public class ArcMCP : ModuleRules
 			"StateTreeModule",
 			"StateTreeEditorModule",
 			"PropertyBindingUtils",
-			"StructUtils",
 			"GameplayTags",
-			"UMG",
-			"UMGEditor",
-			"SlateCore",
-			"Slate",
-			"Kismet"
+			"SemanticSearch",
+			"TraceAnalysis",
+			"TraceServices",
+			"ArcGameplayDebugger"
 		});
 	}
 }

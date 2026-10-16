@@ -23,13 +23,28 @@
 
 #include "CoreMinimal.h"
 #include "Items/ArcItemSpec.h"
+#include "Mass/EntityHandle.h"
 
 #include "ArcCraftOutputDelivery.generated.h"
 
-class UArcCraftStationComponent;
-class UArcItemsStoreComponent;
-class UArcCraftVisEntityComponent;
 struct FArcCraftOutputFragment;
+struct FMassEntityManager;
+struct FMassExecutionContext;
+
+/**
+ * Outcome of a DeliverOutput_Mass call, telling the processor who owns advancing the queue entry.
+ *
+ * - ResolvedSync:   the policy delivered (or queued a store add) without needing to relocate the
+ *                   craft queue entry. The processor advances the completed entry itself.
+ * - DeferredResolve: the policy's deferred command owns the advance-or-block decision (e.g. the bag
+ *                    policy advances once when every spec was added, or holds the undelivered specs and
+ *                    blocks on a full bag). The processor must NOT advance the entry — the command will.
+ */
+enum class EArcCraftDeliveryDisposition : uint8
+{
+	ResolvedSync,
+	DeferredResolve
+};
 
 /**
  * Base instanced struct for crafted item delivery.
@@ -38,121 +53,43 @@ struct FArcCraftOutputFragment;
  * Override this to create custom delivery methods (e.g. drop on ground,
  * send to a specific container, mail to player, etc.).
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Base instanced struct for crafted item delivery. Defines how a crafting station delivers finished items."))
 struct ARCCRAFT_API FArcCraftOutputDelivery
 {
 	GENERATED_BODY()
 
 public:
 	/**
-	 * Deliver a crafted item.
-	 * @return true if the item was successfully delivered.
+	 * Mass-side delivery from inside UArcCraftTickProcessor::Execute (worker thread).
+	 * Specs are every output of one finished craft, main output first.
+	 * Default impl pushes a deferred Set that appends each spec to FArcCraftOutputFragment::OutputItems
+	 * on StationEntity. Override per delivery type (e.g. _EntityItemStore redirects to FArcMassItemStoreFragment).
+	 *
+	 * EntryId identifies the completed queue entry so a policy that resolves asynchronously (the bag
+	 * policy) can relocate it inside its deferred command. The base/store impls ignore it and return
+	 * ResolvedSync, leaving the processor to advance the entry.
 	 */
-	virtual bool DeliverOutput(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& OutputSpec,
-		const UObject* Instigator) const;
-
-	/**
-	 * Withdraw a crafted item from output storage by index.
-	 * Removes the item (or reduces its amount) and returns the withdrawn spec.
-	 * @param ItemIndex  Index into the output items array.
-	 * @param Stacks     Number of stacks to withdraw. 0 = all.
-	 * @param OutSpec    Filled with the withdrawn item spec on success.
-	 * @return true if the item was successfully withdrawn.
-	 */
-	virtual bool WithdrawOutput(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator);
+	virtual EArcCraftDeliveryDisposition DeliverOutput_Mass(
+		FMassExecutionContext& Context,
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		const FGuid& EntryId,
+		const TArray<FArcItemSpec>& Specs) const;
 
 	virtual ~FArcCraftOutputDelivery() = default;
 };
 
 /**
- * Stores crafted items on the station's owner actor in a UArcItemsStoreComponent.
- * Player can pick them up later.
+ * Stores crafted items in the entity's FArcCraftOutputFragment. The actor-side
+ * mirror retired with UArcItemsStoreComponent (plan step 8b-craft); items live
+ * solely on the entity fragment.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Store On Station"))
-struct ARCCRAFT_API FArcCraftOutputDelivery_StoreOnStation : public FArcCraftOutputDelivery
-{
-	GENERATED_BODY()
-
-public:
-	/** Which items store class to use on the station's owner actor for output. */
-	UPROPERTY(EditAnywhere, Category = "Delivery")
-	TSubclassOf<UArcItemsStoreComponent> OutputStoreClass;
-
-	virtual bool DeliverOutput(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& OutputSpec,
-		const UObject* Instigator) const override;
-
-	virtual bool WithdrawOutput(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator) override;
-
-	virtual ~FArcCraftOutputDelivery_StoreOnStation() override = default;
-};
-
-/**
- * Delivers crafted items directly to the instigator's (player's) inventory.
- */
-USTRUCT(BlueprintType, meta = (DisplayName = "To Instigator Inventory"))
-struct ARCCRAFT_API FArcCraftOutputDelivery_ToInstigator : public FArcCraftOutputDelivery
-{
-	GENERATED_BODY()
-
-public:
-	/** Which items store class to look for on the instigator actor. */
-	UPROPERTY(EditAnywhere, Category = "Delivery")
-	TSubclassOf<UArcItemsStoreComponent> ItemsStoreClass;
-
-	virtual bool DeliverOutput(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& OutputSpec,
-		const UObject* Instigator) const override;
-
-	virtual ~FArcCraftOutputDelivery_ToInstigator() override = default;
-};
-
-/**
- * Stores crafted items in the entity's FArcCraftOutputFragment.
- * When the actor is alive, items also appear in the actor's output store
- * (synced by UArcCraftVisEntityComponent). When the actor is despawned,
- * items persist in the entity fragment.
- *
- * The tick processor writes directly to FArcCraftOutputFragment and does NOT
- * use this delivery type — it only operates on entity data.
- * This delivery is used by UArcCraftStationComponent when the actor is alive.
- */
-USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Entity Storage", Tooltip = "Stores crafted items in the entity's FArcCraftOutputFragment; items live solely on the entity fragment."))
 struct ARCCRAFT_API FArcCraftOutputDelivery_EntityStore : public FArcCraftOutputDelivery
 {
 	GENERATED_BODY()
 
 public:
-	virtual bool DeliverOutput(
-		UArcCraftStationComponent* Station,
-		const FArcItemSpec& OutputSpec,
-		const UObject* Instigator) const override;
-
-	virtual bool WithdrawOutput(
-		UArcCraftStationComponent* Station,
-		int32 ItemIndex,
-		int32 Stacks,
-		FArcItemSpec& OutSpec,
-		const UObject* Instigator) override;
-
 	virtual ~FArcCraftOutputDelivery_EntityStore() override = default;
-
-private:
-	UArcCraftVisEntityComponent* GetVisComponent(const UArcCraftStationComponent* Station) const;
-	FArcCraftOutputFragment* GetOutputFragment(const UArcCraftStationComponent* Station) const;
-	UArcItemsStoreComponent* GetMirrorOutputStore(const UArcCraftStationComponent* Station) const;
 };

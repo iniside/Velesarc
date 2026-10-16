@@ -28,10 +28,6 @@
 	],
 	"Plugins": [
 		{
-			"Name": "TargetingSystem",
-			"Enabled": true
-		},
-		{
 			"Name": "MassGameplay",
 			"Enabled": true
 		},
@@ -40,15 +36,27 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
 			"Name": "ArcMass",
 			"Enabled": true
 		},
 		{
-			"Name": "EngineAssetDefinitions",
+			"Name": "ArcMassAbilities",
 			"Enabled": true
 		},
 		{
-			"Name": "SlateIM",
+			"Name": "ArcTargeting",
+			"Enabled": true
+		},
+		{
+			"Name": "EngineAssetDefinitions",
 			"Enabled": true
 		}
 	]

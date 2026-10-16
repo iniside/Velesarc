@@ -2,7 +2,7 @@
 
 #include "ArcSmartObjectPlanProjectionCondition.h"
 
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "NavigationSystem.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
 

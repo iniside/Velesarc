@@ -3,18 +3,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Mass/EntityHandle.h"
 
-class UArcItemsStoreComponent;
+class UMassAgentComponent;
+struct FMassEntityHandle;
+struct FMassEntityManager;
 class UArcPlayerPersistenceSubsystem;
-class UAbilitySystemComponent;
-class UAttributeSet;
 
-enum class ECharacterSaveMode : uint8
-{
-	SelectExisting,
-	NewCharacter
-};
-
+/**
+ * ImGui debug window for character persistence over the Mass entity save/load pipeline.
+ *
+ * Replaces the old GAS/UArcItemsStoreComponent-based implementation (deleted in 7fe2902b)
+ * with the current Mass architecture: entity fragments are saved/loaded via
+ * UArcPlayerPersistenceSubsystem using UMassAgentComponent as the serialization root.
+ * The Attributes tab lets you inspect and directly edit FArcMassAttributesBase-derived
+ * sparse fragments on the player entity.
+ */
 class FArcCharacterPersistenceDebugger
 {
 public:
@@ -25,52 +29,36 @@ public:
 	bool bShow = false;
 
 private:
+	// ── Tab drawers ────────────────────────────────────────────────────────
 	void DrawSaveTab();
-	void DrawSaveTab_SelectExisting();
-	void DrawSaveTab_NewCharacter();
-	void DrawStoreCheckboxes(const char* IdPrefix);
 	void DrawLoadTab();
 	void DrawAttributesTab();
 
-	TArray<UArcItemsStoreComponent*> GetPlayerStores() const;
+	// ── Resolution helpers ─────────────────────────────────────────────────
+	UWorld* GetDebugWorld() const;
+	UMassAgentComponent* GetPlayerAgentComponent() const;
+	bool GetPlayerEntity(FMassEntityHandle& OutEntity, FMassEntityManager*& OutManager) const;
 	UArcPlayerPersistenceSubsystem* GetSubsystem() const;
+	FGuid GetPlayerId() const;
+	FString MakeDomain(const FString& CharacterName) const;
 
+	// ── Actions ────────────────────────────────────────────────────────────
 	void SaveCharacter(const FString& Name);
 	void LoadCharacter(const FString& Name);
 	void DeleteCharacter(const FString& Name);
 	void RefreshSavedCharacters();
-	void RefreshStores();
 
-	FString GetStoreKeyName(const UArcItemsStoreComponent* Store) const;
-	FGuid GetPlayerId() const;
-	FString MakeDomain(const FString& CharacterName, const FString& StoreClassName) const;
-
-	UAbilitySystemComponent* GetASC() const;
-	TArray<UAttributeSet*> GetAttributeSets() const;
-	FString MakeAttributeDomain(const FString& CharacterName, const FString& SetClassName) const;
-
-	// Player ID (derived from machine name in editor)
+	// ── State ──────────────────────────────────────────────────────────────
 	FGuid CachedPlayerId;
-
-	// Save tab state
-	ECharacterSaveMode SaveMode = ECharacterSaveMode::SelectExisting;
 	char CharacterNameBuf[256] = {};
-	TArray<TWeakObjectPtr<UArcItemsStoreComponent>> CachedStores;
-	TArray<FString> CachedStoreNames;
-	TArray<bool> StoreSelection;
-	FString SaveStatus;
+	TArray<FString> SavedCharacterNames;
 	int32 SelectedSaveCharacterIndex = -1;
-
-	// Shared character data (used by both tabs)
-	TMap<FString, TArray<FString>> SavedCharacterStores; // CharName -> [StoreClassName, ...]
-	TArray<FString> SavedCharacterNames; // Sorted keys from map
-
-	// Load tab state
-	int32 SelectedCharacterIndex = -1;
+	int32 SelectedLoadCharacterIndex = -1;
+	FString SaveStatus;
 	FString LoadStatus;
 
-	// Attributes tab state
-	int32 SelectedAttributeSetIndex = -1;
-	TMap<FString, float> EditedAttributeValues; // "SetName.AttrName" -> edited base value
+	// Attributes tab
+	int32 SelectedAttrFragmentIndex = -1;
+	TMap<FString, float> EditedAttributeValues;
 	FString AttributeStatus;
 };

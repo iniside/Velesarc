@@ -6,9 +6,9 @@
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeAsyncExecutionContext.h"
-#include "TargetQuery/ArcTQSQueryDefinition.h"
-#include "TargetQuery/ArcTQSQuerySubsystem.h"
-#include "TargetQuery/ArcTQSQueryInstance.h"
+#include "ArcTQSQueryDefinition.h"
+#include "ArcTQSQuerySubsystem.h"
+#include "ArcTQSQueryInstance.h"
 
 FArcTQSRunQueryTask::FArcTQSRunQueryTask()
 {
@@ -162,8 +162,6 @@ void FArcTQSRunQueryTask::OnQueryCompleted(
 					QueryContext.QuerierEntity = Entity;
 					QueryContext.World = LocalWorld;
 					QueryContext.EntityManager = &EntityManager;
-					QueryContext.ExplicitItems = InstData->ExplicitInput;
-					QueryContext.ContextLocations = InstData->ContextLocations;
 
 					if (const FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(Entity))
 					{
@@ -211,8 +209,6 @@ FArcTQSQueryContext FArcTQSRunQueryTask::BuildQueryContext(
 	QueryContext.QuerierEntity = MassCtx.GetEntity();
 	QueryContext.World = World;
 	QueryContext.EntityManager = &EntityManager;
-	QueryContext.ExplicitItems = InstanceData.ExplicitInput;
-	QueryContext.ContextLocations = InstanceData.ContextLocations;
 
 	if (const FTransformFragment* TransformFrag = EntityManager.GetFragmentDataPtr<FTransformFragment>(MassCtx.GetEntity()))
 	{
@@ -234,31 +230,7 @@ int32 FArcTQSRunQueryTask::SubmitQuery(
 	const FArcTQSQueryContext& QueryContext,
 	FArcTQSQueryFinished OnFinished)
 {
-	if (InstanceData.bUseInlineDefinition)
-	{
-		// Copy inline data — the subsystem takes ownership via move
-		FInstancedStruct ContextProviderCopy = InstanceData.InlineContextProvider;
-		FInstancedStruct GeneratorCopy = InstanceData.InlineGenerator;
-		TArray<FInstancedStruct> StepsCopy = InstanceData.InlineSteps;
-
-		return TQSSubsystem->RunQuery(
-			MoveTemp(ContextProviderCopy),
-			MoveTemp(GeneratorCopy),
-			MoveTemp(StepsCopy),
-			InstanceData.InlineSelectionMode,
-			InstanceData.InlineTopN,
-			InstanceData.InlineMinPassingScore,
-			InstanceData.InlineTopPercent,
-			QueryContext,
-			MoveTemp(OnFinished));
-	}
-	else
-	{
-		return TQSSubsystem->RunQuery(
-			InstanceData.QueryDefinition.Get(),
-			QueryContext,
-			MoveTemp(OnFinished));
-	}
+	return TQSSubsystem->RunQuery(InstanceData.Query, QueryContext, MoveTemp(OnFinished));
 }
 
 #if WITH_EDITOR
@@ -269,11 +241,7 @@ FText FArcTQSRunQueryTask::GetDescription(const FGuid& ID, FStateTreeDataView In
 		const FInstanceDataType* InstanceData = InstanceDataView.GetPtr<FInstanceDataType>();
 		if (InstanceData)
 		{
-			if (!InstanceData->bUseInlineDefinition)
-			{
-				return FText::Format(NSLOCTEXT("ArcAI", "TQSRunQueryDesc", "Run Target Query: {0}"), FText::FromString(GetNameSafe(InstanceData->QueryDefinition)));
-			}
-			return NSLOCTEXT("ArcAI", "TQSRunQueryInlineDesc", "Run Target Query (Inline)");
+			return FText::Format(NSLOCTEXT("ArcAI", "TQSRunQueryDesc", "Run Target Query: {0}"), FText::FromString(GetNameSafe(InstanceData->Query.GetDefinition())));
 		}
 	}
 	return FText::GetEmpty();

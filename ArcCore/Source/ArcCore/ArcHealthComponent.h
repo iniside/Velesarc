@@ -21,18 +21,14 @@
 
 #pragma once
 
-#include "AbilitySystem/ArcCoreGameplayAbility.h"
 #include "ArcMacroDefines.h"
-#include "GameplayAbilitySpec.h"
-#include "GameplayEffectTypes.h"
 
 #include "Pawn/ArcPawnComponent.h"
 #include "ArcHealthComponent.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcAttributeComponentChanged
+DECLARE_MULTICAST_DELEGATE_TwoParams(FArcAttributeComponentChanged
 	, float /*NewValue*/
 	, float /*OldValue*/
-	, const FGameplayEffectModCallbackData* /*ModData*/
 )
 
 UCLASS(Abstract
@@ -46,12 +42,7 @@ private:
 	DEFINE_ARC_DELEGATE(FArcAttributeComponentChanged, OnAttributeChanged);
 
 protected:
-	UPROPERTY(EditAnywhere, Category = "Arc Core")
-	FGameplayAttribute TrackedAttribute;
-
 	FDelegateHandle AttributeChangedHandle;
-
-	TWeakObjectPtr<class UArcCoreAbilitySystemComponent> ArcASC;
 
 	virtual void OnRegister() override;
 
@@ -60,19 +51,6 @@ protected:
 public:
 	virtual bool IsPawnComponentReadyToInitialize() override;
 	virtual void OnPawnReady() override;
-	
-protected:
-	void HandleAttributeChangedDelegate(const FOnAttributeChangeData& InChangeData)
-	{
-		OnAttributeChangedDelegate.Broadcast(InChangeData.NewValue
-			, InChangeData.OldValue
-			, InChangeData.GEModData);
-		HandleAttributeChanged(InChangeData);
-	};
-
-	virtual void HandleAttributeChanged(const FOnAttributeChangeData& InChangeData)
-	{
-	};
 };
 
 UENUM(BlueprintType)
@@ -151,8 +129,6 @@ protected:
 	void OnDeathFinish(APawn* OutPawn
 					   , AController* OutController);
 
-	virtual void HandleAttributeChanged(const FOnAttributeChangeData& InChangeData) override;
-
 	UFUNCTION()
 	void HandleOwnerEndPlay(AActor* Actor, EEndPlayReason::Type EndPlayReason);
 
@@ -168,46 +144,4 @@ public:
 	}
 };
 
-// ability might not be the solution here. Maybe it's better to subclass component, and
-// customize here ?
-
-UCLASS(Abstract)
-class UArcGameplayAbility_Death : public UArcCoreGameplayAbility
-{
-	GENERATED_BODY()
-
-public:
-	UArcGameplayAbility_Death();
-
-protected:
-	void DoneAddingNativeTags();
-
-	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle
-								 , const FGameplayAbilityActorInfo* ActorInfo
-								 , const FGameplayAbilityActivationInfo ActivationInfo
-								 , const FGameplayEventData* TriggerEventData) override;
-
-	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle
-							, const FGameplayAbilityActorInfo* ActorInfo
-							, const FGameplayAbilityActivationInfo ActivationInfo
-							, bool bReplicateEndAbility
-							, bool bWasCancelled) override;
-
-	// Starts the death sequence.
-	UFUNCTION(BlueprintCallable
-		, Category = "Lyra|Ability")
-	void StartDeath();
-
-	// Finishes the death sequence.
-	UFUNCTION(BlueprintCallable
-		, Category = "Lyra|Ability")
-	void FinishDeath();
-
-protected:
-	// If enabled, the ability will automatically call StartDeath.  FinishDeath is always
-	// called when the ability ends if the death was started.
-	UPROPERTY(EditDefaultsOnly
-		, BlueprintReadOnly
-		, Category = "Lyra|Death")
-	bool bAutoStartDeath;
-};
+// UArcGameplayAbility_Death retired with GAS keystone (Bucket D 7).

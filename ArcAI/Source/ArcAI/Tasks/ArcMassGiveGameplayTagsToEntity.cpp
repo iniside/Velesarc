@@ -1,5 +1,6 @@
 ﻿#include "ArcMassGiveGameplayTagsToEntity.h"
 
+#include "Abilities/ArcAbilityFunctions.h"
 #include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeExecutionContext.h"
@@ -21,7 +22,7 @@ bool FArcMassGiveGameplayTagsToEntityTask::Link(FStateTreeLinker& Linker)
 
 void FArcMassGiveGameplayTagsToEntityTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
-	Builder.AddReadWrite<FArcMassGameplayTagContainerFragment>();
+	Builder.AddReadWrite<FArcOwnedTagsFragment>();
 }
 
 EStateTreeRunStatus FArcMassGiveGameplayTagsToEntityTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
@@ -29,13 +30,13 @@ EStateTreeRunStatus FArcMassGiveGameplayTagsToEntityTask::EnterState(FStateTreeE
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	FArcMassGameplayTagContainerFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
+	FArcOwnedTagsFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
 	if (!MassTags)
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	MassTags->Tags.AppendTags(InstanceData.Tags);
+	ArcAbilities::AddOwnedTags(MassCtx.GetEntityManager(), MassCtx.GetEntity(), InstanceData.Tags);
 	
 	return EStateTreeRunStatus::Succeeded;
 }
@@ -47,13 +48,13 @@ void FArcMassGiveGameplayTagsToEntityTask::ExitState(FStateTreeExecutionContext&
 		FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
 		FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-		FArcMassGameplayTagContainerFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
+		FArcOwnedTagsFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
 		if (!MassTags)
 		{
 			return;
-		}	
-		
-		MassTags->Tags.RemoveTags(InstanceData.Tags);
+		}
+
+		ArcAbilities::RemoveOwnedTags(MassCtx.GetEntityManager(), MassCtx.GetEntity(), InstanceData.Tags);
 	}
 }
 

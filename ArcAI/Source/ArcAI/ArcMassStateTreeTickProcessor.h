@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityElementTypes.h"
-#include "MassProcessor.h"
+#include "Mass/EntityElementTypes.h"
+#include "Mass/Processor.h"
 #include "ArcMassStateTreeTickProcessor.generated.h"
 
 class UMassStateTreeSubsystem;

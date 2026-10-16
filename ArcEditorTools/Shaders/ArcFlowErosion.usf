@@ -1,0 +1,535 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+//
+// GPU terrain erosion based on static-height drainage:
+// - MFD routes distribute drainage to all lower neighbors.
+// - D8 routes mark the steepest downhill channel for incision.
+// - FlowState.x = MFD drainage, FlowState.y = D8 channel drainage,
+//   FlowState.z = local slope proxy, FlowState.w = flow-map drainage.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/TextureGraph/SamplerStates.ush"
+#include "/Plugin/TextureGraph/TileInfo.ush"
+
+Texture2D InputHeight;
+Texture2D HeightState;
+Texture2D PrevFlow;
+Texture2D RouteMFD0;
+Texture2D RouteMFD1;
+Texture2D RouteD80;
+Texture2D RouteD81;
+Texture2D FlowState;
+Texture2D MaxD8State;
+Texture2D SourceState;
+Texture2D StateA;
+Texture2D StateB;
+
+RWTexture2D<float4> Result;
+
+int Width;
+int Height;
+int SourceWidth;
+int SourceHeight;
+int SourceChannel;
+float Strength;
+float Rain;
+float HeightScale;
+float FlowMapGain;
+float Deposition;
+float ChannelThreshold;
+float FeatureScale;
+float ChannelDepthFraction;
+float DrainageExponent;
+float MaxErodePerStep;
+float SedimentCapacity;
+float ThermalRate;
+int2 DstOffset;
+
+#ifndef THREADGROUPSIZE_X
+#define THREADGROUPSIZE_X 8
+#define THREADGROUPSIZE_Y 8
+#define THREADGROUPSIZE_Z 1
+#endif
+
+static const float Epsilon = 1.0e-6f;
+static const float DiagonalLength = 1.41421356237f;
+static const float MFDExponent = 1.1f;
+static const float TalusAngle = 0.03f;
+static const float TributaryWeight = 0.65f;
+static const float D8TrunkWeight = 0.35f;
+
+bool InBoundsWithSize(int2 P, int W, int H)
+{
+	return P.x >= 0 && P.y >= 0 && P.x < W && P.y < H;
+}
+
+bool InBounds(int2 P)
+{
+	return InBoundsWithSize(P, Width, Height);
+}
+
+int2 ClampPos(int2 P)
+{
+	return clamp(P, int2(0, 0), int2(Width - 1, Height - 1));
+}
+
+float HeightAt(int2 P)
+{
+	return HeightState.Load(int3(ClampPos(P), 0)).x;
+}
+
+float ScaledHeightAt(int2 P)
+{
+	return HeightAt(P) * max(HeightScale, 1.0f);
+}
+
+float SourceValue(float4 Value, int Channel)
+{
+	if (Channel == 0)
+	{
+		return Value.x;
+	}
+	if (Channel == 1)
+	{
+		return Value.y;
+	}
+	if (Channel == 2)
+	{
+		return Value.z;
+	}
+	return Value.w;
+}
+
+float RouteWeightTo(Texture2D Routes0, Texture2D Routes1, int2 Cell, int2 Delta)
+{
+	if (!InBounds(Cell))
+	{
+		return 0.0f;
+	}
+
+	float4 R0 = Routes0.Load(int3(Cell, 0));
+	float4 R1 = Routes1.Load(int3(Cell, 0));
+
+	if (Delta.x == -1 && Delta.y == 0)
+	{
+		return R0.x;
+	}
+	if (Delta.x == 1 && Delta.y == 0)
+	{
+		return R0.y;
+	}
+	if (Delta.x == 0 && Delta.y == -1)
+	{
+		return R0.z;
+	}
+	if (Delta.x == 0 && Delta.y == 1)
+	{
+		return R0.w;
+	}
+	if (Delta.x == -1 && Delta.y == -1)
+	{
+		return R1.x;
+	}
+	if (Delta.x == 1 && Delta.y == -1)
+	{
+		return R1.y;
+	}
+	if (Delta.x == -1 && Delta.y == 1)
+	{
+		return R1.z;
+	}
+	if (Delta.x == 1 && Delta.y == 1)
+	{
+		return R1.w;
+	}
+	return 0.0f;
+}
+
+void ComputeRouteWeights(int2 P, out float4 Cardinal, out float4 Diagonal, out float BestSlope, out int BestIndex)
+{
+	float Center = ScaledHeightAt(P);
+
+	float DropW = max(0.0f, Center - ScaledHeightAt(P + int2(-1, 0)));
+	float DropE = max(0.0f, Center - ScaledHeightAt(P + int2(1, 0)));
+	float DropN = max(0.0f, Center - ScaledHeightAt(P + int2(0, -1)));
+	float DropS = max(0.0f, Center - ScaledHeightAt(P + int2(0, 1)));
+	float DropNW = max(0.0f, Center - ScaledHeightAt(P + int2(-1, -1))) / DiagonalLength;
+	float DropNE = max(0.0f, Center - ScaledHeightAt(P + int2(1, -1))) / DiagonalLength;
+	float DropSW = max(0.0f, Center - ScaledHeightAt(P + int2(-1, 1))) / DiagonalLength;
+	float DropSE = max(0.0f, Center - ScaledHeightAt(P + int2(1, 1))) / DiagonalLength;
+
+	DropW = (P.x == 0) ? 0.0f : DropW;
+	DropE = (P.x == Width - 1) ? 0.0f : DropE;
+	DropN = (P.y == 0) ? 0.0f : DropN;
+	DropS = (P.y == Height - 1) ? 0.0f : DropS;
+	DropNW = (P.x == 0 || P.y == 0) ? 0.0f : DropNW;
+	DropNE = (P.x == Width - 1 || P.y == 0) ? 0.0f : DropNE;
+	DropSW = (P.x == 0 || P.y == Height - 1) ? 0.0f : DropSW;
+	DropSE = (P.x == Width - 1 || P.y == Height - 1) ? 0.0f : DropSE;
+
+	float WeightW = pow(DropW, MFDExponent);
+	float WeightE = pow(DropE, MFDExponent);
+	float WeightN = pow(DropN, MFDExponent);
+	float WeightS = pow(DropS, MFDExponent);
+	float WeightNW = pow(DropNW, MFDExponent);
+	float WeightNE = pow(DropNE, MFDExponent);
+	float WeightSW = pow(DropSW, MFDExponent);
+	float WeightSE = pow(DropSE, MFDExponent);
+
+	float Sum = WeightW + WeightE + WeightN + WeightS + WeightNW + WeightNE + WeightSW + WeightSE;
+	if (Sum > Epsilon)
+	{
+		Cardinal = float4(WeightW, WeightE, WeightN, WeightS) / Sum;
+		Diagonal = float4(WeightNW, WeightNE, WeightSW, WeightSE) / Sum;
+	}
+	else
+	{
+		Cardinal = float4(0.0f, 0.0f, 0.0f, 0.0f);
+		Diagonal = float4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+
+	BestSlope = DropW;
+	BestIndex = 0;
+	if (DropE > BestSlope)
+	{
+		BestSlope = DropE;
+		BestIndex = 1;
+	}
+	if (DropN > BestSlope)
+	{
+		BestSlope = DropN;
+		BestIndex = 2;
+	}
+	if (DropS > BestSlope)
+	{
+		BestSlope = DropS;
+		BestIndex = 3;
+	}
+	if (DropNW > BestSlope)
+	{
+		BestSlope = DropNW;
+		BestIndex = 4;
+	}
+	if (DropNE > BestSlope)
+	{
+		BestSlope = DropNE;
+		BestIndex = 5;
+	}
+	if (DropSW > BestSlope)
+	{
+		BestSlope = DropSW;
+		BestIndex = 6;
+	}
+	if (DropSE > BestSlope)
+	{
+		BestSlope = DropSE;
+		BestIndex = 7;
+	}
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_InitHeight(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float H = InputHeight.Load(int3(P, 0)).r;
+	Result[P + DstOffset] = float4(H, 0.0f, 0.0f, 0.0f);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_BuildRoutes0(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float4 Cardinal;
+	float4 Diagonal;
+	float BestSlope;
+	int BestIndex;
+	ComputeRouteWeights(P, Cardinal, Diagonal, BestSlope, BestIndex);
+	Result[P] = Cardinal;
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_BuildRoutes1(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float4 Cardinal;
+	float4 Diagonal;
+	float BestSlope;
+	int BestIndex;
+	ComputeRouteWeights(P, Cardinal, Diagonal, BestSlope, BestIndex);
+	Result[P] = Diagonal;
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_BuildD8_0(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float4 Cardinal;
+	float4 Diagonal;
+	float BestSlope;
+	int BestIndex;
+	ComputeRouteWeights(P, Cardinal, Diagonal, BestSlope, BestIndex);
+	Result[P] = BestSlope > Epsilon
+		? float4(BestIndex == 0 ? 1.0f : 0.0f, BestIndex == 1 ? 1.0f : 0.0f, BestIndex == 2 ? 1.0f : 0.0f, BestIndex == 3 ? 1.0f : 0.0f)
+		: float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_BuildD8_1(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float4 Cardinal;
+	float4 Diagonal;
+	float BestSlope;
+	int BestIndex;
+	ComputeRouteWeights(P, Cardinal, Diagonal, BestSlope, BestIndex);
+	Result[P] = BestSlope > Epsilon
+		? float4(BestIndex == 4 ? 1.0f : 0.0f, BestIndex == 5 ? 1.0f : 0.0f, BestIndex == 6 ? 1.0f : 0.0f, BestIndex == 7 ? 1.0f : 0.0f)
+		: float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_InitDrainage(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float Seed = max(Rain, 0.001f);
+	Result[P] = float4(Seed, Seed, 0.0f, Seed);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_AccumulateMFD(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float Seed = max(Rain, 0.001f);
+
+	float MFD =
+		Seed
+		+ PrevFlow.Load(int3(ClampPos(P + int2(-1, 0)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(-1, 0), int2(1, 0))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(1, 0)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(1, 0), int2(-1, 0))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(0, -1)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(0, -1), int2(0, 1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(0, 1)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(0, 1), int2(0, -1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(-1, -1)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(-1, -1), int2(1, 1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(1, -1)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(1, -1), int2(-1, 1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(-1, 1)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(-1, 1), int2(1, -1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(1, 1)), 0)).x * RouteWeightTo(RouteMFD0, RouteMFD1, P + int2(1, 1), int2(-1, -1));
+
+	float D8 =
+		Seed
+		+ PrevFlow.Load(int3(ClampPos(P + int2(-1, 0)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(-1, 0), int2(1, 0))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(1, 0)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(1, 0), int2(-1, 0))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(0, -1)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(0, -1), int2(0, 1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(0, 1)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(0, 1), int2(0, -1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(-1, -1)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(-1, -1), int2(1, 1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(1, -1)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(1, -1), int2(-1, 1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(-1, 1)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(-1, 1), int2(1, -1))
+		+ PrevFlow.Load(int3(ClampPos(P + int2(1, 1)), 0)).y * RouteWeightTo(RouteD80, RouteD81, P + int2(1, 1), int2(-1, -1));
+
+	float4 Cardinal;
+	float4 Diagonal;
+	float BestSlope;
+	int BestIndex;
+	ComputeRouteWeights(P, Cardinal, Diagonal, BestSlope, BestIndex);
+
+	Result[P] = float4(MFD, D8, BestSlope, MFD);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_ReduceMaxD8(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float MaxValue = 0.0f;
+	for (int Y = 0; Y < 2; ++Y)
+	{
+		for (int X = 0; X < 2; ++X)
+		{
+			int2 SourceP = P * 2 + int2(X, Y);
+			if (InBoundsWithSize(SourceP, SourceWidth, SourceHeight))
+			{
+				float4 Value = SourceState.Load(int3(SourceP, 0));
+				MaxValue = max(MaxValue, SourceValue(Value, SourceChannel));
+			}
+		}
+	}
+
+	Result[P] = float4(MaxValue, 0.0f, 0.0f, 0.0f);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_CarveDeposit(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float4 H = HeightState.Load(int3(P, 0));
+	float4 F = FlowState.Load(int3(P, 0));
+	float MaxDrainage = max(MaxD8State.Load(int3(0, 0, 0)).x, Epsilon);
+	float Drainage = max(F.x, 0.0f);
+	float ChannelDrainage = max(F.y, 0.0f);
+	float SafeFeatureScale = clamp(FeatureScale, 0.25f, 8.0f);
+	float Scale01 = saturate((SafeFeatureScale - 0.25f) / 7.75f);
+	float EffectiveChannelThreshold = saturate(ChannelThreshold * sqrt(SafeFeatureScale));
+
+	float LogMaxDrainage = max(log(1.0f + MaxDrainage), Epsilon);
+	float NormalizedMFD = saturate(log(1.0f + Drainage) / LogMaxDrainage);
+	float NormalizedD8 = saturate(log(1.0f + ChannelDrainage) / LogMaxDrainage);
+
+	float NeighborMax = NormalizedMFD;
+	float NeighborSum = 0.0f;
+	float NeighborWeightSum = 0.0f;
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		for (int X = -1; X <= 1; ++X)
+		{
+			if (X == 0 && Y == 0)
+			{
+				continue;
+			}
+
+			int2 NP = ClampPos(P + int2(X, Y));
+			float NeighborDrainage = max(FlowState.Load(int3(NP, 0)).x, 0.0f);
+			float NeighborNormalized = saturate(log(1.0f + NeighborDrainage) / LogMaxDrainage);
+			float Weight = (abs(X) + abs(Y) == 2) ? 0.5f : 0.75f;
+			NeighborMax = max(NeighborMax, NeighborNormalized);
+			NeighborSum += NeighborNormalized * Weight;
+			NeighborWeightSum += Weight;
+		}
+	}
+
+	float NeighborAverage = NeighborSum / max(NeighborWeightSum, Epsilon);
+	float Continuity = saturate(max(NeighborAverage, NeighborMax * 0.5f) / max(NormalizedMFD, ChannelThreshold + Epsilon));
+	float ChannelScore = saturate(NormalizedMFD * TributaryWeight + NormalizedD8 * D8TrunkWeight);
+	float ChannelMask = smoothstep(EffectiveChannelThreshold * 0.5f, max(EffectiveChannelThreshold + Epsilon, 1.0f), ChannelScore);
+	ChannelMask *= smoothstep(lerp(0.2f, 0.55f, Scale01), lerp(0.65f, 0.95f, Scale01), Continuity);
+
+	float DrainagePower = pow(max(Drainage, 0.0f), max(DrainageExponent, 0.01f));
+	float Capacity = SedimentCapacity * DrainagePower * max(F.z, Epsilon);
+
+	float Incision = Strength * ChannelMask * Capacity * ChannelDepthFraction * sqrt(SafeFeatureScale);
+	Incision = min(Incision, max(MaxErodePerStep, 0.0f));
+
+	float Deposit = Deposition * (1.0f - ChannelMask) * Capacity * 0.1f;
+	Deposit = min(Deposit, max(MaxErodePerStep, 0.0f));
+
+	float NewHeight = max(0.0f, H.x - Incision + Deposit);
+	Result[P] = float4(NewHeight, Incision, Deposit, ChannelMask);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_ThermalPolish(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float Center = HeightState.Load(int3(P, 0)).x;
+	float SumDelta = 0.0f;
+	float WeightSum = 0.0f;
+
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		for (int X = -1; X <= 1; ++X)
+		{
+			if (X == 0 && Y == 0)
+			{
+				continue;
+			}
+
+			int2 NP = ClampPos(P + int2(X, Y));
+			float Neighbor = HeightState.Load(int3(NP, 0)).x;
+			float Drop = Center - Neighbor;
+			if (Drop > TalusAngle)
+			{
+				float Weight = (abs(X) + abs(Y) == 2) ? 0.70710678f : 1.0f;
+				SumDelta -= (Drop - TalusAngle) * Weight;
+				WeightSum += Weight;
+			}
+			else if (Drop < -TalusAngle)
+			{
+				float Weight = (abs(X) + abs(Y) == 2) ? 0.70710678f : 1.0f;
+				SumDelta += (-Drop - TalusAngle) * Weight;
+				WeightSum += Weight;
+			}
+		}
+	}
+
+	float Rate = saturate(ThermalRate) * 0.125f;
+	float NewHeight = Center;
+	if (WeightSum > Epsilon)
+	{
+		NewHeight += SumDelta / WeightSum * Rate;
+	}
+
+	Result[P] = float4(max(0.0f, NewHeight), 0.0f, 0.0f, 0.0f);
+}
+
+float4 FSH_ArcExtractHeight(float2 uv : TEXCOORD0) : SV_Target0
+{
+	float2 LayerUV = TileInfo_fromCurrentTileToLayer(uv);
+	float H = StateA.SampleLevel(SamplerStates_NoBorder, LayerUV, 0).x;
+	return float4(H, H, H, 1.0f);
+}
+
+float4 FSH_ArcFlowMap(float2 uv : TEXCOORD0) : SV_Target0
+{
+	float2 LayerUV = TileInfo_fromCurrentTileToLayer(uv);
+	float Acc = StateB.SampleLevel(SamplerStates_NoBorder, LayerUV, 0).w;
+	float M = log(1.0f + Acc * FlowMapGain);
+	return float4(M, M, M, 1.0f);
+}
+
+[numthreads(THREADGROUPSIZE_X, THREADGROUPSIZE_Y, THREADGROUPSIZE_Z)]
+void CSH_Pack(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int2 P = int2(ThreadId.xy);
+	if (!InBounds(P))
+	{
+		return;
+	}
+
+	float4 H = StateA.Load(int3(P, 0));
+	float4 F = StateB.Load(int3(P, 0));
+	Result[P] = float4(H.x, 0.0f, 0.0f, F.w);
+}

@@ -3,20 +3,20 @@
 #include "ArcTQSGenerator_PerceivedEntities.h"
 #include "Perception/ArcMassSightPerception.h"
 #include "Perception/ArcMassHearingPerception.h"
-#include "MassEntityManager.h"
-#include "MassEntityView.h"
+#include "Mass/EntityManager.h"
+#include "Mass/EntityView.h"
 
 void FArcTQSGenerator_PerceivedEntities::GenerateItems(
 	const FArcTQSQueryContext& QueryContext,
 	TArray<FArcTQSTargetItem>& OutItems) const
 {
 	FMassEntityManager* EntityManager = QueryContext.EntityManager;
-	if (!EntityManager || !QueryContext.QuerierEntity.IsValid())
+	if (!EntityManager || !Perceiver.IsValid())
 	{
 		return;
 	}
 
-	if (!EntityManager->IsEntityActive(QueryContext.QuerierEntity))
+	if (!EntityManager->IsEntityActive(Perceiver))
 	{
 		return;
 	}
@@ -66,12 +66,12 @@ void FArcTQSGenerator_PerceivedEntities::GenerateItems(
 		}
 	};
 
-	const FMassEntityView QuerierView(*EntityManager, QueryContext.QuerierEntity);
+	const FMassEntityView PerceiverView(*EntityManager, Perceiver);
 
 	// Sight
 	if (Sense == EArcTQSPerceptionSense::Sight || Sense == EArcTQSPerceptionSense::Both)
 	{
-		if (const FArcMassSightPerceptionResult* SightResult = QuerierView.GetFragmentDataPtr<FArcMassSightPerceptionResult>())
+		if (const FArcMassSightPerceptionResult* SightResult = PerceiverView.GetFragmentDataPtr<FArcMassSightPerceptionResult>())
 		{
 			AddPerceivedEntities(*SightResult);
 		}
@@ -80,7 +80,7 @@ void FArcTQSGenerator_PerceivedEntities::GenerateItems(
 	// Hearing
 	if (Sense == EArcTQSPerceptionSense::Hearing || Sense == EArcTQSPerceptionSense::Both)
 	{
-		if (const FArcMassHearingPerceptionResult* HearingResult = QuerierView.GetFragmentDataPtr<FArcMassHearingPerceptionResult>())
+		if (const FArcMassHearingPerceptionResult* HearingResult = PerceiverView.GetFragmentDataPtr<FArcMassHearingPerceptionResult>())
 		{
 			AddPerceivedEntities(*HearingResult);
 		}

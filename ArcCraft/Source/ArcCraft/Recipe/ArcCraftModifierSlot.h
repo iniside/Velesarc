@@ -26,33 +26,28 @@
 
 #include "ArcCraftModifierSlot.generated.h"
 
-/** Strategy for selecting which modifiers fill the available recipe-level slots. */
-UENUM(BlueprintType)
-enum class EArcCraftSlotSelection : uint8
-{
-	/** Fill slots with the modifiers that have the highest effective weight/quality. */
-	HighestWeight,
-	/** Fill slots by picking randomly among eligible modifiers. */
-	Random
-};
-
 /**
  * Defines a single modifier slot at recipe level.
  *
  * Each entry in the recipe's ModifierSlots array represents one "chair" that
- * a single output modifier can fill. The SlotTag identifies the category — only
- * modifiers whose SlotTag matches can occupy this slot.
+ * a single output modifier can fill. SlotTags is the set of tags this chair
+ * OFFERS. A candidate modifier fits when Chair.SlotTags.HasAll(Candidate.SlotTags).
  *
- * Duplicate tags are allowed: adding two entries with SlotTag "Modifier.Offense"
- * means up to two offense modifiers can be assigned.
+ * A chair with multiple tags, e.g. {Modifier.Stat, Modifier.Passive}, is a
+ * "flex chair" — it accepts both Stat-only and Passive-only candidates, while
+ * also accepting candidates that require both tags simultaneously.
+ *
+ * A chair holding Modifier.Penalty is a penalty chair; every other chair is a bonus chair.
+ * Chairs with an empty SlotTags container are ignored.
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Defines a single modifier slot (chair) at recipe level; a candidate modifier fits when Chair.SlotTags.HasAll(Candidate.SlotTags)."))
 struct ARCCRAFT_API FArcCraftModifierSlot
 {
 	GENERATED_BODY()
 
 public:
-	/** Tag identifying this slot category (e.g. "Modifier.Offense"). */
+	/** Tags this chair offers. A candidate fits when Chair.SlotTags.HasAll(Candidate.SlotTags).
+	 *  Modifier.Penalty makes it a penalty chair. Empty container = this chair is ignored. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slot")
-	FGameplayTag SlotTag;
+	FGameplayTagContainer SlotTags;
 };

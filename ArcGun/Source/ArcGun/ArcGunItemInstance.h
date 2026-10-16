@@ -24,7 +24,6 @@
 #include "Items/Fragments/ArcItemFragment.h"
 #include "ArcGunItemInstance.generated.h"
 
-class UArcItemsStoreComponent;
 struct FArcItemData;
 
 USTRUCT()
@@ -44,11 +43,6 @@ public:
 	int32 GetAmmo() const
 	{
 		return CurrentAmmo;
-	}
-
-	virtual UScriptStruct* GetScriptStruct() const override
-	{
-		return FArcItemInstance_GunMagazineAmmo::StaticStruct();
 	}
 
 	virtual bool Equals(const FArcItemInstance& Other) const override
@@ -77,4 +71,5 @@ public:
 	{
 		return FArcItemFragment_GunMagazineAmmo::StaticStruct();
 	}
+
 };

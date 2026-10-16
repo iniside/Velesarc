@@ -3,12 +3,12 @@
 #include "ArcMassNavMeshPathFollowTask.h"
 #include "MassAIBehaviorTypes.h"
 #include "MassCommonFragments.h"
-#include "MassDebugger.h"
+#include "Mass/Debugger.h"
+#include "MassDebuggerWorld.h"
 #include "MassMovementFragments.h"
 #include "MassNavigationFragments.h"
 #include "MassStateTreeExecutionContext.h"
-#include "NavCorridor.h"
-#include "NavigationSystem.h"
+#include "Navigation/ArcPathFollow.h"
 #include "StateTreeLinker.h"
 
 
@@ -29,133 +29,66 @@ bool FArcMassNavMeshPathFollowTask::Link(FStateTreeLinker& Linker)
 bool FArcMassNavMeshPathFollowTask::RequestPath(FStateTreeExecutionContext& Context, const FMassTargetLocation& InTargetLocation) const
 {
 	FMassStateTreeExecutionContext& MassContext = static_cast<FMassStateTreeExecutionContext&>(Context);
-	FArcMassNavMeshPathFollowTaskInstanceData& InstanceData = Context.GetInstanceData<FArcMassNavMeshPathFollowTaskInstanceData>(*this);
+	const FArcMassNavMeshPathFollowTaskInstanceData& InstanceData = Context.GetInstanceData<FArcMassNavMeshPathFollowTaskInstanceData>(*this);
 
 	bool bDisplayDebug = false;
 #if WITH_MASSGAMEPLAY_DEBUG
 	bDisplayDebug = UE::Mass::Debug::IsDebuggingEntity(MassContext.GetEntity());
 #endif // WITH_MASSGAMEPLAY_DEBUG
-	
-	const FAgentRadiusFragment& AgentRadius = Context.GetExternalData(AgentRadiusHandle);
-	const FAgentHeightFragment& AgentHeight = Context.GetExternalData(AgentHeightHandle);
-	const FVector AgentNavLocation = Context.GetExternalData(TransformHandle).GetTransform().GetLocation();
-	const FNavAgentProperties& NavAgentProperties = FNavAgentProperties(AgentRadius.Radius, AgentHeight.Height);
 
-	UNavigationSystemV1* NavMeshSubsystem = Cast<UNavigationSystemV1>(Context.GetWorld()->GetNavigationSystem());
-	if (!NavMeshSubsystem)
+	if (!InTargetLocation.EndOfPathPosition.IsSet())
 	{
-		MASSBEHAVIOR_LOG(Warning, TEXT("Missing navigation system."));
+		MASSBEHAVIOR_LOGF(Warning, "EndOfPathPosition not set");
 		return false;
 	}
-	
-	const ANavigationData* NavData = NavMeshSubsystem->GetNavDataForProps(NavAgentProperties, AgentNavLocation);
-	
-	if (!NavData || !InTargetLocation.EndOfPathPosition.IsSet())
+
+	const ArcPathFollow::FContext PathContext
 	{
-		MASSBEHAVIOR_LOG(Warning, TEXT("%s"), !NavData ? TEXT("Invalid NavData") : TEXT("EndOfPathPosition not set") );
-		return false;
-	}
-		
-	FPathFindingQuery Query(NavMeshSubsystem, *NavData, AgentNavLocation, InTargetLocation.EndOfPathPosition.GetValue());
+		*Context.GetWorld(),
+		MassContext.GetEntity(),
+		Context.GetExternalData(TransformHandle),
+		Context.GetExternalData(AgentRadiusHandle),
+		Context.GetExternalData(AgentHeightHandle),
+		Context.GetExternalData(DesiredMovementHandle),
+		Context.GetExternalData(MovementParamsHandle),
+		Context.GetExternalData(MoveTargetHandle),
+		Context.GetExternalData(ShortPathHandle),
+		Context.GetExternalData(CachedPathHandle)
+	};
 
-	// Why fix it after if there is none??
-	if (!Query.NavData.IsValid())
-	{
-		Query.NavData = NavMeshSubsystem->GetNavDataForProps(NavAgentProperties, Query.StartLocation);
-	}
+	ArcPathFollow::FParams Params;
+	Params.MovementStyle = InstanceData.MovementStyle;
+	Params.SpeedScale = InstanceData.SpeedScale;
+	Params.CorridorWidth = InstanceData.CorridorWidth;
+	Params.OffsetFromBoundaries = InstanceData.OffsetFromBoundaries;
+	Params.EndDistanceThreshold = InstanceData.EndDistanceThreshold;
 
-	FPathFindingResult Result(ENavigationQueryResult::Error);
-	if (Query.NavData.IsValid())
-	{
-		if (bDisplayDebug)
-		{
-			MASSBEHAVIOR_LOG(Verbose, TEXT("requesting synchronous path"));
-		}
-		
-		Result = Query.NavData->FindPath(NavAgentProperties, Query);
-	}
-
-	if (Result.IsSuccessful())
-	{
-		Result.Path->RemoveOverlappingPoints(FNavCorridor::OverlappingPointTolerance);
-		
-		// @todo: Investigate single point paths but for now, only move if we have more than one point.
-		if (Result.Path.Get()->GetPathPoints().Num() > 1)
-		{
-			// A path was found
-			if (bDisplayDebug)
-			{
-				MASSBEHAVIOR_LOG(Verbose, TEXT("path found"));
-			}
-
-			FMassNavMeshCachedPathFragment& CachedPathFragment = Context.GetExternalData(CachedPathHandle);
-			CachedPathFragment.NavPath = Result.Path;
-
-			CachedPathFragment.PathSource = EMassNavigationPathSource::NavMesh;
-
-			// Build corridor
-			CachedPathFragment.Corridor = MakeShared<FNavCorridor>();
-			const FSharedConstNavQueryFilter NavQueryFilter = Query.QueryFilter ? Query.QueryFilter : NavData->GetDefaultQueryFilter();
-
-			FNavCorridorParams CorridorParams;
-			CorridorParams.SetFromWidth(InstanceData.CorridorWidth);
-			CorridorParams.PathOffsetFromBoundaries = InstanceData.OffsetFromBoundaries;
-
-			MASSBEHAVIOR_LOG(Verbose, TEXT("FArcMassNavMeshPathFollowTask::RequestPath"));
-			MASSBEHAVIOR_LOG(Verbose, TEXT("Start: %s, End: %s"),
-				*CachedPathFragment.NavPath->GetPathPoints()[0].Location.ToCompactString(),
-				*CachedPathFragment.NavPath->GetPathPoints().Last().Location.ToCompactString());
-			MASSBEHAVIOR_LOG(Verbose, TEXT("Corridor params - %s"), *CorridorParams.ToString());
-			
-			CachedPathFragment.Corridor->BuildFromPath(*CachedPathFragment.NavPath, NavQueryFilter, CorridorParams);
-
-			// Update short path
-			FMassNavMeshShortPathFragment& ShortPathFragment = Context.GetExternalData(ShortPathHandle);
-			ShortPathFragment.RequestShortPath(CachedPathFragment.Corridor, /*NavCorridorStartIndex*/0, /*NumLeadingPoints*/0, InstanceData.EndDistanceThreshold);
-
-			CachedPathFragment.NavPathNextStartIndex = (uint16)FMath::Max(ShortPathFragment.NumPoints - FMassNavMeshShortPathFragment::NumPointsBeyondUpdate - FMassNavMeshCachedPathFragment::NumLeadingPoints, 0);
-			
-			// Update MoveTarget
-			FMassMoveTargetFragment& MoveTarget = Context.GetExternalData(MoveTargetHandle);
-			const FMassMovementParameters& MovementParams = Context.GetExternalData(MovementParamsHandle);
-			float DesiredSpeed = FMath::Min(
-				MovementParams.GenerateDesiredSpeed(InstanceData.MovementStyle, MassContext.GetEntity().Index) * InstanceData.SpeedScale,
-				MovementParams.MaxSpeed);
-
-			// Apply DesiredMaxSpeedOverride
-			const FMassDesiredMovementFragment& DesiredMovementFragment = Context.GetExternalData(DesiredMovementHandle);
-			DesiredSpeed = FMath::Min(DesiredSpeed, DesiredMovementFragment.DesiredMaxSpeedOverride);
-
-			MoveTarget.DesiredSpeed.Set(DesiredSpeed);
-			
-			MoveTarget.CreateNewAction(EMassMovementAction::Move, *Context.GetWorld());
-
-			return true;
-		}
-	
-		return true;
-	}
-
-	MASSBEHAVIOR_LOG(Warning, TEXT("Failed to find a path, result: %s (start: %s, end: %s"),
-		 *UEnum::GetValueAsString(Result.Result), *Query.StartLocation.ToCompactString(), *Query.EndLocation.ToCompactString());
-	
-	return false;
+	return ArcPathFollow::RequestPath(PathContext, Params, InTargetLocation.EndOfPathPosition.GetValue(), bDisplayDebug);
 }
 
 bool FArcMassNavMeshPathFollowTask::UpdateShortPath(FStateTreeExecutionContext& Context) const
 {
-	FArcMassNavMeshPathFollowTaskInstanceData& InstanceData = Context.GetInstanceData<FArcMassNavMeshPathFollowTaskInstanceData>(*this);
-	
-	FMassNavMeshCachedPathFragment& CachedPathFragment = Context.GetExternalData(CachedPathHandle);
-	MASSBEHAVIOR_LOG(Verbose, TEXT("updating short path, starting at index %i"), CachedPathFragment.NavPathNextStartIndex);
-	
-	FMassNavMeshShortPathFragment& ShortPathFragment = Context.GetExternalData(ShortPathHandle);
+	FMassStateTreeExecutionContext& MassContext = static_cast<FMassStateTreeExecutionContext&>(Context);
+	const FArcMassNavMeshPathFollowTaskInstanceData& InstanceData = Context.GetInstanceData<FArcMassNavMeshPathFollowTaskInstanceData>(*this);
 
-	ShortPathFragment.RequestShortPath(CachedPathFragment.Corridor, CachedPathFragment.NavPathNextStartIndex, CachedPathFragment.NumLeadingPoints, InstanceData.EndDistanceThreshold);
+	const ArcPathFollow::FContext PathContext
+	{
+		*Context.GetWorld(),
+		MassContext.GetEntity(),
+		Context.GetExternalData(TransformHandle),
+		Context.GetExternalData(AgentRadiusHandle),
+		Context.GetExternalData(AgentHeightHandle),
+		Context.GetExternalData(DesiredMovementHandle),
+		Context.GetExternalData(MovementParamsHandle),
+		Context.GetExternalData(MoveTargetHandle),
+		Context.GetExternalData(ShortPathHandle),
+		Context.GetExternalData(CachedPathHandle)
+	};
 
-	CachedPathFragment.NavPathNextStartIndex += (uint16)FMath::Max(ShortPathFragment.NumPoints - FMassNavMeshShortPathFragment::NumPointsBeyondUpdate - FMassNavMeshCachedPathFragment::NumLeadingPoints, 0);
+	ArcPathFollow::FParams Params;
+	Params.EndDistanceThreshold = InstanceData.EndDistanceThreshold;
 
-	return true;
+	return ArcPathFollow::UpdateShortPath(PathContext, Params);
 }
 
 EStateTreeRunStatus FArcMassNavMeshPathFollowTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
@@ -169,18 +102,18 @@ EStateTreeRunStatus FArcMassNavMeshPathFollowTask::EnterState(FStateTreeExecutio
 #endif // WITH_MASSGAMEPLAY_DEBUG
 	if (bDisplayDebug)
 	{
-		MASSBEHAVIOR_LOG(Verbose, TEXT("enterstate."));
+		MASSBEHAVIOR_LOGF(Verbose, "enterstate.");
 	}
 
 	if (!InstanceData.TargetLocation.EndOfPathPosition.IsSet())
 	{
-		MASSBEHAVIOR_LOG(Error, TEXT("Target is not defined."));
+		MASSBEHAVIOR_LOGF(Error, "Target is not defined.");
 		return EStateTreeRunStatus::Failed;
 	}
 		
 	if (!RequestPath(Context, InstanceData.TargetLocation))
 	{
-		MASSBEHAVIOR_LOG(Warning, TEXT("Failed to request path."));
+		MASSBEHAVIOR_LOGF(Warning, "Failed to request path.");
 		return EStateTreeRunStatus::Failed;
 	}
 
@@ -201,7 +134,7 @@ EStateTreeRunStatus FArcMassNavMeshPathFollowTask::Tick(FStateTreeExecutionConte
 #endif // WITH_MASSGAMEPLAY_DEBUG
 	if (bDisplayDebug)
 	{
-		MASSBEHAVIOR_LOG(Verbose, TEXT("tick"));
+		MASSBEHAVIOR_LOGF(Verbose, "tick");
 	}
 	
 	if (InstanceData.bTrackGoalChange)
@@ -228,13 +161,13 @@ EStateTreeRunStatus FArcMassNavMeshPathFollowTask::Tick(FStateTreeExecutionConte
 	{
 		if (!InstanceData.TargetLocation.EndOfPathPosition.IsSet())
 		{
-			MASSBEHAVIOR_LOG(Error, TEXT("Target is not defined."));
+			MASSBEHAVIOR_LOGF(Error, "Target is not defined.");
 			return EStateTreeRunStatus::Failed;
 		}
 
 		if (!UpdateShortPath(Context))
 		{
-			MASSBEHAVIOR_LOG(Error, TEXT("Failed to update short path."));
+			MASSBEHAVIOR_LOGF(Error, "Failed to update short path.");
 			return EStateTreeRunStatus::Failed;
 		}
 	}

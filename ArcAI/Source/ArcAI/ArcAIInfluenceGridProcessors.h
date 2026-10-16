@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ArcMass/ArcMassInfluenceMapping.h"
+#include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 #include "UObject/Object.h"
 #include "ArcAIInfluenceGridProcessors.generated.h"
 

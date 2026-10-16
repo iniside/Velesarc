@@ -56,7 +56,7 @@ void FArcStateTreeNodeRegistry::Initialize()
 	}
 
 	bInitialized = true;
-	UE_LOG(LogTemp, Log, TEXT("[ArcMCP] StateTree node registry initialized: %d nodes"), ByAlias.Num());
+	UE_LOGF(LogTemp, Log,"[ArcMCP] StateTree node registry initialized: %d nodes", ByAlias.Num());
 }
 
 void FArcStateTreeNodeRegistry::RegisterStruct(

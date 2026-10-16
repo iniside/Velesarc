@@ -1,0 +1,171 @@
+{
+  "ItemId": "497CE5104DA2679819AF7DA1EB187E2B",
+  "ScalableFloatFragmentSet": [
+    {
+      "_structType": "ArcRPGItemFragment_AbilityStats",
+      "HealthCost": {
+        "Value": 12.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "StaminaCost": {
+        "Value": 0.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "EnergyCost": {
+        "Value": 10.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "EntropyGenerated": {
+        "Value": 0.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "EntropyCost": {
+        "Value": 0.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "CascadeMultiplier": {
+        "Value": 1.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "SoftCooldownDuration": {
+        "Value": 0.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "RegistryType": "None",
+      "DataName": ""
+    }
+  ]
+}

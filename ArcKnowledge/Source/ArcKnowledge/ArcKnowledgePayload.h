@@ -11,7 +11,6 @@
  *
  * Examples:
  * - Game code: FArcSettlementPayload with DisplayName, BoundingRadius, OwnerFaction
- * - ArcArea: FArcAreaVacancyPayload with AreaHandle, SlotIndex, RoleTag
  */
 USTRUCT(BlueprintType)
 struct ARCKNOWLEDGE_API FArcKnowledgePayload

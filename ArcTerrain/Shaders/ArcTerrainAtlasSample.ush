@@ -1,0 +1,64 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "/Engine/Private/LargeWorldCoordinates.ush"
+
+#ifndef ARC_TERRAIN_ATLAS_MAX_SLOTS
+#define ARC_TERRAIN_ATLAS_MAX_SLOTS 32
+#endif
+
+#ifndef ARC_TERRAIN_ATLAS_PARAM
+#error "Define ARC_TERRAIN_ATLAS_PARAM(Name) before including ArcTerrainAtlasSample.ush"
+#endif
+
+bool ArcTerrainAtlas_SampleHeightWorldZ(FDFVector3 AbsoluteWorldPos, out float OutWorldZCm)
+{
+	OutWorldZCm = 0.0f;
+
+	const int SectorSide = ARC_TERRAIN_ATLAS_PARAM(SectorSide);
+	const float CellSizeCm = ARC_TERRAIN_ATLAS_PARAM(CellSizeCm);
+	const float HeightQuads = ARC_TERRAIN_ATLAS_PARAM(HeightQuads);
+	const float HeightSliceSide = ARC_TERRAIN_ATLAS_PARAM(HeightSliceSide);
+	if (SectorSide <= 0 || CellSizeCm <= 0.0f || HeightQuads <= 0.0f || HeightSliceSide <= 0.0f)
+	{
+		return false;
+	}
+
+	const float3 PreTranslation = ARC_TERRAIN_ATLAS_PARAM(LWCTile) * UE_LWC_RENDER_TILE_SIZE;
+	const FDFInverseMatrix WorldToLocal =
+		MakeDFInverseMatrix(PreTranslation, ARC_TERRAIN_ATLAS_PARAM(WorldToLocal));
+	const float3 LocalPos = DFMultiplyAffineDemote(AbsoluteWorldPos, WorldToLocal);
+
+	const float2 CellF = LocalPos.xy / CellSizeCm;
+	const float2 CellKeyF = floor(CellF);
+	const int2 SectorKey = int2(CellKeyF) >> ARC_TERRAIN_ATLAS_PARAM(SectorShift);
+	const int2 Slot = SectorKey - ARC_TERRAIN_ATLAS_PARAM(OriginSector);
+	if (any(Slot < int2(0, 0)) || any(Slot >= int2(SectorSide, SectorSide)))
+	{
+		return false;
+	}
+
+	const int SlotIndex = Slot.y * SectorSide + Slot.x;
+	if (SlotIndex < 0 || SlotIndex >= ARC_TERRAIN_ATLAS_MAX_SLOTS)
+	{
+		return false;
+	}
+	if ((ARC_TERRAIN_ATLAS_PARAM(ValidSlotMask) & (1u << (uint)SlotIndex)) == 0u)
+	{
+		return false;
+	}
+
+	const float4 SliceAndOrigin = ARC_TERRAIN_ATLAS_PARAM(SliceAndOriginPerSlot)[SlotIndex];
+	const float2 TileOrigin = CellKeyF * HeightQuads - SliceAndOrigin.yz;
+	const float2 Texel = TileOrigin + (CellF - CellKeyF) * HeightQuads + 1.5f;
+	const float2 UV = Texel / HeightSliceSide;
+
+	const float LocalZ = ARC_TERRAIN_ATLAS_PARAM(HeightAtlas).SampleLevel(
+		ARC_TERRAIN_ATLAS_PARAM(HeightAtlasSampler), float3(UV, SliceAndOrigin.x), 0).x;
+
+	const FDFMatrix LocalToWorld =
+		MakeDFMatrix(PreTranslation, ARC_TERRAIN_ATLAS_PARAM(LocalToWorld));
+	OutWorldZCm = DFDemote(DFMultiplyAffine(float3(LocalPos.xy, LocalZ), LocalToWorld)).z;
+	return true;
+}

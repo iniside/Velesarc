@@ -26,15 +26,12 @@
 
 #include "Animation/AnimNodeReference.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "AnimNode_ChooserPlayer.h"
 #include "ArcAnimNodeLibrary.generated.h"
 
 USTRUCT(BlueprintType)
 struct FChooserPlayerAnimNodeReference : public FAnimNodeReference
 {
 	GENERATED_BODY()
-
-	typedef FAnimNode_ChooserPlayer FInternalNodeType;
 };
 
 /**

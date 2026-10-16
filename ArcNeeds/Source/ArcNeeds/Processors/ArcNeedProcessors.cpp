@@ -20,9 +20,35 @@
  */
 
 #include "Processors/ArcNeedProcessors.h"
-#include "MassExecutionContext.h"
+#include "ArcNeedSignals.h"
+#include "Fragments/ArcNeedBands.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
+#include "MassSignalSubsystem.h"
+#include "Engine/World.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcNeedProcessors)
+
+namespace ArcNeedProcessorsPrivate
+{
+
+/** The band table carries the settlement's authored SecondsPerGameHour; a body outside a settlement has none and runs at the default. */
+template <typename TNeedFragment>
+void AdvanceChunk(FMassExecutionContext& Context, double WorldTime)
+{
+	const TArrayView<TNeedFragment> Needs = Context.GetMutableFragmentView<TNeedFragment>();
+	const FArcNeedBandTableFragment* BandTable = Context.GetConstSharedFragmentPtr<FArcNeedBandTableFragment>();
+	const float SecondsPerGameHour = BandTable ? BandTable->SecondsPerGameHour : ArcNeeds::DefaultSecondsPerGameHour;
+
+	for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
+	{
+		UE_CLOGF(BandTable == nullptr && Needs[EntityIndex].LastUpdateTime <= 0.0, LogTemp, Warning,"ArcNeeds: entity %ls has no FArcNeedBandTableFragment; its need decays at the %.0f s/game-hour default.",
+			*Context.GetEntity(EntityIndex).DebugGetDescription(), ArcNeeds::DefaultSecondsPerGameHour);
+		ArcNeeds::AdvanceNeed(Needs[EntityIndex], WorldTime, SecondsPerGameHour, false);
+	}
+}
+
+} // namespace ArcNeedProcessorsPrivate
 
 // ---------------------------------------------------------------------------
 // UArcHungerNeedProcessor
@@ -31,27 +57,61 @@
 UArcHungerNeedProcessor::UArcHungerNeedProcessor()
 	: NeedsQuery(*this)
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
 void UArcHungerNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
+	ProcessorRequirements.AddSubsystemRequirement<UMassSignalSubsystem>(EMassFragmentAccess::ReadWrite);
+
 	NeedsQuery.Initialize(EntityManager);
 	NeedsQuery.AddRequirement<FArcHungerNeedFragment>(EMassFragmentAccess::ReadWrite);
+	NeedsQuery.AddConstSharedRequirement<FArcNeedBandTableFragment>(EMassFragmentPresence::Optional);
+	NeedsQuery.AddSubsystemRequirement<UMassSignalSubsystem>(EMassFragmentAccess::ReadWrite);
 	NeedsQuery.RegisterWithProcessor(*this);
 }
 
 void UArcHungerNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
-	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
-	{
-		const float DeltaTime = Context.GetDeltaTimeSeconds();
-		const TArrayView<FArcHungerNeedFragment> Needs = Context.GetMutableFragmentView<FArcHungerNeedFragment>();
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcHungerNeed);
 
-		for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
+	const double WorldTime = Context.GetWorld()->GetTimeSeconds();
+	UMassSignalSubsystem& SignalSubsystem = Context.GetMutableSubsystemChecked<UMassSignalSubsystem>();
+
+	NeedsQuery.ForEachEntityChunk(Context, [WorldTime, &SignalSubsystem](FMassExecutionContext& ChunkContext)
+	{
+		const TArrayView<FArcHungerNeedFragment> Needs = ChunkContext.GetMutableFragmentView<FArcHungerNeedFragment>();
+		const FArcNeedBandTableFragment* BandTable = ChunkContext.GetConstSharedFragmentPtr<FArcNeedBandTableFragment>();
+		const float SecondsPerGameHour = BandTable ? BandTable->SecondsPerGameHour : ArcNeeds::DefaultSecondsPerGameHour;
+		const TArray<FArcNeedBand>& HungerBands = ArcNeeds::HungerBandsFor(BandTable);
+
+		for (int32 EntityIndex = 0; EntityIndex < ChunkContext.GetNumEntities(); ++EntityIndex)
 		{
 			FArcHungerNeedFragment& Need = Needs[EntityIndex];
-			Need.CurrentValue = FMath::Clamp(Need.CurrentValue + (Need.ChangeRate * DeltaTime), 0.f, 100.f);
+			UE_CLOGF(BandTable == nullptr && Need.LastUpdateTime <= 0.0, LogTemp, Warning,"ArcNeeds: entity %ls has no FArcNeedBandTableFragment; its need decays at the %.0f s/game-hour default.",
+				*ChunkContext.GetEntity(EntityIndex).DebugGetDescription(), ArcNeeds::DefaultSecondsPerGameHour);
+
+			const bool bJustInitialized = Need.LastUpdateTime <= 0.0;
+			ArcNeeds::AdvanceNeed(Need, WorldTime, SecondsPerGameHour, false);
+
+			const int32 NewBand = ArcNeeds::BandIndexFor(HungerBands, Need.CurrentValue);
+			if (bJustInitialized)
+			{
+				Need.LastBand = static_cast<uint8>(NewBand);
+				continue;
+			}
+
+			const int32 OldBand = static_cast<int32>(Need.LastBand);
+			if (NewBand != OldBand)
+			{
+				Need.LastBand = static_cast<uint8>(NewBand);
+				if (NewBand > OldBand)
+				{
+					SignalSubsystem.SignalEntityDeferred(
+						ChunkContext, ArcNeeds::Signals::UtilityEvaluate, ChunkContext.GetEntity(EntityIndex));
+				}
+			}
 		}
 	});
 }
@@ -63,28 +123,26 @@ void UArcHungerNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassEx
 UArcThirstNeedProcessor::UArcThirstNeedProcessor()
 	: NeedsQuery(*this)
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 }
 
 void UArcThirstNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
 	NeedsQuery.Initialize(EntityManager);
 	NeedsQuery.AddRequirement<FArcThirstNeedFragment>(EMassFragmentAccess::ReadWrite);
+	NeedsQuery.AddConstSharedRequirement<FArcNeedBandTableFragment>(EMassFragmentPresence::Optional);
 	NeedsQuery.RegisterWithProcessor(*this);
 }
 
 void UArcThirstNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
-	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
-	{
-		const float DeltaTime = Context.GetDeltaTimeSeconds();
-		const TArrayView<FArcThirstNeedFragment> Needs = Context.GetMutableFragmentView<FArcThirstNeedFragment>();
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcThirstNeed);
 
-		for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
-		{
-			FArcThirstNeedFragment& Need = Needs[EntityIndex];
-			Need.CurrentValue = FMath::Clamp(Need.CurrentValue + (Need.ChangeRate * DeltaTime), 0.f, 100.f);
-		}
+	const double WorldTime = Context.GetWorld()->GetTimeSeconds();
+
+	NeedsQuery.ForEachEntityChunk(Context, [WorldTime](FMassExecutionContext& Context)
+	{
+		ArcNeedProcessorsPrivate::AdvanceChunk<FArcThirstNeedFragment>(Context, WorldTime);
 	});
 }
 
@@ -96,27 +154,60 @@ UArcFatigueNeedProcessor::UArcFatigueNeedProcessor()
 	: NeedsQuery(*this)
 {
 	ProcessingPhase = EMassProcessingPhase::PrePhysics;
-	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
+	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::Server | EProcessorExecutionFlags::Standalone);
 }
 
 void UArcFatigueNeedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
+	ProcessorRequirements.AddSubsystemRequirement<UMassSignalSubsystem>(EMassFragmentAccess::ReadWrite);
+
 	NeedsQuery.Initialize(EntityManager);
 	NeedsQuery.AddRequirement<FArcFatigueNeedFragment>(EMassFragmentAccess::ReadWrite);
+	NeedsQuery.AddConstSharedRequirement<FArcNeedBandTableFragment>(EMassFragmentPresence::Optional);
+	NeedsQuery.AddSubsystemRequirement<UMassSignalSubsystem>(EMassFragmentAccess::ReadWrite);
 	NeedsQuery.RegisterWithProcessor(*this);
 }
 
 void UArcFatigueNeedProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
-	NeedsQuery.ForEachEntityChunk(EntityManager, Context, [](FMassExecutionContext& Context)
-	{
-		const float DeltaTime = Context.GetDeltaTimeSeconds();
-		const TArrayView<FArcFatigueNeedFragment> Needs = Context.GetMutableFragmentView<FArcFatigueNeedFragment>();
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcFatigueNeed);
 
-		for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
+	const double WorldTime = Context.GetWorld()->GetTimeSeconds();
+	UMassSignalSubsystem& SignalSubsystem = Context.GetMutableSubsystemChecked<UMassSignalSubsystem>();
+
+	NeedsQuery.ForEachEntityChunk(Context, [WorldTime, &SignalSubsystem](FMassExecutionContext& ChunkContext)
+	{
+		const TArrayView<FArcFatigueNeedFragment> Needs = ChunkContext.GetMutableFragmentView<FArcFatigueNeedFragment>();
+		const FArcNeedBandTableFragment* BandTable = ChunkContext.GetConstSharedFragmentPtr<FArcNeedBandTableFragment>();
+		const float SecondsPerGameHour = BandTable ? BandTable->SecondsPerGameHour : ArcNeeds::DefaultSecondsPerGameHour;
+		const TArray<FArcNeedBand>& FatigueBands = ArcNeeds::FatigueBandsFor(BandTable);
+
+		for (int32 EntityIndex = 0; EntityIndex < ChunkContext.GetNumEntities(); ++EntityIndex)
 		{
 			FArcFatigueNeedFragment& Need = Needs[EntityIndex];
-			Need.CurrentValue = FMath::Clamp(Need.CurrentValue + (Need.ChangeRate * DeltaTime), 0.f, 100.f);
+			UE_CLOGF(BandTable == nullptr && Need.LastUpdateTime <= 0.0, LogTemp, Warning,"ArcNeeds: entity %ls has no FArcNeedBandTableFragment; its need decays at the %.0f s/game-hour default.",
+				*ChunkContext.GetEntity(EntityIndex).DebugGetDescription(), ArcNeeds::DefaultSecondsPerGameHour);
+
+			const bool bJustInitialized = Need.LastUpdateTime <= 0.0;
+			ArcNeeds::AdvanceNeed(Need, WorldTime, SecondsPerGameHour, false);
+
+			const int32 NewBand = ArcNeeds::BandIndexFor(FatigueBands, Need.CurrentValue);
+			if (bJustInitialized)
+			{
+				Need.LastBand = static_cast<uint8>(NewBand);
+				continue;
+			}
+
+			const int32 OldBand = static_cast<int32>(Need.LastBand);
+			if (NewBand != OldBand)
+			{
+				Need.LastBand = static_cast<uint8>(NewBand);
+				if (NewBand > OldBand)
+				{
+					SignalSubsystem.SignalEntityDeferred(
+						ChunkContext, ArcNeeds::Signals::UtilityEvaluate, ChunkContext.GetEntity(EntityIndex));
+				}
+			}
 		}
 	});
 }

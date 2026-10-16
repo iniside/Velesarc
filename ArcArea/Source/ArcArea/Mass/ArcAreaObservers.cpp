@@ -3,10 +3,11 @@
 #include "ArcAreaObservers.h"
 #include "ArcAreaFragments.h"
 #include "ArcAreaSubsystem.h"
-#include "ArcMass/ArcMassSmartObjectFragments.h"
-#include "ArcMass/ArcMassSmartObjectObservers.h"
-#include "MassEntityFragments.h"
-#include "MassExecutionContext.h"
+#include "ArcAreaModule.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
+#include "Mass/EntityFragments.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 
 // ====================================================================
 // Add Observer
@@ -15,15 +16,17 @@
 UArcAreaAddObserver::UArcAreaAddObserver()
 	: ObserverQuery{*this}
 {
-	ObservedTypes.AddUnique(FArcAreaTag::StaticStruct());
+	// Observed type must match UArcSmartObjectAddObserver's: only within one type's pipeline does
+	// ExecutionPriority order observers, and a lower priority runs after it, once the handle exists.
+	ObservedTypes.AddUnique(FArcSmartObjectTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
-	ExecutionOrder.ExecuteAfter.Add(UArcSmartObjectAddObserver::StaticClass()->GetFName());
+	ExecutionPriority = -10;
 }
 
 void UArcAreaAddObserver::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	ObserverQuery.AddRequirement<FArcAreaFragment>(EMassFragmentAccess::ReadWrite);
+	ObserverQuery.AddRequirement<FArcSmartObjectOwnerFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddConstSharedRequirement<FArcAreaConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcAreaTag>(EMassFragmentPresence::All);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
@@ -37,9 +40,11 @@ void UArcAreaAddObserver::Execute(FMassEntityManager& EntityManager, FMassExecut
 		return;
 	}
 
-	ObserverQuery.ForEachEntityChunk(Context, [AreaSubsystem, &EntityManager](FMassExecutionContext& Ctx)
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcAreaAdd);
+
+	ObserverQuery.ForEachEntityChunk(Context, [AreaSubsystem](FMassExecutionContext& Ctx)
 	{
-		TArrayView<FArcAreaFragment> AreaFragments = Ctx.GetMutableFragmentView<FArcAreaFragment>();
+		TConstArrayView<FArcSmartObjectOwnerFragment> SOOwners = Ctx.GetFragmentView<FArcSmartObjectOwnerFragment>();
 		const FArcAreaConfigFragment& Config = Ctx.GetConstSharedFragment<FArcAreaConfigFragment>();
 		TConstArrayView<FTransformFragment> TransformFragments = Ctx.GetFragmentView<FTransformFragment>();
 
@@ -56,16 +61,11 @@ void UArcAreaAddObserver::Execute(FMassEntityManager& EntityManager, FMassExecut
 			const FVector Location = Transform.GetLocation();
 			const FMassEntityHandle EntityHandle = Ctx.GetEntity(EntityIt);
 
-			// Read SmartObject handle if this entity owns one (created by UArcSmartObjectAddObserver).
-			FSmartObjectHandle SOHandle;
-			const FArcSmartObjectOwnerFragment* SOOwner = EntityManager.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(EntityHandle);
-			if (SOOwner)
+			if (!AreaSubsystem->RegisterArea(Definition, Location, SOOwners[EntityIt].SmartObjectHandle, EntityHandle))
 			{
-				SOHandle = SOOwner->SmartObjectHandle;
+				UE_LOGF(LogArcAreaDiag, Error,"Area registration failed for entity %ls using definition '%ls'.",
+					*LexToString(EntityHandle), *Definition->GetName());
 			}
-
-			const FArcAreaHandle AreaHandle = AreaSubsystem->RegisterArea(Definition, Location, SOHandle, EntityHandle);
-			AreaFragments[EntityIt].AreaHandle = AreaHandle;
 		}
 	});
 }
@@ -77,32 +77,41 @@ void UArcAreaAddObserver::Execute(FMassEntityManager& EntityManager, FMassExecut
 UArcAreaRemoveObserver::UArcAreaRemoveObserver()
 	: ObserverQuery{*this}
 {
-	ObservedTypes.AddUnique(FArcAreaTag::StaticStruct());
+	// Higher priority than UArcSmartObjectRemoveObserver in the same pipeline: the area is unregistered
+	// while FArcSmartObjectOwnerFragment still holds the handle it is keyed by.
+	ObservedTypes.AddUnique(FArcSmartObjectTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
-	ExecutionOrder.ExecuteBefore.Add(UArcSmartObjectRemoveObserver::StaticClass()->GetFName());
+	ExecutionPriority = 10;
 }
 
 void UArcAreaRemoveObserver::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	ObserverQuery.AddRequirement<FArcAreaFragment>(EMassFragmentAccess::ReadOnly);
+	ObserverQuery.AddRequirement<FArcSmartObjectOwnerFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddTagRequirement<FArcAreaTag>(EMassFragmentPresence::All);
 }
 
 void UArcAreaRemoveObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcAreaRemove);
+
 	UArcAreaSubsystem* AreaSubsystem = Context.GetWorld()->GetSubsystem<UArcAreaSubsystem>();
+
+	if (!AreaSubsystem)
+	{
+		return;
+	}
 
 	ObserverQuery.ForEachEntityChunk(Context, [AreaSubsystem](FMassExecutionContext& Ctx)
 	{
-		TConstArrayView<FArcAreaFragment> AreaFragments = Ctx.GetFragmentView<FArcAreaFragment>();
+		TConstArrayView<FArcSmartObjectOwnerFragment> SOOwners = Ctx.GetFragmentView<FArcSmartObjectOwnerFragment>();
 
 		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
-			const FArcAreaHandle AreaHandle = AreaFragments[EntityIt].AreaHandle;
-			if (AreaHandle.IsValid() && AreaSubsystem)
+			const FSmartObjectHandle SOHandle = SOOwners[EntityIt].SmartObjectHandle;
+			if (SOHandle.IsValid())
 			{
-				AreaSubsystem->UnregisterArea(AreaHandle);
+				AreaSubsystem->UnregisterArea(SOHandle);
 			}
 		}
 	});

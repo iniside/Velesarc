@@ -83,7 +83,7 @@ bool FArcUtilityTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEv
 				FArcUtilityTraceConsiderationSnapshot Snap;
 				Reader << Snap.EntryIndex << Snap.TargetIndex << Snap.ConsiderationIndex;
 				Reader << Snap.ConsiderationName;
-				Reader << Snap.RawScore << Snap.CurvedScore << Snap.CompensatedScore;
+				Reader << Snap.RawScore << Snap.CurvedScore;
 				Record.ConsiderationSnapshots.Add(MoveTemp(Snap));
 			}
 		}

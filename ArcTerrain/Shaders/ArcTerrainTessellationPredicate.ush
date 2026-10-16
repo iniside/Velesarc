@@ -1,0 +1,1048 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainTessellationPredicate.ush — the replaceable tessellation metric.
+
+	CONTRACT, both directions:
+
+	  * The predicate does NOT know the CBT representation. Its whole input is
+	    three corners in a face's [0,1]^2 domain, the apex of the triangle whose
+	    visibility governs (see below), the face id (which names only the face's
+	    global texel ORIGIN — the atlas slice comes from the residency ring), the
+	    triangle's LEB depth, and the view block below. No node id, no pool slot, no
+	    heap, no neighbour reference reaches this file.
+	  * The topology code does NOT know how the error is computed. It calls
+	    ArcTerrain_ClassifyTriangle once per triangle it wants an opinion on and
+	    reads back one code. Replacing the metric means replacing this file and
+	    the uniforms it declares — nothing in the split/merge machinery moves.
+
+	Consequences of the first half that are easy to break:
+
+	  * DEPTH IS NEVER A MEASURE OF ERROR.
+	  * CORNER ORDER IS NOT AN INPUT. leb_DecodeTransformationMatrix_Square
+	    applies a winding matrix that swaps corners 0 and 2 on alternate depths, so
+	    anything reading orientation off the cross product would be wrong for half
+	    the tree. The area below is the ABSOLUTE value of a determinant, which is the
+	    same number under either winding and under any permutation of the corners.
+
+	METRIC: the triangle's own area, in square pixels of the MAIN VIEW, after
+	projection through the clip transform — the reference criterion (AnisB/large_cbt,
+	HPG 2024). Foreshortening is therefore part of the measurement and needs no
+	special case: a vertical face seen edge-on projects to nothing and keeps no
+	triangles, the same face seen flat-on projects large and gets them.
+
+	Above the EFFECTIVE area target the triangle is too coarse; below that same target
+	times MergeThresholdFraction it is finer than the view needs. The two thresholds are
+	never equal: a single threshold oscillates split/merge on a camera sitting on it. The
+	effective target is TargetTrianglePixels scaled by the flat-area relief below — one
+	number, used by BOTH comparisons, or the hysteresis gap moves with the terrain.
+
+	AGREEMENT INSIDE A DIAMOND. The area of a triangle is NOT shared by the two
+	parents of a diamond, and nothing requires it to be: the merge command is written
+	on the PARENT's verdict, the two children of one parent classify that same parent
+	and so read the same number by construction, and ApplyMerge collapses a diamond
+	only when all four members carry MERGE (ArcTerrainCBTSplitMerge.usf,
+	ARC_CBT_COUNTER_MERGE_NOT_UNANIM). Two parents that disagree simply do not merge.
+	The split side never needed agreement at all — a pair splits when EITHER member
+	votes for it. All the topology asks of this file is that the verdict be a PURE
+	FUNCTION of (Face, Depth, corners, cull apex); every branch below is.
+
+	CONTENT TERM: the sag a split would REMOVE, measured live off the height atlas —
+	the edge's sag against its chord, less whatever the deeper of the two halves would
+	still carry. A step in the heightmap survives its own bisection unchanged, so this
+	reads zero there and a cliff buys no triangles at any depth. It is a LENGTH,
+	projected angularly at its own distance and compared against TargetErrorPixels; it
+	sits BESIDE the area term as a split vote of its own, and it ALSO scales the area
+	target: FLAT-AREA RELIEF. A triangle whose split would remove no sag at all may cover
+	FlatAreaRelief times the target, the relief being withdrawn linearly as the sag PER
+	SQUARE METRE OF SPLIT EDGE rises to FlatReliefSagCmPerMeterSq. That quotient, and not
+	the sag itself, is what the relief reads: a smooth surface hands a parent and its
+	children the same reading and so the same effective target, which is what keeps a
+	child that votes TOO_FINE from facing a parent that reads TOO_COARSE and refuses the
+	merge.
+
+	RESIDENCY CAP: a triangle whose three corners all sample the fill slice is flat by
+	construction, so its depth is capped where a leaf covers one sector. The cap is a
+	CEILING, not a target: below it the metric decides untouched, and only there can a
+	triangle still read TOO_COARSE. As a target it would force a sector-sized leaf over
+	the whole world.
+
+	VISIBILITY IS PART OF THE VERDICT, AGAINST A WIDER FRUSTUM THAN THE DRAW'S. A sampled triangle outside
+	the TessFrustumCullMargin first tests the full authored-height prism. A wholly rejected prism reads
+	TOO_FINE. A prism that can still enter the view uses a bounded planar discovery score: above its split
+	target it refines, inside its split/merge deadband it keeps, and only below its merge threshold does it
+	pay the full seven-sample metric. That full metric is a MERGE VETO only in the guarded halo: both policies
+	must say TOO_FINE before topology may collapse, while a full-metric TOO_COARSE becomes KEEP rather than
+	refining the broad conservative prism. The draw's own margin is tighter, so the band between them remains
+	geometry prepared for a camera turn without letting the global height range fill the pool.
+
+	BUT THE TRIANGLE JUDGED IS THE ONE THE MERGE IS ABOUT — the caller names it, as CullApex against this
+	triangle's own C0 and C2. Coarsening is a decision about the PARENT, and the frustum test is a step: a
+	leaf judged on ITSELF gets culled in a band one diamond thick where its parent still crosses the margin,
+	and there the leaf reads TOO_FINE against a parent that measures its true area and reads TOO_COARSE, so
+	the merge gate refuses forever. Judged on the parent's three corners the leaf and the parent read the SAME test on the SAME sampled
+	points, and the band is empty by construction. A merge candidate is itself judged with the cull footprint
+	it will receive as a live leaf after the merge, preventing the next frame from switching to its grandparent
+	footprint. A caller with no parent to name (the base mesh's split-only vote, and a depth-1 root, which
+	merges into nothing) passes its own apex and is judged on itself.
+
+	NO FAR THRESHOLD. The angular edge criterion this replaces needed one: over a
+	ground plane it holds a leaf's screen EDGE constant, which puts C/R triangles in an
+	annulus at radius R and diverges as ln(R). Screen AREA falls off as 1/R^3 over the
+	same plane once the grazing cosine is counted, which puts C/R^2 triangles there —
+	convergent, so distance bounds itself and a second threshold has nothing to fix.
+=============================================================================*/
+
+#pragma once
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainResidencyRing.ush"
+
+/** Verdicts. Negative = the triangle is worth less than it costs, positive = worth more. */
+#define ARC_TESS_TOO_FINE        -1
+#define ARC_TESS_KEEP             0
+#define ARC_TESS_TOO_COARSE       1
+
+/** Which visibility policy produced the verdict. Kept explicit so diagnostics never infer a guarded
+ *  decision from zero-valued metric terms. */
+#define ARC_TESS_VISIBILITY_ORDINARY       0u
+#define ARC_TESS_VISIBILITY_PRISM_CULLED   1u
+#define ARC_TESS_VISIBILITY_PRISM_GUARDED  2u
+
+/** Which height range the authored prism consumed. UNKNOWN is reserved for triangles whose sampled
+ *  surface never reached the prism test. */
+#define ARC_TESS_HEIGHT_SOURCE_UNKNOWN        0u
+#define ARC_TESS_HEIGHT_SOURCE_LOCAL          1u
+#define ARC_TESS_HEIGHT_SOURCE_FILL           2u
+#define ARC_TESS_HEIGHT_SOURCE_GLOBAL_SPAN    3u
+#define ARC_TESS_HEIGHT_SOURCE_GLOBAL_UNSAFE  4u
+
+// --- Content block -----------------------------------------------------------
+
+Texture2DArray<float> HeightAtlas;
+SamplerState HeightSamplerBilinear;
+
+/** GLOBAL TEXEL INDEX of each face's (0,0) corner, indexed by face id. Integer, not centimetres: it is
+ *  the only form in which the camera can be subtracted without the terrain's absolute extent eating the
+ *  metre-scale edge the metric is measuring. */
+Buffer<uint2> FaceTexelOrigins;
+
+/** Sector-keyed atlas slice lookup, all tiers concatenated — see arc_HeightRingIndexForTier. */
+Buffer<uint> HeightRing;
+Buffer<float2> HeightSliceBounds;
+uint4 HeightRingOffset;
+int4  HeightRingRadius;
+int4  HeightRingCenterX;
+int4  HeightRingCenterY;
+int4  HeightCumulativeShift;
+uint  NumHeightTiers;
+uint  HeightFillSlice;
+uint  HeightSliceBoundsCount;
+uint  LocalHeightBoundsEnabled;
+float BaseHeightCm;
+
+/** Camera position in the same global texel lattice, split into an exact integer and its remainder. */
+int2   CameraTexel;
+float2 CameraTexelFrac;
+
+uint  FaceQuads;           // quads per FACE side — the domain a [0,1]^2 corner scales into
+// SIGNED on purpose: HLSL promotes int >> uint to an UNSIGNED shift, which turns the arithmetic shift
+// this relies on (floor division across the origin) into garbage for negative sector keys.
+int   SectorQuadsShift;    // log2(quads per SECTOR side): SectorKey = GlobalTexel >> this
+float InvTileResolution;   // 1 / (SectorQuads + 3)
+float TexelToLocalCm;
+
+// --- View block --------------------------------------------------------------
+// Planar quantities are EYE-RELATIVE TERRAIN-LOCAL centimetres, reached by subtracting
+// the camera's texel index from the corner's IN INTEGERS and scaling the difference —
+// so the camera sits at the origin and no float ever holds the terrain's extent.
+
+/** Camera height in terrain-local cm: the one axis the atlas sample cannot deliver pre-subtracted. */
+float ViewHeightLocalCm;
+/** EYE-RELATIVE terrain-local cm -> clip, composed against the terrain transform on the CPU. The shader
+ *  never builds a world position: at planet scale a float32 cm has a metre-wide ULP. */
+float4x4 EyeLocalToClip;
+float2 ViewportSize;
+/** Viewport pixels subtended by one radian at the view centre: ViewportHeight / (2 * tan(HalfFOVY)). */
+float PixelsPerRadian;
+float TargetTrianglePixels;
+float MaxTriangleEdgePixels;
+float MergeThresholdFraction;
+float TargetErrorPixels;
+/** Factor on the AREA target where the measured surface matches its triangle plane: the one way the content term subtracts
+ *  triangles instead of only adding them. */
+float FlatAreaRelief;
+/** Sampled deviation, in cm per square metre of longest-edge span, at which that relief is withdrawn. */
+float FlatReliefSagCmPerMeterSq;
+/** How far past the frustum's side planes a triangle still counts as visible, as a FRACTION of the view's
+ *  half-extent: 0.25 tests against a frustum a quarter wider and taller than the screen. Angular, so the
+ *  band it holds is the same share of the screen at every distance. */
+float FrustumCullMargin;
+/** The same widening, for the VERDICT rather than the draw, and deliberately the larger of the two: the
+ *  band between them is held at full density but never drawn. */
+float TessFrustumCullMargin;
+/** Authored local-height contract, resolved to finite ascending values on the render thread. The height
+ *  prism consumes it in the next checkpoint; publishing it here keeps every predicate pass in lockstep. */
+float2 ConservativeHeightRangeCm;
+
+/** Clip w at or below which the perspective divide has no meaning: the eye plane, one centimetre forward. */
+#define ARC_TESS_MIN_CLIP_W 1.0f
+
+/** The subdivision ceiling the topology enforces for every resident height sample. */
+int ResidentCapDepth;
+
+// -----------------------------------------------------------------------------
+
+/** Depth at which a leaf covers exactly one sector: FaceQuads^2 / 2^Depth == (1 << SectorQuadsShift)^2. */
+uint ArcTerrainTess_FillCapDepth()
+{
+	return (uint)max(2 * ((int)firstbithigh(FaceQuads) - SectorQuadsShift), 0);
+}
+
+struct FArcTerrainTessTierHit
+{
+	uint Slice;
+	uint Tier;
+};
+
+FArcTerrainTessTierHit ArcTerrainTess_ResolveHeightTier(int2 GlobalTexel)
+{
+	FArcTerrainTessTierHit Hit;
+	Hit.Slice = HeightFillSlice;
+	Hit.Tier = NumHeightTiers;
+
+	UNROLL
+	for (uint T = 0; T < 4u; ++T)
+	{
+		if (T >= NumHeightTiers)
+		{
+			break;
+		}
+
+		const int Index = arc_HeightRingIndexForTier(GlobalTexel, SectorQuadsShift, T,
+			HeightRingOffset, HeightRingRadius, HeightRingCenterX, HeightRingCenterY,
+			HeightCumulativeShift);
+		if (Index < 0)
+		{
+			continue;
+		}
+
+		const uint Slice = HeightRing[(uint)Index];
+		if (Slice != HeightFillSlice)
+		{
+			Hit.Slice = Slice;
+			Hit.Tier = T;
+			break;
+		}
+	}
+
+	return Hit;
+}
+
+/** Tier == NumHeightTiers is the "no tier resolved" answer and carries shift 0 into the fill-slice
+ *  sample address without indexing past the components the ladder wrote. */
+int ArcTerrainTess_HeightTierShift(uint Tier)
+{
+	int Shift = 0;
+	UNROLL
+	for (uint T = 0; T < 4u; ++T)
+	{
+		if (T < NumHeightTiers && T == Tier)
+		{
+			Shift = HeightCumulativeShift[T];
+		}
+	}
+	return Shift;
+}
+
+uint ArcTerrainTess_CapTier(uint Tier)
+{
+	return Tier < NumHeightTiers ? Tier : 0u;
+}
+
+uint ArcTerrainTess_LeafTier(uint Tier0, uint Tier1, uint Tier2)
+{
+	return max(max(ArcTerrainTess_CapTier(Tier0), ArcTerrainTess_CapTier(Tier1)),
+		ArcTerrainTess_CapTier(Tier2));
+}
+
+/** HeightCm is TERRAIN-LOCAL, PlanarCm is EYE-RELATIVE terrain-local — the deviation differences the
+ *  first, the area and distance terms the second. */
+struct FArcTerrainTessSample
+{
+	float2 PlanarCm;
+	float  HeightCm;
+	int2   GlobalTexel;
+	int2   SectorKey;
+	uint   Slice;
+	uint   Tier;
+	bool   bResident;
+};
+
+/** The precision-sensitive, no-height half of ArcTerrainTess_SampleFacePoint. Keeping the whole texel
+ *  and its fraction together lets draw-only tests use the exact same camera-relative planar mapping
+ *  without resolving residency or sampling the height atlas. */
+struct FArcTerrainTessPlanarPoint
+{
+	int2 GlobalTexel;
+	float2 PointFrac;
+	float2 PlanarCm;
+};
+
+FArcTerrainTessPlanarPoint ArcTerrainTess_ResolvePlanarPoint(uint Face, float2 FacePoint,
+	int2 ReferenceCameraTexel, float2 ReferenceCameraTexelFrac)
+{
+	const float2 PointTexel = FacePoint * float(FaceQuads);
+	const int2 PointWhole = int2(floor(PointTexel));
+
+	FArcTerrainTessPlanarPoint Point;
+	Point.PointFrac = PointTexel - float2(PointWhole);
+	Point.GlobalTexel = asint(FaceTexelOrigins[Face]) + PointWhole;
+	Point.PlanarCm =
+		(float2(Point.GlobalTexel - ReferenceCameraTexel) + Point.PointFrac
+			- ReferenceCameraTexelFrac) * TexelToLocalCm;
+	return Point;
+}
+
+FArcTerrainTessSample ArcTerrainTess_SampleFacePoint(uint Face, float2 FacePoint)
+{
+	const FArcTerrainTessPlanarPoint Point =
+		ArcTerrainTess_ResolvePlanarPoint(Face, FacePoint, CameraTexel, CameraTexelFrac);
+	const FArcTerrainTessTierHit Hit = ArcTerrainTess_ResolveHeightTier(Point.GlobalTexel);
+	const int Shift = ArcTerrainTess_HeightTierShift(Hit.Tier);
+	const int2 CoarseTexel = Point.GlobalTexel >> Shift;
+	const int2 SectorKey = CoarseTexel >> SectorQuadsShift;
+
+	FArcTerrainTessSample Sample;
+	// The window is the bounding square of the resident set, so a key inside it can still be a hole and
+	// hold the fill slice. The fill slice is reserved past the allocatable range, so no sector names it.
+	Sample.bResident = Hit.Slice != HeightFillSlice;
+	Sample.GlobalTexel = Point.GlobalTexel;
+	Sample.SectorKey = SectorKey;
+	Sample.Slice = Hit.Slice;
+	Sample.Tier = Hit.Tier;
+	const int2 SectorLocalTexel = CoarseTexel - (SectorKey << SectorQuadsShift) + 1;
+	const float2 TexelFrac =
+		(Point.PointFrac + float2(Point.GlobalTexel - (CoarseTexel << Shift))) / float(1 << Shift);
+	const float2 TileUV = (float2(SectorLocalTexel) + TexelFrac + 0.5f) * InvTileResolution;
+	Sample.HeightCm = HeightAtlas.SampleLevel(HeightSamplerBilinear, float3(TileUV, (float)Hit.Slice), 0);
+	Sample.PlanarCm = Point.PlanarCm;
+	return Sample;
+}
+
+/**
+ * DIAGNOSTIC-ONLY legacy height error a split would REMOVE, not the error that is there: the whole edge's sag against its
+ * chord, minus whatever the deeper of the two halves would still carry afterwards.
+ *
+ * On smooth ground a half sags a quarter as much, so this returns about three quarters of the sag and the
+ * split is worth its triangles. Across a step in the heightmap — a cut at 90 degrees, or any cliff — the
+ * half carries the SAME step, so this returns zero: the split moves the error, it does not reduce it, and
+ * the ground stays at whatever depth it reached. That holds at every depth, not only at the ceiling.
+ *
+ * Every term is symmetric in the two ends: swapping C0 with C2 swaps the two halves, and max() does not
+ * care. The winding matrix therefore cannot separate the two parents of a diamond, which share this edge.
+ */
+float ArcTerrainTess_ReducibleDeviationCm(uint Face, float2 C0, float2 C2, FArcTerrainTessSample S0,
+	FArcTerrainTessSample S2, out FArcTerrainTessSample OutMid, out float3 OutDeviationCm,
+	out bool bOutMeasured)
+{
+	const FArcTerrainTessSample Mid = ArcTerrainTess_SampleFacePoint(Face, 0.5f * (C0 + C2));
+	OutMid = Mid;
+	OutDeviationCm = 0.0f;
+	bOutMeasured = false;
+	// The fill slice carries no surface, so a difference involving it measures the fill level, not terrain.
+	// ALL THREE have to be resident: one resident end against a fill-slice end reports the elevation itself
+	// as deviation, and that state occupies the whole residency perimeter every frame.
+	if (!Mid.bResident || !S0.bResident || !S2.bResident)
+	{
+		return 0.0f;
+	}
+	bOutMeasured = true;
+
+	const float WholeCm = abs(Mid.HeightCm - 0.5f * (S0.HeightCm + S2.HeightCm));
+
+	const FArcTerrainTessSample QuarterLow = ArcTerrainTess_SampleFacePoint(Face, 0.75f * C0 + 0.25f * C2);
+	const FArcTerrainTessSample QuarterHigh = ArcTerrainTess_SampleFacePoint(Face, 0.25f * C0 + 0.75f * C2);
+	if (!QuarterLow.bResident || !QuarterHigh.bResident)
+	{
+		bOutMeasured = false;
+		return 0.0f;
+	}
+	const float LowCm = abs(QuarterLow.HeightCm - 0.5f * (S0.HeightCm + Mid.HeightCm));
+	const float HighCm = abs(QuarterHigh.HeightCm - 0.5f * (Mid.HeightCm + S2.HeightCm));
+
+	OutDeviationCm = float3(WholeCm, LowCm, HighCm);
+	return max(WholeCm - max(LowCm, HighCm), 0.0f);
+}
+
+float2 ArcTerrainTess_ViewportPoint(float4 Clip)
+{
+	return (Clip.xy / Clip.w * 0.5f + 0.5f) * ViewportSize;
+}
+
+float ArcTerrainTess_MaxEdgePixels(float4 H0, float4 H1, float4 H2,
+	float3 P0, float3 P1, float3 P2, float DistanceCm)
+{
+	if (min(min(H0.w, H1.w), H2.w) <= ARC_TESS_MIN_CLIP_W
+		|| !all(isfinite(H0)) || !all(isfinite(H1)) || !all(isfinite(H2)))
+	{
+		const float EdgeCm = max(max(length(P1 - P0), length(P2 - P1)), length(P0 - P2));
+		return min(EdgeCm * PixelsPerRadian / max(DistanceCm, 1.0f), 3.402823e+38f);
+	}
+
+	const float2 V0 = ArcTerrainTess_ViewportPoint(H0);
+	const float2 V1 = ArcTerrainTess_ViewportPoint(H1);
+	const float2 V2 = ArcTerrainTess_ViewportPoint(H2);
+	const float MaxEdge = max(max(length(V1 - V0), length(V2 - V1)), length(V0 - V2));
+	return isfinite(MaxEdge) ? MaxEdge : 3.402823e+38f;
+}
+
+float ArcTerrainTess_ProjectedHeightErrorPixels(FArcTerrainTessSample Sample, float PlaneHeightCm,
+	out float OutDeviationCm)
+{
+	OutDeviationCm = abs(Sample.HeightCm - PlaneHeightCm);
+	const float4 ActualClip = mul(
+		float4(Sample.PlanarCm, Sample.HeightCm - ViewHeightLocalCm, 1.0f), EyeLocalToClip);
+	const float4 PlaneClip = mul(
+		float4(Sample.PlanarCm, PlaneHeightCm - ViewHeightLocalCm, 1.0f), EyeLocalToClip);
+	if (!all(isfinite(ActualClip)) || !all(isfinite(PlaneClip)) || !isfinite(OutDeviationCm))
+	{
+		OutDeviationCm = 0.0f;
+		return 0.0f;
+	}
+	// A perspective pixel error has no meaning on or behind the eye plane. Visibility and the finite
+	// area/edge fallback own that case; turning it into FLT_MAX made every camera turn refine to the cap.
+	if (min(ActualClip.w, PlaneClip.w) <= ARC_TESS_MIN_CLIP_W)
+	{
+		return 0.0f;
+	}
+
+	const float ErrorPixels = length(
+		ArcTerrainTess_ViewportPoint(ActualClip) - ArcTerrainTess_ViewportPoint(PlaneClip));
+	return isfinite(ErrorPixels) ? ErrorPixels : 3.402823e+38f;
+}
+
+/** Maximum displacement between four resident height probes and the CURRENT triangle plane. A future
+ *  child retaining the displacement does not subtract it from the parent, which closes the old refinement
+ *  deadlock. Unknown residency deliberately returns zero; callers retain the fill-slice relief/cap policy. */
+float ArcTerrainTess_SampledGeometryError(FArcTerrainTessSample S0, FArcTerrainTessSample S1,
+	FArcTerrainTessSample S2, FArcTerrainTessSample M01, FArcTerrainTessSample M12,
+	FArcTerrainTessSample M20, FArcTerrainTessSample Centroid, out float OutErrorCm,
+	out bool bOutMeasured)
+{
+	bOutMeasured = S0.bResident && S1.bResident && S2.bResident && M01.bResident && M12.bResident
+		&& M20.bResident && Centroid.bResident;
+	OutErrorCm = 0.0f;
+	if (!bOutMeasured)
+	{
+		return 0.0f;
+	}
+
+	float D01;
+	float D12;
+	float D20;
+	float DG;
+	const float E01 = ArcTerrainTess_ProjectedHeightErrorPixels(M01,
+		0.5f * (S0.HeightCm + S1.HeightCm), D01);
+	const float E12 = ArcTerrainTess_ProjectedHeightErrorPixels(M12,
+		0.5f * (S1.HeightCm + S2.HeightCm), D12);
+	const float E20 = ArcTerrainTess_ProjectedHeightErrorPixels(M20,
+		0.5f * (S2.HeightCm + S0.HeightCm), D20);
+	const float EG = ArcTerrainTess_ProjectedHeightErrorPixels(Centroid,
+		(S0.HeightCm + S1.HeightCm + S2.HeightCm) / 3.0f, DG);
+	OutErrorCm = max(max(D01, D12), max(D20, DG));
+	return max(max(E01, E12), max(E20, EG));
+}
+
+int ArcTerrainTess_SaturatingSubtractRadius(int Value, int Radius)
+{
+	const int MinInt = (-2147483647 - 1);
+	return Value < MinInt + Radius ? MinInt : Value - Radius;
+}
+
+int ArcTerrainTess_SaturatingAddRadius(int Value, int Radius)
+{
+	const int MaxInt = 2147483647;
+	return Value > MaxInt - Radius ? MaxInt : Value + Radius;
+}
+
+int2 ArcTerrainTess_SectorKeyForTier(FArcTerrainTessSample Sample, uint Tier)
+{
+	return Sample.GlobalTexel >> (SectorQuadsShift + ArcTerrainTess_HeightTierShift(Tier));
+}
+
+bool ArcTerrainTess_FootprintOverlapsRing(uint Tier, int2 MinKey, int2 MaxKey)
+{
+	const int Radius = HeightRingRadius[Tier];
+	if (Radius < 0)
+	{
+		return false;
+	}
+
+	const int2 Center = int2(HeightRingCenterX[Tier], HeightRingCenterY[Tier]);
+	const int2 RingMin = int2(
+		ArcTerrainTess_SaturatingSubtractRadius(Center.x, Radius),
+		ArcTerrainTess_SaturatingSubtractRadius(Center.y, Radius));
+	const int2 RingMax = int2(
+		ArcTerrainTess_SaturatingAddRadius(Center.x, Radius),
+		ArcTerrainTess_SaturatingAddRadius(Center.y, Radius));
+	return all(MinKey <= RingMax) && all(MaxKey >= RingMin);
+}
+
+struct FArcTerrainTessHeightRangeResolution
+{
+	float2 HeightRangeCm;
+	int2   SectorKey;
+	uint   Tier;
+	uint   Slice;
+	uint   Source;
+};
+
+FArcTerrainTessHeightRangeResolution ArcTerrainTess_GlobalHeightRangeResolution(uint Source)
+{
+	FArcTerrainTessHeightRangeResolution Result;
+	Result.HeightRangeCm = ConservativeHeightRangeCm;
+	Result.SectorKey = 0;
+	Result.Tier = NumHeightTiers;
+	Result.Slice = HeightFillSlice;
+	Result.Source = Source;
+	return Result;
+}
+
+/**
+ * Resolves a range only when the complete closed footprint is covered by one known height source.
+ * Each point's integer texel is its exact half-open-domain owner, including points on sector borders.
+ * A multi-sector bbox touching a finer residency ring could contain an overlay missed by the corners;
+ * refusing it is conservative and avoids a variable-size ring scan per triangle.
+ */
+FArcTerrainTessHeightRangeResolution ArcTerrainTess_ResolveFootprintHeightRange(
+	FArcTerrainTessSample S0, FArcTerrainTessSample S1, FArcTerrainTessSample S2)
+{
+	FArcTerrainTessHeightRangeResolution Result =
+		ArcTerrainTess_GlobalHeightRangeResolution(ARC_TESS_HEIGHT_SOURCE_GLOBAL_UNSAFE);
+
+	UNROLL
+	for (uint T = 0u; T < 4u; ++T)
+	{
+		if (T >= NumHeightTiers)
+		{
+			break;
+		}
+
+		const int2 K0 = ArcTerrainTess_SectorKeyForTier(S0, T);
+		const int2 K1 = ArcTerrainTess_SectorKeyForTier(S1, T);
+		const int2 K2 = ArcTerrainTess_SectorKeyForTier(S2, T);
+		const int2 MinKey = min(min(K0, K1), K2);
+		const int2 MaxKey = max(max(K0, K1), K2);
+		const bool bSingleSector = all(MinKey == MaxKey);
+		const bool bOverlapsRing = ArcTerrainTess_FootprintOverlapsRing(T, MinKey, MaxKey);
+
+		if (!bSingleSector)
+		{
+			if (bOverlapsRing)
+			{
+				Result.Source = ARC_TESS_HEIGHT_SOURCE_GLOBAL_SPAN;
+				Result.Tier = T;
+				Result.SectorKey = MinKey;
+				return Result;
+			}
+			continue;
+		}
+
+		if (!bOverlapsRing)
+		{
+			continue;
+		}
+
+		// The sampling walk has already read this one ring cell at every corner. Once all finer
+		// tiers have been excluded, a hit at this tier must therefore agree at all three points.
+		const bool bHit0 = S0.Tier == T && all(S0.SectorKey == MinKey);
+		const bool bHit1 = S1.Tier == T && all(S1.SectorKey == MinKey);
+		const bool bHit2 = S2.Tier == T && all(S2.SectorKey == MinKey);
+		if (bHit0 || bHit1 || bHit2)
+		{
+			Result.Tier = T;
+			Result.SectorKey = MinKey;
+			Result.Slice = bHit0 ? S0.Slice : (bHit1 ? S1.Slice : S2.Slice);
+			if (!(bHit0 && bHit1 && bHit2) || S0.Slice != S1.Slice || S0.Slice != S2.Slice)
+			{
+				Result.Source = ARC_TESS_HEIGHT_SOURCE_GLOBAL_SPAN;
+				return Result;
+			}
+			if (S0.Slice >= HeightSliceBoundsCount)
+			{
+				return Result;
+			}
+
+			const float2 SliceRange = HeightSliceBounds[S0.Slice];
+			if (!all(isfinite(SliceRange)) || SliceRange.x > SliceRange.y)
+			{
+				return Result;
+			}
+			Result.HeightRangeCm = SliceRange;
+			Result.Source = ARC_TESS_HEIGHT_SOURCE_LOCAL;
+			return Result;
+		}
+
+		// Reaching a coarser tier after a finer sample hit would mean the footprint proof and the
+		// sample resolver disagree. Keep that impossible state conservative rather than indexing metadata.
+		if (S0.Tier < T || S1.Tier < T || S2.Tier < T)
+		{
+			Result.Tier = T;
+			Result.SectorKey = MinKey;
+			return Result;
+		}
+	}
+
+	if (S0.bResident || S1.bResident || S2.bResident)
+	{
+		return Result;
+	}
+
+	// Fill is globally flat, but accept it only once the footprint is one sector at the coarsest
+	// published domain (or the base domain when no tier exists) and every possible overlay was excluded.
+	const uint FillTier = NumHeightTiers > 0u ? NumHeightTiers - 1u : 0u;
+	const int2 FillK0 = ArcTerrainTess_SectorKeyForTier(S0, FillTier);
+	const int2 FillK1 = ArcTerrainTess_SectorKeyForTier(S1, FillTier);
+	const int2 FillK2 = ArcTerrainTess_SectorKeyForTier(S2, FillTier);
+	if (!all(FillK0 == FillK1) || !all(FillK0 == FillK2))
+	{
+		Result.Source = ARC_TESS_HEIGHT_SOURCE_GLOBAL_SPAN;
+		Result.Tier = FillTier;
+		Result.SectorKey = min(min(FillK0, FillK1), FillK2);
+		return Result;
+	}
+
+	Result.Tier = FillTier;
+	Result.SectorKey = FillK0;
+	if (isfinite(BaseHeightCm))
+	{
+		Result.HeightRangeCm = BaseHeightCm.xx;
+		Result.Source = ARC_TESS_HEIGHT_SOURCE_FILL;
+	}
+	return Result;
+}
+
+/**
+ * Whether the conservative resolved-height prism over the planar triangle lies wholly outside the view.
+ *
+ * Gribb-Hartmann in its clip-space form: the four side planes of EyeLocalToClip are w +- x and w +- y, so
+ * a corner's signed distance to each is a linear function of its clip position and the test needs no
+ * perspective divide — it stays exact for a corner behind the eye, where the divide flips sign. The margin
+ * widens each side plane into the half-space x + w(1 + m) >= 0, which CONTAINS the true frustum for every
+ * m >= 0 at either sign of w: on the frustum w is positive, so the extra m*w only ever adds. A corner
+ * behind the eye is therefore judged against a half-space that still covers everything visible, and the
+ * complement being a half-space too is what makes the vertex test valid on the whole prism.
+ *
+ * The prism is rejected only when ALL SIX corners fall outside ONE plane. That is what keeps a
+ * shallow base-mesh leaf thousands of kilometres wide that CONTAINS the whole frustum: it crosses every
+ * plane rather than sitting outside any of them, so no test fires and it stays visible.
+ */
+bool ArcTerrainTess_FrustumCullHeightPrism(FArcTerrainTessSample S0, FArcTerrainTessSample S1,
+	FArcTerrainTessSample S2, float Margin,
+	out FArcTerrainTessHeightRangeResolution OutResolution)
+{
+	OutResolution = ArcTerrainTess_GlobalHeightRangeResolution(ARC_TESS_HEIGHT_SOURCE_GLOBAL_UNSAFE);
+	BRANCH
+	if (LocalHeightBoundsEnabled != 0u)
+	{
+		OutResolution = ArcTerrainTess_ResolveFootprintHeightRange(S0, S1, S2);
+	}
+
+	const float MinHeightCm = OutResolution.HeightRangeCm.x - ViewHeightLocalCm;
+	const float MaxHeightCm = OutResolution.HeightRangeCm.y - ViewHeightLocalCm;
+	const float4 H0Min = mul(float4(S0.PlanarCm, MinHeightCm, 1.0f), EyeLocalToClip);
+	const float4 H1Min = mul(float4(S1.PlanarCm, MinHeightCm, 1.0f), EyeLocalToClip);
+	const float4 H2Min = mul(float4(S2.PlanarCm, MinHeightCm, 1.0f), EyeLocalToClip);
+	const float4 H0Max = mul(float4(S0.PlanarCm, MaxHeightCm, 1.0f), EyeLocalToClip);
+	const float4 H1Max = mul(float4(S1.PlanarCm, MaxHeightCm, 1.0f), EyeLocalToClip);
+	const float4 H2Max = mul(float4(S2.PlanarCm, MaxHeightCm, 1.0f), EyeLocalToClip);
+
+	// Non-finite clip coordinates cannot prove the prism invisible.
+	if (!all(isfinite(H0Min)) || !all(isfinite(H1Min)) || !all(isfinite(H2Min))
+		|| !all(isfinite(H0Max)) || !all(isfinite(H1Max)) || !all(isfinite(H2Max)))
+	{
+		return false;
+	}
+
+	// The prism is the convex hull of its six corners and w is affine in position, so all six corners at
+	// or behind the eye plane put the whole prism there.
+	if (max(max(max(H0Min.w, H1Min.w), max(H2Min.w, H0Max.w)), max(H1Max.w, H2Max.w))
+		<= ARC_TESS_MIN_CLIP_W)
+	{
+		return true;
+	}
+
+	const float3 XMin = float3(H0Min.x, H1Min.x, H2Min.x);
+	const float3 YMin = float3(H0Min.y, H1Min.y, H2Min.y);
+	const float3 WMin = float3(H0Min.w, H1Min.w, H2Min.w) * (1.0f + max(Margin, 0.0f));
+	const float3 XMax = float3(H0Max.x, H1Max.x, H2Max.x);
+	const float3 YMax = float3(H0Max.y, H1Max.y, H2Max.y);
+	const float3 WMax = float3(H0Max.w, H1Max.w, H2Max.w) * (1.0f + max(Margin, 0.0f));
+	return (all(XMin < -WMin) && all(XMax < -WMax))
+		|| (all(XMin > WMin) && all(XMax > WMax))
+		|| (all(YMin < -WMin) && all(YMax < -WMax))
+		|| (all(YMin > WMin) && all(YMax > WMax));
+}
+
+bool ArcTerrainTess_FrustumCulled(float4 H0, float4 H1, float4 H2, float Margin)
+{
+	if (!all(isfinite(H0)) || !all(isfinite(H1)) || !all(isfinite(H2)))
+	{
+		return false;
+	}
+	if (max(max(H0.w, H1.w), H2.w) <= ARC_TESS_MIN_CLIP_W)
+	{
+		return true;
+	}
+
+	const float3 X = float3(H0.x, H1.x, H2.x);
+	const float3 Y = float3(H0.y, H1.y, H2.y);
+	const float3 W = float3(H0.w, H1.w, H2.w) * (1.0f + max(Margin, 0.0f));
+	return all(X < -W) || all(X > W) || all(Y < -W) || all(Y > W);
+}
+
+/** Finite planar discovery size for a sampled triangle whose authored-height prism still intersects the
+ *  tessellation frustum. Edge / PI is the near-distance floor: when the camera enters the footprint's
+ *  enclosing circle the score is therefore bounded by PI * PixelsPerRadian rather than exploding at zero. */
+float ArcTerrainTess_PrismDiscoveryEdgePixels(float2 P0, float2 P1, float2 P2)
+{
+	const float DiscoveryPi = 3.14159265358979323846f;
+	const float EdgeCm = max(max(length(P1 - P0), length(P2 - P1)), length(P0 - P2));
+	const float2 Center = (P0 + P1 + P2) / 3.0f;
+	const float Radius = max(max(length(P0 - Center), length(P1 - Center)), length(P2 - Center));
+	const float MinDistanceCm = max(EdgeCm / DiscoveryPi, 1.0f);
+	const float NearDistanceCm = max(length(Center) - Radius, MinDistanceCm);
+	return min(EdgeCm * PixelsPerRadian / NearDistanceCm, DiscoveryPi * PixelsPerRadian);
+}
+
+/**
+ * The second entry point of this file, and the only one that is not a tessellation verdict: whether the
+ * triangle can be left out of a draw. It takes the same corners in the same domain and reads the same view
+ * block. The sampled surface rejects the common case; the authored-height prism is consulted only when
+ * those corners are outside, retaining a possible ridge without making the global height range normal visibility.
+ */
+bool ArcTerrain_FrustumCullTriangle(uint Face, float2 C0, float2 C1, float2 C2)
+{
+	const FArcTerrainTessSample S0 = ArcTerrainTess_SampleFacePoint(Face, C0);
+	const FArcTerrainTessSample S1 = ArcTerrainTess_SampleFacePoint(Face, C1);
+	const FArcTerrainTessSample S2 = ArcTerrainTess_SampleFacePoint(Face, C2);
+	const float4 H0 = mul(float4(S0.PlanarCm, S0.HeightCm - ViewHeightLocalCm, 1.0f), EyeLocalToClip);
+	const float4 H1 = mul(float4(S1.PlanarCm, S1.HeightCm - ViewHeightLocalCm, 1.0f), EyeLocalToClip);
+	const float4 H2 = mul(float4(S2.PlanarCm, S2.HeightCm - ViewHeightLocalCm, 1.0f), EyeLocalToClip);
+	if (!ArcTerrainTess_FrustumCulled(H0, H1, H2, FrustumCullMargin))
+	{
+		return false;
+	}
+	FArcTerrainTessHeightRangeResolution ResolutionIgnored;
+	return ArcTerrainTess_FrustumCullHeightPrism(
+		S0, S1, S2, FrustumCullMargin, ResolutionIgnored);
+}
+
+/**
+ * Screen area in square pixels of the three eye-relative corners.
+ *
+ * A vertex at or below ARC_TESS_MIN_CLIP_W sits on or behind the eye plane, where the perspective divide
+ * has no meaning and its sign flip would drive random subdivision. The whole triangle then falls back to
+ * PixelsPerRadian^2 * Area3D / Distance^2 — the projected area of the same triangle turned to face the
+ * eye, so it DROPS the grazing cosine and is an upper bound on what the projected form will ask for. A
+ * leaf therefore crosses into view already fine enough and never climbs a level on a camera turn, which
+ * is the property this branch exists for; it still tracks distance, so it cannot freeze either.
+ */
+float ArcTerrainTess_ScreenAreaPixels(float4 H0, float4 H1, float4 H2, float3 P0, float3 P1, float3 P2,
+	float DistanceCm, out bool bOutFallback)
+{
+	bOutFallback = min(min(H0.w, H1.w), H2.w) <= ARC_TESS_MIN_CLIP_W;
+
+	if (bOutFallback)
+	{
+		const float Area3DCm2 = 0.5f * length(cross(P1 - P0, P2 - P0));
+		return Area3DCm2 * PixelsPerRadian * PixelsPerRadian / (DistanceCm * DistanceCm);
+	}
+
+	const float2 S0 = H0.xy / H0.w * 0.5f + 0.5f;
+	const float2 S1 = H1.xy / H1.w * 0.5f + 0.5f;
+	const float2 S2 = H2.xy / H2.w * 0.5f + 0.5f;
+	const float AreaNDC =
+		0.5f * abs(S0.x * (S1.y - S2.y) + S2.x * (S0.y - S1.y) + S1.x * (S2.y - S0.y));
+	return AreaNDC * ViewportSize.x * ViewportSize.y;
+}
+
+/** Every input the verdict was reached from, for the ProbePredicate dump. Diagnostic only: nothing here
+ *  is read by the metric. The legacy comparison adds its two quarter samples only in the diagnostic
+ *  permutation; a caller that ignores the whole struct pays for none of them. */
+struct FArcTerrainTessProbe
+{
+	float2 C0;
+	float2 C1;
+	float2 C2;
+	float3 P0;
+	float3 P1;
+	float3 P2;
+	float3 ClipW;
+	float3 DeviationCm;
+	float4 HeightsCm;      // S0 S1 S2 M20, terrain-local
+	float  EdgePixels;
+	float  EffectiveMaxEdgePixels;
+	float  LegacyReducibleErrorCm;
+	float  MinClipW;
+	/** The quotient the flat-area relief reads, not the sag itself. */
+	float  SagCmPerMeterSq;
+	uint   LeafTier;
+	uint   LeafCapDepth;
+	bool   bCornerTiersDiffer;
+	bool   bErrorMeasured;
+	bool   bResident0;
+	bool   bResident1;
+	bool   bResident2;
+	bool   bResidentMid;
+	bool   bFallback;
+	bool   bFillOnly;
+	bool   bAtCeiling;
+	uint   VisibilityState;
+	float  DiscoveryEdgePixels;
+	float  DiscoveryTargetPixels;
+	uint   HeightRangeSource;
+	uint   HeightRangeTier;
+	int2   HeightRangeSectorKey;
+	uint   HeightRangeSlice;
+	float2 HeightRangeCm;
+};
+
+/** The verdict plus everything it was reached from. OutErrorCm is the deviation in cm, before the
+ *  projection. The tessellation cull first judges sampled {C0, CullApex, C2}; its authored-height prism
+ *  only guards a possible hidden feature. bCullOnApex replaces C1 only for that footprint. */
+int ArcTerrain_ClassifyTriangleProbe(uint Face, uint Depth, float2 C0, float2 C1, float2 C2,
+	bool bCullOnApex, float2 CullApex, bool bSkipTessFrustumCull,
+	out float OutAreaPixels, out float OutErrorPixels, out float OutErrorCm, out float OutDistanceCm,
+	out float OutEffectiveTargetPixels, out FArcTerrainTessProbe OutProbe);
+
+/** The verdict plus the quantities it was reached from, for a caller that has to explain WHY a triangle
+ *  reads the way it does. OutEffectiveTargetPixels is the area threshold this triangle was actually held
+ *  to. */
+int ArcTerrain_ClassifyTriangleDiag(uint Face, uint Depth, float2 C0, float2 C1, float2 C2,
+	out float OutAreaPixels, out float OutErrorPixels, out float OutErrorCm, out float OutDistanceCm,
+	out float OutEffectiveTargetPixels)
+{
+	FArcTerrainTessProbe ProbeIgnored;
+	return ArcTerrain_ClassifyTriangleProbe(Face, Depth, C0, C1, C2, false, C1, false, OutAreaPixels,
+		OutErrorPixels, OutErrorCm, OutDistanceCm, OutEffectiveTargetPixels, ProbeIgnored);
+}
+
+/** Diagnostic verdict for a triangle the draw compaction has already proved visible. It intentionally
+ *  bypasses TessFrustumCullMargin: that wider predictive frustum is the policy under measurement, not
+ *  a reason to hide visible post-update debt from the latency audit. */
+int ArcTerrain_ClassifyVisibleTriangleDiag(uint Face, uint Depth, float2 C0, float2 C1, float2 C2,
+	out float OutAreaPixels, out float OutErrorPixels, out float OutErrorCm, out float OutDistanceCm,
+	out float OutEffectiveTargetPixels, out FArcTerrainTessProbe OutProbe)
+{
+	return ArcTerrain_ClassifyTriangleProbe(Face, Depth, C0, C1, C2, false, C1, true, OutAreaPixels,
+		OutErrorPixels, OutErrorCm, OutDistanceCm, OutEffectiveTargetPixels, OutProbe);
+}
+
+/**
+ * The single entry point. Corners are in the face's [0,1]^2 domain, in the order the LEB decode
+ * produced them: C0 and C2 span the edge a split bisects, C1 is the apex.
+ */
+int ArcTerrain_ClassifyTriangle(uint Face, uint Depth, float2 C0, float2 C1, float2 C2)
+{
+	float AreaPixelsIgnored;
+	float ErrorPixelsIgnored;
+	float ErrorCmIgnored;
+	float DistanceCmIgnored;
+	float EffectiveTargetIgnored;
+	return ArcTerrain_ClassifyTriangleDiag(Face, Depth, C0, C1, C2, AreaPixelsIgnored,
+		ErrorPixelsIgnored, ErrorCmIgnored, DistanceCmIgnored, EffectiveTargetIgnored);
+}
+
+int ArcTerrain_ClassifyTriangleProbe(uint Face, uint Depth, float2 C0, float2 C1, float2 C2,
+	bool bCullOnApex, float2 CullApex, bool bSkipTessFrustumCull,
+	out float OutAreaPixels, out float OutErrorPixels, out float OutErrorCm, out float OutDistanceCm,
+	out float OutEffectiveTargetPixels, out FArcTerrainTessProbe OutProbe)
+{
+	OutProbe = (FArcTerrainTessProbe)0;
+	OutAreaPixels = 0.0f;
+	OutDistanceCm = 0.0f;
+	OutErrorPixels = 0.0f;
+	OutErrorCm = 0.0f;
+	OutEffectiveTargetPixels = TargetTrianglePixels;
+	OutProbe.C0 = C0;
+	OutProbe.C1 = C1;
+	OutProbe.C2 = C2;
+	OutProbe.MinClipW = ARC_TESS_MIN_CLIP_W;
+	OutProbe.VisibilityState = ARC_TESS_VISIBILITY_ORDINARY;
+	OutProbe.HeightRangeSource = ARC_TESS_HEIGHT_SOURCE_UNKNOWN;
+	OutProbe.HeightRangeTier = NumHeightTiers;
+	OutProbe.HeightRangeSlice = HeightFillSlice;
+	OutProbe.HeightRangeCm = ConservativeHeightRangeCm;
+
+	const FArcTerrainTessSample S0 = ArcTerrainTess_SampleFacePoint(Face, C0);
+	const FArcTerrainTessSample S1 = ArcTerrainTess_SampleFacePoint(Face, C1);
+	const FArcTerrainTessSample S2 = ArcTerrainTess_SampleFacePoint(Face, C2);
+	const float3 P0 = float3(S0.PlanarCm, S0.HeightCm - ViewHeightLocalCm);
+	const float3 P1 = float3(S1.PlanarCm, S1.HeightCm - ViewHeightLocalCm);
+	const float3 P2 = float3(S2.PlanarCm, S2.HeightCm - ViewHeightLocalCm);
+
+	// The camera is the origin of this space. One centimetre is the floor, so a triangle the eye sits on
+	// reads as enormous instead of dividing by zero; the depth ceiling bounds the refinement that follows.
+	const float DistanceCm = max(length(0.5f * (P0 + P2)), 1.0f);
+	const float4 H0 = mul(float4(P0, 1.0f), EyeLocalToClip);
+	const float4 H1 = mul(float4(P1, 1.0f), EyeLocalToClip);
+	const float4 H2 = mul(float4(P2, 1.0f), EyeLocalToClip);
+
+	OutDistanceCm = DistanceCm;
+
+	OutProbe.P0 = P0;
+	OutProbe.P1 = P1;
+	OutProbe.P2 = P2;
+	OutProbe.ClipW = float3(H0.w, H1.w, H2.w);
+	OutProbe.HeightsCm = float4(S0.HeightCm, S1.HeightCm, S2.HeightCm, 0.0f);
+	OutProbe.bResident0 = S0.bResident;
+	OutProbe.bResident1 = S1.bResident;
+	OutProbe.bResident2 = S2.bResident;
+
+	const bool bFillOnly = !S0.bResident && !S1.bResident && !S2.bResident;
+	OutProbe.bFillOnly = bFillOnly;
+	const uint CornerTier = ArcTerrainTess_LeafTier(S0.Tier, S1.Tier, S2.Tier);
+	OutProbe.LeafTier = CornerTier;
+	OutProbe.LeafCapDepth = bFillOnly ? ArcTerrainTess_FillCapDepth() : (uint)max(ResidentCapDepth, 0);
+	const uint MinCornerTier = min(min(ArcTerrainTess_CapTier(S0.Tier),
+		ArcTerrainTess_CapTier(S1.Tier)), ArcTerrainTess_CapTier(S2.Tier));
+	OutProbe.bCornerTiersDiffer = MinCornerTier != CornerTier;
+	OutProbe.bAtCeiling = Depth >= OutProbe.LeafCapDepth;
+
+	// Fill-only is a representability ceiling, not a visibility policy. It wins before discovery so a
+	// conservative authored prism cannot hold unloaded flat terrain above its sector-sized cap.
+	if (bFillOnly && OutProbe.bAtCeiling)
+	{
+		return ARC_TESS_TOO_FINE;
+	}
+
+	// The sampled surface is the normal visibility test. The much taller authored prism is only a guard:
+	// its bounded discovery score alone can request refinement.
+	bool bPrismGuarded = false;
+	if (!bSkipTessFrustumCull)
+	{
+		float4 HCull = H1;
+		float2 PCull = S1.PlanarCm;
+		FArcTerrainTessSample CullSample = S1;
+		if (bCullOnApex)
+		{
+			const FArcTerrainTessSample SCull = ArcTerrainTess_SampleFacePoint(Face, CullApex);
+			CullSample = SCull;
+			PCull = SCull.PlanarCm;
+			HCull = mul(float4(PCull, SCull.HeightCm - ViewHeightLocalCm, 1.0f), EyeLocalToClip);
+		}
+
+		if (ArcTerrainTess_FrustumCulled(H0, HCull, H2, TessFrustumCullMargin))
+		{
+			FArcTerrainTessHeightRangeResolution HeightRangeResolution;
+			const bool bPrismCulled = ArcTerrainTess_FrustumCullHeightPrism(
+				S0, CullSample, S2, TessFrustumCullMargin, HeightRangeResolution);
+			OutProbe.HeightRangeSource = HeightRangeResolution.Source;
+			OutProbe.HeightRangeTier = HeightRangeResolution.Tier;
+			OutProbe.HeightRangeSectorKey = HeightRangeResolution.SectorKey;
+			OutProbe.HeightRangeSlice = HeightRangeResolution.Slice;
+			OutProbe.HeightRangeCm = HeightRangeResolution.HeightRangeCm;
+			if (bPrismCulled)
+			{
+				OutProbe.VisibilityState = ARC_TESS_VISIBILITY_PRISM_CULLED;
+				return ARC_TESS_TOO_FINE;
+			}
+
+			bPrismGuarded = true;
+			OutProbe.VisibilityState = ARC_TESS_VISIBILITY_PRISM_GUARDED;
+			const float DiscoveryEdgePixels = ArcTerrainTess_PrismDiscoveryEdgePixels(
+				S0.PlanarCm, PCull, S2.PlanarCm);
+			const float DiscoveryTargetPixels =
+				MaxTriangleEdgePixels * sqrt(max(FlatAreaRelief, 1.0f));
+			OutProbe.DiscoveryEdgePixels = DiscoveryEdgePixels;
+			OutProbe.DiscoveryTargetPixels = DiscoveryTargetPixels;
+			if (DiscoveryEdgePixels > DiscoveryTargetPixels)
+			{
+				return ARC_TESS_TOO_COARSE;
+			}
+			if (DiscoveryEdgePixels >= DiscoveryTargetPixels * MergeThresholdFraction)
+			{
+				return ARC_TESS_KEEP;
+			}
+		}
+	}
+
+	const FArcTerrainTessSample M01 = ArcTerrainTess_SampleFacePoint(Face, 0.5f * (C0 + C1));
+	const FArcTerrainTessSample M12 = ArcTerrainTess_SampleFacePoint(Face, 0.5f * (C1 + C2));
+	const FArcTerrainTessSample M20 = ArcTerrainTess_SampleFacePoint(Face, 0.5f * (C2 + C0));
+	const FArcTerrainTessSample Centroid = ArcTerrainTess_SampleFacePoint(Face, (C0 + C1 + C2) / 3.0f);
+	OutProbe.HeightsCm.w = M20.HeightCm;
+	OutProbe.bResidentMid = M20.bResident;
+
+	bool bFallback;
+	const float AreaPixels =
+		ArcTerrainTess_ScreenAreaPixels(H0, H1, H2, P0, P1, P2, DistanceCm, bFallback);
+	const float EdgePixels = ArcTerrainTess_MaxEdgePixels(H0, H1, H2, P0, P1, P2, DistanceCm);
+	OutAreaPixels = AreaPixels;
+	OutProbe.bFallback = bFallback;
+	OutProbe.EdgePixels = EdgePixels;
+
+	bool bErrorMeasured;
+	float ErrorCm;
+	const float ErrorPixels = ArcTerrainTess_SampledGeometryError(
+		S0, S1, S2, M01, M12, M20, Centroid, ErrorCm, bErrorMeasured);
+
+	OutErrorPixels = ErrorPixels;
+	OutErrorCm = ErrorCm;
+	OutProbe.bErrorMeasured = bErrorMeasured;
+
+#if ARC_CBT_PROBE_PREDICATE
+	FArcTerrainTessSample LegacyMid;
+	bool bLegacyMeasured;
+	OutProbe.LegacyReducibleErrorCm = ArcTerrainTess_ReducibleDeviationCm(
+		Face, C0, C2, S0, S2, LegacyMid, OutProbe.DeviationCm, bLegacyMeasured);
+#endif
+
+	// The verdict remains TOO_COARSE at the hard representability ceiling so diagnostics retain unresolved
+	// height/edge debt. The topology gate is the sole owner of whether a split can actually be emitted.
+	OutProbe.bAtCeiling = Depth >= OutProbe.LeafCapDepth;
+
+	// Sag over a smooth surface grows with the SQUARE of the span it is measured across, so dividing it by
+	// that square is what makes a parent and its children read the same flatness and take the same relief.
+	const float EdgeCmSq = max(max(dot(S1.PlanarCm - S0.PlanarCm, S1.PlanarCm - S0.PlanarCm),
+		dot(S2.PlanarCm - S1.PlanarCm, S2.PlanarCm - S1.PlanarCm)),
+		max(dot(S0.PlanarCm - S2.PlanarCm, S0.PlanarCm - S2.PlanarCm), 1.0f));
+	// Divide before converting m^2 to avoid overflowing when the conservative near-plane path returns
+	// FLT_MAX. The clamp is still far above any threshold the authored property can express.
+	const float SagCmPerMeterSq = min(ErrorCm / EdgeCmSq, 3.0e34f) * 10000.0f;
+
+	OutProbe.SagCmPerMeterSq = SagCmPerMeterSq;
+	const float FlatWeight =
+		bErrorMeasured ? saturate(SagCmPerMeterSq / FlatReliefSagCmPerMeterSq) : 0.0f;
+	const float EffectiveTargetPixels = TargetTrianglePixels * lerp(FlatAreaRelief, 1.0f, FlatWeight);
+	// Area relief changes a triangle budget by area. Apply its square root to the edge budget so flat and
+	// unknown terrain keeps the same linear density instead of the 24 px discovery bound defeating the
+	// relief and driving the CBT to its cap. Detected curvature continuously restores the authored bound.
+	const float EffectiveMaxEdgePixels = MaxTriangleEdgePixels
+		* lerp(sqrt(max(FlatAreaRelief, 1.0f)), 1.0f, FlatWeight);
+	OutEffectiveTargetPixels = EffectiveTargetPixels;
+	OutProbe.EffectiveMaxEdgePixels = EffectiveMaxEdgePixels;
+
+	// No quotient form: a ratio rounds, so a value half an ulp above its threshold compares equal to 1.0
+	// and flips the verdict.
+	int MetricVerdict = ARC_TESS_KEEP;
+	if (AreaPixels > EffectiveTargetPixels || ErrorPixels > TargetErrorPixels
+		|| EdgePixels > EffectiveMaxEdgePixels)
+	{
+		MetricVerdict = ARC_TESS_TOO_COARSE;
+	}
+	else if (AreaPixels < EffectiveTargetPixels * MergeThresholdFraction
+		&& ErrorPixels < TargetErrorPixels * MergeThresholdFraction
+		&& EdgePixels < EffectiveMaxEdgePixels * MergeThresholdFraction)
+	{
+		MetricVerdict = ARC_TESS_TOO_FINE;
+	}
+
+	// The full metric cannot raise a split in the conservative prism halo. It only confirms that a
+	// discovery-fine footprint is also genuinely fine enough to merge.
+	return bPrismGuarded
+		? (MetricVerdict == ARC_TESS_TOO_FINE ? ARC_TESS_TOO_FINE : ARC_TESS_KEEP)
+		: MetricVerdict;
+}

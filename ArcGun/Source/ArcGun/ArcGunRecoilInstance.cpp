@@ -22,14 +22,12 @@
 #include "ArcGunRecoilInstance.h"
 
 #include "Engine/World.h"
-#include "ArcGunAttributeSet.h"
 #include "ArcGunStateComponent.h"
-#include "AbilitySystem/ArcAbilitiesTypes.h"
 #include "Fragments/ArcItemFragment_GunStats.h"
-#include "Player/ArcCorePlayerController.h"
+#include "Player/ArcMassPlayerController.h"
 #include "GameFramework/Character.h"
 #include "Items/ArcItemData.h"
-#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemDefinitionData.h"
 
 FVector GetVectorInConeFromScreenRecoil(const FVector& Direction, float HorizontalDegrees, float VerticalDegrees)
 {
@@ -64,8 +62,7 @@ void FArcGunRecoilInstance_Base::StartRecoil(UArcGunStateComponent* InGunState)
 	CharacterOwner = InGunState->GetOwner<APawn>();
 	if (CharacterOwner)
 	{
-		ArcPC = CharacterOwner->GetController<AArcCorePlayerController>();
-		ArcASC = InGunState->GetArcASC();
+		ArcPC = CharacterOwner->GetController<AArcMassPlayerController>();
 	}
 
 	if (!ArcPC) return;
@@ -141,7 +138,8 @@ void FArcGunRecoilInstance_Base::UpdateRecoil(float DeltaTime, UArcGunStateCompo
 	const FArcItemFragment_GunStats* Stats = Item->GetItemDefinition()->GetScalableFloatFragment<ArcGunStats>();
 	if (!Stats) return;
 
-	bIsAiming = ArcASC && ArcASC->HasMatchingGameplayTag(AimTag);
+	// GAS retired; aim tag check disabled until Mass-side ability tag query lands.
+	bIsAiming = false;
 
 	UpdateIntensity(DeltaTime, Stats);
 	UpdateCrosshairDynamics(DeltaTime, Stats);
@@ -188,21 +186,11 @@ void FArcGunRecoilInstance_Base::UpdateCrosshairDynamics(float DeltaTime, const 
 
 void FArcGunRecoilInstance_Base::UpdateAttributes(const FArcItemData* InItem)
 {
-	if (!ArcASC || !InItem) return;
+	if (!InItem) return;
 
-	// Use static/cached tags or get them from item
-	static FGameplayTagContainer SourceTags;
-	SourceTags.Reset();
-	SourceTags.AppendTags(InItem->GetItemAggregatedTags());
-
-	FAggregatorEvaluateParameters Params;
-	Params.SourceTags = &SourceTags;
-
-	// Simplified attribute pull - in a real project we'd use AttributeSet accessors
-	// For this refactor, we assume a simplified multiplier model
-	RecoilMultiplier = 1.0f; // Could be pulled from UArcGunAttributeSet::GetStabilityAttribute()
-	SpreadMultiplier = 1.0f; // Could be pulled from UArcGunAttributeSet::GetAccuracyAttribute()
-	HandlingMultiplier = 1.0f; 
+	RecoilMultiplier = 1.0f;
+	SpreadMultiplier = 1.0f;
+	HandlingMultiplier = 1.0f;
 
 	if (bIsAiming)
 	{

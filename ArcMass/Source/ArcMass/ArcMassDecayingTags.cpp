@@ -2,14 +2,17 @@
 
 #include "ArcMassDecayingTags.h"
 
-#include "ArcMassInfluenceMapping.h"
+#include "ArcMass/Spatial/ArcMassInfluenceMapping.h"
 #include "DrawDebugHelpers.h"
+#include "MassStateTreeTypes.h"
 #include "MassCommonFragments.h"
 #include "MassCommonTypes.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "MassEntityTemplateRegistry.h"
-#include "MassEntityUtils.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassSignalSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcMassDecayingTags)
@@ -215,6 +218,7 @@ UArcMassDecayingTagSignalProcessor::UArcMassDecayingTagSignalProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 }
 
 void UArcMassDecayingTagSignalProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)
@@ -240,6 +244,8 @@ void UArcMassDecayingTagSignalProcessor::SignalEntities(FMassEntityManager& Enti
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassDecayingTagSignal);
 
 	// Drain pending requests
 	TArray<FArcMassDecayingTagRequest> Requests = MoveTemp(Subsystem->GetPendingRequests());
@@ -306,7 +312,7 @@ UArcMassDecayingTagDecayProcessor::UArcMassDecayingTagDecayProcessor()
 	, DebugQuery{*this}
 #endif
 {
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::SyncWorldToMass);
@@ -315,6 +321,8 @@ UArcMassDecayingTagDecayProcessor::UArcMassDecayingTagDecayProcessor()
 void UArcMassDecayingTagDecayProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
 	EntityQuery.AddRequirement<FArcMassDecayingTagFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddTagRequirement<FArcCooldownTaskTag>(EMassFragmentPresence::Optional);
+	EntityQuery.AddSubsystemRequirement<UMassSignalSubsystem>(EMassFragmentAccess::ReadWrite);
 
 #if WITH_GAMEPLAY_DEBUGGER
 	DebugQuery.AddRequirement<FArcMassDecayingTagFragment>(EMassFragmentAccess::ReadOnly);
@@ -330,11 +338,22 @@ void UArcMassDecayingTagDecayProcessor::Execute(FMassEntityManager& EntityManage
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassDecayingTagDecay);
+
+	UWorld* World = EntityManager.GetWorld();
+	UArcMassDecayingTagSubsystem* DecaySubsystem = World ? World->GetSubsystem<UArcMassDecayingTagSubsystem>() : nullptr;
+
+	// Entities whose cooldown tags expired this frame — batched for StateTree signaling.
+	TArray<FMassEntityHandle> EntitiesToSignalStateTree;
+
 	// Phase 1: Tick decay on all entities with the fragment
-	EntityQuery.ForEachEntityChunk(Context, [DeltaTime](FMassExecutionContext& Ctx)
+	EntityQuery.ForEachEntityChunk(Context, [DeltaTime, DecaySubsystem, &EntitiesToSignalStateTree](FMassExecutionContext& Ctx)
 	{
 		TArrayView<FArcMassDecayingTagFragment> DecayFragments =
 			Ctx.GetMutableFragmentView<FArcMassDecayingTagFragment>();
+
+		// All entities in a chunk share the same archetype, so the tag check is per-chunk.
+		const bool bChunkHasCooldownTag = Ctx.DoesArchetypeHaveTag(FArcCooldownTaskTag::StaticStruct());
 
 		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 		{
@@ -350,15 +369,43 @@ void UArcMassDecayingTagDecayProcessor::Execute(FMassEntityManager& EntityManage
 				Entry.RemainingTime -= DeltaTime;
 			}
 
+			// Collect tags that just expired before removing them.
+			if (bChunkHasCooldownTag && DecaySubsystem)
+			{
+				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
+				bool bAnyExpired = false;
+				for (const FArcMassDecayingTagEntry& Entry : Fragment.Entries)
+				{
+					if (Entry.RemainingTime <= 0.f)
+					{
+						DecaySubsystem->GetPendingExpiryRemovals().Emplace(Entity, Entry.Tag);
+						bAnyExpired = true;
+					}
+				}
+				if (bAnyExpired)
+				{
+					EntitiesToSignalStateTree.Add(Entity);
+				}
+			}
+
 			Fragment.RemoveExpiredEntries();
 		}
 	});
+
+	// Signal StateTree re-evaluation for all entities whose cooldown tags expired.
+	if (EntitiesToSignalStateTree.Num() > 0)
+	{
+		UMassSignalSubsystem* SignalSubsystem = World ? World->GetSubsystem<UMassSignalSubsystem>() : nullptr;
+		if (SignalSubsystem)
+		{
+			SignalSubsystem->SignalEntities(UE::Mass::Signals::NewStateTreeTaskRequired, EntitiesToSignalStateTree);
+		}
+	}
 
 	// Phase 2: Debug draw (requires transform for world position)
 #if WITH_GAMEPLAY_DEBUGGER
 	if (CVarArcDebugDrawDecayingTags.GetValueOnAnyThread())
 	{
-		UWorld* World = EntityManager.GetWorld();
 		if (!World)
 		{
 			return;

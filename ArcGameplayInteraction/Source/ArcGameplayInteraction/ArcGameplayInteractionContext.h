@@ -4,15 +4,14 @@
 
 #include "GameplayInteractionStateTreeSchema.h"
 #include "GameplayInteractionsTypes.h"
-#include "MassEntityHandle.h"
+#include "GameplayTagContainer.h"
+#include "Mass/EntityHandle.h"
 #include "MassStateTreeDependency.h"
 #include "SmartObjectRuntime.h"
 #include "SmartObjectSubsystem.h"
 #include "StateTreeInstanceData.h"
 #include "StateTreeReference.h"
 #include "ArcGameplayInteractionContext.generated.h"
-
-struct FGameplayTag;
 struct FStateTreeEvent;
 struct FStateTreeExecutionContext;
 struct FMassExecutionContext;
@@ -72,6 +71,11 @@ public:
 	void SetSlotTransform(const FTransform& InSlotTransform)
 	{
 		SlotTransform = InSlotTransform;
+	}
+
+	void SetOptionTag(const FGameplayTag& InOptionTag)
+	{
+		OptionTag = InOptionTag;
 	}
 
 	void SetAbortContext(const FGameplayInteractionAbortContext& InAbortContext)
@@ -153,6 +157,10 @@ protected:
 	UPROPERTY()
 	FTransform SlotTransform;
 
+	/** Tag identifying which interaction option was chosen by the player; empty on the legacy single-option path. */
+	UPROPERTY()
+	FGameplayTag OptionTag;
+
 	/** UObject owner for FStateTreeExecutionContext. When set, used instead of ContextActor. */
 	UPROPERTY()
 	TObjectPtr<UObject> Owner = nullptr;
@@ -184,6 +192,7 @@ public:
 
 protected:
 	virtual bool IsStructAllowed(const UScriptStruct* InScriptStruct) const override;
+	virtual bool IsClassAllowed(const UClass* InClass) const override;
 	virtual bool IsExternalItemAllowed(const UStruct& InStruct) const override;
 	virtual bool Link(FStateTreeLinker& Linker) override;
 

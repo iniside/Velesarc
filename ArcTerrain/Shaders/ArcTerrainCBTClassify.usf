@@ -1,0 +1,797 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTClassify.usf — one vote per live bisector.
+
+	Decodes an ordinal against the FROZEN heap (state N), asks
+	ArcTerrainTessellationPredicate.ush what the triangle is worth, and writes
+	SPLIT / MERGE / KEEP. Nothing here touches topology — the apply pass owns every
+	pool write — and nothing here knows how the predicate reaches its verdict.
+
+	Commands are written with InterlockedMax over an ordering where SPLIT beats
+	MERGE beats KEEP, so refinement wins a conflict and the pass is order-independent.
+	A vote describes ONLY the triangle that cast it; a bisector blocked by a coarser
+	hypotenuse twin still votes SPLIT, and the apply pass bisects that twin along with
+	it. Below arc_SplitSuppressFreeCount no SPLIT is raised at all, and the frame
+	belongs to the collapse path.
+
+	The merge is decided on the PARENT triangle, not the leaf. The two children of one
+	parent classify that same parent, so they read the same value by construction; the
+	two PARENTS of a diamond are different triangles and may disagree, which is why
+	ApplyMerge requires the whole diamond to carry MERGE rather than assuming it.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainLEB.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainTessellationPredicate.ush"
+
+ByteAddressBuffer CBTHeapSnapshot;
+RWByteAddressBuffer BisectorPool;
+RWByteAddressBuffer BisectorNeighbors;
+RWBuffer<uint> BisectorCommands;
+RWBuffer<uint> PoolCounters;
+#if ARC_CBT_BOUNDED_TOPOLOGY_WORK
+RWBuffer<uint> RawSplitRequests;
+RWBuffer<uint> SplitPriorityBySlot;
+RWBuffer<uint> WorkCounters;
+#endif
+
+uint PoolDepth;
+uint PoolCapacity;
+uint MaxSubdivisionDepth;
+/** Diagnostics only (arc.Terrain.CBT.Stats): tallies the vote histogram and the depth distribution. */
+uint StatsEnabled;
+
+/** The full verdict histogram. KEEP is counted too: without it "split 0 merge 0" cannot be told apart
+ *  from a classify pass that never ran. */
+void ArcTerrainTallyVerdict(int Verdict)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	if (Verdict == ARC_TESS_TOO_COARSE)      { InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_VOTE_SPLIT], 1u, Ignored); }
+	else if (Verdict == ARC_TESS_TOO_FINE)   { InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_VOTE_MERGE], 1u, Ignored); }
+	else if (Verdict == ARC_TESS_KEEP)       { InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_VOTE_KEEP], 1u, Ignored); }
+}
+
+/** Leaf-only visibility-policy outcomes. Parent classifications performed by the merge gate are not
+ *  tallied, so each guarded column remains a subset of the ordinary vote histogram. */
+void ArcTerrainTallyVisibilityPolicy(int Verdict, FArcTerrainTessProbe Probe)
+{
+	if (StatsEnabled == 0u || Probe.VisibilityState == ARC_TESS_VISIBILITY_ORDINARY)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	const bool bCulled = Probe.VisibilityState == ARC_TESS_VISIBILITY_PRISM_CULLED;
+	if (bCulled)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PRISM_CULLED_FINE], 1u, Ignored);
+	}
+	else if (Verdict == ARC_TESS_TOO_COARSE)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PRISM_GUARDED_SPLIT], 1u, Ignored);
+	}
+	else if (Verdict == ARC_TESS_TOO_FINE)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PRISM_GUARDED_FINE], 1u, Ignored);
+	}
+	else
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PRISM_GUARDED_KEEP], 1u, Ignored);
+	}
+
+	uint SourceCounter = bCulled
+		? ARC_CBT_COUNTER_HEIGHT_GLOBAL_UNSAFE_CULLED
+		: ARC_CBT_COUNTER_HEIGHT_GLOBAL_UNSAFE_GUARDED;
+	if (Probe.HeightRangeSource == ARC_TESS_HEIGHT_SOURCE_LOCAL)
+	{
+		SourceCounter = bCulled
+			? ARC_CBT_COUNTER_HEIGHT_LOCAL_CULLED : ARC_CBT_COUNTER_HEIGHT_LOCAL_GUARDED;
+	}
+	else if (Probe.HeightRangeSource == ARC_TESS_HEIGHT_SOURCE_FILL)
+	{
+		SourceCounter = bCulled
+			? ARC_CBT_COUNTER_HEIGHT_FILL_CULLED : ARC_CBT_COUNTER_HEIGHT_FILL_GUARDED;
+	}
+	else if (Probe.HeightRangeSource == ARC_TESS_HEIGHT_SOURCE_GLOBAL_SPAN)
+	{
+		SourceCounter = bCulled
+			? ARC_CBT_COUNTER_HEIGHT_GLOBAL_SPAN_CULLED
+			: ARC_CBT_COUNTER_HEIGHT_GLOBAL_SPAN_GUARDED;
+	}
+	InterlockedAdd(PoolCounters[SourceCounter], 1u, Ignored);
+}
+
+void ArcTerrainTallyCornerTiers(bool bCornerTiersDiffer)
+{
+	if (StatsEnabled == 0u || !bCornerTiersDiffer)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_LEAF_TIERS_MIXED], 1u, Ignored);
+}
+
+void ArcTerrainTallyGeometryCapPopulation(uint NodeDepth, int Verdict, FArcTerrainTessProbe Probe)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+
+	uint Ignored = 0u;
+	const uint ExpectedResidentCap = (uint)max(ResidentCapDepth, 0);
+	const uint ExpectedFillCap = ArcTerrainTess_FillCapDepth();
+	if (Probe.bFillOnly)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_FILL_COUNT], 1u, Ignored);
+		if (Probe.LeafCapDepth != ExpectedFillCap)
+		{
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_FILL_CAP_MISMATCH], 1u, Ignored);
+		}
+		if (NodeDepth >= ExpectedFillCap)
+		{
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_FILL_AT_OR_ABOVE_CAP], 1u, Ignored);
+			if (Verdict != ARC_TESS_TOO_FINE)
+			{
+				InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_FILL_CEILING_VOTE_VIOLATION], 1u, Ignored);
+			}
+		}
+		return;
+	}
+
+	if (Probe.LeafCapDepth != ExpectedResidentCap)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_RESIDENT_CAP_MISMATCH], 1u, Ignored);
+	}
+	if (Probe.LeafTier == 1u)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_RESIDENT_TIER1_COUNT], 1u, Ignored);
+		InterlockedMax(PoolCounters[ARC_CBT_COUNTER_RESIDENT_TIER1_MAX_DEPTH], NodeDepth, Ignored);
+	}
+	else if (Probe.LeafTier == 2u)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_RESIDENT_TIER2_COUNT], 1u, Ignored);
+		InterlockedMax(PoolCounters[ARC_CBT_COUNTER_RESIDENT_TIER2_MAX_DEPTH], NodeDepth, Ignored);
+	}
+}
+
+/** Reads the command back from the buffer this thread just wrote. InterlockedMax only ever raises, so
+ *  anything below what we wrote means the write did not land in the resource the pass is bound to. */
+void ArcTerrainTallyCommandEcho(uint Slot, uint Written)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	const uint Echo = BisectorCommands[Slot];
+	if (Echo < Written)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_CMD_ECHO_LOST], 1u, Ignored);
+	}
+	else if (Written == ARC_CMD_SPLIT)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_CMD_ECHO_SPLIT], 1u, Ignored);
+	}
+	else
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_CMD_ECHO_MERGE], 1u, Ignored);
+	}
+}
+
+/** One tally per thread that got past the ordinal bound, plus that leaf's depth. A zero thread count
+ *  with a non-zero live count means the indirect dispatch args were empty. */
+void ArcTerrainTallyLeaf(uint NodeDepth)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_CLASSIFY_THREADS], 1u, Ignored);
+	InterlockedMin(PoolCounters[ARC_CBT_COUNTER_DEPTH_MIN], NodeDepth, Ignored);
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_DEPTH_MAX], NodeDepth, Ignored);
+	InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_DEPTH_SUM], NodeDepth, Ignored);
+}
+
+/** Leaves with at least one halfedge into another face. */
+void ArcTerrainTallyBoundaryLeaf(uint Slot, uint Face)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	bool bBoundary = false;
+	for (uint Edge = 0u; Edge < 3u; ++Edge)
+	{
+		const uint Ref = arc_LoadNeighbor(BisectorNeighbors, Slot, Edge);
+		if (arc_RefValid(Ref))
+		{
+			bBoundary = bBoundary
+				|| arc_LoadField(BisectorPool, arc_RefIndex(Ref), ARC_BISECTOR_FACE) != Face;
+		}
+	}
+	if (bBoundary)
+	{
+		uint Ignored = 0u;
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_BOUNDARY_LEAVES], 1u, Ignored);
+	}
+}
+
+/** The leaf's depth against its own halfedge neighbours, and the state of its sibling edge. A merge is
+ *  initiated by the shallower side of a pair, so a leaf deeper than every neighbour is one of the leaves
+ *  that has to move for the tree to coarsen at all. */
+void ArcTerrainTallyLeafRelations(uint Slot, uint2 NodeID, uint NodeDepth, uint Face)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+
+	uint MinNeighborDepth = 0xFFFFFFFFu;
+	uint MaxNeighborDepth = 0u;
+	bool bAnyNeighbor = false;
+	for (uint Edge = 0u; Edge < 3u; ++Edge)
+	{
+		const uint Ref = arc_LoadNeighbor(BisectorNeighbors, Slot, Edge);
+		if (arc_RefValid(Ref))
+		{
+			const uint OtherDepth = arc_NodeDepth(arc_LoadNodeID(BisectorPool, arc_RefIndex(Ref)));
+			MinNeighborDepth = min(MinNeighborDepth, OtherDepth);
+			MaxNeighborDepth = max(MaxNeighborDepth, OtherDepth);
+			bAnyNeighbor = true;
+		}
+	}
+
+	uint Ignored = 0u;
+	if (bAnyNeighbor && NodeDepth > MinNeighborDepth)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_LEAF_DEEPER_NBR], 1u, Ignored);
+	}
+	if (bAnyNeighbor && NodeDepth > MaxNeighborDepth)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_LEAF_DEEPEST_NBR], 1u, Ignored);
+	}
+
+	if (NodeDepth < 2u)
+	{
+		return; // a depth-1 root's sibling edge is a face edge, not a child pair
+	}
+
+	const uint SiblingRef = arc_LoadNeighbor(BisectorNeighbors, Slot, arc_SiblingEdge(NodeID));
+	if (!arc_RefValid(SiblingRef))
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_LEAF_SIB_NOREF], 1u, Ignored);
+		return;
+	}
+
+	const uint Other = arc_RefIndex(SiblingRef);
+	const uint2 OtherNode = arc_LoadNodeID(BisectorPool, Other);
+	const uint OtherDepth = arc_NodeDepth(OtherNode);
+	// The sibling edge is interior to one face, and whatever answers on it must be the sibling or a
+	// descendant of it — every LEB descendant carries the ancestor's node id in its high bits.
+	const bool bKin = arc_LoadField(BisectorPool, Other, ARC_BISECTOR_FACE) == Face
+		&& OtherDepth >= NodeDepth
+		&& all(leb_ShiftDownBy(OtherNode, OtherDepth - NodeDepth) == (NodeID ^ uint2(1u, 0u)));
+	if (!bKin)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_LEAF_SIB_NOTKIN], 1u, Ignored);
+	}
+}
+
+/** The quantities the predicate reached its verdict from, carried out so a caller that has to explain the
+ *  verdict does not run the predicate a second time — two expansions can contract the projection
+ *  differently, and the reading only matters at the threshold. */
+struct FClassifyTerms
+{
+	float AreaPixels;
+	float EdgePixels;
+	float EffectiveMaxEdgePixels;
+	float ErrorPixels;
+	float ErrorCm;
+	float DistanceCm;
+	/** The area threshold this triangle was held to — TargetTrianglePixels scaled by the flat-area
+	 *  relief. Comparing against the uniform instead names the wrong term on a flat leaf. */
+	float EffectiveTargetPixels;
+};
+
+#if ARC_CBT_BOUNDED_TOPOLOGY_WORK
+/** Slot priority consumed by the bounded admission pass. A split verdict guarantees that at least one
+ *  selected ratio is > 1; the low tier is therefore also the defensive floor for a split request. */
+uint ArcTerrainSplitPriority(FClassifyTerms Terms, FArcTerrainTessProbe Probe)
+{
+	const bool bGuarded = Probe.VisibilityState == ARC_TESS_VISIBILITY_PRISM_GUARDED;
+	float Pressure = 0.0f;
+	if (bGuarded)
+	{
+		// Guarded discovery returns before the ordinary projected terms are populated.
+		Pressure = Probe.DiscoveryEdgePixels / max(Probe.DiscoveryTargetPixels, 1.0e-6f);
+	}
+	else
+	{
+		Pressure = max(
+			Terms.AreaPixels / max(Terms.EffectiveTargetPixels, 1.0e-6f),
+			Terms.EdgePixels / max(Terms.EffectiveMaxEdgePixels, 1.0e-6f));
+		if (Probe.bErrorMeasured)
+		{
+			Pressure = max(Pressure, Terms.ErrorPixels / max(TargetErrorPixels, 1.0e-6f));
+		}
+	}
+
+	const uint Severity = Pressure >= 4.0f ? 2u : (Pressure >= 2.0f ? 1u : 0u);
+	// 0 is absent. Within each severity ordinary precedes guarded; severity dominates both.
+	return Severity * 2u + (bGuarded ? 1u : 2u);
+}
+#endif
+
+/** Tallies the independent split reasons. These subsets intentionally overlap: a leaf above both the
+ *  edge and height thresholds is evidence for both, not an arbitrary winner chosen by if/else order. */
+void ArcTerrainTallyPredicateTerms(int Verdict, uint NodeDepth, FClassifyTerms Terms,
+	FArcTerrainTessProbe Probe)
+{
+	if (StatsEnabled == 0u || Probe.VisibilityState != ARC_TESS_VISIBILITY_ORDINARY)
+	{
+		return;
+	}
+
+	uint Ignored = 0u;
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_MAX_EDGE_BITS], asuint(Terms.EdgePixels), Ignored);
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_MAX_SAMPLED_ERR_BITS], asuint(Terms.ErrorPixels), Ignored);
+	if (!Probe.bErrorMeasured)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_HEIGHT_UNKNOWN], 1u, Ignored);
+	}
+	if (Probe.bErrorMeasured && NodeDepth >= Probe.LeafCapDepth && Terms.ErrorPixels > TargetErrorPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_HEIGHT_OVER_AT_CAP], 1u, Ignored);
+	}
+	if (Verdict != ARC_TESS_TOO_COARSE)
+	{
+		return;
+	}
+	if (Terms.EdgePixels > Terms.EffectiveMaxEdgePixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_COARSE_BY_EDGE], 1u, Ignored);
+	}
+	if (Probe.bErrorMeasured && Terms.ErrorPixels > TargetErrorPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_COARSE_BY_HEIGHT], 1u, Ignored);
+	}
+	if (Terms.AreaPixels > Terms.EffectiveTargetPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_COARSE_BY_AREA], 1u, Ignored);
+	}
+}
+
+/** bCullOnParent hands the predicate this node's PARENT as the triangle the tessellation cull is judged
+ *  on, so a leaf and the parent the merge is written from are culled by one and the same test. */
+int ClassifyNode(uint Face, FLEBNode Node, bool bCullOnParent, out FClassifyTerms OutTerms,
+	out FArcTerrainTessProbe OutProbe)
+{
+	const FLEBTriangle Tri = leb_DecodeNodeCorners(Node);
+	const float2 CullApex = bCullOnParent ? leb_ParentApex(Node, Tri) : Tri.Corners[1];
+	const int Verdict = ArcTerrain_ClassifyTriangleProbe(Face, (uint)Node.Depth, Tri.Corners[0],
+		Tri.Corners[1], Tri.Corners[2], bCullOnParent, CullApex, false, OutTerms.AreaPixels,
+		OutTerms.ErrorPixels, OutTerms.ErrorCm, OutTerms.DistanceCm, OutTerms.EffectiveTargetPixels,
+		OutProbe);
+	OutTerms.EdgePixels = OutProbe.EdgePixels;
+	OutTerms.EffectiveMaxEdgePixels = OutProbe.EffectiveMaxEdgePixels;
+	return Verdict;
+}
+
+int ClassifyNode(uint Face, FLEBNode Node, bool bCullOnParent, out FClassifyTerms OutTerms)
+{
+	FArcTerrainTessProbe ProbeIgnored;
+	return ClassifyNode(Face, Node, bCullOnParent, OutTerms, ProbeIgnored);
+}
+
+int ClassifyNode(uint Face, FLEBNode Node, bool bCullOnParent)
+{
+	FClassifyTerms TermsIgnored;
+	return ClassifyNode(Face, Node, bCullOnParent, TermsIgnored);
+}
+
+/** Where a coarsening vote dies. The leaf voting TOO_FINE is not enough — the command is written on the
+ *  PARENT's verdict, so a leaf whose parent disagrees never becomes a merge at all and the diamond rules
+ *  never see it. Counted over leaves that voted TOO_FINE, split by what refused the parent. */
+void ArcTerrainTallyParentVerdict(int LeafVerdict, int ParentVerdict, FClassifyTerms ParentTerms,
+	uint NodeDepth)
+{
+	if (StatsEnabled == 0u || LeafVerdict != ARC_TESS_TOO_FINE)
+	{
+		return;
+	}
+	uint Ignored = 0u;
+	if (ParentVerdict == ARC_TESS_TOO_FINE)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PARENT_FINE], 1u, Ignored);
+	}
+	else if (ParentVerdict == ARC_TESS_KEEP)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PARENT_KEEP], 1u, Ignored);
+	}
+	else if (ParentTerms.AreaPixels > ParentTerms.EffectiveTargetPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PARENT_COARSE_AREA], 1u, Ignored);
+	}
+	else if (ParentTerms.ErrorPixels > TargetErrorPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PARENT_COARSE_ERR], 1u, Ignored);
+	}
+	else
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_PARENT_COARSE_EDGE], 1u, Ignored);
+	}
+}
+
+/** Which term of the predicate read TOO_COARSE on a leaf its own cap will not let split, and the extrema
+ *  of those terms. The scaled values are clamped because DistanceCm bottoms out at 1 cm, which puts a
+ *  near-eye leaf over a large deviation past the range of a uint.
+ *
+ *  The head count is split by diagnostic height tier; resident tiers share one geometry ceiling. */
+void ArcTerrainTallyCeilingCoarse(FClassifyTerms Terms, FArcTerrainTessProbe Probe)
+{
+	const float MaxScaled = 4.0e9f;
+	uint Ignored = 0u;
+	InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_COARSE + Probe.LeafTier], 1u, Ignored);
+	if (Probe.bErrorMeasured && Terms.ErrorPixels > TargetErrorPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_BY_ERROR], 1u, Ignored);
+	}
+	if (Terms.AreaPixels > Terms.EffectiveTargetPixels)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_BY_AREA], 1u, Ignored);
+	}
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_ERRPX_X100],
+		(uint)clamp(Terms.ErrorPixels * 100.0f, 0.0f, MaxScaled), Ignored);
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_ERRCM_MAX],
+		(uint)clamp(Terms.ErrorCm, 0.0f, MaxScaled), Ignored);
+	const uint DistMeters = (uint)clamp(Terms.DistanceCm * 0.01f, 0.0f, MaxScaled);
+	InterlockedMin(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_DISTM_MIN], DistMeters, Ignored);
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_DISTM_MAX], DistMeters, Ignored);
+	InterlockedMax(PoolCounters[ARC_CBT_COUNTER_MAXDEPTH_AREAPX_MAX],
+		(uint)clamp(Terms.AreaPixels, 0.0f, MaxScaled), Ignored);
+}
+
+#if ARC_CBT_PROBE_PREDICATE
+
+uint ArcTerrainProbeFlags(FArcTerrainTessProbe Probe)
+{
+	return
+		  (Probe.bFallback      ? ARC_CBT_PROBE_FLAG_FALLBACK    : 0u)
+		| (Probe.bAtCeiling     ? ARC_CBT_PROBE_FLAG_ATCEILING   : 0u)
+		| (Probe.bFillOnly      ? ARC_CBT_PROBE_FLAG_FILLONLY    : 0u)
+		| (Probe.bResident0     ? ARC_CBT_PROBE_FLAG_RESIDENT0   : 0u)
+		| (Probe.bResident1     ? ARC_CBT_PROBE_FLAG_RESIDENT1   : 0u)
+		| (Probe.bResident2     ? ARC_CBT_PROBE_FLAG_RESIDENT2   : 0u)
+		| (Probe.bResidentMid   ? ARC_CBT_PROBE_FLAG_RESIDENTMID : 0u)
+		| (Probe.bErrorMeasured ? ARC_CBT_PROBE_FLAG_ERRMEASURED : 0u)
+		| (Probe.VisibilityState == ARC_TESS_VISIBILITY_PRISM_CULLED
+			? ARC_CBT_PROBE_FLAG_TESSCULLED : 0u)
+		| (Probe.VisibilityState == ARC_TESS_VISIBILITY_PRISM_GUARDED
+			? ARC_CBT_PROBE_FLAG_PRISMGUARDED : 0u);
+}
+
+/** One elected leaf's whole predicate input set, at ARC_CBT_PROBE_STRIDE slots from Base. Guardless on
+ *  purpose: the caller owns the two key writes, so a record with a tail can bracket that tail too. */
+void ArcTerrainProbeWriteBody(uint Base, uint Face, uint2 NodeID, uint NodeDepth,
+	int Verdict, FClassifyTerms Terms, FArcTerrainTessProbe Probe)
+{
+	const uint Flags = ArcTerrainProbeFlags(Probe);
+
+	// The fallback branch's own quantity, recomputed here from the recorded corners so the metric does not
+	// carry it down the projected path for every leaf of every frame.
+	const float Area3DCm2 = 0.5f * length(cross(Probe.P1 - Probe.P0, Probe.P2 - Probe.P0));
+
+	PoolCounters[Base + ARC_CBT_PROBE_FACE] = Face;
+	PoolCounters[Base + ARC_CBT_PROBE_DEPTH] = NodeDepth;
+	PoolCounters[Base + ARC_CBT_PROBE_NODE_LO] = NodeID.x;
+	PoolCounters[Base + ARC_CBT_PROBE_NODE_HI] = NodeID.y;
+	PoolCounters[Base + ARC_CBT_PROBE_FLAGS] = Flags;
+	PoolCounters[Base + ARC_CBT_PROBE_VERDICT] = asuint(Verdict);
+
+	PoolCounters[Base + ARC_CBT_PROBE_CORNERS + 0u] = asuint(Probe.C0.x);
+	PoolCounters[Base + ARC_CBT_PROBE_CORNERS + 1u] = asuint(Probe.C0.y);
+	PoolCounters[Base + ARC_CBT_PROBE_CORNERS + 2u] = asuint(Probe.C1.x);
+	PoolCounters[Base + ARC_CBT_PROBE_CORNERS + 3u] = asuint(Probe.C1.y);
+	PoolCounters[Base + ARC_CBT_PROBE_CORNERS + 4u] = asuint(Probe.C2.x);
+	PoolCounters[Base + ARC_CBT_PROBE_CORNERS + 5u] = asuint(Probe.C2.y);
+
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 0u] = asuint(Probe.P0.x);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 1u] = asuint(Probe.P0.y);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 2u] = asuint(Probe.P0.z);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 3u] = asuint(Probe.P1.x);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 4u] = asuint(Probe.P1.y);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 5u] = asuint(Probe.P1.z);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 6u] = asuint(Probe.P2.x);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 7u] = asuint(Probe.P2.y);
+	PoolCounters[Base + ARC_CBT_PROBE_POINTS + 8u] = asuint(Probe.P2.z);
+
+	PoolCounters[Base + ARC_CBT_PROBE_CLIPW + 0u] = asuint(Probe.ClipW.x);
+	PoolCounters[Base + ARC_CBT_PROBE_CLIPW + 1u] = asuint(Probe.ClipW.y);
+	PoolCounters[Base + ARC_CBT_PROBE_CLIPW + 2u] = asuint(Probe.ClipW.z);
+	PoolCounters[Base + ARC_CBT_PROBE_MINCLIPW] = asuint(Probe.MinClipW);
+
+	PoolCounters[Base + ARC_CBT_PROBE_DISTCM] = asuint(Terms.DistanceCm);
+	PoolCounters[Base + ARC_CBT_PROBE_AREA3DCM2] = asuint(Area3DCm2);
+	PoolCounters[Base + ARC_CBT_PROBE_AREAPX] = asuint(Terms.AreaPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_ERRCM] = asuint(Terms.ErrorCm);
+	PoolCounters[Base + ARC_CBT_PROBE_ERRPX] = asuint(Terms.ErrorPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_EDGEPX] = asuint(Terms.EdgePixels);
+	PoolCounters[Base + ARC_CBT_PROBE_LEGACY_ERRCM] = asuint(Probe.LegacyReducibleErrorCm);
+
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHTS + 0u] = asuint(Probe.HeightsCm.x);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHTS + 1u] = asuint(Probe.HeightsCm.y);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHTS + 2u] = asuint(Probe.HeightsCm.z);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHTS + 3u] = asuint(Probe.HeightsCm.w);
+
+	PoolCounters[Base + ARC_CBT_PROBE_DEVIATION + 0u] = asuint(Probe.DeviationCm.x);
+	PoolCounters[Base + ARC_CBT_PROBE_DEVIATION + 1u] = asuint(Probe.DeviationCm.y);
+	PoolCounters[Base + ARC_CBT_PROBE_DEVIATION + 2u] = asuint(Probe.DeviationCm.z);
+	PoolCounters[Base + ARC_CBT_PROBE_EFFTARGET] = asuint(Terms.EffectiveTargetPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_VISIBILITY] = Probe.VisibilityState;
+	PoolCounters[Base + ARC_CBT_PROBE_LEAFTIER] = Probe.LeafTier;
+	PoolCounters[Base + ARC_CBT_PROBE_LEAFCAP] = Probe.LeafCapDepth;
+	PoolCounters[Base + ARC_CBT_PROBE_DISCOVERY_EDGEPX] = asuint(Probe.DiscoveryEdgePixels);
+	PoolCounters[Base + ARC_CBT_PROBE_DISCOVERY_TARGETPX] = asuint(Probe.DiscoveryTargetPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_SOURCE] = Probe.HeightRangeSource;
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_TIER] = Probe.HeightRangeTier;
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_SECTOR_X] = asuint(Probe.HeightRangeSectorKey.x);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_SECTOR_Y] = asuint(Probe.HeightRangeSectorKey.y);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_SLICE] = Probe.HeightRangeSlice;
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_MINCM] = asuint(Probe.HeightRangeCm.x);
+	PoolCounters[Base + ARC_CBT_PROBE_HEIGHT_MAXCM] = asuint(Probe.HeightRangeCm.y);
+}
+
+/** The body between two writes of the election key: a writer overtaken mid-record by a better key leaves
+ *  the two guards disagreeing, which is the only way the reader can tell a torn record from a whole one.
+ *  The barriers are what keep the guards from being reordered around the body. */
+void ArcTerrainProbeWriteRecord(uint Base, uint Key, uint Face, uint2 NodeID, uint NodeDepth,
+	int Verdict, FClassifyTerms Terms, FArcTerrainTessProbe Probe)
+{
+	PoolCounters[Base + ARC_CBT_PROBE_KEYFIRST] = Key;
+	DeviceMemoryBarrier();
+	ArcTerrainProbeWriteBody(Base, Face, NodeID, NodeDepth, Verdict, Terms, Probe);
+	DeviceMemoryBarrier();
+	PoolCounters[Base + ARC_CBT_PROBE_KEYLAST] = Key;
+}
+
+/** Record D: the leaf body, then the PARENT's side of the same refusal. The parent's face is the leaf's
+ *  and its depth is one less, so neither is stored again. */
+void ArcTerrainProbeWriteRecordD(uint Key, uint Face, uint2 NodeID, uint NodeDepth, int Verdict,
+	FClassifyTerms Terms, FArcTerrainTessProbe Probe, int ParentVerdict, FClassifyTerms ParentTerms,
+	FArcTerrainTessProbe ParentProbe)
+{
+	const uint Base = ARC_CBT_PROBE_D_BASE;
+	PoolCounters[Base + ARC_CBT_PROBE_KEYFIRST] = Key;
+	DeviceMemoryBarrier();
+
+	ArcTerrainProbeWriteBody(Base, Face, NodeID, NodeDepth, Verdict, Terms, Probe);
+
+	PoolCounters[Base + ARC_CBT_PROBE_D_SAGCM_M2] = asuint(Probe.SagCmPerMeterSq);
+	PoolCounters[Base + ARC_CBT_PROBE_D_TARGETERRPX] = asuint(TargetErrorPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_TARGETEDGEPX] = asuint(Terms.EffectiveMaxEdgePixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_DEPTH] = NodeDepth - 1u;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_VERDICT] = asuint(ParentVerdict);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_FLAGS] = ArcTerrainProbeFlags(ParentProbe);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_VISIBILITY] = ParentProbe.VisibilityState;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_LEAFTIER] = ParentProbe.LeafTier;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_LEAFCAP] = ParentProbe.LeafCapDepth;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_DISTCM] = asuint(ParentTerms.DistanceCm);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_AREAPX] = asuint(ParentTerms.AreaPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_EFFTARGET] = asuint(ParentTerms.EffectiveTargetPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_ERRCM] = asuint(ParentTerms.ErrorCm);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_ERRPX] = asuint(ParentTerms.ErrorPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_EDGEPX] = asuint(ParentTerms.EdgePixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_DISCOVERY_EDGEPX] = asuint(ParentProbe.DiscoveryEdgePixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_DISCOVERY_TARGETPX] = asuint(ParentProbe.DiscoveryTargetPixels);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_SAGCM_M2] = asuint(ParentProbe.SagCmPerMeterSq);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_SOURCE] = ParentProbe.HeightRangeSource;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_TIER] = ParentProbe.HeightRangeTier;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_SECTOR_X] =
+		asuint(ParentProbe.HeightRangeSectorKey.x);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_SECTOR_Y] =
+		asuint(ParentProbe.HeightRangeSectorKey.y);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_SLICE] = ParentProbe.HeightRangeSlice;
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_MINCM] = asuint(ParentProbe.HeightRangeCm.x);
+	PoolCounters[Base + ARC_CBT_PROBE_D_P_HEIGHT_MAXCM] = asuint(ParentProbe.HeightRangeCm.y);
+
+	DeviceMemoryBarrier();
+	PoolCounters[Base + ARC_CBT_PROBE_KEYLAST] = Key;
+}
+
+/**
+ * Three elections, one record each. A is the largest triangle of the frame; B and C are the NEAREST and
+ * FARTHEST leaves that read TOO_COARSE at the subdivision ceiling — the same two leaves whose distances
+ * CBTStats/I already prints as a bare range, so each end of it now comes with the inputs it was reached
+ * from. asuint() orders like the float for every key here: all three quantities are non-negative.
+ */
+void ArcTerrainProbeLeaf(uint Face, uint2 NodeID, uint NodeDepth, int Verdict, FClassifyTerms Terms,
+	FArcTerrainTessProbe Probe)
+{
+	uint Ignored = 0u;
+	if (Probe.bFallback)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_CLIPW_FALLBACK], 1u, Ignored);
+	}
+
+	const uint AreaKey = asuint(Terms.AreaPixels);
+	uint PrevArea = 0u;
+	InterlockedMax(PoolCounters[ARC_CBT_PROBE_A_KEY], AreaKey, PrevArea);
+	if (AreaKey > PrevArea)
+	{
+		ArcTerrainProbeWriteRecord(ARC_CBT_PROBE_A_BASE, AreaKey, Face, NodeID, NodeDepth, Verdict,
+			Terms, Probe);
+	}
+
+	if (NodeDepth < Probe.LeafCapDepth || Verdict != ARC_TESS_TOO_COARSE)
+	{
+		return;
+	}
+
+	InterlockedAdd(PoolCounters[Probe.bFallback
+		? ARC_CBT_COUNTER_CEIL_FALLBACK : ARC_CBT_COUNTER_CEIL_PROJECTED], 1u, Ignored);
+
+	const uint DistKey = asuint(Terms.DistanceCm);
+	uint PrevNear = 0u;
+	InterlockedMin(PoolCounters[ARC_CBT_PROBE_B_KEY], DistKey, PrevNear);
+	if (DistKey < PrevNear)
+	{
+		ArcTerrainProbeWriteRecord(ARC_CBT_PROBE_B_BASE, DistKey, Face, NodeID, NodeDepth, Verdict,
+			Terms, Probe);
+	}
+
+	uint PrevFar = 0u;
+	InterlockedMax(PoolCounters[ARC_CBT_PROBE_C_KEY], DistKey, PrevFar);
+	if (DistKey > PrevFar)
+	{
+		ArcTerrainProbeWriteRecord(ARC_CBT_PROBE_C_BASE, DistKey, Face, NodeID, NodeDepth, Verdict,
+			Terms, Probe);
+	}
+}
+
+/**
+ * The NEAREST leaf whose own verdict is TOO_FINE against a parent reading TOO_COARSE — the population
+ * CBTStats/K counts and the one the merge gate refuses, which no other record can reach: A elects on area
+ * and lands kilometres away by construction, B and C only ever see the ceiling-coarse set. Nearest, not
+ * largest, because the leaves holding density in front of the camera are the ones being asked about.
+ */
+void ArcTerrainProbeFineParentCoarse(uint Face, uint2 NodeID, uint NodeDepth, int Verdict,
+	FClassifyTerms Terms, FArcTerrainTessProbe Probe, int ParentVerdict, FClassifyTerms ParentTerms,
+	FArcTerrainTessProbe ParentProbe)
+{
+	if (Verdict != ARC_TESS_TOO_FINE || ParentVerdict != ARC_TESS_TOO_COARSE)
+	{
+		return;
+	}
+
+	const uint DistKey = asuint(Terms.DistanceCm);
+	uint PrevNear = 0u;
+	InterlockedMin(PoolCounters[ARC_CBT_PROBE_D_KEY], DistKey, PrevNear);
+	if (DistKey < PrevNear)
+	{
+		ArcTerrainProbeWriteRecordD(DistKey, Face, NodeID, NodeDepth, Verdict, Terms, Probe,
+			ParentVerdict, ParentTerms, ParentProbe);
+	}
+}
+
+#endif // ARC_CBT_PROBE_PREDICATE
+
+[numthreads(ARC_CBT_CLASSIFY_THREADS, 1, 1)]
+void ClassifyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	// The frozen heap's root IS the live bisector count; the indirect args only bound the dispatch to
+	// a multiple of the group size.
+	const uint LiveCount = cbt_NodeCount_RO(CBTHeapSnapshot, 0u, Depth);
+	if (DispatchThreadId.x >= LiveCount)
+	{
+		return;
+	}
+	const bool bPoolSaturated =
+		PoolCapacity - LiveCount < arc_SplitSuppressFreeCount(PoolCapacity);
+	// UNCONDITIONAL, unlike every other tally here: with the gate working the split allocator is never
+	// reached, so ARC_CBT_COUNTER_ALLOC_REFUSED goes quiet and this is the only thing left telling the
+	// pool-full warning that the tree is saturated. The gate is dispatch-uniform, so thread 0 speaks for
+	// the whole dispatch and one atomic covers the frame.
+	if (DispatchThreadId.x == 0u && bPoolSaturated)
+	{
+		uint SaturatedIgnored = 0u;
+		InterlockedMax(PoolCounters[ARC_CBT_COUNTER_SPLIT_POOL_FULL], 1u, SaturatedIgnored);
+	}
+
+	const uint Slot = arc_DecodeSlot(CBTHeapSnapshot, Depth, DispatchThreadId.x);
+	const uint2 NodeID = arc_LoadNodeID(BisectorPool, Slot);
+	const uint Face = arc_LoadField(BisectorPool, Slot, ARC_BISECTOR_FACE);
+	const uint NodeDepth = arc_NodeDepth(NodeID);
+
+	// Ahead of every early-out below: the depth histogram describes the tree, not the votes.
+	ArcTerrainTallyLeaf(NodeDepth);
+	ArcTerrainTallyBoundaryLeaf(Slot, Face);
+	ArcTerrainTallyLeafRelations(Slot, NodeID, NodeDepth, Face);
+
+	uint Ignored = 0u;
+
+	const FLEBNode Node = leb_CreateNode(NodeID, (int)NodeDepth);
+	FClassifyTerms Terms;
+	FArcTerrainTessProbe Probe;
+	// A depth-1 root has no parent and merges into nothing, so its cull can only steer its own split.
+	const int Verdict = ClassifyNode(Face, Node, NodeDepth >= 2u, Terms, Probe);
+#if ARC_CBT_PROBE_PREDICATE
+	ArcTerrainProbeLeaf(Face, NodeID, NodeDepth, Verdict, Terms, Probe);
+#endif
+	ArcTerrainTallyVerdict(Verdict);
+	ArcTerrainTallyVisibilityPolicy(Verdict, Probe);
+	ArcTerrainTallyCornerTiers(Probe.bCornerTiersDiffer);
+	ArcTerrainTallyGeometryCapPopulation(NodeDepth, Verdict, Probe);
+	ArcTerrainTallyPredicateTerms(Verdict, NodeDepth, Terms, Probe);
+
+	if (StatsEnabled != 0u && Verdict == ARC_TESS_TOO_COARSE && NodeDepth >= Probe.LeafCapDepth)
+	{
+		ArcTerrainTallyCeilingCoarse(Terms, Probe);
+	}
+
+	if (NodeDepth < Probe.LeafCapDepth && Verdict == ARC_TESS_TOO_COARSE)
+	{
+		if (bPoolSaturated)
+		{
+			// SPLIT outranks MERGE here, so raising it would erase the only votes that can give the pool
+			// a free slot back.
+			return;
+		}
+
+		InterlockedMax(BisectorCommands[Slot], ARC_CMD_SPLIT, Ignored);
+		ArcTerrainTallyCommandEcho(Slot, ARC_CMD_SPLIT);
+#if ARC_CBT_BOUNDED_TOPOLOGY_WORK
+		const uint SplitPriority = ArcTerrainSplitPriority(Terms, Probe);
+		SplitPriorityBySlot[Slot] = SplitPriority;
+		if (StatsEnabled != 0u)
+		{
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_RAW_BUCKET_BASE
+				+ SplitPriority - 1u], 1u, Ignored);
+		}
+		uint SplitIndex = 0u;
+		InterlockedAdd(WorkCounters[0], 1u, SplitIndex);
+		if (SplitIndex < PoolCapacity)
+		{
+			RawSplitRequests[SplitIndex] = Slot;
+			if (StatsEnabled != 0u)
+			{
+				InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_APPENDED], 1u, Ignored);
+			}
+		}
+		else if (StatsEnabled != 0u)
+		{
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_TOPO_SPLIT_OVERFLOW], 1u, Ignored);
+		}
+#endif
+		return;
+	}
+
+	if (Verdict == ARC_TESS_TOO_FINE && NodeDepth >= 2u)
+	{
+		FClassifyTerms ParentTerms;
+		// The probe overload of the SAME call the merge gate already makes: the terms-only overload fills
+		// this struct internally and discards it, so naming it here adds no classification.
+		FArcTerrainTessProbe ParentProbe;
+		// The candidate parent must use the same cull footprint it will receive as a live leaf after the
+		// merge. Only a depth-1 root has no parent footprint of its own.
+		const int ParentVerdict =
+			ClassifyNode(Face, leb_ParentNode(Node), NodeDepth > 2u, ParentTerms, ParentProbe);
+		ArcTerrainTallyParentVerdict(Verdict, ParentVerdict, ParentTerms, NodeDepth);
+#if ARC_CBT_PROBE_PREDICATE
+		ArcTerrainProbeFineParentCoarse(Face, NodeID, NodeDepth, Verdict, Terms, Probe, ParentVerdict,
+			ParentTerms, ParentProbe);
+#endif
+		if (ParentVerdict == ARC_TESS_TOO_FINE)
+		{
+			InterlockedMax(BisectorCommands[Slot], ARC_CMD_MERGE, Ignored);
+			ArcTerrainTallyCommandEcho(Slot, ARC_CMD_MERGE);
+		}
+	}
+}

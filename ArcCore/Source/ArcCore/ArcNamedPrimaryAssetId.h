@@ -156,6 +156,7 @@ public:
 	}
 	bool ExportTextItem(FString& ValueStr, FArcNamedPrimaryAssetId const& DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const;
 	bool ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText);
+	void PostSerialize(const FArchive& Ar);
 	friend inline uint32 GetTypeHash(const FArcNamedPrimaryAssetId& Key)
 	{
 		uint32 Hash = 0;
@@ -173,5 +174,6 @@ struct TStructOpsTypeTraits<FArcNamedPrimaryAssetId> : public TStructOpsTypeTrai
 	{
 		WithExportTextItem = true
 		, WithImportTextItem = true // We have a custom compare operator
+		, WithPostSerialize = true
 	};
 };

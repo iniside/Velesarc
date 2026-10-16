@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "ArcMassMechanics",
+	"Description": "Semi-generic gameplay mechanics layered on ArcMassAbilities",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": true,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcMassMechanics",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcMassMechanicsEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "StateTree", "Enabled": true },
+		{ "Name": "ArcCore", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcMassDamageSystem", "Enabled": true },
+		{ "Name": "DataValidation", "Enabled": true }
+	]
+}

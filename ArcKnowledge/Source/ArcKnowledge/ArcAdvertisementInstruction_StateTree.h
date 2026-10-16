@@ -18,6 +18,6 @@ struct ARCKNOWLEDGE_API FArcAdvertisementInstruction_StateTree : public FArcAdve
 
 	/** The StateTree to run when fulfilling this advertisement. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Instruction",
-		meta = (Schema = "/Script/ArcKnowledge.UArcAdvertisementStateTreeSchema"))
+		meta = (Schema = "/Script/ArcKnowledge.ArcAdvertisementStateTreeSchema"))
 	FStateTreeReference StateTreeReference;
 };

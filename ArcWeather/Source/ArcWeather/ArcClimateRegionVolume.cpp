@@ -25,7 +25,7 @@ void AArcClimateRegionVolume::BeginPlay()
 	}
 
 	const FBox Bounds = BoxComponent->Bounds.GetBox();
-	Weather->SetBaseClimateInBounds(Bounds, BaseClimate);
+	Weather->SetBaseClimateInBounds(Bounds, BaseClimate, HumidityThreshold, FreezeThreshold);
 }
 
 void AArcClimateRegionVolume::EndPlay(const EEndPlayReason::Type EndPlayReason)

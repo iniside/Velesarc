@@ -2,10 +2,12 @@
 
 #include "ArcAreaTrait.h"
 
-#include "ArcMass/ArcMassSmartObjectFragments.h"
-#include "MassEntityFragments.h"
+#include "ArcAreaModule.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
+#include "Mass/EntityFragments.h"
 #include "MassEntityTemplateRegistry.h"
-#include "MassEntityUtils.h"
+#include "Mass/EntityUtils.h"
+#include "MassWorldUtils.h"
 #include "MassStateTreeFragments.h"
 #include "MassStateTreeSubsystem.h"
 #include "MassStateTreeTypes.h"
@@ -14,7 +16,6 @@
 
 void UArcAreaTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext, const UWorld& World) const
 {
-	BuildContext.AddFragment<FArcAreaFragment>();
 	BuildContext.AddTag<FArcAreaTag>();
 	BuildContext.RequireFragment<FTransformFragment>();
 
@@ -25,8 +26,8 @@ void UArcAreaTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext,
 	const FConstSharedStruct ConfigFragment = EntityManager.GetOrCreateConstSharedFragment(Config);
 	BuildContext.AddConstSharedFragment(ConfigFragment);
 
-	// Add smart object ownership fragments when a definition is provided.
-	// UArcSmartObjectAddObserver will create the SmartObject at the entity's transform.
+	// The SmartObject handle created by UArcSmartObjectAddObserver is the area's identity; without a
+	// definition the observers would build a SmartObject from nullptr, so the composition is left out.
 	if (SmartObjectDefinition)
 	{
 		BuildContext.AddFragment<FArcSmartObjectOwnerFragment>();
@@ -64,15 +65,11 @@ void UArcAreaTrait::BuildTemplate(FMassEntityTemplateBuildContext& BuildContext,
 
 bool UArcAreaTrait::ValidateTemplate(const FMassEntityTemplateBuildContext& BuildContext, const UWorld& World, FAdditionalTraitRequirements& OutTraitRequirements) const
 {
-	if (!StateTree)
+	if (!SmartObjectDefinition)
 	{
-		return true;
-	}
-
-	const EProcessorExecutionFlags WorldExecutionFlags = UE::Mass::Utils::DetermineProcessorExecutionFlags(&World);
-	if (!EnumHasAnyFlags(WorldExecutionFlags, EProcessorExecutionFlags::Standalone | EProcessorExecutionFlags::Server))
-	{
-		return true;
+		UE_LOGF(LogArcAreaDiag, Error,"UArcAreaTrait on '%ls': SmartObjectDefinition is not set — an area is identified by its SmartObject handle and cannot be registered without one.",
+			*GetPathName());
+		return false;
 	}
 
 	return true;

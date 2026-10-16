@@ -1,0 +1,15 @@
+{
+  "ItemId": "22367A7B4D7615D0F1CF778867A02E4D",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_Tags",
+      "ItemTags": [
+        "Item.Test.Fixture"
+      ],
+      "AssetTags": [],
+      "GrantedTags": [],
+      "RequiredTags": [],
+      "DenyTags": []
+    }
+  ]
+}

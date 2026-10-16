@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "GameplayTagContainer.h"
 #include "MassStateTreeTypes.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
+#include "Fragments/ArcOwnedTagsFragment.h"
 
 #include "ArcMassEntityTagsCondition.generated.h"
 
@@ -30,7 +30,7 @@ public:
 	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
 	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
 	
-	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
+	TStateTreeExternalDataHandle<FArcOwnedTagsFragment> MassGameplayTagsHandle;
 
 	UPROPERTY(EditAnywhere, Category = Condition)
 	EGameplayContainerMatchType MatchType = EGameplayContainerMatchType::Any;

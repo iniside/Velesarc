@@ -22,142 +22,79 @@
 #include "ArcCraft/Recipe/ArcRecipeIngredient.h"
 
 #include "Items/ArcItemSpec.h"
-#include "Items/ArcItemDefinition.h"
-#include "Items/Fragments/ArcItemFragment_Tags.h"
-#include "ArcCraft/Recipe/ArcRecipeQuality.h"
+#include "Items/ArcItemDefinitionData.h"
+#include "ArcCraft/Rarity/ArcCraftRarity.h"
+#include "ArcCraft/Shared/ArcCraftItemTags.h"
 
 // -------------------------------------------------------------------
 // FArcRecipeIngredient (base)
 // -------------------------------------------------------------------
 
-bool FArcRecipeIngredient::DoesItemSatisfy(
-	const FArcItemSpec& InItemSpec,
-	const UArcQualityTierTable* InTierTable) const
+bool FArcRecipeIngredient::DoesItemSatisfy(const FArcItemSpec& InItemSpec) const
 {
 	return InItemSpec.GetItemDefinitionId().IsValid();
 }
 
-float FArcRecipeIngredient::GetItemQualityMultiplier(
-	const FArcItemSpec& InItemSpec,
-	const UArcQualityTierTable* InTierTable) const
+float FArcRecipeIngredient::GetItemRarityStep(const FArcItemSpec& InItemSpec) const
 {
-	return 1.0f;
+	return ArcCraftRarity::GetRarityStep(InItemSpec);
+}
+
+bool FArcRecipeIngredient::MeetsMinRarity(const FArcItemSpec& InItemSpec) const
+{
+	if (MinRarityStep <= 0.0f)
+	{
+		return true;
+	}
+
+	return ArcCraftRarity::GetRarityStep(InItemSpec) >= MinRarityStep;
 }
 
 // -------------------------------------------------------------------
 // FArcRecipeIngredient_ItemDef
 // -------------------------------------------------------------------
 
-bool FArcRecipeIngredient_ItemDef::DoesItemSatisfy(
-	const FArcItemSpec& InItemSpec,
-	const UArcQualityTierTable* InTierTable) const
+bool FArcRecipeIngredient_ItemDef::DoesItemSatisfy(const FArcItemSpec& InItemSpec) const
 {
 	if (!InItemSpec.GetItemDefinitionId().IsValid())
 	{
 		return false;
 	}
 
-	return InItemSpec.GetItemDefinitionId() == ItemDefinitionId;
-}
-
-float FArcRecipeIngredient_ItemDef::GetItemQualityMultiplier(
-	const FArcItemSpec& InItemSpec,
-	const UArcQualityTierTable* InTierTable) const
-{
-	if (!InTierTable)
+	if (InItemSpec.GetItemDefinitionId() != ItemDefinitionId)
 	{
-		return 1.0f;
+		return false;
 	}
 
-	const UArcItemDefinition* Def = InItemSpec.GetItemDefinition();
-	if (!Def)
+	if (DenyTags.Num() > 0 && ArcCraftItemTags::GetCraftTags(InItemSpec).HasAny(DenyTags))
 	{
-		return 1.0f;
+		return false;
 	}
 
-	const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
-	if (!TagsFragment)
-	{
-		return 1.0f;
-	}
-
-	return InTierTable->EvaluateQuality(TagsFragment->ItemTags);
+	return MeetsMinRarity(InItemSpec);
 }
 
 // -------------------------------------------------------------------
 // FArcRecipeIngredient_Tags
 // -------------------------------------------------------------------
 
-bool FArcRecipeIngredient_Tags::DoesItemSatisfy(
-	const FArcItemSpec& InItemSpec,
-	const UArcQualityTierTable* InTierTable) const
+bool FArcRecipeIngredient_Tags::DoesItemSatisfy(const FArcItemSpec& InItemSpec) const
 {
-	const UArcItemDefinition* Def = InItemSpec.GetItemDefinition();
-	if (!Def)
+	if (InItemSpec.GetItemDefinition() == nullptr)
 	{
 		return false;
 	}
 
-	const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
-	if (!TagsFragment)
-	{
-		return false;
-	}
-
-	const FGameplayTagContainer& ItemTags = TagsFragment->AssetTags;
-	// Check required tags
+	const FGameplayTagContainer ItemTags = ArcCraftItemTags::GetCraftTags(InItemSpec);
 	if (RequiredTags.Num() > 0 && !ItemTags.HasAll(RequiredTags))
 	{
 		return false;
 	}
 
-	// Check deny tags
 	if (DenyTags.Num() > 0 && ItemTags.HasAny(DenyTags))
 	{
 		return false;
 	}
 
-	// Check minimum tier
-	if (MinimumTierTag.IsValid() && InTierTable)
-	{
-		const int32 MinTierValue = InTierTable->GetTierValue(MinimumTierTag);
-		const FGameplayTag BestTag = InTierTable->FindBestTierTag(TagsFragment->ItemTags);
-
-		if (!BestTag.IsValid())
-		{
-			return false;
-		}
-
-		const int32 ItemTierValue = InTierTable->GetTierValue(BestTag);
-		if (ItemTierValue < MinTierValue)
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-float FArcRecipeIngredient_Tags::GetItemQualityMultiplier(
-	const FArcItemSpec& InItemSpec,
-	const UArcQualityTierTable* InTierTable) const
-{
-	if (!InTierTable)
-	{
-		return 1.0f;
-	}
-
-	const UArcItemDefinition* Def = InItemSpec.GetItemDefinition();
-	if (!Def)
-	{
-		return 1.0f;
-	}
-
-	const FArcItemFragment_Tags* TagsFragment = Def->FindFragment<FArcItemFragment_Tags>();
-	if (!TagsFragment)
-	{
-		return 1.0f;
-	}
-
-	return InTierTable->EvaluateQuality(TagsFragment->ItemTags);
+	return MeetsMinRarity(InItemSpec);
 }

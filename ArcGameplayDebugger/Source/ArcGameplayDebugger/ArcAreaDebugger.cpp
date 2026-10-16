@@ -3,18 +3,22 @@
 #include "ArcAreaDebugger.h"
 
 #include "imgui.h"
-#include "DrawDebugHelpers.h"
+#include "ArcAreaDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "ArcAreaSubsystem.h"
 #include "ArcAreaDefinition.h"
 #include "Mass/ArcAreaAssignmentFragments.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityQuery.h"
+#include "Mass/EntityQuery.h"
 #include "MassCommonFragments.h"
-#include "MassExecutionContext.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "SmartObjectSubsystem.h"
 #include "SmartObjectRequestTypes.h"
+#include "ArcKnowledgeSubsystem.h"
+#include "ArcKnowledgeEntry.h"
+#include "Mass/ArcKnowledgeFragments.h"
 
 // ====================================================================
 // Helpers
@@ -37,6 +41,9 @@ namespace
 	static const ImVec4 ImDisabledColor(0.6f, 0.2f, 0.2f, 1.0f);
 	static const ImVec4 ImDimColor(0.5f, 0.5f, 0.5f, 1.0f);
 	static const ImVec4 ImTagColor(0.5f, 0.8f, 1.0f, 1.0f);
+	static const ImVec4 ImKnowledgeColor(0.8f, 0.8f, 0.8f, 1.0f);
+	static const ImVec4 ImAdUnclaimedColor(0.8f, 0.6f, 0.2f, 1.0f);
+	static const ImVec4 ImAdClaimedColor(0.2f, 0.6f, 1.0f, 1.0f);
 
 	const FString SlotStateToString(EArcAreaSlotState State)
 	{
@@ -103,6 +110,17 @@ namespace
 		}
 	}
 
+	FColor SOSlotStateWorldColor(ESmartObjectSlotState State)
+	{
+		switch (State)
+		{
+		case ESmartObjectSlotState::Free:     return VacantColor;
+		case ESmartObjectSlotState::Claimed:  return AssignedColor;
+		case ESmartObjectSlotState::Occupied: return ActiveColor;
+		default:                              return DisabledColor;
+		}
+	}
+
 	const FString TagMergingPolicyToString(ESmartObjectTagMergingPolicy Policy)
 	{
 		switch (Policy)
@@ -123,6 +141,12 @@ namespace
 		default:                                       return TEXT("Unknown");
 		}
 	}
+
+	FString SlotRoleString(const FGameplayTagContainer& ActivityTags)
+	{
+		return ActivityTags.IsEmpty() ? TEXT("(no role)") : ActivityTags.ToStringSimple();
+	}
+
 }
 
 // ====================================================================
@@ -148,6 +172,16 @@ UArcAreaSubsystem* FArcAreaDebugger::GetAreaSubsystem() const
 	return World->GetSubsystem<UArcAreaSubsystem>();
 }
 
+UArcKnowledgeSubsystem* FArcAreaDebugger::GetKnowledgeSubsystem() const
+{
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	return World->GetSubsystem<UArcKnowledgeSubsystem>();
+}
+
 // ====================================================================
 // Lifecycle
 // ====================================================================
@@ -164,16 +198,30 @@ void FArcAreaDebugger::Initialize()
 	bDrawAllAreas = true;
 	bDrawSelectedDetail = true;
 	bDrawLabels = true;
+	SelectedSlotHandle = FSmartObjectSlotHandle();
 	bShowAssignPopup = false;
-	AssignTargetSlotIndex = INDEX_NONE;
+	AssignTargetSlotHandle = FSmartObjectSlotHandle();
+	CachedKnowledgeEntries.Reset();
+	CachedClaimableEntities.Reset();
+	SelectedKnowledgeIndex = INDEX_NONE;
+	KnowledgeOwnerEntity = FMassEntityHandle();
+	bShowClaimPopup = false;
+	ClaimTargetHandle = FArcKnowledgeHandle();
+	ClaimEntityFilterBuf[0] = '\0';
 	RefreshAreaList();
 }
 
 void FArcAreaDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	CachedAreas.Reset();
 	CachedAssignableEntities.Reset();
 	SelectedAreaIndex = INDEX_NONE;
+	SelectedSlotHandle = FSmartObjectSlotHandle();
+	CachedKnowledgeEntries.Reset();
+	CachedClaimableEntities.Reset();
+	SelectedKnowledgeIndex = INDEX_NONE;
+	KnowledgeOwnerEntity = FMassEntityHandle();
 }
 
 // ====================================================================
@@ -190,23 +238,23 @@ void FArcAreaDebugger::RefreshAreaList()
 		return;
 	}
 
-	const TMap<FArcAreaHandle, FArcAreaData>& AllAreas = Sub->GetAllAreas();
+	const TMap<FSmartObjectHandle, FArcAreaData>& AllAreas = Sub->GetAllAreas();
 
-	for (const auto& Pair : AllAreas)
+	for (const TPair<FSmartObjectHandle, FArcAreaData>& Pair : AllAreas)
 	{
 		const FArcAreaData& Data = Pair.Value;
 
 		FAreaListEntry& Entry = CachedAreas.AddDefaulted_GetRef();
-		Entry.Handle = Data.Handle;
+		Entry.Handle = Pair.Key;
 		Entry.DisplayName = Data.DisplayName.ToString();
 		Entry.Location = Data.Location;
 		Entry.AreaTags = Data.AreaTags;
 		Entry.TotalSlots = Data.Slots.Num();
 		Entry.bHasSmartObject = Data.SmartObjectHandle.IsValid();
 
-		for (const FArcAreaSlotRuntime& Slot : Data.Slots)
+		for (const TPair<FSmartObjectSlotHandle, FArcAreaSlotRuntime>& SlotPair : Data.Slots)
 		{
-			switch (Slot.State)
+			switch (SlotPair.Value.State)
 			{
 			case EArcAreaSlotState::Vacant:   Entry.VacantSlots++;   break;
 			case EArcAreaSlotState::Assigned: Entry.AssignedSlots++; break;
@@ -217,8 +265,8 @@ void FArcAreaDebugger::RefreshAreaList()
 
 		// Build label
 		FString NamePart = Entry.DisplayName.IsEmpty() ? TEXT("Unnamed") : Entry.DisplayName;
-		Entry.Label = FString::Printf(TEXT("H%u [%s] (%d slots)"),
-			Data.Handle.GetValue(), *NamePart, Entry.TotalSlots);
+		Entry.Label = FString::Printf(TEXT("%s [%s] (%d slots)"),
+			*LexToString(Entry.Handle), *NamePart, Entry.TotalSlots);
 	}
 }
 
@@ -246,7 +294,6 @@ void FArcAreaDebugger::RefreshAssignableEntities()
 	FMassEntityQuery Query(EntityManager.AsShared());
 	Query.AddRequirement<FArcAreaAssignmentFragment>(EMassFragmentAccess::ReadOnly);
 	Query.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
-	Query.AddConstSharedRequirement<FArcAreaAssignmentConfigFragment>();
 	Query.AddTagRequirement<FArcAreaAssignmentTag>(EMassFragmentPresence::All);
 
 	Query.ForEachEntityChunk(ExecContext,
@@ -255,7 +302,6 @@ void FArcAreaDebugger::RefreshAssignableEntities()
 			const int32 NumEntities = Context.GetNumEntities();
 			const auto AssignmentList = Context.GetFragmentView<FArcAreaAssignmentFragment>();
 			const auto TransformList = Context.GetFragmentView<FTransformFragment>();
-			const FArcAreaAssignmentConfigFragment& Config = Context.GetConstSharedFragment<FArcAreaAssignmentConfigFragment>();
 
 			for (int32 i = 0; i < NumEntities; ++i)
 			{
@@ -266,29 +312,123 @@ void FArcAreaDebugger::RefreshAssignableEntities()
 				FAssignableEntityEntry& Entry = CachedAssignableEntities.AddDefaulted_GetRef();
 				Entry.Entity = Entity;
 				Entry.Location = Transform.GetTransform().GetLocation();
-				Entry.EligibleRoles = Config.EligibleRoles;
 				Entry.bCurrentlyAssigned = Assignment.IsAssigned();
-				Entry.CurrentAreaHandle = Assignment.SlotHandle.AreaHandle;
-				Entry.CurrentSlotIndex = Assignment.SlotHandle.SlotIndex;
+				Entry.CurrentSlotHandle = Assignment.SlotHandle;
 
-				// Build label
-				FString RolesStr;
-				if (Config.EligibleRoles.Num() > 0)
-				{
-					RolesStr = Config.EligibleRoles.First().ToString();
-					if (Config.EligibleRoles.Num() > 1)
-					{
-						RolesStr += FString::Printf(TEXT(" +%d"), Config.EligibleRoles.Num() - 1);
-					}
-				}
-				else
-				{
-					RolesStr = TEXT("(any)");
-				}
-
-				Entry.Label = FString::Printf(TEXT("E%d [%s]%s"),
-					Entity.Index, *RolesStr,
+				Entry.Label = FString::Printf(TEXT("E%d%s"),
+					Entity.Index,
 					Entry.bCurrentlyAssigned ? TEXT(" *assigned*") : TEXT(""));
+			}
+		});
+}
+
+void FArcAreaDebugger::RefreshKnowledgeEntries()
+{
+	// Preserve selection across refresh
+	FArcKnowledgeHandle PreviousSelectedHandle;
+	if (SelectedKnowledgeIndex != INDEX_NONE && CachedKnowledgeEntries.IsValidIndex(SelectedKnowledgeIndex))
+	{
+		PreviousSelectedHandle = CachedKnowledgeEntries[SelectedKnowledgeIndex].Handle;
+	}
+
+	CachedKnowledgeEntries.Reset();
+	SelectedKnowledgeIndex = INDEX_NONE;
+
+	if (!KnowledgeOwnerEntity.IsValid())
+	{
+		return;
+	}
+
+	UArcKnowledgeSubsystem* KnowledgeSub = GetKnowledgeSubsystem();
+	if (!KnowledgeSub)
+	{
+		return;
+	}
+
+	TArray<FArcKnowledgeHandle> Handles;
+	KnowledgeSub->GetKnowledgeBySource(KnowledgeOwnerEntity, Handles);
+
+	for (const FArcKnowledgeHandle& Handle : Handles)
+	{
+		const FArcKnowledgeEntry* Entry = KnowledgeSub->GetKnowledgeEntry(Handle);
+		if (!Entry)
+		{
+			continue;
+		}
+
+		FKnowledgeEntryCache& Cached = CachedKnowledgeEntries.AddDefaulted_GetRef();
+		Cached.Handle = Entry->Handle;
+		Cached.Tags = Entry->Tags;
+		Cached.Location = Entry->Location;
+		Cached.Relevance = Entry->Relevance;
+		Cached.Timestamp = Entry->Timestamp;
+		Cached.Lifetime = Entry->Lifetime;
+		Cached.bIsAdvertisement = Entry->Instruction.IsValid();
+		Cached.bClaimed = Entry->bClaimed;
+		Cached.ClaimedBy = Entry->ClaimedBy;
+		Cached.PayloadTypeName = Entry->Payload.IsValid()
+			? Entry->Payload.GetScriptStruct()->GetName()
+			: FString();
+	}
+
+	// Restore selection by handle
+	if (PreviousSelectedHandle.IsValid())
+	{
+		for (int32 i = 0; i < CachedKnowledgeEntries.Num(); ++i)
+		{
+			if (CachedKnowledgeEntries[i].Handle == PreviousSelectedHandle)
+			{
+				SelectedKnowledgeIndex = i;
+				break;
+			}
+		}
+	}
+}
+
+void FArcAreaDebugger::RefreshClaimableEntities()
+{
+	CachedClaimableEntities.Reset();
+
+	UWorld* World = GetDebugWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
+	if (!MassSubsystem)
+	{
+		return;
+	}
+
+	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
+
+	FMassExecutionContext ExecContext(EntityManager);
+	FMassEntityQuery Query(EntityManager.AsShared());
+	Query.AddRequirement<FArcKnowledgeMemberFragment>(EMassFragmentAccess::ReadOnly);
+	Query.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
+	Query.AddTagRequirement<FArcKnowledgeMemberTag>(EMassFragmentPresence::All);
+
+	Query.ForEachEntityChunk(ExecContext,
+		[this](FMassExecutionContext& Context)
+		{
+			const int32 NumEntities = Context.GetNumEntities();
+			const TArrayView<const FArcKnowledgeMemberFragment> MemberList = Context.GetFragmentView<FArcKnowledgeMemberFragment>();
+			const TArrayView<const FTransformFragment> TransformList = Context.GetFragmentView<FTransformFragment>();
+
+			for (int32 i = 0; i < NumEntities; ++i)
+			{
+				const FMassEntityHandle Entity = Context.GetEntity(i);
+				const FArcKnowledgeMemberFragment& Member = MemberList[i];
+				const FTransformFragment& Transform = TransformList[i];
+
+				FClaimableEntityEntry& CEntry = CachedClaimableEntities.AddDefaulted_GetRef();
+				CEntry.Entity = Entity;
+				CEntry.Location = Transform.GetTransform().GetLocation();
+				CEntry.Role = Member.Role;
+
+				FString RoleStr = Member.Role.IsValid() ? Member.Role.ToString() : TEXT("(none)");
+				CEntry.Label = FString::Printf(TEXT("E%d [%s]"), Entity.Index, *RoleStr);
 			}
 		});
 }
@@ -303,6 +443,7 @@ void FArcAreaDebugger::Draw()
 	if (!ImGui::Begin("Area Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -327,6 +468,7 @@ void FArcAreaDebugger::Draw()
 			{
 				LastRefreshTime = CurrentTime;
 				RefreshAreaList();
+				RefreshKnowledgeEntries();
 			}
 		}
 	}
@@ -360,6 +502,7 @@ void FArcAreaDebugger::Draw()
 
 	// Popups
 	DrawAssignEntityPopup();
+	DrawClaimEntityPopup();
 }
 
 // ====================================================================
@@ -427,6 +570,10 @@ void FArcAreaDebugger::DrawAreaListPanel()
 			ImGui::PushStyleColor(ImGuiCol_Text, Color);
 			if (ImGui::Selectable(TCHAR_TO_ANSI(*Entry.Label), bSelected))
 			{
+				if (SelectedAreaIndex != i)
+				{
+					SelectedSlotHandle = FSmartObjectSlotHandle();
+				}
 				SelectedAreaIndex = i;
 			}
 			ImGui::PopStyleColor();
@@ -435,7 +582,7 @@ void FArcAreaDebugger::DrawAreaListPanel()
 			if (ImGui::IsItemHovered())
 			{
 				ImGui::BeginTooltip();
-				ImGui::Text("Handle: %u", Entry.Handle.GetValue());
+				ImGui::Text("Handle: %s", TCHAR_TO_ANSI(*LexToString(Entry.Handle)));
 				ImGui::Text("Name: %s", TCHAR_TO_ANSI(*Entry.DisplayName));
 				ImGui::Text("Location: (%.0f, %.0f, %.0f)", Entry.Location.X, Entry.Location.Y, Entry.Location.Z);
 				ImGui::Text("Tags: %s", TCHAR_TO_ANSI(*Entry.AreaTags.ToStringSimple()));
@@ -481,12 +628,19 @@ void FArcAreaDebugger::DrawAreaDetailPanel()
 
 	if (!AreaData)
 	{
-		ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Area no longer exists (H%u)", ListEntry.Handle.GetValue());
+		ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Area no longer exists (%s)", TCHAR_TO_ANSI(*LexToString(ListEntry.Handle)));
 		return;
 	}
 
+	// Track knowledge owner — refresh if the owner entity changed
+	if (AreaData->OwnerEntity != KnowledgeOwnerEntity)
+	{
+		KnowledgeOwnerEntity = AreaData->OwnerEntity;
+		RefreshKnowledgeEntries();
+	}
+
 	// Header
-	ImGui::TextColored(ImSelectedColor, "Area H%u", AreaData->Handle.GetValue());
+	ImGui::TextColored(ImSelectedColor, "Area %s", TCHAR_TO_ANSI(*LexToString(AreaData->SmartObjectHandle)));
 	ImGui::SameLine();
 	if (!AreaData->DisplayName.IsEmpty())
 	{
@@ -518,9 +672,9 @@ void FArcAreaDebugger::DrawAreaDetailPanel()
 		if (Total > 0.f)
 		{
 			int32 Vacant = 0, Assigned = 0, Active = 0, Disabled = 0;
-			for (const FArcAreaSlotRuntime& Slot : AreaData->Slots)
+			for (const TPair<FSmartObjectSlotHandle, FArcAreaSlotRuntime>& SlotPair : AreaData->Slots)
 			{
-				switch (Slot.State)
+				switch (SlotPair.Value.State)
 				{
 				case EArcAreaSlotState::Vacant:   Vacant++;   break;
 				case EArcAreaSlotState::Assigned: Assigned++; break;
@@ -576,8 +730,14 @@ void FArcAreaDebugger::DrawAreaDetailPanel()
 	// Slot table
 	if (ImGui::CollapsingHeader("Slots", ImGuiTreeNodeFlags_DefaultOpen))
 	{
-		DrawSlotTable(AreaData->Handle);
+		DrawSlotTable(ListEntry.Handle);
 	}
+
+	ImGui::Spacing();
+	ImGui::Separator();
+
+	// Knowledge
+	DrawKnowledgeSection(AreaData->OwnerEntity);
 
 	ImGui::Spacing();
 	ImGui::Separator();
@@ -754,83 +914,13 @@ void FArcAreaDebugger::DrawSmartObjectSection(const FArcAreaData& AreaData)
 
 		ImGui::TreePop();
 	}
-
-	ImGui::Spacing();
-
-	// --- Area Slot ↔ SO Slot matching preview ---
-	if (ImGui::TreeNodeEx("Tag Matching Preview", ImGuiTreeNodeFlags_DefaultOpen))
-	{
-		ImGui::TextDisabled("Shows which SO slots each area slot would match via tag-based resolution");
-		ImGui::Spacing();
-
-		for (int32 AreaSlotIdx = 0; AreaSlotIdx < AreaData.SlotDefinitions.Num(); ++AreaSlotIdx)
-		{
-			const FArcAreaSlotDefinition& SlotDef = AreaData.SlotDefinitions[AreaSlotIdx];
-			FString ReqStr = SlotDef.RequirementQuery.GetDescription();
-			FString NodeLabel = FString::Printf(TEXT("Area Slot %d%s"), AreaSlotIdx,
-				ReqStr.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" — %s"), *ReqStr));
-
-			ImGui::PushID(AreaSlotIdx);
-
-			if (ImGui::TreeNode(TCHAR_TO_ANSI(*NodeLabel)))
-			{
-				// Show all SO slots with their activity tags and state
-				// (Tag matching now happens at assignment time using entity tags, not slot definition)
-				ImGui::TextDisabled("SO slot matching uses entity tags at assignment time");
-				ImGui::Spacing();
-
-				int32 TaggedCount = 0;
-				int32 UntaggedCount = 0;
-				for (int32 s = 0; s < AllSOSlots.Num(); ++s)
-				{
-					FGameplayTagContainer ActivityTags;
-					SOSubsystem->ReadSlotData(AllSOSlots[s], [&ActivityTags](FConstSmartObjectSlotView SlotView)
-					{
-						SlotView.GetActivityTags(ActivityTags);
-					});
-
-					ESmartObjectSlotState SOState = SOSubsystem->GetSlotState(AllSOSlots[s]);
-
-					if (!ActivityTags.IsEmpty())
-					{
-						ImGui::BulletText("SO Slot %d", s);
-						ImGui::SameLine();
-						ImGui::TextColored(SOSlotStateColor(SOState), "[%s]", TCHAR_TO_ANSI(*SOSlotStateToString(SOState)));
-						ImGui::SameLine();
-						ImGui::TextDisabled("Tags: %s", TCHAR_TO_ANSI(*ActivityTags.ToStringSimple()));
-						TaggedCount++;
-					}
-					else
-					{
-						UntaggedCount++;
-					}
-				}
-
-				if (UntaggedCount > 0)
-				{
-					ImGui::TextColored(ImAssignedColor, "%d untagged SO slot(s) (fallback)", UntaggedCount);
-				}
-
-				if (TaggedCount == 0 && UntaggedCount == 0)
-				{
-					ImGui::TextColored(ImDisabledColor, "No SO slots found");
-				}
-
-				ImGui::TreePop();
-			}
-
-			ImGui::PopID();
-		}
-
-		ImGui::TreePop();
-	}
 }
 
 // ====================================================================
 // Slot Table
 // ====================================================================
 
-void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
+void FArcAreaDebugger::DrawSlotTable(const FSmartObjectHandle& AreaHandle)
 {
 	UArcAreaSubsystem* Sub = GetAreaSubsystem();
 	if (!Sub)
@@ -853,23 +943,32 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 	if (ImGui::BeginTable("##SlotTable", 4,
 		ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
 	{
-		ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+		ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthStretch);
 		ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 80.0f);
 		ImGui::TableSetupColumn("Assigned Entity", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 		ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 180.0f);
 		ImGui::TableHeadersRow();
 
-		for (int32 i = 0; i < AreaData->Slots.Num(); ++i)
+		for (const TPair<FSmartObjectSlotHandle, FArcAreaSlotRuntime>& SlotPair : AreaData->Slots)
 		{
-			const FArcAreaSlotRuntime& SlotRuntime = AreaData->Slots[i];
-			const FArcAreaSlotDefinition& SlotDef = AreaData->SlotDefinitions[i];
+			const FSmartObjectSlotHandle& SlotHandle = SlotPair.Key;
+			const FArcAreaSlotRuntime& SlotRuntime = SlotPair.Value;
 
-			ImGui::PushID(i);
+			ImGui::PushID(TCHAR_TO_ANSI(*LexToString(SlotHandle)));
 			ImGui::TableNextRow();
 
-			// Index
+			// Selectable spanning all columns for row selection
 			ImGui::TableSetColumnIndex(0);
-			ImGui::Text("%d", i);
+			const bool bSlotSelected = (SelectedSlotHandle == SlotHandle);
+			if (ImGui::Selectable("##SlotRow", bSlotSelected,
+				ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+			{
+				SelectedSlotHandle = bSlotSelected ? FSmartObjectSlotHandle() : SlotHandle;
+			}
+			ImGui::SameLine();
+
+			// Role
+			ImGui::Text("%s", TCHAR_TO_ANSI(*SlotRoleString(SlotRuntime.ActivityTags)));
 
 			// State
 			ImGui::TableSetColumnIndex(1);
@@ -894,13 +993,13 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 				if (ImGui::SmallButton("Assign"))
 				{
 					bShowAssignPopup = true;
-					AssignTargetSlotIndex = i;
+					AssignTargetSlotHandle = SlotHandle;
 					RefreshAssignableEntities();
 				}
 				ImGui::SameLine();
 				if (ImGui::SmallButton("Disable"))
 				{
-					Sub->DisableSlot(FArcAreaSlotHandle(AreaHandle, i));
+					Sub->DisableSlot(SlotHandle);
 					RefreshAreaList();
 				}
 			}
@@ -908,7 +1007,7 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 			{
 				if (ImGui::SmallButton("Unassign"))
 				{
-					Sub->UnassignFromSlot(FArcAreaSlotHandle(AreaHandle, i));
+					Sub->UnassignFromSlot(SlotHandle);
 					RefreshAreaList();
 				}
 			}
@@ -916,7 +1015,7 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 			{
 				if (ImGui::SmallButton("Enable"))
 				{
-					Sub->EnableSlot(FArcAreaSlotHandle(AreaHandle, i));
+					Sub->EnableSlot(SlotHandle);
 					RefreshAreaList();
 				}
 			}
@@ -927,52 +1026,19 @@ void FArcAreaDebugger::DrawSlotTable(const FArcAreaHandle& AreaHandle)
 		ImGui::EndTable();
 	}
 
-	// Slot definition details (collapsible per-slot)
+	// Slot details (collapsible per-slot)
 	ImGui::Spacing();
-	if (ImGui::TreeNode("Slot Definitions"))
+	if (ImGui::TreeNode("Slot Details"))
 	{
-		for (int32 i = 0; i < AreaData->SlotDefinitions.Num(); ++i)
+		for (const TPair<FSmartObjectSlotHandle, FArcAreaSlotRuntime>& SlotPair : AreaData->Slots)
 		{
-			FString SlotLabel = FString::Printf(TEXT("Slot %d"), i);
-			if (ImGui::TreeNode(TCHAR_TO_ANSI(*SlotLabel)))
+			ImGui::PushID(TCHAR_TO_ANSI(*LexToString(SlotPair.Key)));
+			if (ImGui::TreeNode(TCHAR_TO_ANSI(*SlotRoleString(SlotPair.Value.ActivityTags))))
 			{
-				DrawSlotDefinitionDetails(AreaData->SlotDefinitions[i], i);
+				DrawSlotRuntimeDetails(SlotPair.Value);
 				ImGui::TreePop();
 			}
-		}
-		ImGui::TreePop();
-	}
-}
-
-// ====================================================================
-// Slot Definition Details
-// ====================================================================
-
-void FArcAreaDebugger::DrawSlotDefinitionDetails(const FArcAreaSlotDefinition& SlotDef, int32 SlotIndex)
-{
-	// Requirement query
-	FString ReqStr = SlotDef.RequirementQuery.GetDescription();
-	if (ReqStr.IsEmpty())
-	{
-		ImGui::TextDisabled("Requirements: None");
-	}
-	else
-	{
-		ImGui::Text("Requirements: %s", TCHAR_TO_ANSI(*ReqStr));
-	}
-
-	// Vacancy config
-	if (ImGui::TreeNode("Vacancy Config"))
-	{
-		ImGui::Text("Auto-Post: %s", SlotDef.VacancyConfig.bAutoPostVacancy ? "Yes" : "No");
-		ImGui::Text("Relevance: %.2f", SlotDef.VacancyConfig.VacancyRelevance);
-		if (!SlotDef.VacancyConfig.VacancyTags.IsEmpty())
-		{
-			ImGui::Text("Custom Tags: %s", TCHAR_TO_ANSI(*SlotDef.VacancyConfig.VacancyTags.ToStringSimple()));
-		}
-		else
-		{
-			ImGui::TextDisabled("Tags: Auto-constructed from area tags");
+			ImGui::PopID();
 		}
 		ImGui::TreePop();
 	}
@@ -982,9 +1048,31 @@ void FArcAreaDebugger::DrawSlotDefinitionDetails(const FArcAreaSlotDefinition& S
 // Slot Runtime Details
 // ====================================================================
 
-void FArcAreaDebugger::DrawSlotRuntimeDetails(const FArcAreaSlotRuntime& SlotRuntime, int32 SlotIndex, const FArcAreaHandle& AreaHandle)
+void FArcAreaDebugger::DrawSlotRuntimeDetails(const FArcAreaSlotRuntime& SlotRuntime)
 {
 	ImGui::TextColored(SlotStateColor(SlotRuntime.State), "State: %s", TCHAR_TO_ANSI(*SlotStateToString(SlotRuntime.State)));
+
+	if (!SlotRuntime.ActivityTags.IsEmpty())
+	{
+		ImGui::Text("Role: %s", TCHAR_TO_ANSI(*SlotRuntime.ActivityTags.ToStringSimple()));
+	}
+	else
+	{
+		ImGui::TextDisabled("Role: (none)");
+	}
+
+	if (!SlotRuntime.ObjectUserTagFilter.IsEmpty())
+	{
+		ImGui::Text("Object User Tag Filter: %s", TCHAR_TO_ANSI(*SlotRuntime.ObjectUserTagFilter.GetDescription()));
+	}
+	if (!SlotRuntime.SlotUserTagFilter.IsEmpty())
+	{
+		ImGui::Text("Slot User Tag Filter: %s", TCHAR_TO_ANSI(*SlotRuntime.SlotUserTagFilter.GetDescription()));
+	}
+	if (SlotRuntime.ObjectUserTagFilter.IsEmpty() && SlotRuntime.SlotUserTagFilter.IsEmpty())
+	{
+		ImGui::TextDisabled("Requirements: None");
+	}
 
 	if (SlotRuntime.AssignedEntity.IsValid())
 	{
@@ -1039,8 +1127,8 @@ void FArcAreaDebugger::DrawAssignEntityPopup()
 		UArcAreaSubsystem* Sub = GetAreaSubsystem();
 		const FAreaListEntry& ListEntry = CachedAreas[SelectedAreaIndex];
 
-		ImGui::Text("Area: %s (H%u)", TCHAR_TO_ANSI(*ListEntry.DisplayName), ListEntry.Handle.GetValue());
-		ImGui::Text("Target Slot: %d", AssignTargetSlotIndex);
+		ImGui::Text("Area: %s (%s)", TCHAR_TO_ANSI(*ListEntry.DisplayName), TCHAR_TO_ANSI(*LexToString(ListEntry.Handle)));
+		ImGui::Text("Target Slot: %s", TCHAR_TO_ANSI(*LexToString(AssignTargetSlotHandle)));
 		ImGui::Separator();
 
 		ImGui::InputText("Search Entities", EntityFilterBuf, IM_ARRAYSIZE(EntityFilterBuf));
@@ -1079,11 +1167,10 @@ void FArcAreaDebugger::DrawAssignEntityPopup()
 					ImGui::BeginTooltip();
 					ImGui::Text("Entity: E%d (SN:%d)", EntEntry.Entity.Index, EntEntry.Entity.SerialNumber);
 					ImGui::Text("Location: (%.0f, %.0f, %.0f)", EntEntry.Location.X, EntEntry.Location.Y, EntEntry.Location.Z);
-					ImGui::Text("Eligible Roles: %s", TCHAR_TO_ANSI(*EntEntry.EligibleRoles.ToStringSimple()));
 					if (EntEntry.bCurrentlyAssigned)
 					{
-						ImGui::TextColored(ImAssignedColor, "Currently assigned to H%u slot %d",
-							EntEntry.CurrentAreaHandle.GetValue(), EntEntry.CurrentSlotIndex);
+						ImGui::TextColored(ImAssignedColor, "Currently assigned to slot %s",
+							TCHAR_TO_ANSI(*LexToString(EntEntry.CurrentSlotHandle)));
 					}
 					ImGui::EndTooltip();
 				}
@@ -1093,7 +1180,7 @@ void FArcAreaDebugger::DrawAssignEntityPopup()
 				{
 					if (Sub)
 					{
-						Sub->AssignToSlot(FArcAreaSlotHandle(ListEntry.Handle, AssignTargetSlotIndex), EntEntry.Entity);
+						Sub->AssignToSlot(AssignTargetSlotHandle, EntEntry.Entity);
 						RefreshAreaList();
 						RefreshAssignableEntities();
 					}
@@ -1116,6 +1203,359 @@ void FArcAreaDebugger::DrawAssignEntityPopup()
 }
 
 // ====================================================================
+// Knowledge Section
+// ====================================================================
+
+void FArcAreaDebugger::DrawKnowledgeSection(const FMassEntityHandle& OwnerEntity)
+{
+	if (!OwnerEntity.IsValid())
+	{
+		return;
+	}
+
+	FString HeaderLabel = FString::Printf(TEXT("Knowledge (%d)"), CachedKnowledgeEntries.Num());
+	if (!ImGui::CollapsingHeader(TCHAR_TO_ANSI(*HeaderLabel)))
+	{
+		return;
+	}
+
+	if (CachedKnowledgeEntries.Num() == 0)
+	{
+		ImGui::TextDisabled("No knowledge entries for this entity");
+		return;
+	}
+
+	// Summary bar
+	int32 TotalAds = 0;
+	int32 UnclaimedAds = 0;
+	int32 ClaimedAds = 0;
+	for (const FKnowledgeEntryCache& Entry : CachedKnowledgeEntries)
+	{
+		if (Entry.bIsAdvertisement)
+		{
+			TotalAds++;
+			if (Entry.bClaimed)
+			{
+				ClaimedAds++;
+			}
+			else
+			{
+				UnclaimedAds++;
+			}
+		}
+	}
+
+	ImGui::Text("%d entries | %d ads (", CachedKnowledgeEntries.Num(), TotalAds);
+	ImGui::SameLine(0, 0);
+	ImGui::TextColored(ImAdUnclaimedColor, "%d unclaimed", UnclaimedAds);
+	ImGui::SameLine(0, 0);
+	ImGui::Text(", ");
+	ImGui::SameLine(0, 0);
+	ImGui::TextColored(ImAdClaimedColor, "%d claimed", ClaimedAds);
+	ImGui::SameLine(0, 0);
+	ImGui::Text(")");
+
+	ImGui::Spacing();
+
+	// Side-by-side layout: table on left, detail on right
+	float KnowledgePanelWidth = ImGui::GetContentRegionAvail().x;
+	float KnowledgeTableWidth = KnowledgePanelWidth * 0.60f;
+
+	// Left: knowledge entries table
+	if (ImGui::BeginChild("KnowledgeTablePanel", ImVec2(KnowledgeTableWidth, 250), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeX))
+	{
+		if (ImGui::BeginTable("KnowledgeTable", 6,
+			ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+			ImVec2(0, 0)))
+		{
+			ImGui::TableSetupColumn("Handle",    ImGuiTableColumnFlags_WidthFixed,   60.0f);
+			ImGui::TableSetupColumn("Tags",      ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Relevance", ImGuiTableColumnFlags_WidthFixed,   70.0f);
+			ImGui::TableSetupColumn("Age",       ImGuiTableColumnFlags_WidthFixed,   60.0f);
+			ImGui::TableSetupColumn("Type",      ImGuiTableColumnFlags_WidthFixed,  100.0f);
+			ImGui::TableSetupColumn("Status",    ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableHeadersRow();
+
+			UWorld* World = GetDebugWorld();
+			double CurrentTime = World ? static_cast<double>(World->GetTimeSeconds()) : 0.0;
+
+			for (int32 i = 0; i < CachedKnowledgeEntries.Num(); ++i)
+			{
+				const FKnowledgeEntryCache& Entry = CachedKnowledgeEntries[i];
+
+				ImVec4 RowColor;
+				if (!Entry.bIsAdvertisement)
+				{
+					RowColor = ImKnowledgeColor;
+				}
+				else if (Entry.bClaimed)
+				{
+					RowColor = ImAdClaimedColor;
+				}
+				else
+				{
+					RowColor = ImAdUnclaimedColor;
+				}
+
+				ImGui::PushID(i);
+				ImGui::TableNextRow();
+				ImGui::PushStyleColor(ImGuiCol_Text, RowColor);
+
+				// Handle column — selectable spanning all columns
+				ImGui::TableSetColumnIndex(0);
+				FString HandleStr = FString::Printf(TEXT("H%u"), Entry.Handle.GetValue());
+				bool bSelected = (SelectedKnowledgeIndex == i);
+				if (ImGui::Selectable(TCHAR_TO_ANSI(*HandleStr), bSelected,
+					ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+				{
+					SelectedKnowledgeIndex = (SelectedKnowledgeIndex == i) ? INDEX_NONE : i;
+				}
+
+				// Tags
+				ImGui::TableSetColumnIndex(1);
+				FString TagsStr = Entry.Tags.ToStringSimple();
+				if (TagsStr.Len() > 40)
+				{
+					TagsStr = TagsStr.Left(37) + TEXT("...");
+				}
+				ImGui::TextUnformatted(TCHAR_TO_ANSI(*TagsStr));
+
+				// Relevance
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("%.2f", Entry.Relevance);
+
+				// Age
+				ImGui::TableSetColumnIndex(3);
+				double AgeSecs = CurrentTime - Entry.Timestamp;
+				if (AgeSecs < 60.0)
+				{
+					ImGui::Text("%.1fs", static_cast<float>(AgeSecs));
+				}
+				else
+				{
+					ImGui::Text("%.1fm", static_cast<float>(AgeSecs / 60.0));
+				}
+
+				// Type
+				ImGui::TableSetColumnIndex(4);
+				ImGui::TextUnformatted(Entry.bIsAdvertisement ? "Advertisement" : "Knowledge");
+
+				// Status
+				ImGui::TableSetColumnIndex(5);
+				if (Entry.bIsAdvertisement)
+				{
+					if (Entry.bClaimed)
+					{
+						ImGui::Text("Claimed E%d", Entry.ClaimedBy.Index);
+					}
+					else
+					{
+						ImGui::TextUnformatted("Unclaimed");
+					}
+				}
+				else
+				{
+					ImGui::TextUnformatted("-");
+				}
+
+				ImGui::PopStyleColor();
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+	}
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	// Right: selected entry detail
+	if (ImGui::BeginChild("KnowledgeDetailPanel", ImVec2(0, 250), ImGuiChildFlags_Borders))
+	{
+		if (SelectedKnowledgeIndex != INDEX_NONE && CachedKnowledgeEntries.IsValidIndex(SelectedKnowledgeIndex))
+		{
+			const FKnowledgeEntryCache& Sel = CachedKnowledgeEntries[SelectedKnowledgeIndex];
+
+			FString DetailHeader = FString::Printf(TEXT("Entry H%u"), Sel.Handle.GetValue());
+			ImGui::TextColored(ImSelectedColor, "%s", TCHAR_TO_ANSI(*DetailHeader));
+			ImGui::Separator();
+
+			// Full tags
+			ImGui::Text("Tags:");
+			for (const FGameplayTag& Tag : Sel.Tags)
+			{
+				ImGui::BulletText("%s", TCHAR_TO_ANSI(*Tag.ToString()));
+			}
+			if (Sel.Tags.IsEmpty())
+			{
+				ImGui::BulletText("(none)");
+			}
+
+			ImGui::Spacing();
+
+			// Location
+			ImGui::Text("Location: (%.1f, %.1f, %.1f)", Sel.Location.X, Sel.Location.Y, Sel.Location.Z);
+
+			// Relevance
+			ImGui::Text("Relevance: %.2f", Sel.Relevance);
+
+			// Payload type
+			if (!Sel.PayloadTypeName.IsEmpty())
+			{
+				ImGui::Text("Payload: %s", TCHAR_TO_ANSI(*Sel.PayloadTypeName));
+			}
+			else
+			{
+				ImGui::TextDisabled("Payload: (none)");
+			}
+
+			// Lifetime remaining
+			if (Sel.Lifetime > 0.0f)
+			{
+				UWorld* World = GetDebugWorld();
+				double CurrentTime = World ? static_cast<double>(World->GetTimeSeconds()) : 0.0;
+				double Elapsed = CurrentTime - Sel.Timestamp;
+				float Remaining = Sel.Lifetime - static_cast<float>(Elapsed);
+				ImGui::Text("Lifetime: %.1fs remaining", Remaining);
+			}
+			else
+			{
+				ImGui::TextDisabled("Lifetime: Unlimited");
+			}
+
+			// Type
+			ImGui::Spacing();
+			if (Sel.bIsAdvertisement)
+			{
+				if (Sel.bClaimed)
+				{
+					ImGui::TextColored(ImAdClaimedColor, "Claimed by E%d", Sel.ClaimedBy.Index);
+				}
+				else
+				{
+					ImGui::TextColored(ImAdUnclaimedColor, "Unclaimed Advertisement");
+				}
+			}
+
+			// Assign entity button for unclaimed ads
+			if (Sel.bIsAdvertisement && !Sel.bClaimed)
+			{
+				ImGui::Spacing();
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.6f, 0.1f, 1.0f));
+				if (ImGui::Button("Assign Entity"))
+				{
+					ClaimTargetHandle = Sel.Handle;
+					bShowClaimPopup = true;
+					ClaimEntityFilterBuf[0] = '\0';
+					RefreshClaimableEntities();
+				}
+				ImGui::PopStyleColor();
+			}
+		}
+		else
+		{
+			ImGui::TextDisabled("Select an entry to view details");
+		}
+	}
+	ImGui::EndChild();
+}
+
+// ====================================================================
+// Claim Entity Popup
+// ====================================================================
+
+void FArcAreaDebugger::DrawClaimEntityPopup()
+{
+	if (!bShowClaimPopup)
+	{
+		return;
+	}
+
+	if (!ClaimTargetHandle.IsValid())
+	{
+		bShowClaimPopup = false;
+		return;
+	}
+
+	ImGui::OpenPopup("Claim Advertisement");
+
+	if (ImGui::BeginPopupModal("Claim Advertisement", &bShowClaimPopup, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		UArcKnowledgeSubsystem* KnowledgeSub = GetKnowledgeSubsystem();
+
+		ImGui::Text("Advertisement: H%u", ClaimTargetHandle.GetValue());
+		ImGui::Separator();
+
+		ImGui::InputText("Search Entities", ClaimEntityFilterBuf, IM_ARRAYSIZE(ClaimEntityFilterBuf));
+
+		if (ImGui::SmallButton("Refresh Entities"))
+		{
+			RefreshClaimableEntities();
+		}
+
+		ImGui::Spacing();
+		ImGui::Text("Claimable Entities (%d):", CachedClaimableEntities.Num());
+
+		FString EntFilter = FString(ANSI_TO_TCHAR(ClaimEntityFilterBuf)).ToLower();
+
+		if (ImGui::BeginChild("ClaimEntityList", ImVec2(500, 300), ImGuiChildFlags_Borders))
+		{
+			for (int32 i = 0; i < CachedClaimableEntities.Num(); ++i)
+			{
+				const FClaimableEntityEntry& EntEntry = CachedClaimableEntities[i];
+
+				if (!EntFilter.IsEmpty() && !EntEntry.Label.ToLower().Contains(EntFilter))
+				{
+					continue;
+				}
+
+				ImGui::PushID(i);
+
+				ImGui::PushStyleColor(ImGuiCol_Text, ImKnowledgeColor);
+				ImGui::Text("%s", TCHAR_TO_ANSI(*EntEntry.Label));
+				ImGui::PopStyleColor();
+
+				// Tooltip
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::BeginTooltip();
+					ImGui::Text("Entity: E%d (SN:%d)", EntEntry.Entity.Index, EntEntry.Entity.SerialNumber);
+					ImGui::Text("Location: (%.0f, %.0f, %.0f)", EntEntry.Location.X, EntEntry.Location.Y, EntEntry.Location.Z);
+					ImGui::Text("Role: %s", EntEntry.Role.IsValid() ? TCHAR_TO_ANSI(*EntEntry.Role.ToString()) : "(none)");
+					ImGui::EndTooltip();
+				}
+
+				ImGui::SameLine(420);
+				if (ImGui::SmallButton("Claim"))
+				{
+					if (KnowledgeSub)
+					{
+						bool bSuccess = KnowledgeSub->ClaimAdvertisement(ClaimTargetHandle, EntEntry.Entity);
+						if (bSuccess)
+						{
+							bShowClaimPopup = false;
+							RefreshKnowledgeEntries();
+						}
+					}
+				}
+
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+
+		ImGui::Spacing();
+		if (ImGui::Button("Cancel", ImVec2(120, 0)))
+		{
+			bShowClaimPopup = false;
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+// ====================================================================
 // World Visualization
 // ====================================================================
 
@@ -1124,18 +1564,30 @@ void FArcAreaDebugger::DrawWorldVisualization()
 	UWorld* World = GetDebugWorld();
 	if (!World)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	UArcAreaSubsystem* Sub = GetAreaSubsystem();
 	if (!Sub)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->ClearShapes();
+		}
 		return;
 	}
 
 	constexpr float ZOffset = 100.f;
 
-	// Draw all areas as markers
+	FArcAreaDebugDrawData Data;
+	Data.ZOffset = ZOffset;
+	Data.bDrawLabels = bDrawLabels;
+
+	// Collect all non-selected area markers
 	if (bDrawAllAreas)
 	{
 		for (int32 i = 0; i < CachedAreas.Num(); ++i)
@@ -1148,80 +1600,153 @@ void FArcAreaDebugger::DrawWorldVisualization()
 				continue; // Selected drawn separately
 			}
 
-			DrawDebugPoint(World, Entry.Location + FVector(0, 0, ZOffset), 12.f, AreaColor, false, -1.f);
-
-			if (bDrawLabels)
-			{
-				FString ShortLabel = FString::Printf(TEXT("H%u %s"), Entry.Handle.GetValue(),
-					*Entry.DisplayName);
-				DrawDebugString(World, Entry.Location + FVector(0, 0, ZOffset + 30.f), ShortLabel, nullptr, AreaColor, -1.f, true, 0.8f);
-			}
+			FArcAreaDebugDrawEntry& Marker = Data.AreaMarkers.AddDefaulted_GetRef();
+			Marker.Location = Entry.Location;
+			Marker.Color = AreaColor;
+			Marker.Label = FString::Printf(TEXT("%s %s"), *LexToString(Entry.Handle), *Entry.DisplayName);
 		}
 	}
 
-	// Draw selected area with full detail
+	// Collect selected area with full detail
 	if (bDrawSelectedDetail && SelectedAreaIndex != INDEX_NONE && CachedAreas.IsValidIndex(SelectedAreaIndex))
 	{
 		const FAreaListEntry& SelEntry = CachedAreas[SelectedAreaIndex];
 		const FArcAreaData* AreaData = Sub->GetAreaData(SelEntry.Handle);
-		if (!AreaData)
+		if (AreaData)
 		{
-			return;
-		}
+			Data.bHasSelectedArea = true;
+			Data.SelectedLocation = AreaData->Location;
+			Data.SelectedColor = SelectedAreaColor;
+			Data.SelectedLabel = FString::Printf(TEXT("%s %s\n%d slots"),
+				*LexToString(AreaData->SmartObjectHandle), *AreaData->DisplayName.ToString(), AreaData->Slots.Num());
 
-		const FVector& Loc = AreaData->Location;
+			USmartObjectSubsystem* SOSub = World->GetSubsystem<USmartObjectSubsystem>();
+			UMassEntitySubsystem* MassSub = World->GetSubsystem<UMassEntitySubsystem>();
+			FMassEntityManager* Manager = MassSub ? &MassSub->GetMutableEntityManager() : nullptr;
 
-		// Sphere marker
-		DrawDebugSphere(World, Loc + FVector(0, 0, ZOffset), 50.f, 16, SelectedAreaColor, false, -1.f, 0, 2.f);
-
-		// Label
-		FString DetailLabel = FString::Printf(TEXT("H%u %s\n%d slots"),
-			AreaData->Handle.GetValue(), *AreaData->DisplayName.ToString(), AreaData->Slots.Num());
-		DrawDebugString(World, Loc + FVector(0, 0, ZOffset + 70.f), DetailLabel, nullptr, FColor::White, -1.f, true, 1.0f);
-
-		// Vertical line
-		DrawDebugLine(World, Loc, Loc + FVector(0, 0, ZOffset + 50.f), SelectedAreaColor, false, -1.f, 0, 2.f);
-
-		// Draw lines to assigned entities
-		UMassEntitySubsystem* MassSub = World->GetSubsystem<UMassEntitySubsystem>();
-		if (MassSub)
-		{
-			FMassEntityManager& Manager = MassSub->GetMutableEntityManager();
-
-			for (int32 SlotIdx = 0; SlotIdx < AreaData->Slots.Num(); ++SlotIdx)
+			// --- SO slots: always drawn at their world-space transforms ---
+			if (SOSub && AreaData->SmartObjectHandle.IsValid())
 			{
-				const FArcAreaSlotRuntime& SlotRuntime = AreaData->Slots[SlotIdx];
-				if (!SlotRuntime.AssignedEntity.IsValid())
+				TArray<FSmartObjectSlotHandle> SOSlots;
+				SOSub->GetAllSlots(AreaData->SmartObjectHandle, SOSlots);
+
+				for (int32 i = 0; i < SOSlots.Num(); ++i)
 				{
-					continue;
-				}
+					TOptional<FTransform> SlotTransform = SOSub->GetSlotTransform(SOSlots[i]);
+					if (!SlotTransform.IsSet())
+					{
+						continue;
+					}
 
-				if (!Manager.IsEntityValid(SlotRuntime.AssignedEntity))
+					const ESmartObjectSlotState SOState = SOSub->GetSlotState(SOSlots[i]);
+
+					FArcAreaDebugSlotMarker& Marker = Data.SlotMarkers.AddDefaulted_GetRef();
+					Marker.SlotLocation = SlotTransform.GetValue().GetLocation();
+					Marker.SlotColor = SOSlotStateWorldColor(SOState);
+					Marker.SlotLabel = FString::Printf(TEXT("SO%d [%s]"), i, *SOSlotStateToString(SOState));
+					Marker.bSelected = (SelectedSlotHandle == SOSlots[i]);
+				}
+			}
+
+			// --- Area slots: fan-out around area center ---
+			{
+				constexpr float FanRadius = 80.f;
+				const FVector Center = AreaData->Location;
+				const int32 NumSlots = AreaData->Slots.Num();
+
+				int32 SlotIdx = 0;
+				for (const TPair<FSmartObjectSlotHandle, FArcAreaSlotRuntime>& SlotPair : AreaData->Slots)
 				{
-					continue;
+					const FSmartObjectSlotHandle& SlotHandle = SlotPair.Key;
+					const FArcAreaSlotRuntime& SlotRuntime = SlotPair.Value;
+
+					FVector SlotPos;
+					if (NumSlots == 1)
+					{
+						SlotPos = Center + FVector(FanRadius, 0.f, 0.f);
+					}
+					else
+					{
+						const float Angle = (2.f * UE_PI * SlotIdx) / NumSlots;
+						SlotPos = Center + FVector(FMath::Cos(Angle) * FanRadius, FMath::Sin(Angle) * FanRadius, 0.f);
+					}
+
+					FArcAreaDebugSlotMarker& Marker = Data.SlotMarkers.AddDefaulted_GetRef();
+					Marker.SlotLocation = SlotPos;
+					Marker.SlotColor = SlotStateWorldColor(SlotRuntime.State);
+					Marker.bSelected = (SelectedSlotHandle == SlotHandle);
+
+					if (SlotRuntime.AssignedEntity.IsValid())
+					{
+						Marker.SlotLabel = FString::Printf(TEXT("%s E%d [%s]"),
+							*SlotRoleString(SlotRuntime.ActivityTags), SlotRuntime.AssignedEntity.Index, *SlotStateToString(SlotRuntime.State));
+					}
+					else
+					{
+						Marker.SlotLabel = SlotRoleString(SlotRuntime.ActivityTags);
+					}
+
+					if (SlotRuntime.AssignedEntity.IsValid() && Manager && Manager->IsEntityValid(SlotRuntime.AssignedEntity))
+					{
+						const FTransformFragment* Transform = Manager->GetFragmentDataPtr<FTransformFragment>(SlotRuntime.AssignedEntity);
+						if (Transform)
+						{
+							Marker.bHasEntity = true;
+							Marker.EntityLocation = Transform->GetTransform().GetLocation();
+							Marker.LineColor = SlotStateWorldColor(SlotRuntime.State);
+						}
+					}
+
+					++SlotIdx;
 				}
-
-				const FTransformFragment* Transform = Manager.GetFragmentDataPtr<FTransformFragment>(SlotRuntime.AssignedEntity);
-				if (!Transform)
-				{
-					continue;
-				}
-
-				FVector EntityLoc = Transform->GetTransform().GetLocation();
-				FColor LineColor = SlotStateWorldColor(SlotRuntime.State);
-
-				// Line from area to entity
-				DrawDebugLine(World, Loc + FVector(0, 0, ZOffset * 0.5f), EntityLoc + FVector(0, 0, 50.f),
-					LineColor, false, -1.f, 0, 1.5f);
-
-				// Entity marker
-				DrawDebugSphere(World, EntityLoc + FVector(0, 0, 50.f), 20.f, 8, LineColor, false, -1.f, 0, 1.5f);
-
-				// Entity label
-				FString EntityLabel = FString::Printf(TEXT("E%d [S%d %s]"),
-					SlotRuntime.AssignedEntity.Index, SlotIdx, *SlotStateToString(SlotRuntime.State));
-				DrawDebugString(World, EntityLoc + FVector(0, 0, 80.f), EntityLabel, nullptr, LineColor, -1.f, true, 0.7f);
 			}
 		}
 	}
+
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
+	{
+		DrawComponent->UpdateAreaData(Data);
+	}
+}
+
+// ====================================================================
+// AreaDebuggerDraw
+// ====================================================================
+
+void FArcAreaDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("AreaDebuggerDraw"));
+#endif
+
+	UArcAreaDebuggerDrawComponent* NewComponent = NewObject<UArcAreaDebuggerDrawComponent>(NewActor, UArcAreaDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcAreaDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }

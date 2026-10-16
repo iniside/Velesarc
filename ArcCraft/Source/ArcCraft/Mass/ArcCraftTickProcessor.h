@@ -21,10 +21,12 @@
 
 #pragma once
 
-#include "MassProcessor.h"
-#include "MassEntityQuery.h"
+#include "Mass/Processor.h"
+#include "Mass/EntityQuery.h"
 
 #include "ArcCraftTickProcessor.generated.h"
+
+class UMassSignalSubsystem;
 
 /**
  * Processor that ticks crafting queue entries on entities with FArcCraftAutoTickTag.

@@ -1,0 +1,367 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+// ArcTerrainComposite.usf — per-cell stamp composite pixel shaders (height + weight tiles).
+// C++ side: Source/ArcTerrain/Composite/ArcTerrainCompositeShaders.{h,cpp}.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/TextureSampling.ush"
+#include "/Engine/Private/DoubleFloat.ush"
+
+#if defined (__INTELLISENSE__)
+//#define COMPOSITE_HEIGHT 1
+//#define MIN_MAX_BLEND 1
+//#define COMPOSITE_WEIGHT 1
+//#define COMPOSITE_NORMALIZE 1
+//#define MAX_WEIGHT_ARRAYS 6
+//#define ARC_TERRAIN_BASE_CHANNEL 0
+#endif
+
+// ----------------------------------------------------------------------------------
+// Common per-stamp parameters (FArcTerrainCompositeStampParameters):
+
+int2     InTexelOrigin;         // GLOBAL index (exact int2) of this tile's texel (0,0) — the APRON texel: CellKey * QuadsPerCell - 1
+float    InTexelToLocal;        // CellSize / QuadsPerCell (= CellSize / (TileResolution - 3)): global texel index -> local cm.
+                                // Apron convention: the tile has a 1-texel border (TileResolution = QuadsPerCell + 3) whose
+                                // texels reuse the neighbour's global indices, so spacing stays CellSize/QuadsPerCell.
+float4x4 InLocalToPatch;        // terrain-local -> stamp patch-local, row-vector convention (mul(v, M)).
+                                // ONLY the linear block is applied in the shader — the translation row is folded
+                                // into InStampOriginTexel (DF stamp rebase below).
+float2   InStampOriginTexelHigh;// DF (hi, lo) split of the stamp's patch origin in TEXEL-INDEX units at THIS pass's
+float2   InStampOriginTexelLow; // density: (-L^-1 * T) / InTexelToLocal, where L/T = InLocalToPatch's upper-left
+                                // 2x2 linear block / xy translation, computed CPU-side in double (FillStampParameters).
+float2   InCoverageXY;          // stamp footprint extent (cm, patch-local)
+float2   InUVScale;             // half-texel map from footprint UV [0,1] to texel centers
+float2   InUVBias;
+float4   InChannelDot;          // source channel selector
+float    InEncodingScale;       // value = (dot(texel, ChannelDot) - Zero) * Scale * ValueScale + ValueBias
+float    InZeroInEncoding;
+float    InValueScale;
+float    InValueBias;
+float    InEdgeFalloffBand;     // rect edge falloff band (cm); 0 = hard edge
+float    InEdgeSharpness;       // rect edge falloff pow exponent
+float    InCornerRadius;        // rect corner rounding radius (cm); 0 = square corners
+uint     InCircleMask;          // optional circle / inscribed-ellipse mask toggle
+float2   InCircleCenterOffset;  // circle center offset (cm, patch-local)
+float    InCircleRadius;        // explicit circle radius (cm); 0 = inscribed ellipse
+float    InCircleFalloffBand;   // circle falloff band (cm); 0 = hard circle edge
+Texture2D<float4> InSourceTexture;
+SamplerState      InSourceSampler;
+float4            InSourceTextureSize; // xy = source texel dims, zw = 1/dims (bicubic height reconstruction)
+Texture2D<float4> InMaskTexture;       // GWhiteTexture when unused.
+uint              InUseMaskField;
+
+#if COMPOSITE_HEIGHT
+uint  InHeightOutputMode;       // 0 = premultiplied (value*mask, mask); 1 = (absolute value, mask)
+uint  InMinMaxMode;             // 0 = SmoothMin, 1 = SmoothMax
+float InMinMaxSoftness;
+#if MIN_MAX_BLEND
+Texture2D<float> InExistingHeight;
+#endif
+#endif
+
+#if COMPOSITE_WEIGHT
+uint   InWeightPassMode;        // 0 = mask-multiply, 1 = premultiplied add
+float4 InTargetChannelMask;     // exactly one component set to 1
+#endif
+
+// ----------------------------------------------------------------------------------
+// Falloff masks. StampEdgeMask: rounded-box SDF, smoothstep composed over the pow ramp.
+
+float StampEdgeMask(float2 PatchPos, float2 Half)
+{
+	float R = clamp(InCornerRadius, 0.0, min(Half.x, Half.y));
+	float2 Q = abs(PatchPos) - Half + R;
+	float Signed = min(max(Q.x, Q.y), 0.0) + length(max(Q, 0.0)) - R;
+	float DistToEdge = -Signed;
+	if (InEdgeFalloffBand <= 0.0)
+	{
+		return (DistToEdge >= 0.0) ? 1.0 : 0.0;
+	}
+	float T = saturate(DistToEdge / InEdgeFalloffBand);
+	// Smoothstep is COMPOSED over the pow ramp, not substituted for it: zero tangent at the inner edge
+	// for every InEdgeSharpness (pow alone has slope InEdgeSharpness at T == 1), while InEdgeSharpness
+	// still shapes the ramp. The outer edge lands flat only above 0.5 — below it pow's own slope wins.
+	float U = pow(T, max(InEdgeSharpness, 1e-4));
+	return smoothstep(0.0, 1.0, U);
+}
+
+float StampCircleMask(float2 PatchPos, float2 Half)
+{
+	float2 Local = PatchPos - InCircleCenterOffset;
+
+	float DistToEdge;
+	if (InCircleRadius > 0.0)
+	{
+		DistToEdge = InCircleRadius - length(Local);
+	}
+	else
+	{
+		float RadiusX = max(Half.x, 1e-4);
+		float RadiusY = max(Half.y, 1e-4);
+		float2 Norm = float2(Local.x / RadiusX, Local.y / RadiusY);
+		float NormDist = length(Norm);
+		if (NormDist <= 1e-4)
+		{
+			return 1.0; // at the center
+		}
+		DistToEdge = (length(Local) / NormDist) * (1.0 - NormDist);
+	}
+
+	if (InCircleFalloffBand <= 0.0)
+	{
+		return (DistToEdge >= 0.0) ? 1.0 : 0.0;
+	}
+	float T = saturate(DistToEdge / InCircleFalloffBand);
+	return smoothstep(0.0, 1.0, T);
+}
+
+// ----------------------------------------------------------------------------------
+// SmoothMin/SmoothMax — exact ports of GeometryCore TMathUtil (FMathd::SmoothMin/SmoothMax,
+// MathUtil.h):
+
+float ArcSmoothMin(float A, float B, float BlendExtent)
+{
+	if (BlendExtent == 0.0)
+	{
+		return min(A, B);
+	}
+	float H = (BlendExtent + B - A) * 0.5;
+	return min(B - H * clamp(H / BlendExtent, 0.0, 1.0), A);
+}
+
+float ArcSmoothMax(float A, float B, float BlendExtent)
+{
+	if (BlendExtent == 0.0)
+	{
+		return max(A, B);
+	}
+	float H = (BlendExtent + A - B) * 0.5;
+	return max(B + H * clamp(H / BlendExtent, 0.0, 1.0), A);
+}
+
+// ----------------------------------------------------------------------------------
+// Shared stamp evaluation: texel -> terrain-local -> patch-local; footprint test; source sample;
+// encoding decode; falloff mask. Returns false outside the stamp footprint.
+//
+// Source reconstruction differs per target:
+//  - HEIGHT: bicubic Catmull-Rom (engine Texture2DSampleBicubic, TextureSampling.ush — the 5-bilinear-
+//    tap approximation; needs a BILINEAR sampler). Bilinear reconstruction is C0 but not C1 — its
+//    central difference is piecewise-CONSTANT per source texel, which the VF's and the Nanite
+//    builder's gradient normals both render as flat facets. Catmull-Rom is C1 and interpolating, so
+//    the composited tile itself is gradient-smooth and BOTH consumers get smooth normals.
+//    The kernel reaches +-2 source texels; AM_Clamp turns out-of-range bilinear taps into
+//    edge-texel replication (flat extension) — interpolation stays well-defined at source borders,
+//    and the stamp's own footprint cutoff/falloff bounds any border contribution.
+//  - WEIGHT: bilinear, unchanged (hardware clamp sampler over the half-texel map =
+//    TSampledScalarField2 BilinearSampleClamped). Weights are never differentiated (C0 suffices),
+//    the RGBA8 data would pick up Catmull-Rom under/overshoot at sharp edges, and the Step 9 CPU
+//    parity formula keys on exactly the bilinear semantic.
+
+bool ComputeStamp(float4 SvPosition, out float OutValue, out float OutMask)
+{
+	OutValue = 0.0;
+	OutMask = 0.0;
+
+	// GLOBAL texel addressing for shared-edge bit-identity, canonicalized on the invariant INTEGER
+	// index (infinite-plane plan Step 2). Derivation of the index: SV_Position carries half-integer
+	// pixel centers (i + 0.5, j + 0.5), so the ORIGINAL mapping InTexelOrigin + (SvPosition.xy - 0.5)
+	// equals InTexelOrigin + (i, j) EXACTLY, and floor(SvPosition.xy) == (i, j) == SvPosition.xy - 0.5
+	// — the -0.5 is fully absorbed by the floor; there is NO residual half-texel shift. Forming the
+	// sum in INTEGER keeps it exact and cell-invariant arbitrarily far from origin: cell k's border
+	// texel and cell k+1's texel 0 differ in BOTH operands by QuadsPerCell, but the sum is the same
+	// integer, where the old float sum stopped being exact past 2^24.
+	int2 GlobalIndex = InTexelOrigin + int2(floor(SvPosition.xy));
+
+	// ONE deterministic int -> DF conversion of that canonical integer: High = round-to-nearest
+	// float (integer-valued, <= 0.5 ulp off), Low = the exact small integer remainder. NEVER DFAdd
+	// two per-cell float pieces instead — two different (hi, lo) decompositions of the same real
+	// value are not bit-identical under DFAdd, which would silently reopen a (smaller) seam crack.
+	float2 IndexHigh = float2(GlobalIndex);
+	float2 IndexLow = float2(GlobalIndex - int2(IndexHigh));
+	FDFVector2 GlobalTexel = MakeDFVector2(IndexHigh, IndexLow);
+
+	// Rebase against the stamp in DF, demote SMALL: InStampOriginTexel is the terrain-local point
+	// that maps to patch-local origin, in texel-index units, so RelTexel is small (a texel only
+	// composites stamps it overlaps) and the demoted float2 is float-exact regardless of distance
+	// from origin. This replaces the old large-minus-large float cancellation (large terrain-local
+	// LocalXY rebased through InLocalToPatch's translation row; ~128 cm ULP at 1.6e9 cm).
+	FDFVector2 StampOriginTexel = MakeDFVector2(InStampOriginTexelHigh, InStampOriginTexelLow);
+	float2 RelTexel = DFDemote(DFSubtract(GlobalTexel, StampOriginTexel));
+	float2 PatchOffset = RelTexel * InTexelToLocal;
+	// Apply the LINEAR block of InLocalToPatch only (w = 0 drops the translation row — it is folded
+	// into InStampOriginTexel). PatchPos lands in the IDENTICAL patch frame as before, so the
+	// footprint test, UV map and falloff masks below are unchanged. z is unused downstream.
+	float3 PatchPos = float3(mul(float4(PatchOffset, 0.0, 0.0), InLocalToPatch).xy, 0.0);
+
+	float2 Half = InCoverageXY * 0.5;
+	if (any(abs(PatchPos.xy) > Half))
+	{
+		return false; // outside the stamp footprint
+	}
+
+	float2 FootprintUV = PatchPos.xy / InCoverageXY + 0.5;
+	float2 SampleUV = FootprintUV * InUVScale + InUVBias;
+#if COMPOSITE_HEIGHT
+	float4 Texel = Texture2DSampleBicubic(InSourceTexture, InSourceSampler, SampleUV,
+		InSourceTextureSize.xy, InSourceTextureSize.zw);
+#else
+	float4 Texel = InSourceTexture.SampleLevel(InSourceSampler, SampleUV, 0);
+#endif
+
+	// Encoding decode happens HERE, not at upload: cached texels are raw channel values.
+	OutValue = (dot(Texel, InChannelDot) - InZeroInEncoding) * InEncodingScale * InValueScale + InValueBias;
+
+	float Mask = StampEdgeMask(PatchPos.xy, Half);
+	if (InCircleMask != 0 && Mask > 0.0)
+	{
+		Mask *= StampCircleMask(PatchPos.xy, Half);
+	}
+	if (InUseMaskField != 0)
+	{
+		Mask *= saturate(InMaskTexture.SampleLevel(InSourceSampler, SampleUV, 0).x);
+		if (Mask <= 0.0)
+		{
+			return false;
+		}
+	}
+	OutMask = Mask;
+	return true;
+}
+
+// ----------------------------------------------------------------------------------
+// Height composite (R32f tile):
+
+#if COMPOSITE_HEIGHT
+void CompositeHeightPS(
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+#if MIN_MAX_BLEND
+	// Ping-pong path: Lerp(Existing, SmoothMin/Max(Existing, Target, Softness), Mask), full-tile
+	// write — outside the footprint the previous tile state passes through unchanged.
+	float Existing = InExistingHeight.Load(int3(int2(SvPosition.xy), 0));
+
+	float Value;
+	float Mask;
+	if (!ComputeStamp(SvPosition, Value, Mask) || Mask <= 0.0)
+	{
+		OutColor = float4(Existing, 0.0, 0.0, 1.0);
+		return;
+	}
+
+	float Blended = (InMinMaxMode == 0)
+		? ArcSmoothMin(Existing, Value, InMinMaxSoftness)
+		: ArcSmoothMax(Existing, Value, InMinMaxSoftness);
+	OutColor = float4(lerp(Existing, Blended, Mask), 0.0, 0.0, 1.0);
+#else
+	// Hardware-blend path. Outside the footprint: clip keeps the destination.
+	float Value;
+	float Mask;
+	if (!ComputeStamp(SvPosition, Value, Mask) || Mask <= 0.0)
+	{
+		clip(-1.0);
+	}
+
+	if (InHeightOutputMode == 0)
+	{
+		// Additive (Target = signed DELTA): Dst += Value * Mask under BF_One / BF_One —
+		// literal `Existing + Target*Alpha` (BlendHeight parity, no Lerp cancellation drift).
+		OutColor = float4(Value * Mask, 0.0, 0.0, Mask);
+	}
+	else
+	{
+		// AlphaBlend (Target = ABSOLUTE): lerp(Dst, Value, Mask) under BF_SourceAlpha /
+		// BF_InverseSourceAlpha.
+		OutColor = float4(Value, 0.0, 0.0, Mask);
+	}
+#endif // MIN_MAX_BLEND
+}
+#endif // COMPOSITE_HEIGHT
+
+// ----------------------------------------------------------------------------------
+// Weight composite (RGBA8 tile, one terrain channel per pass pair):
+// lerp(Existing, saturate(Value), Mask) — the value saturates BEFORE the lerp (NOT
+// saturate(lerp(E, V, M)); e.g. E=0, M=0.5, V=2 yields 0.5, not 1.0). The Step 9 CPU parity
+// reference must use exactly this formula. Split into two hardware-blend passes so any single
+// channel (including the tile's alpha channel) blends independently of its siblings:
+
+#if COMPOSITE_WEIGHT
+void CompositeWeightPS(
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	float Value;
+	float Mask;
+	if (!ComputeStamp(SvPosition, Value, Mask) || Mask <= 0.0)
+	{
+		clip(-1.0); // outside the footprint: keep prior content
+	}
+
+	if (InWeightPassMode == 0)
+	{
+		// Pass 0 under BF_Zero / BF_InverseSourceColor (+InverseSourceAlpha on A):
+		// Dst_ch *= (1 - Mask) on the target channel; other channels output 0 -> Dst * 1.
+		OutColor = InTargetChannelMask * Mask;
+	}
+	else
+	{
+		// Pass 1 under BF_One / BF_One: Dst_ch += saturate(Value) * Mask.
+		OutColor = InTargetChannelMask * (saturate(Value) * Mask);
+	}
+}
+#endif // COMPOSITE_WEIGHT
+
+// ----------------------------------------------------------------------------------
+
+#if COMPOSITE_NORMALIZE
+
+#if MAX_WEIGHT_ARRAYS != 6
+#error MAX_WEIGHT_ARRAYS must match ARC_FOREACH_WEIGHT_ARRAY and FArcTerrainNormalizeWeightsPS::MaxWeightArrays.
+#endif
+
+#define ARC_FOREACH_WEIGHT_ARRAY(op) op(0) op(1) op(2) op(3) op(4) op(5)
+
+uint InArrayIndex;
+uint InNumArrays;
+uint InPresentMask;
+
+#define ARC_DECLARE_SCRATCH(n) Texture2D<float4> InScratch_##n;
+ARC_FOREACH_WEIGHT_ARRAY(ARC_DECLARE_SCRATCH)
+#undef ARC_DECLARE_SCRATCH
+
+void NormalizeWeightsPS(
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	int3 LoadPos = int3(int2(SvPosition.xy), 0);
+	float SumOthers = 0.0;
+	float4 Src = 0.0;
+
+#define ARC_ACCUMULATE_SCRATCH(n) \
+	if ((uint)n < InNumArrays && (InPresentMask & (1u << (uint)n)) != 0u) \
+	{ \
+		float4 V = InScratch_##n.Load(LoadPos); \
+		if ((uint)n == InArrayIndex) \
+		{ \
+			Src = V; \
+		} \
+		UNROLL for (uint c = 0; c < 4; ++c) \
+		{ \
+			if ((uint)n != (ARC_TERRAIN_BASE_CHANNEL / 4) || c != (ARC_TERRAIN_BASE_CHANNEL % 4)) \
+			{ \
+				SumOthers += V[c]; \
+			} \
+		} \
+	}
+	ARC_FOREACH_WEIGHT_ARRAY(ARC_ACCUMULATE_SCRATCH)
+#undef ARC_ACCUMULATE_SCRATCH
+
+	float Base = saturate(1.0 - SumOthers);
+	float Total = max(SumOthers, 1.0);
+
+	UNROLL for (uint c = 0; c < 4; ++c)
+	{
+		OutColor[c] = (InArrayIndex == (ARC_TERRAIN_BASE_CHANNEL / 4) && c == (ARC_TERRAIN_BASE_CHANNEL % 4))
+			? (Base / Total) : (Src[c] / Total);
+	}
+}
+#endif // COMPOSITE_NORMALIZE

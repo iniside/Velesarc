@@ -42,7 +42,7 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly
 		, Category = "Arc Core"
-		, meta = (Categories = "GameplayCue"))
+		, meta = (Categories = "ArcCue"))
 	FGameplayTag CueTag;
 
 public:

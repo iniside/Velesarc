@@ -3,15 +3,25 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
-#include "MassEntityManager.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/EntityManager.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Components/InstancedSkinnedMeshComponent.h"
+#include "InstanceDataTypes.h"
+#include "MassEntityTemplate.h"
 #include "ArcMobileVisualization.generated.h"
 
 class UStaticMesh;
 class UMaterialInterface;
+class USkinnedAsset;
+class UTransformProviderData;
+class UInstancedSkinnedMeshComponent;
+class USkeletalMeshComponent;
+class FChaosUserDefinedEntity;
+struct FChaosUserEntityAppend;
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -21,7 +31,7 @@ UENUM(BlueprintType)
 enum class EArcMobileVisLOD : uint8
 {
 	Actor			UMETA(DisplayName = "Actor"),
-	StaticMesh		UMETA(DisplayName = "Static Mesh"),
+	InstancedMesh	UMETA(DisplayName = "Instanced Mesh"),
 	None			UMETA(DisplayName = "None")
 };
 
@@ -83,6 +93,15 @@ struct ARCMASS_API FArcMobileVisRepFragment : public FMassFragment
 
 	/** Last known world position, used for cell-change detection. */
 	FVector LastPosition = FVector::ZeroVector;
+
+	/** True when the mobile vis system has requested a physics body for this entity. */
+	bool bHasPhysicsBody = false;
+
+	/** ISKM instance ID when represented as an instanced skinned mesh. */
+	FPrimitiveInstanceId ISKMInstanceId;
+
+	/** Animation index for ISKM representation. */
+	int32 AnimationIndex = 0;
 };
 
 template<>
@@ -114,6 +133,15 @@ struct ARCMASS_API FArcMobileVisConfigFragment : public FMassConstSharedFragment
 
 	UPROPERTY(EditAnywhere, Category = "MobileVisualization")
 	bool bCastShadows = false;
+
+	UPROPERTY(EditAnywhere, Category = "MobileVisualization")
+	bool bUseSkinnedMesh = false;
+
+	UPROPERTY(EditAnywhere, Category = "MobileVisualization", meta = (EditCondition = "bUseSkinnedMesh"))
+	TObjectPtr<USkinnedAsset> SkinnedAsset = nullptr;
+
+	UPROPERTY(EditAnywhere, Category = "MobileVisualization", meta = (EditCondition = "bUseSkinnedMesh"))
+	TObjectPtr<UTransformProviderData> TransformProvider = nullptr;
 };
 
 template<>
@@ -123,6 +151,16 @@ struct TMassFragmentTraits<FArcMobileVisConfigFragment> final
 	{
 		AuthorAcceptsItsNotTriviallyCopyable = true
 	};
+};
+
+/** Shared template ID so processors can look up ObjectFragmentInitializers at actor spawn time. */
+USTRUCT()
+struct ARCMASS_API FArcMobileVisTemplateIDFragment : public FMassConstSharedFragment
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FMassEntityTemplateID TemplateID;
 };
 
 /** Shared distance thresholds per entity type -- controls LOD transition radii. */
@@ -146,6 +184,10 @@ struct ARCMASS_API FArcMobileVisDistanceConfigFragment : public FMassConstShared
 	/** Policy determining when entity cell assignments are re-evaluated. */
 	UPROPERTY(EditAnywhere, Category = "MobileVisualization")
 	EArcMobileVisCellUpdatePolicy CellUpdatePolicy = EArcMobileVisCellUpdatePolicy::DistanceThreshold;
+
+	/** World-unit radius within which entities get a physics body for trace resolution. Independent of visual LOD radii. */
+	UPROPERTY(EditAnywhere, Category = "MobileVisualization", meta = (ClampMin = "0"))
+	float PhysicsRadius = 10000.f;
 };
 
 template<>
@@ -210,6 +252,7 @@ public:
 	void UnregisterSource(FMassEntityHandle Entity, const FIntVector& Cell);
 	void MoveSourceCell(FMassEntityHandle Entity, const FIntVector& OldCell, const FIntVector& NewCell);
 	const TMap<FMassEntityHandle, FIntVector>& GetSourcePositions() const { return SourceCellPositions; }
+	const TMap<FIntVector, TArray<FMassEntityHandle>>& GetEntityCells() const { return EntityCells; }
 
 	// --- LOD evaluation ---
 	EArcMobileVisLOD EvaluateEntityLOD(const FIntVector& EntityCell,
@@ -217,13 +260,57 @@ public:
 		int32 ActorRadiusCellsLeave, int32 ISMRadiusCellsLeave,
 		EArcMobileVisLOD CurrentLOD) const;
 	void GetEntityCellsInRadius(const FIntVector& Center, int32 RadiusCells, TArray<FIntVector>& OutCells) const;
+	bool EvaluateEntityPhysics(const FIntVector& EntityCell,
+		int32 PhysicsRadiusCells,
+		int32 PhysicsRadiusCellsLeave,
+		bool bCurrentlyHasPhysics) const;
 
 	// --- ISM management ---
 	int32 AddISMInstance(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass, UStaticMesh* Mesh, const TArray<TObjectPtr<UMaterialInterface>>& Materials, bool bCastShadows, const FTransform& Transform, FMassEntityHandle OwnerEntity);
 	void RemoveISMInstance(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass, UStaticMesh* Mesh, int32 InstanceId, FMassEntityManager& EntityManager);
 	void UpdateISMTransform(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass, UStaticMesh* Mesh, int32 InstanceId, const FTransform& NewTransform);
 
+	// --- ISKM management ---
+	FPrimitiveInstanceId AddISKMInstance(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass,
+		USkinnedAsset* Asset, UTransformProviderData* Provider,
+		const TArray<TObjectPtr<UMaterialInterface>>& Materials, bool bCastShadows,
+		const FTransform& Transform, int32 AnimationIndex, FMassEntityHandle OwnerEntity);
+
+	void RemoveISKMInstance(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass,
+		USkinnedAsset* Asset, FPrimitiveInstanceId InstanceId, FMassEntityManager& EntityManager);
+
+	void UpdateISKMTransform(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass,
+		USkinnedAsset* Asset, FPrimitiveInstanceId InstanceId,
+		const FTransform& NewTransform, int32 AnimationIndex);
+
+	// --- Actor body entity links ---
+	void LinkActorBodies(AActor& Actor, FMassEntityHandle Entity);
+	void DetachActorBodies(FMassEntityHandle Entity);
+
 private:
+	struct FActorBodyLink
+	{
+		FChaosUserEntityAppend* Append = nullptr;
+		FChaosUserDefinedEntity* UserEntity = nullptr;
+		bool bAppendFreedWithPhysicsState = false;
+	};
+
+	struct FLinkedComponent
+	{
+		TWeakObjectPtr<UPrimitiveComponent> Component;
+		FMassEntityHandle Entity;
+		FDelegateHandle SkeletalPhysicsCreatedHandle;
+		TArray<FActorBodyLink> Links;
+	};
+
+	UFUNCTION()
+	void HandleComponentPhysicsStateChanged(UPrimitiveComponent* ChangedComponent, EComponentPhysicsStateChange StateChange);
+
+	void HandleSkeletalMeshPhysicsCreated(TWeakObjectPtr<USkeletalMeshComponent> WeakComponent);
+	void LinkComponentBodies(UPrimitiveComponent& Component, FLinkedComponent& Linked);
+	void DetachComponentLinks(FLinkedComponent& Linked);
+	static void FreeComponentLinks(FLinkedComponent& Linked);
+
 	// --- Region manager ---
 	struct FRegionKey
 	{
@@ -250,9 +337,16 @@ private:
 
 		/** Mesh -> (instance index -> owning entity). For RemoveInstance swap fixup. */
 		TMap<FObjectKey, TArray<FMassEntityHandle>> InstanceOwners;
+
+		/** SkinnedAsset -> ISKM component on this manager actor. */
+		TMap<FObjectKey, TObjectPtr<UInstancedSkinnedMeshComponent>> ISKMComponents;
+
+		/** SkinnedAsset -> (instance index -> owning entity). For RemoveInstance cleanup. */
+		TMap<FObjectKey, TMap<int32, FMassEntityHandle>> ISKMInstanceOwners;
 	};
 
 	UInstancedStaticMeshComponent* GetOrCreateISMComponent(FRegionManager& Manager, UStaticMesh* Mesh, const TArray<TObjectPtr<UMaterialInterface>>& Materials, bool bCastShadows);
+	UInstancedSkinnedMeshComponent* GetOrCreateISKMComponent(FRegionManager& Manager, USkinnedAsset* Asset, UTransformProviderData* Provider, const TArray<TObjectPtr<UMaterialInterface>>& Materials, bool bCastShadows);
 	FRegionManager& GetOrCreateRegionManager(const FIntVector& RegionCoord, TSubclassOf<AActor> ManagerClass);
 
 	// --- Data ---
@@ -265,6 +359,10 @@ private:
 
 	/** Region-scoped ISM managers. */
 	TMap<FRegionKey, FRegionManager> RegionManagers;
+
+	TMap<FObjectKey, FLinkedComponent> LinkedComponents;
+
+	TMap<FMassEntityHandle, TArray<FObjectKey>> EntityLinkedComponents;
 
 	/** World-space size of a single grid cell. */
 	UPROPERTY()

@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "TargetQuery/ArcTQSStep.h"
+#include "ArcTQSStep.h"
 #include "ArcTQSStep_KnowledgeTagFilter.generated.h"
 
 /**
@@ -23,4 +23,5 @@ struct ARCKNOWLEDGE_API FArcTQSStep_KnowledgeTagFilter : public FArcTQSStep
 	FGameplayTagQuery TagQuery;
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Knowledge; }
 };

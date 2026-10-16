@@ -26,8 +26,6 @@
 #include "ArcAoETypes.h"
 #include "ArcAoEVisualizationInterface.generated.h"
 
-class UGameplayAbility;
-
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcAoEVisualizationContext
 {
@@ -38,9 +36,6 @@ struct ARCCORE_API FArcAoEVisualizationContext
 
 	UPROPERTY(BlueprintReadOnly, Category = "AoE")
 	TObjectPtr<AActor> AvatarActor = nullptr;
-
-	UPROPERTY(BlueprintReadOnly, Category = "AoE")
-	TObjectPtr<UGameplayAbility> SourceAbility = nullptr;
 };
 
 UINTERFACE(MinimalAPI, BlueprintType)

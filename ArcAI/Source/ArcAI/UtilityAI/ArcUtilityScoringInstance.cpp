@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "UtilityAI/ArcUtilityScoringInstance.h"
-#include "UtilityAI/ArcUtilityConsideration.h"
+#include "UtilityAI/ArcUtilityScoring.h"
 #include "ArcAILogs.h"
 #include "HAL/PlatformTime.h"
 #include "VisualLogger/VisualLogger.h"
@@ -22,18 +22,6 @@ void FArcUtilityScoringInstance::FlushDebugLog()
 	}
 
 	DebugLog.Reset();
-}
-#endif
-
-#if WITH_ARCUTILITY_TRACE
-static FString GetStructDisplayName(const FInstancedStruct& Struct)
-{
-	if (const UScriptStruct* ScriptStruct = Struct.GetScriptStruct())
-	{
-		const FString DisplayName = ScriptStruct->GetMetaData(TEXT("DisplayName"));
-		return DisplayName.IsEmpty() ? ScriptStruct->GetName() : DisplayName;
-	}
-	return TEXT("Unknown");
 }
 #endif
 
@@ -127,76 +115,43 @@ bool FArcUtilityScoringInstance::RunScoring(double Deadline)
 	while (CurrentEntryIndex < Entries.Num())
 	{
 		const FArcUtilityEntry& Entry = Entries[CurrentEntryIndex];
-		const int32 NumConsiderations = Entry.Considerations.Num();
 
 		while (CurrentTargetIndex < Targets.Num())
 		{
 			// Check deadline every 16 items to amortize syscall cost
 			if ((ItemsProcessed & 0xF) == 0 && ItemsProcessed > 0 && FPlatformTime::Seconds() >= Deadline)
 			{
-				return false; // Yield — resume at current entry/target/consideration
+				return false; // Yield — resume at current entry/target
 			}
 
 			const FArcUtilityTarget& Target = Targets[CurrentTargetIndex];
 			Context.EntryIndex = CurrentEntryIndex;
 
-			// Score this entry x target pair
-			float Product = 1.0f;
-			bool bEarlyOut = false;
-
-			for (int32 ConsiderationIdx = CurrentConsiderationIndex; ConsiderationIdx < NumConsiderations; ++ConsiderationIdx)
-			{
-				const FArcUtilityConsideration* Consideration = Entry.Considerations[ConsiderationIdx].GetPtr<FArcUtilityConsideration>();
-				if (!Consideration)
-				{
-					continue;
-				}
-
-				const float RawScore = Consideration->Score(Target, Context);
-				const float CurveScore = Consideration->ResponseCurve.Evaluate(FMath::Clamp(RawScore, 0.0f, 1.0f));
-				const float CompensatedScore = FMath::Pow(FMath::Clamp(CurveScore, 0.0f, 1.0f), Consideration->Weight);
+			FArcUtilityPairTrace PairTrace;
 #if WITH_ARCUTILITY_TRACE
-				if (bTraceActive)
-				{
-					ConsiderationSnapshots.Add({CurrentEntryIndex, CurrentTargetIndex, ConsiderationIdx,
-						GetStructDisplayName(Entry.Considerations[ConsiderationIdx]),
-						RawScore, CurveScore, CompensatedScore});
-				}
+			PairTrace.Snapshots = bTraceActive ? &ConsiderationSnapshots : nullptr;
+			PairTrace.EntryIndex = CurrentEntryIndex;
+			PairTrace.TargetIndex = CurrentTargetIndex;
 #endif
-				Product *= CompensatedScore;
 
-				// Early-out: product can only decrease since all values are [0,1]
-				if (Product < MinScore)
-				{
-					bEarlyOut = true;
-					break;
-				}
-			}
+			FArcUtilityPairResult PairResult;
+			ArcUtilityScoring::ScorePair(Entry, Target, Context, MinScore, PairResult, &PairTrace);
 
-			// Reset consideration index for next target
-			CurrentConsiderationIndex = 0;
-
-			if (!bEarlyOut && NumConsiderations > 0)
+			if (PairResult.Outcome == EArcUtilityPairOutcome::Accepted)
 			{
-				// Geometric mean compensation: pow(product, 1/N) to prevent collapse
-				const float Compensated = FMath::Pow(Product, 1.0f / static_cast<float>(NumConsiderations));
-				const float FinalScore = Compensated * Entry.Weight;
-
-				if (FinalScore >= MinScore)
-				{
-					ScoredPairs.Add({CurrentEntryIndex, CurrentTargetIndex, FinalScore, Entry.LinkedState.StateHandle});
+				ScoredPairs.Add({CurrentEntryIndex, CurrentTargetIndex, PairResult.Score, Entry.LinkedState.StateHandle});
 
 #if ENABLE_VISUAL_LOG
-					DebugLog += FString::Printf(TEXT("  Entry[%d] x Target[%d]: Score=%.4f (raw product=%.4f, compensated=%.4f, weight=%.2f)\n"),
-						CurrentEntryIndex, CurrentTargetIndex, FinalScore, Product, Compensated, Entry.Weight);
+				DebugLog += FString::Printf(TEXT("  Entry[%d] x Target[%d]: Score=%.4f (raw product=%.4f, compensated=%.4f, weight=%.2f)\n"),
+					CurrentEntryIndex, CurrentTargetIndex, PairResult.Score, PairResult.Product, PairResult.Compensated, Entry.Weight);
 #endif
-				}
 			}
 #if ENABLE_VISUAL_LOG
-			else if (bEarlyOut)
+			else if (PairResult.EarlyOutConsiderationIndex != INDEX_NONE)
 			{
-				DebugLog += FString::Printf(TEXT("  Entry[%d] x Target[%d]: EARLY OUT (product=%.4f < min=%.2f)\n"),
-					CurrentEntryIndex, CurrentTargetIndex, Product, MinScore);
+				DebugLog += FString::Printf(TEXT("  Entry[%d] x Target[%d]: EARLY OUT on Consideration[%d] (product=%.4f < threshold=%.4f, min=%.2f)\n"),
+					CurrentEntryIndex, CurrentTargetIndex, PairResult.EarlyOutConsiderationIndex,
+					PairResult.Product, PairResult.EarlyOutThreshold, MinScore);
 			}
 #endif
 

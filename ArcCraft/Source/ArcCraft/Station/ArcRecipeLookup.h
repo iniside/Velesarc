@@ -22,55 +22,67 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AssetRegistry/AssetData.h"
 #include "GameplayTagContainer.h"
+#include "UObject/PrimaryAssetId.h"
 
-class UArcRecipeDefinition;
 struct FArcItemSpec;
 
 /**
- * Stateless utility class for discovering recipes via the asset registry.
+ * Stateless utility class for discovering recipes among the indexed .arcrecipe records
+ * (every record type registered for that extension, including custom RecipeType ids).
  *
  * Flow:
- *  1. FindRecipesForStation() — query asset registry for recipes matching station tags
- *  2. FilterByAvailableIngredients() — coarse filter using ingredient tags from registry
- *  3. FindBestRecipeForIngredients() — load candidates and score them
+ *  1. FindRecipesForStation() — recipes matching station tags
+ *  2. FilterByAvailableIngredients() — coarse filter using ingredient tags
+ *  3. FindBestRecipeForIngredients() — score candidates against the available items
  */
 class ARCCRAFT_API FArcRecipeLookup
 {
 public:
 	/**
-	 * Find all recipe asset data whose RequiredStationTags are satisfied by the station's tags.
-	 * Uses asset registry only — does NOT load recipe assets.
+	 * Find recipe ids offered by a station, by two axes:
+	 *  - type gate: recipe RequiredStationTags ⊆ StationTypeTags
+	 *  - tier selector: recipe RecipeTags overlap OfferedRecipeTags (empty RecipeTags ⇒ never offered)
 	 */
-	static TArray<FAssetData> FindRecipesForStation(
-		const FGameplayTagContainer& StationTags);
+	static TArray<FPrimaryAssetId> FindRecipesForStation(
+		const FGameplayTagContainer& StationTypeTags,
+		const FGameplayTagContainer& OfferedRecipeTags);
 
 	/**
-	 * Coarse filter: keep only recipes whose ingredient tags have any overlap with available items' tags.
-	 * Uses asset registry tags — does NOT load recipe assets.
+	 * Coarse filter: keep only recipes whose tag-based ingredients have any overlap with available items' tags.
 	 *
-	 * @param CandidateRecipes  Asset data from FindRecipesForStation().
+	 * @param CandidateRecipes  Ids from FindRecipesForStation().
 	 * @param AvailableItemTags Union of all tags from available items.
 	 * @return Filtered subset of candidates.
 	 */
-	static TArray<FAssetData> FilterByAvailableIngredients(
-		const TArray<FAssetData>& CandidateRecipes,
+	static TArray<FPrimaryAssetId> FilterByAvailableIngredients(
+		const TArray<FPrimaryAssetId>& CandidateRecipes,
 		const FGameplayTagContainer& AvailableItemTags);
 
 	/**
-	 * Load candidate recipes and find the best match for the given ingredients.
+	 * Find the best match for the given ingredients among the candidate recipes.
 	 * Scores by: number of satisfiable ingredient slots, closeness of ingredient count.
 	 *
-	 * @param CandidateRecipes  Pre-filtered asset data (ideally from FilterByAvailableIngredients).
+	 * @param CandidateRecipes  Pre-filtered ids (ideally from FilterByAvailableIngredients).
 	 * @param AvailableItems    All items available for crafting.
 	 * @param StationTags       Station tags for validation.
 	 * @param OutMatchScore     Score of the best match (0 = no match).
-	 * @return Best matching recipe, or nullptr if none match.
+	 * @return Best matching recipe id, or an invalid id if none match.
 	 */
-	static UArcRecipeDefinition* FindBestRecipeForIngredients(
-		const TArray<FAssetData>& CandidateRecipes,
+	static FPrimaryAssetId FindBestRecipeForIngredients(
+		const TArray<FPrimaryAssetId>& CandidateRecipes,
 		const TArray<FArcItemSpec>& AvailableItems,
 		const FGameplayTagContainer& StationTags,
 		float& OutMatchScore);
+
+	/**
+	 * Scan the recipe records for the member of BaseRecipeId's family (the base itself or a recipe whose BaseRecipe
+	 * is BaseRecipeId) whose start rarity (GuaranteedRarity, else DefaultRarity) is Rarity.
+	 *
+	 * @return The first matching recipe id, or an invalid id if none.
+	 */
+	static FPrimaryAssetId FindRarityVariant(
+		const FPrimaryAssetId& BaseRecipeId,
+		const FGameplayTag& Rarity,
+		const FGameplayTag& DefaultRarity);
 };

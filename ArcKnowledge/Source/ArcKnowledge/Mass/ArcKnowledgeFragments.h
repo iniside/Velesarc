@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "GameplayTagContainer.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcKnowledgeEntryDefinition.h"
@@ -46,11 +47,6 @@ struct ARCKNOWLEDGE_API FArcKnowledgeMemberConfigFragment : public FMassConstSha
 	  * When set, the definition's entries are registered via RegisterFromDefinition(). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge")
 	TObjectPtr<UArcKnowledgeEntryDefinition> Definition;
-
-	/** What this NPC type can do (e.g., "Capability.Smith", "Capability.Gather", "Capability.Carry").
-	  * Each tag is registered as a separate knowledge entry at the entity's location. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Knowledge")
-	FGameplayTagContainer CapabilityTags;
 };
 
 /**

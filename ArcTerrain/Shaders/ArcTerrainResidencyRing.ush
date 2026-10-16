@@ -1,0 +1,67 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainResidencyRing.ush — integer key -> atlas slice.
+
+	This is what replaces "the face id IS the atlas slice". A leaf derives an
+	integer key from its global texel index (SectorKey for height, weight-group
+	key for weights) and reads the slice out of a square window centred on the
+	resident set, so one face may cover any mix of resident and unresident keys.
+=============================================================================*/
+
+#pragma once
+
+#include "/Engine/Public/Platform.ush"
+
+/**
+ * Flat index of a key in the window, or -1 when it lies outside.
+ *
+ * THE RANGE TEST IS THE MAIN CASE, not an edge case: over a face far larger than the residency window,
+ * most leaves fall outside it. An out-of-range Buffer<uint> load returns 0 on D3D, which is a perfectly
+ * VALID slice index, so a lookup without the test would carpet the far field with sector 0's terrain.
+ * A miss INSIDE the window holds the fill slice, so neither answer is ever a sentinel.
+ *
+ * The buffer stays at the call site rather than becoming a parameter: this file is included by both a
+ * vertex factory and a compute pass, and a resource-typed parameter is the one construct whose support
+ * differs between the two shader compilers this project builds with.
+ */
+int arc_ResidencyRingIndex(int2 Key, int2 Center, int Radius)
+{
+	const int Side = 2 * Radius + 1;
+	const int2 Offset = Key - Center + Radius;
+	if (Radius < 0 || any(Offset < 0) || any(Offset >= Side))
+	{
+		return -1;
+	}
+	return Offset.y * Side + Offset.x;
+}
+
+/**
+ * Index into the CONCATENATED height-ring buffer for ONE tier, or -1 when the key lies outside that
+ * tier's window. One buffer with per-tier offsets, because a dynamic tier loop cannot index N separately
+ * named Buffer<uint>.
+ *
+ * The caller loads the slice and compares it: a walk that stopped at the first index >= 0 would stop on a
+ * HOLE inside a finer tier's window, which holds the fill slice — and those holes are the corners of that
+ * window, which is exactly where the coarse tier has the data. Break on Slice != FillSlice, never on the
+ * index.
+ */
+int arc_HeightRingIndexForTier(int2 GlobalTexel, int BaseSectorQuadsShift, uint Tier,
+	uint4 RingOffset, int4 RingRadius, int4 RingCenterX, int4 RingCenterY, int4 CumulativeShift)
+{
+	const int Shift = BaseSectorQuadsShift + CumulativeShift[Tier];
+	const int2 Key = GlobalTexel >> Shift;
+	const int Index = arc_ResidencyRingIndex(
+		Key, int2(RingCenterX[Tier], RingCenterY[Tier]), RingRadius[Tier]);
+	return Index < 0 ? -1 : (int)(RingOffset[Tier] + (uint)Index);
+}
+
+int arc_WeightRingIndexForTier(int2 GlobalTexel, int BaseWeightQuadsShift, uint Tier,
+	uint4 RingOffset, int4 RingRadius, int4 RingCenterX, int4 RingCenterY, int4 CumulativeShift)
+{
+	const int Shift = BaseWeightQuadsShift + CumulativeShift[Tier];
+	const int2 Key = GlobalTexel >> Shift;
+	const int Index = arc_ResidencyRingIndex(
+		Key, int2(RingCenterX[Tier], RingCenterY[Tier]), RingRadius[Tier]);
+	return Index < 0 ? -1 : (int)(RingOffset[Tier] + (uint)Index);
+}

@@ -12,7 +12,6 @@ struct FArcUtilityTraceConsiderationSnapshot
 	FString ConsiderationName;
 	float RawScore = 0.0f;
 	float CurvedScore = 0.0f;
-	float CompensatedScore = 0.0f;
 };
 
 struct FArcUtilityTraceTargetRecord

@@ -35,15 +35,7 @@
 			"Enabled": true
 		},
 		{
-			"Name": "GameplayAbilities",
-			"Enabled": true
-		},
-		{
 			"Name": "Iris",
-			"Enabled": true
-		},
-		{
-			"Name": "EngineAssetDefinitions",
 			"Enabled": true
 		},
 		{
@@ -51,7 +43,23 @@
 			"Enabled": true
 		},
 		{
-			"Name": "ArcJson",
+			"Name": "ArcJsonAssets",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassGameplayFramework",
 			"Enabled": true
 		}
 	]

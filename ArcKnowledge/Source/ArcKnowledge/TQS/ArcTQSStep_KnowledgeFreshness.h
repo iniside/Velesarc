@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSStep.h"
+#include "ArcTQSStep.h"
 #include "ArcTQSStep_KnowledgeFreshness.generated.h"
 
 /**
@@ -22,4 +22,5 @@ struct ARCKNOWLEDGE_API FArcTQSStep_KnowledgeFreshness : public FArcTQSStep
 	float HalfLifeSeconds = 300.0f;
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Knowledge; }
 };

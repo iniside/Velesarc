@@ -1,0 +1,35 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcRPGMechanics Tests",
+	"Description": "CQTest module covering ArcRPGMechanics.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcRPGMechanicsTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcRPGMechanics", "Enabled": true },
+		{ "Name": "ArcMassMechanics", "Enabled": true },
+		{ "Name": "ArcMassMechanicsTest", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcMassDamageSystem", "Enabled": true },
+		{ "Name": "ArcMassItems", "Enabled": true },
+		{ "Name": "ArcAbilityKit", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "StateTree", "Enabled": true },
+		{ "Name": "DataValidation", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

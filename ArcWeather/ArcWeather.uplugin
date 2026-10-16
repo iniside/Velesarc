@@ -30,7 +30,11 @@
 			"Enabled": true
 		},
 		{
-			"Name": "ArcConditionEffects",
+			"Name": "ArcMassAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassMechanics",
 			"Enabled": true
 		}
 	]

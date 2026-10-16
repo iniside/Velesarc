@@ -3,7 +3,7 @@
 #include "ArcTQSRewindDebuggerTrack.h"
 #include "ArcTQSTraceProvider.h"
 #include "ArcTQSTraceTypes.h"
-#include "TargetQuery/ArcTQSTypes.h"  // for FArcTQSQueryContext::StaticStruct()
+#include "ArcTQSTypes.h"  // for FArcTQSQueryContext::StaticStruct()
 #include "IRewindDebugger.h"
 #include "Widgets/Text/SMultiLineEditableText.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -197,16 +197,8 @@ static void AppendQueryText(FString& Text, const FArcTQSTraceQueryRecord& Q)
 	for (const FArcTQSTraceStepRecord& Step : Q.Steps)
 	{
 		const TCHAR* KindStr = Step.StepKind == 0 ? TEXT("Filter") : TEXT("Score");
-		if (Step.StepKind == 1)
-		{
-			Text += FString::Printf(TEXT("  Step %d: %s [%s, w=%.2f]\n"),
-				Step.StepIndex, *Step.StepName, KindStr, Step.Weight);
-		}
-		else
-		{
-			Text += FString::Printf(TEXT("  Step %d: %s [%s]\n"),
-				Step.StepIndex, *Step.StepName, KindStr);
-		}
+		Text += FString::Printf(TEXT("  Step %d: %s [%s]\n"),
+			Step.StepIndex, *Step.StepName, KindStr);
 	}
 
 	// Final items summary

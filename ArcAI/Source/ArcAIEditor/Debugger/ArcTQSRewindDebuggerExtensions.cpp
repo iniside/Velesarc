@@ -6,7 +6,7 @@
 #include "IRewindDebugger.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
-#include "TargetQuery/Debugger/ArcTQSTrace.h" // for ArcTQSDebugChannel
+#include "Debugger/ArcTQSTrace.h" // for ArcTQSDebugChannel
 #include "Trace/Trace.inl"
 
 DEFINE_LOG_CATEGORY_STATIC(LogArcTQSPlayback, Log, All);
@@ -15,19 +15,19 @@ DEFINE_LOG_CATEGORY_STATIC(LogArcTQSPlayback, Log, All);
 
 void FArcTQSRewindDebuggerRecordingExtension::RecordingStarted()
 {
-	UE_LOG(LogArcTQSPlayback, Log, TEXT("[TQS Recording] RecordingStarted — Channel was %s"),
+	UE_LOGF(LogArcTQSPlayback, Log, "[TQS Recording] RecordingStarted — Channel was %ls",
 		UE_TRACE_CHANNELEXPR_IS_ENABLED(ArcTQSDebugChannel) ? TEXT("ENABLED") : TEXT("DISABLED"));
 	if (!UE_TRACE_CHANNELEXPR_IS_ENABLED(ArcTQSDebugChannel))
 	{
 		UE::Trace::ToggleChannel(TEXT("ArcTQSDebugChannel"), true);
 	}
-	UE_LOG(LogArcTQSPlayback, Log, TEXT("[TQS Recording] After toggle: Channel is %s"),
+	UE_LOGF(LogArcTQSPlayback, Log, "[TQS Recording] After toggle: Channel is %ls",
 		UE_TRACE_CHANNELEXPR_IS_ENABLED(ArcTQSDebugChannel) ? TEXT("ENABLED") : TEXT("DISABLED"));
 }
 
 void FArcTQSRewindDebuggerRecordingExtension::RecordingStopped()
 {
-	UE_LOG(LogArcTQSPlayback, Log, TEXT("[TQS Recording] RecordingStopped — disabling channel"));
+	UE_LOGF(LogArcTQSPlayback, Log, "[TQS Recording] RecordingStopped — disabling channel");
 	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(ArcTQSDebugChannel))
 	{
 		UE::Trace::ToggleChannel(TEXT("ArcTQSDebugChannel"), false);
@@ -91,7 +91,7 @@ void FArcTQSRewindDebuggerPlaybackExtension::Update(float DeltaTime, IRewindDebu
 	static bool bLoggedOnce = false;
 	if (!bLoggedOnce || Queries.Num() > 0)
 	{
-		UE_LOG(LogArcTQSPlayback, Log, TEXT("[TQS Playback] TraceTime=%.4f QueriesFound=%d HasData=%d"),
+		UE_LOGF(LogArcTQSPlayback, Log, "[TQS Playback] TraceTime=%.4f QueriesFound=%d HasData=%d",
 			TraceTime, Queries.Num(), Provider->HasData());
 		bLoggedOnce = (Queries.Num() == 0);
 	}
@@ -138,15 +138,6 @@ void FArcTQSRewindDebuggerPlaybackExtension::DrawQueryInViewport(
 	DrawDebugDirectionalArrow(World, Query.QuerierLocation + FVector(0, 0, 50),
 		Query.QuerierLocation + Query.QuerierForward * 200.0f + FVector(0, 0, 50),
 		30.0f, FColor::Blue, true, LifeTime, DepthPriority, 2.0f);
-
-	// Draw context locations
-	for (const FVector& CtxLoc : Query.ContextLocations)
-	{
-		if (!CtxLoc.Equals(Query.QuerierLocation, 10.0f))
-		{
-			DrawDebugSphere(World, CtxLoc, 50.0f, 8, FColor::Cyan, true, LifeTime, DepthPriority, 1.0f);
-		}
-	}
 
 	// Draw all items
 	for (int32 i = 0; i < Query.FinalItems.Num(); ++i)

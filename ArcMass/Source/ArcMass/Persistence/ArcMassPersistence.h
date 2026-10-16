@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "ArcMassPersistence.generated.h"
 
 USTRUCT()
@@ -35,9 +36,14 @@ struct ARCMASS_API FArcMassPersistenceConfigFragment : public FMassConstSharedFr
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false", MetaStruct = "/Script/MassCore.MassFragment"))
 	TArray<TObjectPtr<UScriptStruct>> AllowedFragments;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowAbstract = "false", MetaStruct = "/Script/MassCore.MassFragment"))
 	TArray<TObjectPtr<UScriptStruct>> DisallowedFragments;
+
+	/** ConfigGuid from the UMassEntityConfigAsset that defines this entity's template.
+	 *  Used at load time to recreate the full entity composition. */
+	UPROPERTY(VisibleAnywhere)
+	FGuid ConfigGuid;
 };

@@ -22,15 +22,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "Items/ArcItemId.h"
 #include "Items/ArcItemSpec.h"
-#include "Iris/ReplicationState/IrisFastArraySerializer.h"
-#include "Iris/ReplicationState/Private/IrisFastArraySerializerInternal.h"
+#include "Mass/EntityHandle.h"
+#include "UObject/PrimaryAssetId.h"
 #include "Net/Serialization/FastArraySerializer.h"
+#include "UObject/PrimaryAssetId.h"
 
 #include "ArcCraftStationTypes.generated.h"
-
-class UArcRecipeDefinition;
-class UArcCraftStationComponent;
 
 /**
  * How the crafting station tracks time for craft completion.
@@ -45,10 +45,21 @@ enum class EArcCraftStationTimeMode : uint8
 };
 
 /**
- * A single entry in the crafting queue.
- * Replicated via Iris fast array serializer.
+ * Lifecycle state of a craft queue entry.
  */
-USTRUCT(BlueprintType)
+UENUM()
+enum class EArcCraftQueueEntryState : uint8
+{
+	/** Queued but ingredients have not been consumed yet. */
+	Pending,
+	/** Ingredients consumed, craft timer is ticking. */
+	Active
+};
+
+/**
+ * A single entry in the crafting queue.
+ */
+USTRUCT(BlueprintType, meta = (Tooltip = "A single entry in the crafting queue."))
 struct ARCCRAFT_API FArcCraftQueueEntry : public FFastArraySerializerItem
 {
 	GENERATED_BODY()
@@ -59,7 +70,7 @@ struct ARCCRAFT_API FArcCraftQueueEntry : public FFastArraySerializerItem
 
 	/** The recipe being crafted. */
 	UPROPERTY(BlueprintReadOnly)
-	TObjectPtr<const UArcRecipeDefinition> Recipe = nullptr;
+	FPrimaryAssetId RecipeId;
 
 	/** Total number of items to produce. */
 	UPROPERTY(BlueprintReadOnly)
@@ -73,6 +84,10 @@ struct ARCCRAFT_API FArcCraftQueueEntry : public FFastArraySerializerItem
 	UPROPERTY(BlueprintReadOnly)
 	int32 Priority = 0;
 
+	/** Which FArcBuildingWorkforceFragment::Slots entry queued this, INDEX_NONE when nothing did. */
+	UPROPERTY(BlueprintReadOnly)
+	int32 WorkforceSlotIndex = INDEX_NONE;
+
 	/** UTC unix timestamp when the current item started crafting. */
 	UPROPERTY(BlueprintReadOnly)
 	int64 StartTimestamp = 0;
@@ -81,49 +96,47 @@ struct ARCCRAFT_API FArcCraftQueueEntry : public FFastArraySerializerItem
 	UPROPERTY(BlueprintReadOnly)
 	float ElapsedTickTime = 0.0f;
 
+	/** Per-slot rarity step captured at ingredient-consume time.
+	 *  Parallel to the recipe Ingredients. A missing slot counts as 1. */
+	UPROPERTY(BlueprintReadOnly)
+	TArray<float> SlotRaritySteps;
+
+	/** Item definition id of each consumed ingredient, parallel to SlotRaritySteps; invalid for an empty optional slot.
+	 *  Populated at activation time. Consumed at output-build time by modifier sources that need
+	 *  to inspect the actual consumed ingredients (e.g. FArcRecipeModifierSource_StatTransferTable). */
+	UPROPERTY()
+	TArray<FPrimaryAssetId> ConsumedIngredientDefs;
+
+	/** Instance tags (FArcItemFragment_InstanceTags) of each consumed ingredient, parallel to ConsumedIngredientDefs; empty for an empty
+	 *  optional slot. Captured at activation and restored on the rebuilt ingredient specs at output-build time. */
+	UPROPERTY()
+	TArray<FGameplayTagContainer> SlotInstanceTags;
+
+	/** Average rarity step across the filled slots (weights = Ingredient->Amount), cached at consume time. */
+	UPROPERTY(BlueprintReadOnly)
+	float CachedAverageR = 1.0f;
+
 	/** Time mode copied from the station at queue time. */
 	UPROPERTY(BlueprintReadOnly)
 	EArcCraftStationTimeMode TimeMode = EArcCraftStationTimeMode::AutoTick;
-};
 
-/**
- * Replicated list of craft queue entries using Iris fast array serializer.
- */
-USTRUCT()
-struct ARCCRAFT_API FArcCraftStationQueue : public FIrisFastArraySerializer
-{
-	GENERATED_BODY()
+	/** Lifecycle state — Pending until CraftTick consumes ingredients. */
+	UPROPERTY(BlueprintReadOnly)
+	EArcCraftQueueEntryState State = EArcCraftQueueEntryState::Pending;
 
+	/** True when a completed craft could not be delivered (e.g. bag full) and is being held.
+	 *  While set, the station's active entry is paused — no accumulation, no completion. */
+	UPROPERTY(BlueprintReadOnly)
+	bool bOutputBlocked = false;
+
+	/** The exact built output specs not yet delivered while delivery is blocked. Snapshotted on block so a
+	 *  resumed craft delivers the same items (recipes may carry random output rolls). */
+	UPROPERTY(BlueprintReadOnly)
+	TArray<FArcItemSpec> HeldOutput;
+
+	/** Mass entity that requested this queue entry. Used by the tick processor to route
+	 *  ingredient consumption and output delivery to the correct entity. */
 	UPROPERTY()
-	TArray<FArcCraftQueueEntry> Entries;
-
-	using ItemArrayType = TArray<FArcCraftQueueEntry>;
-
-	const ItemArrayType& GetItemArray() const
-	{
-		return Entries;
-	}
-
-	ItemArrayType& GetItemArray()
-	{
-		return Entries;
-	}
-
-	typedef UE::Net::TIrisFastArrayEditor<FArcCraftStationQueue> FFastArrayEditor;
-
-	FFastArrayEditor Edit()
-	{
-		return FFastArrayEditor(*this);
-	}
+	FMassEntityHandle InstigatorEntity;
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-	FArcCraftStationQueueChangedDelegate,
-	UArcCraftStationComponent*, Station,
-	const FArcCraftQueueEntry&, Entry);
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
-	FArcCraftStationItemCompletedDelegate,
-	UArcCraftStationComponent*, Station,
-	const UArcRecipeDefinition*, Recipe,
-	const FArcItemSpec&, OutputSpec);

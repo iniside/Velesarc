@@ -21,16 +21,18 @@
 
 #include "ArcCraft/Shared/ArcCraftModifier.h"
 
-#include "GameplayEffect.h"
-#include "Misc/DataValidation.h"
-#include "Abilities/GameplayAbility.h"
-#include "Items/ArcItemSpec.h"
-#include "Items/Fragments/ArcItemFragment_ItemStats.h"
-#include "Items/Fragments/ArcItemFragment_GrantedAbilities.h"
-#include "Items/Fragments/ArcItemFragment_AttributeModifier.h"
-#include "Items/Fragments/ArcItemFragment_GrantedGameplayEffects.h"
-#include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
+#include "ArcCraft/ArcCraftTags.h"
+#include "ArcCraft/Rarity/ArcCraftRarity.h"
+#include "ArcCraft/Rarity/ArcCraftRulesData.h"
+#include "ArcCraft/Rarity/ArcStatCatalogData.h"
+#include "ArcCraft/Recipe/ArcCraftContext.h"
+#include "ArcCraft/Recipe/ArcCraftSlotResolver.h"
+#include "ArcCraft/Recipe/ArcRandomPoolDefinitionData.h"
+#include "ArcCraft/Recipe/ArcRandomPoolEvaluation.h"
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
+#include "ArcCraft/Shared/ArcCraftRecords.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogArcCraftModifier, Log, All);
 
 // -------------------------------------------------------------------
 // FArcCraftModifier (base)
@@ -45,404 +47,169 @@ bool FArcCraftModifier::MatchesTriggerTags(const FGameplayTagContainer& Ingredie
 	return IngredientTags.HasAll(TriggerTags);
 }
 
-void FArcCraftModifier::Apply(
-	FArcItemSpec& OutItemSpec,
-	const FGameplayTagContainer& AggregatedIngredientTags,
-	float EffectiveQuality) const
+// -------------------------------------------------------------------
+// ArcCraftModifiers::ConvertModifier
+// -------------------------------------------------------------------
+
+const FArcStatCatalogEntry* ArcCraftModifiers::ResolveStat(const FArcCraftRulesData* Rules, FName StatId)
 {
-	// Base does nothing
-}
-
-// -------------------------------------------------------------------
-// FArcCraftModifier_Stats
-// -------------------------------------------------------------------
-
-void FArcCraftModifier_Stats::Apply(
-	FArcItemSpec& OutItemSpec,
-	const FGameplayTagContainer& AggregatedIngredientTags,
-	float EffectiveQuality) const
-{
-	// Quality gate
-	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
+	const FArcStatCatalogData* Catalog = Rules != nullptr ? ArcCraftRecords::Find<FArcStatCatalogData>(Rules->StatCatalog) : nullptr;
+	if (Catalog == nullptr)
 	{
-		return;
-	}
-
-	// Trigger tag check
-	if (!MatchesTriggerTags(AggregatedIngredientTags))
-	{
-		return;
-	}
-
-	FArcItemFragment_ItemStats* StatsFragment = OutItemSpec.FindFragmentMutable<FArcItemFragment_ItemStats>();
-	const bool bCreatedNew = (StatsFragment == nullptr);
-
-	if (bCreatedNew)
-	{
-		StatsFragment = new FArcItemFragment_ItemStats();
-	}
-
-	const float QualityScale = 1.0f + (EffectiveQuality - 1.0f) * QualityScalingFactor;
-
-	FArcItemAttributeStat ScaledStat = BaseStat;
-	ScaledStat.SetValue(BaseStat.Value.GetValue() * QualityScale);
-	StatsFragment->DefaultStats.Add(ScaledStat);
-
-	if (bCreatedNew)
-	{
-		OutItemSpec.AddInstanceData(StatsFragment);
-	}
-}
-
-// -------------------------------------------------------------------
-// FArcCraftModifier_Abilities
-// -------------------------------------------------------------------
-
-void FArcCraftModifier_Abilities::Apply(
-	FArcItemSpec& OutItemSpec,
-	const FGameplayTagContainer& AggregatedIngredientTags,
-	float EffectiveQuality) const
-{
-	if (!AbilityToGrant.GrantedAbility)
-	{
-		return;
-	}
-
-	// Quality gate
-	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
-	{
-		return;
-	}
-
-	// Trigger tag check
-	if (!MatchesTriggerTags(AggregatedIngredientTags))
-	{
-		return;
-	}
-
-	FArcItemFragment_GrantedAbilities* AbilitiesFragment = new FArcItemFragment_GrantedAbilities();
-	AbilitiesFragment->Abilities.Add(AbilityToGrant);
-	OutItemSpec.AddInstanceData(AbilitiesFragment);
-}
-
-// -------------------------------------------------------------------
-// FArcCraftModifier_Effects
-// -------------------------------------------------------------------
-
-void FArcCraftModifier_Effects::Apply(
-	FArcItemSpec& OutItemSpec,
-	const FGameplayTagContainer& AggregatedIngredientTags,
-	float EffectiveQuality) const
-{
-	if (!EffectToGrant)
-	{
-		return;
-	}
-
-	// Quality gate
-	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
-	{
-		return;
-	}
-
-	// Trigger tag check
-	if (!MatchesTriggerTags(AggregatedIngredientTags))
-	{
-		return;
-	}
-
-	FArcItemFragment_GrantedGameplayEffects* EffectsFragment = new FArcItemFragment_GrantedGameplayEffects();
-	EffectsFragment->Effects.Add(EffectToGrant);
-	OutItemSpec.AddInstanceData(EffectsFragment);
-}
-
-// -------------------------------------------------------------------
-// FArcCraftModifier_AttributeModifier
-// -------------------------------------------------------------------
-
-void FArcCraftModifier_AttributeModifier::Apply(
-	FArcItemSpec& OutItemSpec,
-	const FGameplayTagContainer& AggregatedIngredientTags,
-	float EffectiveQuality) const
-{
-	if (!BackingGameplayEffect)
-	{
-		return;
-	}
-
-	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
-	{
-		return;
-	}
-
-	if (!MatchesTriggerTags(AggregatedIngredientTags))
-	{
-		return;
-	}
-
-	FArcItemFragment_AttributeModifier* Fragment = OutItemSpec.FindFragmentMutable<FArcItemFragment_AttributeModifier>();
-	const bool bCreatedNew = (Fragment == nullptr);
-
-	if (bCreatedNew)
-	{
-		Fragment = new FArcItemFragment_AttributeModifier();
-		Fragment->BackingGameplayEffect = BackingGameplayEffect;
-	}
-
-	const float QualityScale = 1.0f + (EffectiveQuality - 1.0f) * QualityScalingFactor;
-	for (const auto& [Tag, Magnitude] : BaseAttributes)
-	{
-		Fragment->Attributes.Add(Tag, Magnitude * QualityScale);
-	}
-
-	if (bCreatedNew)
-	{
-		OutItemSpec.AddInstanceData(Fragment);
-	}
-}
-
-// -------------------------------------------------------------------
-// FArcCraftModifier_RandomPool
-// -------------------------------------------------------------------
-
-void FArcCraftModifier_RandomPool::Apply(
-	FArcItemSpec& OutItemSpec,
-	const FGameplayTagContainer& AggregatedIngredientTags,
-	float EffectiveQuality) const
-{
-	// Quality gate
-	if (MinQualityThreshold > 0.0f && EffectiveQuality < MinQualityThreshold)
-	{
-		return;
-	}
-
-	// Trigger tag check
-	if (!MatchesTriggerTags(AggregatedIngredientTags))
-	{
-		return;
-	}
-
-	// 1. Load pool definition
-	UArcRandomPoolDefinition* PoolDef = PoolDefinition.LoadSynchronous();
-	if (!PoolDef || PoolDef->Entries.Num() == 0)
-	{
-		return;
-	}
-
-	// 2. Get the selection mode
-	const FArcRandomPoolSelectionMode* Mode = SelectionMode.GetPtr<FArcRandomPoolSelectionMode>();
-	if (!Mode)
-	{
-		return;
-	}
-
-	// 3. Filter eligible entries and compute weights
-	TArray<int32> EligibleIndices;
-	TArray<float> EffectiveWeights;
-	EligibleIndices.Reserve(PoolDef->Entries.Num());
-	EffectiveWeights.Reserve(PoolDef->Entries.Num());
-
-	for (int32 Idx = 0; Idx < PoolDef->Entries.Num(); ++Idx)
-	{
-		const FArcRandomPoolEntry& Entry = PoolDef->Entries[Idx];
-
-		// Eligibility: quality threshold
-		if (Entry.MinQualityThreshold > 0.0f && EffectiveQuality < Entry.MinQualityThreshold)
+		static bool bWarnedNoCatalog = false;
+		if (!bWarnedNoCatalog)
 		{
-			continue;
+			bWarnedNoCatalog = true;
+			UE_LOGF(LogArcCraftModifier, Warning, "ArcCraft: stat modifiers skipped, no craft rules or rules StatCatalog not found");
+		}
+		return nullptr;
+	}
+
+	const FArcStatCatalogEntry* Entry = Catalog->Entries.FindByPredicate(
+		[StatId](const FArcStatCatalogEntry& Candidate) -> bool
+		{
+			return Candidate.StatId == StatId;
+		});
+	if (Entry == nullptr || !Entry->Attribute.IsValid())
+	{
+		static TSet<FName> WarnedStatIds;
+		if (!WarnedStatIds.Contains(StatId))
+		{
+			WarnedStatIds.Add(StatId);
+			UE_LOGF(LogArcCraftModifier, Warning, "ArcCraft: stat modifier skipped, StatId '%ls' not in the stat catalog or without attribute", *StatId.ToString());
+		}
+		return nullptr;
+	}
+	return Entry;
+}
+
+namespace ArcCraftModifiersImpl
+{
+	bool ConvertStat(const FArcCraftModifier_Stats& StatMod, const FArcCraftContext& Context, FArcCraftModifierResult& OutResult)
+	{
+		const FArcCraftRulesData* Rules = ArcCraftRarity::GetRules();
+		const FArcStatCatalogEntry* Stat = ArcCraftModifiers::ResolveStat(Rules, StatMod.StatId);
+		if (Stat == nullptr)
+		{
+			return false;
 		}
 
-		// Eligibility: required ingredient tags
-		if (!Entry.RequiredIngredientTags.IsEmpty() &&
-			!AggregatedIngredientTags.HasAll(Entry.RequiredIngredientTags))
+		const float Value = ArcCraftRarity::ComputeBandValue(
+			Stat->Min,
+			Stat->Max,
+			Rules,
+			Context.OutputRarity,
+			Context.AverageR,
+			Rules->BandBiasPerR,
+			Rules->BandBiasPerSkillMargin,
+			Context.SkillMargin,
+			Context.Stream.FRand());
+		const bool bPenalty = StatMod.SlotTags.HasTag(ArcCraftTags::Modifier_Penalty);
+
+		if (Stat->bItemSide)
 		{
-			continue;
+			OutResult.Type = EArcCraftModifierResultType::Stat;
+			OutResult.Stat = FArcItemAttributeStat(Stat->Attribute, bPenalty ? 1.0f - Value : 1.0f + Value);
+			OutResult.Stat.Type = EArcModType::Multiply;
+			return true;
 		}
 
-		// Eligibility: deny tags
-		if (!Entry.DenyIngredientTags.IsEmpty() &&
-			AggregatedIngredientTags.HasAny(Entry.DenyIngredientTags))
+		FArcDirectModifier& Modifier = OutResult.AttributeModifiers.AddDefaulted_GetRef();
+		Modifier.Attribute = Stat->Attribute;
+		Modifier.Operation = EArcModifierOp::Add;
+		Modifier.Magnitude = (bPenalty ? -Value : Value) * Stat->Sign;
+		Modifier.SourceTagReqs = Stat->SourceTagReqs;
+		Modifier.TargetTagReqs = Stat->TargetTagReqs;
+		OutResult.Type = EArcCraftModifierResultType::AttributeModifier;
+		return true;
+	}
+}
+
+void ArcCraftModifiers::ConvertModifier(
+	const FInstancedStruct& Modifier,
+	const FGameplayTagContainer& IngredientTags,
+	const FArcCraftContext& Context,
+	TArray<FArcCraftPendingModifier>& OutPending)
+{
+	const FArcCraftModifier* BaseMod = Modifier.GetPtr<FArcCraftModifier>();
+	if (BaseMod == nullptr)
+	{
+		return;
+	}
+	if (BaseMod->MinR > 0.0f && Context.AverageR < BaseMod->MinR)
+	{
+		return;
+	}
+	if (!BaseMod->MatchesTriggerTags(IngredientTags))
+	{
+		return;
+	}
+
+	if (const FArcCraftModifier_RandomPool* PoolMod = Modifier.GetPtr<FArcCraftModifier_RandomPool>())
+	{
+		const FArcRandomPoolDefinitionData* PoolDef = ArcCraftRecords::Find<FArcRandomPoolDefinitionData>(PoolMod->PoolDefinition);
+		const FArcRandomPoolSelectionMode* Mode = PoolMod->SelectionMode.GetPtr<FArcRandomPoolSelectionMode>();
+		if (PoolDef == nullptr || Mode == nullptr || PoolDef->Entries.Num() == 0)
 		{
-			continue;
+			return;
 		}
 
-		// Compute effective weight
-		float EntryWeight = Entry.BaseWeight;
-		float Multiplier = 1.0f;
-
-		for (const FArcRandomPoolWeightModifier& WeightMod : Entry.WeightModifiers)
+		const TArray<int32> SelectedIndices = ArcRandomPoolEval::SelectEntries(*PoolDef, *Mode, Context.AverageR, IngredientTags, Context.Stream);
+		for (const int32 SelectedIdx : SelectedIndices)
 		{
-			if (!WeightMod.RequiredTags.IsEmpty() &&
-				AggregatedIngredientTags.HasAll(WeightMod.RequiredTags))
+			if (!PoolDef->Entries.IsValidIndex(SelectedIdx))
 			{
-				EntryWeight += WeightMod.BonusWeight;
-				Multiplier *= WeightMod.WeightMultiplier;
+				continue;
+			}
+			for (const FInstancedStruct& EntryModifier : PoolDef->Entries[SelectedIdx].Modifiers)
+			{
+				ConvertModifier(EntryModifier, IngredientTags, Context, OutPending);
 			}
 		}
-
-		EntryWeight *= Multiplier;
-		EntryWeight *= (1.0f + (EffectiveQuality - 1.0f) * Entry.QualityWeightScaling);
-		EntryWeight = FMath::Max(EntryWeight, 0.0f);
-
-		EligibleIndices.Add(Idx);
-		EffectiveWeights.Add(EntryWeight);
+		return;
 	}
 
-	if (EligibleIndices.Num() == 0)
+	FArcCraftModifierResult Result;
+	if (const FArcCraftModifier_Stats* StatMod = Modifier.GetPtr<FArcCraftModifier_Stats>())
+	{
+		if (!ArcCraftModifiersImpl::ConvertStat(*StatMod, Context, Result))
+		{
+			return;
+		}
+	}
+	else if (const FArcCraftModifier_Abilities* AbilMod = Modifier.GetPtr<FArcCraftModifier_Abilities>())
+	{
+		if (!AbilMod->AbilityEntry.AbilityDefinition)
+		{
+			return;
+		}
+		Result.Type = EArcCraftModifierResultType::Ability;
+		Result.Ability = AbilMod->AbilityEntry;
+	}
+	else if (const FArcCraftModifier_Effects* EffMod = Modifier.GetPtr<FArcCraftModifier_Effects>())
+	{
+		if (!EffMod->Effect)
+		{
+			return;
+		}
+		Result.Type = EArcCraftModifierResultType::Effect;
+		Result.Effect = EffMod->Effect;
+	}
+	else if (const FArcCraftModifier_AttributeModifier* AttrMod = Modifier.GetPtr<FArcCraftModifier_AttributeModifier>())
+	{
+		if (!AttrMod->Modifier.Attribute.IsValid())
+		{
+			return;
+		}
+		Result.Type = EArcCraftModifierResultType::AttributeModifier;
+		Result.AttributeModifiers.Add(AttrMod->Modifier);
+	}
+	else
 	{
 		return;
 	}
 
-	// 4. Delegate to selection mode
-	FArcRandomPoolSelectionContext SelectionContext
-	{
-		PoolDef->Entries,
-		EligibleIndices,
-		EffectiveWeights,
-		EffectiveQuality
-	};
-
-	TArray<int32> SelectedIndices;
-	Mode->Select(SelectionContext, SelectedIndices);
-
-	// 5. Apply selected entries' sub-modifiers
-	for (const int32 SelectedIdx : SelectedIndices)
-	{
-		if (!PoolDef->Entries.IsValidIndex(SelectedIdx))
-		{
-			continue;
-		}
-
-		const FArcRandomPoolEntry& Entry = PoolDef->Entries[SelectedIdx];
-
-		// Compute effective quality for this entry's sub-modifiers
-		float EntryEffQ;
-		if (Entry.bScaleByQuality)
-		{
-			EntryEffQ = EffectiveQuality * Entry.ValueScale + Entry.ValueSkew;
-		}
-		else
-		{
-			EntryEffQ = Entry.ValueScale + Entry.ValueSkew;
-		}
-
-		// Apply tag-conditional value skew rules
-		for (const FArcRandomPoolValueSkew& SkewRule : Entry.ValueSkewRules)
-		{
-			if (!SkewRule.RequiredTags.IsEmpty() &&
-				AggregatedIngredientTags.HasAll(SkewRule.RequiredTags))
-			{
-				EntryEffQ = EntryEffQ * SkewRule.ValueScale + SkewRule.ValueOffset;
-			}
-		}
-
-		for (const FInstancedStruct& ModifierStruct : Entry.Modifiers)
-		{
-			const FArcCraftModifier* SubModifier = ModifierStruct.GetPtr<FArcCraftModifier>();
-			if (SubModifier)
-			{
-				SubModifier->Apply(OutItemSpec, AggregatedIngredientTags, EntryEffQ);
-			}
-		}
-	}
+	FArcCraftPendingModifier& Pending = OutPending.AddDefaulted_GetRef();
+	Pending.SlotTags = BaseMod->SlotTags;
+	Pending.Result = MoveTemp(Result);
 }
-
-// -------------------------------------------------------------------
-// IsDataValid
-// -------------------------------------------------------------------
-
-#if WITH_EDITOR
-
-EDataValidationResult FArcCraftModifier::IsDataValid(FDataValidationContext& Context) const
-{
-	return EDataValidationResult::Valid;
-}
-
-EDataValidationResult FArcCraftModifier_Stats::IsDataValid(FDataValidationContext& Context) const
-{
-	EDataValidationResult Result = FArcCraftModifier::IsDataValid(Context);
-	if (!BaseStat.StatTag.IsValid())
-	{
-		Context.AddError(FText::FromString(TEXT("CraftModifier_Stats: BaseStat.StatTag is not set")));
-		Result = EDataValidationResult::Invalid;
-	}
-	return Result;
-}
-
-EDataValidationResult FArcCraftModifier_Abilities::IsDataValid(FDataValidationContext& Context) const
-{
-	EDataValidationResult Result = FArcCraftModifier::IsDataValid(Context);
-	if (!AbilityToGrant.GrantedAbility)
-	{
-		Context.AddError(FText::FromString(TEXT("CraftModifier_Abilities: AbilityToGrant.GrantedAbility is not set")));
-		Result = EDataValidationResult::Invalid;
-	}
-	return Result;
-}
-
-EDataValidationResult FArcCraftModifier_Effects::IsDataValid(FDataValidationContext& Context) const
-{
-	EDataValidationResult Result = FArcCraftModifier::IsDataValid(Context);
-	if (!EffectToGrant)
-	{
-		Context.AddError(FText::FromString(TEXT("CraftModifier_Effects: EffectToGrant is not set")));
-		Result = EDataValidationResult::Invalid;
-	}
-	return Result;
-}
-
-EDataValidationResult FArcCraftModifier_AttributeModifier::IsDataValid(FDataValidationContext& Context) const
-{
-	EDataValidationResult Result = FArcCraftModifier::IsDataValid(Context);
-
-	if (!BackingGameplayEffect)
-	{
-		Context.AddError(FText::FromString(TEXT("CraftModifier_AttributeModifier: BackingGameplayEffect is not set")));
-		Result = EDataValidationResult::Invalid;
-	}
-
-	if (BackingGameplayEffect)
-	{
-		const UGameplayEffect* EffectCDO = BackingGameplayEffect.GetDefaultObject();
-		TSet<FGameplayTag> EffectSetByCallerTags;
-		for (const FGameplayModifierInfo& Modifier : EffectCDO->Modifiers)
-		{
-			if (Modifier.ModifierMagnitude.GetMagnitudeCalculationType()
-				== EGameplayEffectMagnitudeCalculation::SetByCaller)
-			{
-				EffectSetByCallerTags.Add(Modifier.ModifierMagnitude.GetSetByCallerFloat().DataTag);
-			}
-		}
-
-		for (const auto& [Tag, Magnitude] : BaseAttributes)
-		{
-			if (!EffectSetByCallerTags.Contains(Tag))
-			{
-				Context.AddError(FText::FromString(FString::Printf(
-					TEXT("CraftModifier_AttributeModifier: Attribute tag '%s' has no matching SetByCaller modifier in %s"),
-					*Tag.ToString(), *BackingGameplayEffect->GetName())));
-				Result = EDataValidationResult::Invalid;
-			}
-		}
-	}
-
-	return Result;
-}
-
-EDataValidationResult FArcCraftModifier_RandomPool::IsDataValid(FDataValidationContext& Context) const
-{
-	EDataValidationResult Result = FArcCraftModifier::IsDataValid(Context);
-	if (PoolDefinition.IsNull())
-	{
-		Context.AddError(FText::FromString(TEXT("CraftModifier_RandomPool: PoolDefinition is not set")));
-		Result = EDataValidationResult::Invalid;
-	}
-	if (!SelectionMode.IsValid())
-	{
-		Context.AddError(FText::FromString(TEXT("CraftModifier_RandomPool: SelectionMode is not set")));
-		Result = EDataValidationResult::Invalid;
-	}
-	return Result;
-}
-
-#endif

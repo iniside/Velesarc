@@ -6,7 +6,7 @@
 #include "MassStateTreeTypes.h"
 #include "ArcKnowledgeTypes.h"
 #include "ArcAdvertisementExecutionContext.h"
-#include "MassEntityFragments.h"
+#include "Mass/EntityFragments.h"
 #include "ArcMassExecuteAdvertisementTask.generated.h"
 
 USTRUCT()

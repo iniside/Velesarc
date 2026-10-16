@@ -2,8 +2,8 @@
 
 #include "ArcBuildingDefinition.h"
 
-#include "MassEntityConfigAsset.h"
-#include "ArcMass/ArcMassEntityVisualizationTrait.h"
+#include "ArcBuilderGhostPreview.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
 #include "MassVisualizationTrait.h"
 
 #if WITH_EDITOR
@@ -91,16 +91,6 @@ UClass* UArcBuildingDefinition::ResolvePreviewActorClass() const
 	// Fall back to MassEntityConfig visualization traits.
 	if (MassEntityConfig)
 	{
-		// Try ArcMass visualization trait.
-		if (const UArcEntityVisualizationTrait* ArcVisTrait =
-			Cast<UArcEntityVisualizationTrait>(MassEntityConfig->FindTrait(UArcEntityVisualizationTrait::StaticClass())))
-		{
-			if (ArcVisTrait->VisualizationConfig.ActorClass)
-			{
-				return ArcVisTrait->VisualizationConfig.ActorClass;
-			}
-		}
-
 		// Try engine MassVisualizationTrait (HighResTemplateActor).
 		if (const UMassVisualizationTrait* EngineVisTrait =
 			Cast<UMassVisualizationTrait>(MassEntityConfig->FindTrait(UMassVisualizationTrait::StaticClass())))
@@ -132,6 +122,19 @@ EDataValidationResult UArcBuildingDefinition::IsDataValid(FDataValidationContext
 	if (ActorClass.IsNull() && !MassEntityConfig)
 	{
 		Context.AddWarning(FText::FromString(TEXT("Neither ActorClass nor MassEntityConfig is set. Building cannot be spawned.")));
+	}
+
+	if (MassEntityConfig && !ArcBuilderGhostPreview::HasSupportedVisualization(*MassEntityConfig))
+	{
+		Context.AddWarning(FText::Format(
+			FText::FromString(TEXT(
+				"MassEntityConfig '{0}' has no supported visualization source. Supported sources are: "
+				"engine MassVisualizationTrait with a valid HighResTemplateActor, or an Arc "
+				"ArcMeshEntityVisualization / ArcSkinnedMeshEntityVisualization / ArcCompositeMeshVisualization / "
+				"ArcUnifiedMeshVisualization trait with valid mesh data. Without one of these, no placement ghost "
+				"will be shown when ActorClass is unset, and the placed Mass entity will be invisible regardless "
+				"of ActorClass.")),
+			FText::FromString(MassEntityConfig->GetName())));
 	}
 
 	return Result;

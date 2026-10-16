@@ -253,8 +253,8 @@ static void AppendRequestText(FString& Text, const FArcUtilityTraceRequestRecord
 			{
 				if (Snap.EntryIndex == EntryIdx && Snap.TargetIndex == TargetIdx)
 				{
-					Text += FString::Printf(TEXT("    %s: raw=%.3f curve=%.3f comp=%.3f\n"),
-						*Snap.ConsiderationName, Snap.RawScore, Snap.CurvedScore, Snap.CompensatedScore);
+					Text += FString::Printf(TEXT("    %s: raw=%.3f curve=%.3f\n"),
+						*Snap.ConsiderationName, Snap.RawScore, Snap.CurvedScore);
 				}
 			}
 

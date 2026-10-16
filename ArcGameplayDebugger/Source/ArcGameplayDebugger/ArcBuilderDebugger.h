@@ -4,7 +4,7 @@
 
 #include "AssetRegistry/AssetData.h"
 
-class UArcBuilderComponent;
+class UArcBuilderSubsystem;
 class UArcBuildingDefinition;
 
 class FArcBuilderDebugger
@@ -17,13 +17,15 @@ public:
 	bool bShow = false;
 
 private:
-	UArcBuilderComponent* FindLocalPlayerBuilderComponent() const;
+	UArcBuilderSubsystem* FindLocalPlayerBuilderSubsystem() const;
 	void RefreshBuildingDefinitions();
 	void ApplyFilter();
 
-	void DrawDefinitionsList(UArcBuilderComponent* BuilderComp);
-	void DrawDefinitionDetail(UArcBuildingDefinition* BuildDef, UArcBuilderComponent* BuilderComp);
-	void DrawPlacementControls(UArcBuilderComponent* BuilderComp);
+	void DrawStatus(UArcBuilderSubsystem* BuilderSubsystem);
+	void DrawPlacementControls(UArcBuilderSubsystem* BuilderSubsystem);
+	void DrawToolBuildings(UArcBuilderSubsystem* BuilderSubsystem);
+	void DrawDefinitionsList(UArcBuilderSubsystem* BuilderSubsystem);
+	void DrawDefinitionDetail(UArcBuildingDefinition* BuildDef, UArcBuilderSubsystem* BuilderSubsystem);
 
 	// Cached asset data
 	TArray<FAssetData> CachedBuildingDefinitions;

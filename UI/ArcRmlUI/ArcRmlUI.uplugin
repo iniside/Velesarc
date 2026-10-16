@@ -1,0 +1,72 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "ArcRmlUI",
+	"Description": "HTML/CSS game UI on RmlUi, rendered from a dedicated UI thread",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcRmlUIData",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcRmlUiCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetDenyList": ["Server"]
+		},
+		{
+			"Name": "ArcRmlUIShaders",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"TargetDenyList": ["Server"]
+		},
+		{
+			"Name": "ArcRmlUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetDenyList": ["Server"]
+		},
+		{
+			"Name": "ArcRmlUIEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelViewViewModel",
+			"Enabled": true
+		},
+		{
+			"Name": "CommonUI",
+			"Enabled": true
+		},
+		{
+			"Name": "CommonGame",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcGameSettings",
+			"Enabled": true
+		},
+		{
+			"Name": "ContentBrowserFileDataSource",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayTagsEditor",
+			"Enabled": true
+		}
+	]
+}

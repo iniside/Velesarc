@@ -28,13 +28,12 @@ public class ArcArea : ModuleRules
 			{
 				"Core",
 				"GameplayTags",
-				"StructUtils",
 				"MassEntity",
+				"MassCore",
 				"MassCommon",
 				"SmartObjectsModule",
 				"ArcCore",
-				"ArcKnowledge",
-				"ArcAI"
+				"ArcTargetQuery"
 			}
 		);
 

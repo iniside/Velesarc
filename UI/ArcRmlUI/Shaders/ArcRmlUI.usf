@@ -1,0 +1,192 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/GammaCorrectionCommon.ush"
+
+#ifndef ARC_RML_MAX_GRADIENT_STOPS
+#define ARC_RML_MAX_GRADIENT_STOPS 16
+#endif
+
+#define ARC_RML_PI 3.14159265
+
+float4x4 GeometryTransform;
+float2 GeometryTranslation;
+
+void GeometryVS(
+	in float2 InPosition : ATTRIBUTE0,
+	in float4 InColor : ATTRIBUTE1,
+	in float2 InTexCoord : ATTRIBUTE2,
+	out float4 OutColor : TEXCOORD0,
+	out float2 OutTexCoord : TEXCOORD1,
+	out float4 OutPosition : SV_POSITION)
+{
+	float4 ClipPosition = mul(float4(InPosition + GeometryTranslation, 0.0f, 1.0f), GeometryTransform);
+	ClipPosition.z = ClipPosition.z * 0.5f + ClipPosition.w * 0.5f;
+	OutPosition = ClipPosition;
+	OutColor = InColor;
+	OutTexCoord = InTexCoord;
+}
+
+void ColorPS(
+	in float4 InColor : TEXCOORD0,
+	in float2 InTexCoord : TEXCOORD1,
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	OutColor = InColor;
+}
+
+Texture2D GeometryTexture;
+SamplerState GeometrySampler;
+uint GeometryTextureEncoding;
+
+void TexturePS(
+	in float4 InColor : TEXCOORD0,
+	in float2 InTexCoord : TEXCOORD1,
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	float4 Texel = GeometryTexture.Sample(GeometrySampler, InTexCoord);
+	if (GeometryTextureEncoding == 2)
+	{
+		Texel.rgb = LinearToSrgb(Texel.rgb);
+	}
+	if (GeometryTextureEncoding != 0)
+	{
+		Texel.rgb *= Texel.a;
+	}
+	OutColor = InColor * Texel;
+}
+
+int GradientFunction;
+int GradientNumStops;
+float2 GradientP;
+float2 GradientV;
+float4 GradientStopColors[ARC_RML_MAX_GRADIENT_STOPS];
+float4 GradientStopPositions[ARC_RML_MAX_GRADIENT_STOPS / 4];
+
+float GradientStopPosition(int Index)
+{
+	return GradientStopPositions[Index / 4][Index % 4];
+}
+
+float GlslMod(float X, float Y)
+{
+	return X - Y * floor(X / Y);
+}
+
+float4 MixStopColors(float T)
+{
+	float4 Color = GradientStopColors[0];
+	for (int Index = 1; Index < GradientNumStops; Index++)
+	{
+		Color = lerp(Color, GradientStopColors[Index], smoothstep(GradientStopPosition(Index - 1), GradientStopPosition(Index), T));
+	}
+	return Color;
+}
+
+void GradientPS(
+	in float4 InColor : TEXCOORD0,
+	in float2 InTexCoord : TEXCOORD1,
+	in float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	float T = 0.0f;
+	const int Function = GradientFunction % 3;
+
+	if (Function == 0)
+	{
+		const float DistanceSquared = dot(GradientV, GradientV);
+		T = dot(GradientV, InTexCoord - GradientP) / DistanceSquared;
+	}
+	else if (Function == 1)
+	{
+		T = length(GradientV * (InTexCoord - GradientP));
+	}
+	else
+	{
+		const float2 Offset = InTexCoord - GradientP;
+		const float2 Rotated = float2(GradientV.x * Offset.x + GradientV.y * Offset.y, -GradientV.y * Offset.x + GradientV.x * Offset.y);
+		T = 0.5f + atan2(-Rotated.x, Rotated.y) / (2.0f * ARC_RML_PI);
+	}
+
+	if (GradientFunction >= 3)
+	{
+		const float T0 = GradientStopPosition(0);
+		const float T1 = GradientStopPosition(GradientNumStops - 1);
+		T = T0 + GlslMod(T - T0, T1 - T0);
+	}
+
+	OutColor = InColor * MixStopColors(T);
+}
+
+Texture2D SourceTexture;
+SamplerState SourceSampler;
+float4 SourceScaleBias;
+float2 SourceInvSize;
+float4 SourceRegion;
+
+float2 SourceUV(float2 PixelPosition)
+{
+	return (PixelPosition * SourceScaleBias.xy + SourceScaleBias.zw) * SourceInvSize;
+}
+
+float2 ClampedSourceUV(float2 PixelPosition)
+{
+	return clamp(SourceUV(PixelPosition), SourceRegion.xy, SourceRegion.zw);
+}
+
+float InSourceRegion(float2 UV)
+{
+	const float2 Inside = step(SourceRegion.xy, UV) * step(UV, SourceRegion.zw);
+	return Inside.x * Inside.y;
+}
+
+float CopyOpacity;
+
+void CopyPS(in float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	OutColor = SourceTexture.Sample(SourceSampler, ClampedSourceUV(SvPosition.xy)) * CopyOpacity;
+}
+
+float4x4 ColorMatrix;
+
+void ColorMatrixPS(in float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	const float4 TexColor = SourceTexture.Sample(SourceSampler, ClampedSourceUV(SvPosition.xy));
+	const float3 Transformed = mul(TexColor, ColorMatrix).rgb;
+	OutColor = float4(Transformed, TexColor.a);
+}
+
+Texture2D MaskTexture;
+
+void BlendMaskPS(in float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	const float2 UV = ClampedSourceUV(SvPosition.xy);
+	const float4 TexColor = SourceTexture.Sample(SourceSampler, UV);
+	const float MaskAlpha = MaskTexture.Sample(SourceSampler, UV).a;
+	OutColor = TexColor * MaskAlpha;
+}
+
+float2 BlurTexelOffset;
+float4 BlurWeights;
+
+void BlurPS(in float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	const float2 UV = SourceUV(SvPosition.xy);
+	float4 Color = float4(0.0f, 0.0f, 0.0f, 0.0f);
+	for (int Index = 0; Index < 7; Index++)
+	{
+		const float2 TapUV = UV - float(Index - 3) * BlurTexelOffset;
+		Color += SourceTexture.Sample(SourceSampler, clamp(TapUV, SourceRegion.xy, SourceRegion.zw)) * InSourceRegion(TapUV) * BlurWeights[abs(Index - 3)];
+	}
+	OutColor = Color;
+}
+
+float4 ShadowColor;
+
+void DropShadowPS(in float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	const float2 UV = SourceUV(SvPosition.xy);
+	OutColor = SourceTexture.Sample(SourceSampler, clamp(UV, SourceRegion.xy, SourceRegion.zw)).a * InSourceRegion(UV) * ShadowColor;
+}

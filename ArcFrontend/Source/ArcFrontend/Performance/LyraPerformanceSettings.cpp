@@ -47,7 +47,7 @@ ULyraPerformanceSettings::ULyraPerformanceSettings()
 {
 	PerPlatformSettings.Initialize(ULyraPlatformSpecificRenderingSettings::StaticClass());
 
-	CategoryName = TEXT("Game");
+	CategoryName = TEXT("Arc Game");
 
 	DesktopFrameRateLimits.Append({ 30, 60, 120, 144, 160, 165, 180, 200, 240, 360 });
 

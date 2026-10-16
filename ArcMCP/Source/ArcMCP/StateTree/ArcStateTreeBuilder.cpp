@@ -6,8 +6,10 @@
 
 #include "StateTree.h"
 #include "StateTreeEditorData.h"
+#include "StateTreeEditorModule.h"
+#include "StateTreeEditingSubsystem.h"
+#include "StateTreeEditorSchema.h"
 #include "StateTreeState.h"
-#include "StateTreeCompiler.h"
 #include "StateTreeSchema.h"
 #include "StateTreeNodeBase.h"
 #include "StateTreeTaskBase.h"
@@ -98,11 +100,16 @@ bool FArcStateTreeBuilder::CreateAssetAndEditorData(const FArcSTDescription& Des
 		return false;
 	}
 
-	EditorData = NewObject<UStateTreeEditorData>(StateTree);
+	FStateTreeEditorModule& STModule = FStateTreeEditorModule::GetModule();
+	TNonNullSubclassOf<UStateTreeEditorData> EditorDataClass = STModule.GetEditorDataClass(SchemaClass);
+	EditorData = NewObject<UStateTreeEditorData>(StateTree, EditorDataClass, FName(), RF_Transactional);
 	StateTree->EditorData = EditorData;
 
-	UStateTreeSchema* Schema = Cast<UStateTreeSchema>(NewObject<UObject>(EditorData, SchemaClass));
+	UStateTreeSchema* Schema = Cast<UStateTreeSchema>(NewObject<UObject>(EditorData, SchemaClass, FName(), RF_Transactional));
 	EditorData->Schema = Schema;
+
+	TNonNullSubclassOf<UStateTreeEditorSchema> EditorSchemaClass = STModule.GetEditorSchemaClass(SchemaClass);
+	EditorData->EditorSchema = NewObject<UStateTreeEditorSchema>(EditorData, EditorSchemaClass, FName(), RF_Transactional);
 
 	return true;
 }
@@ -409,8 +416,7 @@ bool FArcStateTreeBuilder::AddBindings(const FArcSTDescription& Desc)
 bool FArcStateTreeBuilder::CompileTree()
 {
 	FStateTreeCompilerLog Log;
-	FStateTreeCompiler Compiler(Log);
-	const bool bSuccess = Compiler.Compile(*StateTree);
+	const bool bSuccess = UStateTreeEditingSubsystem::CompileStateTree(StateTree, Log);
 
 	// Extract messages from compiler log
 	TArray<TSharedRef<FTokenizedMessage>> Messages = Log.ToTokenizedMessages();

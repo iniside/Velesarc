@@ -1,0 +1,340 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/VertexFactoryCommon.ush"
+#include "/Plugin/ArcWater/ArcOceanGerstner.ush"
+#include "/Plugin/ArcWater/ArcOceanFoam.ush"
+
+#include "/Plugin/ArcWater/ArcOceanSeabed.ush"
+
+FDFVector3 ArcOcean_AbsoluteWorldPosition(float3 TranslatedWorldPosition, FDFVector3 PreViewTranslation)
+{
+	return DFFastSubtract(TranslatedWorldPosition, PreViewTranslation);
+}
+
+float2 ArcOceanSnappedOriginTranslatedWorld;
+float ArcOceanCellSize;
+uint ArcOceanTrimRotationSteps;
+
+struct FVertexFactoryInput
+{
+	int2 GridCoord : ATTRIBUTE0;
+	float MorphWeight : ATTRIBUTE1;
+	VF_INSTANCED_STEREO_DECLARE_INPUT_BLOCK()
+	VF_MOBILE_MULTI_VIEW_DECLARE_INPUT_BLOCK()
+};
+
+struct FVertexFactoryIntermediates
+{
+	int2 GridCoord;
+	float MorphWeight;
+	float3 TranslatedWorldPosition;
+	float3 LatticeSurfacePosition;
+	float3 Normal;
+	float3 TangentX;
+	float3 TangentY;
+	float2 Foam;
+	FSceneDataIntermediates SceneData;
+};
+
+struct FVertexFactoryInterpolantsVSToPS
+{
+#if NUM_TEX_COORD_INTERPOLATORS
+	float4 TexCoords[(NUM_TEX_COORD_INTERPOLATORS + 1) / 2] : TEXCOORD0;
+#endif
+	float4 TangentToWorld0 : TEXCOORD10;
+	float4 TangentToWorld2 : TEXCOORD11;
+#if INTERPOLATE_VERTEX_COLOR
+	half4 Color : COLOR0;
+#endif
+};
+
+FPrimitiveSceneData GetPrimitiveData(FVertexFactoryIntermediates Intermediates)
+{
+	return Intermediates.SceneData.Primitive;
+}
+
+int2 ArcOcean_RotateTrimCoord(int2 Coord, uint Steps)
+{
+	const uint StepCount = Steps & 3u;
+
+	int2 Result = Coord;
+	UNROLL
+	for (uint StepIndex = 0; StepIndex < 3u; ++StepIndex)
+	{
+		if (StepIndex >= StepCount)
+		{
+			break;
+		}
+
+		Result = int2(Result.y, ARC_OCEAN_TRIM_ROTATION_COORD_SUM - Result.x);
+	}
+
+	return Result;
+}
+
+struct FArcOceanSurface
+{
+	float3 TranslatedWorldPosition;
+	float3 LatticeSurfacePosition;
+	float2 Foam;
+	FArcOceanWaveSample Wave;
+};
+
+FArcOceanSurface ArcOcean_EvalSurface(
+	int2 GridCoord,
+	float MorphWeight,
+	float2 SnappedOriginTranslatedWorld,
+	float3 SurfaceOriginTranslatedWorld,
+	FDFVector3 PreViewTranslation,
+	float Time)
+{
+	// The lattice is snapped and morphed BEFORE the wave is evaluated: displacing first and snapping
+	// after would move each sample point every frame and the whole sheet would swim under the camera.
+	const int2 CoarseCoord = GridCoord - (GridCoord & 1);
+	const float2 MorphedCoord = lerp(float2(GridCoord), float2(CoarseCoord), MorphWeight);
+	const float2 LatticeTranslatedWorldXY = SnappedOriginTranslatedWorld + MorphedCoord * ArcOceanCellSize;
+	const float2 LatticeSurfaceXY = LatticeTranslatedWorldXY - SurfaceOriginTranslatedWorld.xy;
+
+	// Ceff, not CellSize: at MorphWeight == 1 it equals the next ring's cell, so both sides of a ring
+	// seam attenuate the identical wave set and the seam stays closed.
+	const float EffectiveCellSize = lerp(ArcOceanCellSize, 2.0f * ArcOceanCellSize, MorphWeight);
+
+	const FDFVector3 SurfaceAbsoluteWorld = ArcOcean_AbsoluteWorldPosition(
+		float3(LatticeTranslatedWorldXY, SurfaceOriginTranslatedWorld.z), PreViewTranslation);
+
+	float DepthCm = ArcOceanVF.DeepDepthCm;
+	float2 Shoreward = float2(0.0f, 0.0f);
+	ArcOcean_SampleSeabed(SurfaceAbsoluteWorld, ArcOcean_ShorewardStepCm(), DepthCm, Shoreward);
+
+	const float BreakerCrestCm = ArcOceanVF.WaveCount > 0 ? ArcOceanVF.Waves[0].w : 0.0f;
+
+	FArcOceanSurface OutSurface;
+	OutSurface.Wave = ArcOcean_EvalGerstner(
+		ArcOceanVF.Waves, ArcOceanVF.WaveCount, LatticeSurfaceXY, Time, EffectiveCellSize, DepthCm, Shoreward);
+	OutSurface.Foam = float2(
+		ArcOcean_BreakingFoam(DepthCm, BreakerCrestCm),
+		ArcOcean_ShoreFoam(DepthCm, OutSurface.Wave.Displacement.z, BreakerCrestCm));
+	OutSurface.LatticeSurfacePosition = float3(LatticeSurfaceXY, 0.0f);
+	OutSurface.TranslatedWorldPosition = float3(
+		LatticeTranslatedWorldXY + OutSurface.Wave.Displacement.xy,
+		SurfaceOriginTranslatedWorld.z + OutSurface.Wave.Displacement.z);
+	return OutSurface;
+}
+
+float3 ArcOcean_GetPreviousTranslatedWorldPosition(FVertexFactoryIntermediates Intermediates)
+{
+	const float3 SurfaceOriginTranslatedWorld = TransformLocalToTranslatedWorld(
+		float3(0.0f, 0.0f, 0.0f), GetPrimitiveData(Intermediates).LocalToWorld).xyz;
+	const float3 PrevSurfaceOriginTranslatedWorld = TransformPreviousLocalPositionToTranslatedWorld(
+		float3(0.0f, 0.0f, 0.0f), GetPrimitiveData(Intermediates).PreviousLocalToWorld).xyz;
+
+	const float2 PrevLatticeOriginPrevTranslatedWorld = ArcOceanSnappedOriginTranslatedWorld
+		+ (PrevSurfaceOriginTranslatedWorld.xy - SurfaceOriginTranslatedWorld.xy);
+
+	const FArcOceanSurface Surface = ArcOcean_EvalSurface(
+		Intermediates.GridCoord,
+		Intermediates.MorphWeight,
+		PrevLatticeOriginPrevTranslatedWorld,
+		PrevSurfaceOriginTranslatedWorld,
+		ResolvedView.PrevPreViewTranslation,
+		ResolvedView.PrevFrameGameTime);
+
+	return Surface.TranslatedWorldPosition;
+}
+
+FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput Input)
+{
+	FVertexFactoryIntermediates Intermediates = (FVertexFactoryIntermediates)0;
+	Intermediates.SceneData = VF_GPUSCENE_GET_INTERMEDIATES(Input);
+
+	Intermediates.GridCoord = ArcOcean_RotateTrimCoord(Input.GridCoord, ArcOceanTrimRotationSteps);
+	Intermediates.MorphWeight = saturate(Input.MorphWeight);
+
+	const float3 SurfaceOriginTranslatedWorld = TransformLocalToTranslatedWorld(
+		float3(0.0f, 0.0f, 0.0f), GetPrimitiveData(Intermediates).LocalToWorld).xyz;
+
+	const FArcOceanSurface Surface = ArcOcean_EvalSurface(
+		Intermediates.GridCoord,
+		Intermediates.MorphWeight,
+		ArcOceanSnappedOriginTranslatedWorld,
+		SurfaceOriginTranslatedWorld,
+		ResolvedView.PreViewTranslation,
+		ResolvedView.GameTime);
+
+	Intermediates.TranslatedWorldPosition = Surface.TranslatedWorldPosition;
+	Intermediates.LatticeSurfacePosition = Surface.LatticeSurfacePosition;
+	Intermediates.Normal = Surface.Wave.Normal;
+	Intermediates.TangentX = Surface.Wave.Binormal;
+	Intermediates.TangentY = Surface.Wave.Tangent;
+	Intermediates.Foam = Surface.Foam;
+
+	return Intermediates;
+}
+
+float3 VertexFactoryGetInstanceSpacePosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return Intermediates.TranslatedWorldPosition;
+}
+
+float3 VertexFactoryGetPreviousInstanceSpacePosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return ArcOcean_GetPreviousTranslatedWorldPosition(Intermediates);
+}
+
+half3x3 VertexFactoryGetTangentToLocal(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return half3x3(
+		half3(Intermediates.TangentX),
+		half3(Intermediates.TangentY),
+		half3(Intermediates.Normal));
+}
+
+FMaterialVertexParameters GetMaterialVertexParameters(
+	FVertexFactoryInput Input,
+	FVertexFactoryIntermediates Intermediates,
+	float3 WorldPosition,
+	half3x3 TangentToLocal,
+	bool bIsPreviousFrame = false)
+{
+	FMaterialVertexParameters Result = MakeInitializedMaterialVertexParameters();
+
+	Result.SceneData = Intermediates.SceneData;
+
+	Result.WorldPosition = WorldPosition;
+	if (bIsPreviousFrame)
+	{
+		Result.PositionInstanceSpace = VertexFactoryGetPreviousInstanceSpacePosition(Input, Intermediates);
+	}
+	else
+	{
+		Result.PositionInstanceSpace = VertexFactoryGetInstanceSpacePosition(Input, Intermediates);
+	}
+	Result.PositionPrimitiveSpace = Result.PositionInstanceSpace;
+
+	Result.TangentToWorld = TangentToLocal;
+	Result.VertexColor = float4(Intermediates.Foam, 0.0f, 1.0f);
+
+	Result.PreSkinnedPosition = Intermediates.LatticeSurfacePosition;
+	Result.PreSkinnedNormal = float3(0.0f, 0.0f, 1.0f);
+
+	Result.LWCData = MakeMaterialLWCData(Result);
+
+	return Result;
+}
+
+uint GetPrimitiveId(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+	return 0;
+}
+
+uint VertexFactoryGetPrimitiveId(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+	return GetPrimitiveId(Interpolants);
+}
+
+float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return float4(Intermediates.TranslatedWorldPosition, 1.0f);
+}
+
+float4 VertexFactoryGetRasterizedWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float4 InWorldPosition)
+{
+	return InWorldPosition;
+}
+
+float3 VertexFactoryGetPositionForVertexLighting(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float3 TranslatedWorldPosition)
+{
+	return TranslatedWorldPosition;
+}
+
+float4 VertexFactoryGetPreviousWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return float4(ArcOcean_GetPreviousTranslatedWorldPosition(Intermediates), 1.0f);
+}
+
+float3 VertexFactoryGetWorldNormal(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return Intermediates.Normal;
+}
+
+float4 VertexFactoryGetTranslatedPrimitiveVolumeBounds(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+	FPrimitiveSceneData PrimitiveData = GetPrimitiveData(GetPrimitiveId(Interpolants));
+	return float4(DFFastToTranslatedWorld(PrimitiveData.ObjectWorldPosition, ResolvedView.PreViewTranslation), PrimitiveData.ObjectRadius);
+}
+
+#if NUM_TEX_COORD_INTERPOLATORS
+
+void SetUV(inout FVertexFactoryInterpolantsVSToPS Interpolants, uint UVIndex, float2 InValue)
+{
+	FLATTEN
+	if (UVIndex % 2)
+	{
+		Interpolants.TexCoords[UVIndex / 2].zw = InValue;
+	}
+	else
+	{
+		Interpolants.TexCoords[UVIndex / 2].xy = InValue;
+	}
+}
+
+float2 GetUV(FVertexFactoryInterpolantsVSToPS Interpolants, uint UVIndex)
+{
+	float4 UVVector = Interpolants.TexCoords[UVIndex / 2];
+	return UVIndex % 2 ? UVVector.zw : UVVector.xy;
+}
+
+#endif
+
+FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, FMaterialVertexParameters VertexParameters)
+{
+	FVertexFactoryInterpolantsVSToPS Interpolants = (FVertexFactoryInterpolantsVSToPS)0;
+
+#if NUM_TEX_COORD_INTERPOLATORS
+	float2 CustomizedUVs[NUM_TEX_COORD_INTERPOLATORS];
+	GetMaterialCustomizedUVs(VertexParameters, CustomizedUVs);
+	GetCustomInterpolators(VertexParameters, CustomizedUVs);
+
+	UNROLL
+	for (int CoordinateIndex = 0; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
+	{
+		SetUV(Interpolants, CoordinateIndex, CustomizedUVs[CoordinateIndex]);
+	}
+#endif
+
+	Interpolants.TangentToWorld0 = float4(Intermediates.TangentX, 0.0f);
+	Interpolants.TangentToWorld2 = float4(Intermediates.Normal, 1.0f);
+#if INTERPOLATE_VERTEX_COLOR
+	Interpolants.Color = VertexParameters.VertexColor;
+#endif
+
+	return Interpolants;
+}
+
+FMaterialPixelParameters GetMaterialPixelParameters(FVertexFactoryInterpolantsVSToPS Interpolants, float4 SvPosition)
+{
+	FMaterialPixelParameters Result = MakeInitializedMaterialPixelParameters();
+
+#if NUM_TEX_COORD_INTERPOLATORS
+	UNROLL
+	for (uint CoordinateIndex = 0; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
+	{
+		Result.TexCoords[CoordinateIndex] = GetUV(Interpolants, CoordinateIndex);
+	}
+#endif // NUM_TEX_COORD_INTERPOLATORS
+
+	const half3 TangentX = half3(normalize(Interpolants.TangentToWorld0.xyz));
+	const half4 TangentZ = half4(half3(normalize(Interpolants.TangentToWorld2.xyz)), half(Interpolants.TangentToWorld2.w));
+
+	Result.TangentToWorld = AssembleTangentToWorld(TangentX, TangentZ);
+	Result.TwoSidedSign = 1;
+#if INTERPOLATE_VERTEX_COLOR
+	Result.VertexColor = Interpolants.Color;
+#endif
+	Result.PrimitiveId = GetPrimitiveId(Interpolants);
+
+	return Result;
+}
+
+#include "/Engine/Private/VertexFactoryDefaultInterface.ush"

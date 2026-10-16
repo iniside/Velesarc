@@ -3,20 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityTraitBase.h"
-#include "ArcProjectileFragments.h"
+#include "ArcProjectileTraitBase.h"
 
 #include "ArcBouncingProjectileTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
-class ARCMASS_API UArcBouncingProjectileTrait : public UMassEntityTraitBase
+/** Trait that configures a Mass entity as a bouncing projectile.
+ *  Adds projectile config and bounce config for ricochet behavior on impact. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Bouncing Projectile", Category = "Projectiles"))
+class ARCMASS_API UArcBouncingProjectileTrait : public UArcProjectileTraitBase
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
-	FArcProjectileConfigFragment ProjectileConfig;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Bounce")
 	FArcProjectileBounceConfigFragment BounceConfig;
 

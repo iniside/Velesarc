@@ -20,103 +20,121 @@
  */
 
 #include "ArcCraft/Station/ArcCraftItemSource.h"
+#include "ArcCraft/Station/ArcCraftStationXfer.h"
 
-#include "ArcCoreUtils.h"
+#include "Mass/CommandBuffer.h"
+#include "Mass/Commands.h"
+#include "Mass/EntityManager.h"
 #include "MassEntitySubsystem.h"
+#include "Mass/EntityView.h"
+#include "MassSubsystemAccess.h"
+#include "MassSignalSubsystem.h"
 #include "ArcCraft/Mass/ArcCraftMassFragments.h"
-#include "ArcCraft/Mass/ArcCraftVisEntityComponent.h"
-#include "ArcCraft/Recipe/ArcRecipeDefinition.h"
-#include "ArcCraft/Recipe/ArcRecipeQuality.h"
-#include "ArcCraft/Station/ArcCraftStationComponent.h"
+#include "ArcCraft/Mass/ArcCraftQueueChangedSignal.h"
+#include "ArcCraft/Rarity/ArcCraftRarity.h"
+#include "ArcCraft/Recipe/ArcRecipeDefinitionData.h"
 #include "Engine/World.h"
-#include "Items/ArcItemDefinition.h"
+#include "GameFramework/Actor.h"
+#include "Items/ArcItemData.h"
+#include "Items/ArcItemDefinitionData.h"
 #include "Items/ArcItemSpec.h"
-#include "Items/ArcItemsArray.h"
-#include "Items/ArcItemsStoreComponent.h"
+#include "Items/Fragments/ArcItemFragment_InstanceTags.h"
+#include "Fragments/ArcMassItemStoreFragment.h"
+#include "Operations/ArcMassItemOperations.h"
+#include "Pawn/ArcMassFrameworkAgentComponent.h"
 
 // -------------------------------------------------------------------
 // FArcCraftItemSource (base)
 // -------------------------------------------------------------------
 
-TArray<FArcItemSpec> FArcCraftItemSource::GetAvailableItems(
-	const UArcCraftStationComponent* Station,
-	const UObject* Instigator) const
+namespace ArcCraftItemSourceLocal
 {
-	return {};
-}
-
-bool FArcCraftItemSource::CanSatisfyRecipe(
-	const UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator) const
-{
-	return false;
-}
-
-bool FArcCraftItemSource::ConsumeIngredients(
-	UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator,
-	TArray<FArcItemSpec>& OutMatchedItems,
-	TArray<float>& OutQualityMults) const
-{
-	return false;
-}
-
-bool FArcCraftItemSource::DepositItem(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& Item,
-	const UObject* Instigator)
-{
-	return false;
-}
-
-bool FArcCraftItemSource::WithdrawItem(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
-{
-	return false;
-}
-
-bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
-	TArray<FArcItemSpec>& Items,
-	const UArcRecipeDefinition* Recipe,
-	bool bConsume,
-	TArray<FArcItemSpec>* OutMatchedItems,
-	TArray<float>* OutQualityMults)
-{
-	if (!Recipe)
+	struct FSlotDraw
 	{
-		return false;
-	}
+		int32 ItemIndex = INDEX_NONE;
+		int32 Amount = 0;
+	};
 
-	UArcQualityTierTable* TierTable = nullptr;
-	if (!Recipe->QualityTierTable.IsNull())
+	bool DrawSlotFromCandidates(
+		const TArray<FArcItemSpec>& Items,
+		TConstArrayView<int32> Candidates,
+		const FArcRecipeIngredient& Ingredient,
+		TArray<FSlotDraw>& OutDraws,
+		float& OutStep)
 	{
-		TierTable = Recipe->QualityTierTable.LoadSynchronous();
-	}
+		TArray<FArcCraftSlotCandidate> SlotCandidates;
+		SlotCandidates.Reserve(Candidates.Num());
+		for (const int32 CandidateIndex : Candidates)
+		{
+			FArcCraftSlotCandidate& SlotCandidate = SlotCandidates.AddDefaulted_GetRef();
+			SlotCandidate.DefinitionId = Items[CandidateIndex].GetItemDefinitionId();
+			SlotCandidate.InstanceTags = ArcMassItems::GetSpecInstanceTags(Items[CandidateIndex]);
+			SlotCandidate.Step = Ingredient.GetItemRarityStep(Items[CandidateIndex]);
+			SlotCandidate.Amount = static_cast<int32>(Items[CandidateIndex].Amount);
+		}
 
-	TSet<int32> UsedIndices;
-	TArray<FArcItemSpec> MatchedIngredients;
-	TArray<float> QualityMultipliers;
-	MatchedIngredients.SetNum(Recipe->Ingredients.Num());
-	QualityMultipliers.SetNum(Recipe->Ingredients.Num());
-
-	// Track items to consume (index + amount)
-	TArray<TPair<int32, int32>> ItemsToConsume;
-
-	for (int32 SlotIdx = 0; SlotIdx < Recipe->Ingredients.Num(); ++SlotIdx)
-	{
-		const FArcRecipeIngredient* Ingredient = Recipe->GetIngredientBase(SlotIdx);
-		if (!Ingredient)
+		TArray<FArcCraftSlotTake> Takes;
+		if (!ArcCraftRarity::ComputeSlotDraw(SlotCandidates, Ingredient.Amount, Takes, OutStep))
 		{
 			return false;
 		}
 
-		int32 MatchedIndex = INDEX_NONE;
+		OutDraws.Reset();
+		for (const FArcCraftSlotTake& Take : Takes)
+		{
+			OutDraws.Add({Candidates[Take.CandidateIndex], Take.Amount});
+		}
+		return true;
+	}
+} // namespace ArcCraftItemSourceLocal
+
+bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
+	TArray<FArcItemSpec>& Items,
+	const FArcRecipeDefinitionData& Recipe,
+	bool bConsume,
+	TArray<FArcItemSpec>* OutMatchedItems,
+	TArray<float>* OutSlotRaritySteps,
+	TArray<bool>* OutSlotFilled)
+{
+	const int32 NumSlots = Recipe.Ingredients.Num();
+
+	TArray<int32> SlotOrder;
+	SlotOrder.Reserve(NumSlots);
+	for (int32 SlotIdx = 0; SlotIdx < NumSlots; ++SlotIdx)
+	{
+		const FArcRecipeIngredient* Ingredient = Recipe.GetIngredientBase(SlotIdx);
+		if (!Ingredient)
+		{
+			return false;
+		}
+		if (!Ingredient->bOptional)
+		{
+			SlotOrder.Add(SlotIdx);
+		}
+	}
+	for (int32 SlotIdx = 0; SlotIdx < NumSlots; ++SlotIdx)
+	{
+		if (Recipe.IsIngredientOptional(SlotIdx))
+		{
+			SlotOrder.Add(SlotIdx);
+		}
+	}
+
+	TSet<int32> UsedIndices;
+	TArray<FArcItemSpec> MatchedIngredients;
+	TArray<float> SlotRaritySteps;
+	TArray<bool> SlotFilled;
+	MatchedIngredients.SetNum(NumSlots);
+	SlotRaritySteps.Init(1.0f, NumSlots);
+	SlotFilled.Init(false, NumSlots);
+
+	TArray<TPair<int32, int32>> ItemsToConsume;
+
+	for (const int32 SlotIdx : SlotOrder)
+	{
+		const FArcRecipeIngredient* Ingredient = Recipe.GetIngredientBase(SlotIdx);
+
+		TArray<int32> Candidates;
 		for (int32 ItemIdx = 0; ItemIdx < Items.Num(); ++ItemIdx)
 		{
 			if (UsedIndices.Contains(ItemIdx))
@@ -130,33 +148,36 @@ bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
 				continue;
 			}
 
-			if (!Ingredient->DoesItemSatisfy(Spec, TierTable))
+			if (!Ingredient->DoesItemSatisfy(Spec))
 			{
 				continue;
 			}
 
-			if (Spec.Amount < static_cast<uint16>(Ingredient->Amount))
-			{
-				continue;
-			}
-
-			MatchedIndex = ItemIdx;
-			break;
+			Candidates.Add(ItemIdx);
 		}
 
-		if (MatchedIndex == INDEX_NONE)
+		TArray<ArcCraftItemSourceLocal::FSlotDraw> Draws;
+		float SlotStep = 0.0f;
+		if (!ArcCraftItemSourceLocal::DrawSlotFromCandidates(Items, Candidates, *Ingredient, Draws, SlotStep))
 		{
+			if (Ingredient->bOptional)
+			{
+				continue;
+			}
 			return false;
 		}
 
-		MatchedIngredients[SlotIdx] = Items[MatchedIndex];
-		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(Items[MatchedIndex], TierTable);
+		MatchedIngredients[SlotIdx] = Items[Draws[0].ItemIndex];
+		SlotRaritySteps[SlotIdx] = SlotStep;
+		SlotFilled[SlotIdx] = true;
 
-		UsedIndices.Add(MatchedIndex);
-
-		if (Ingredient->bConsumeOnCraft)
+		for (const ArcCraftItemSourceLocal::FSlotDraw& Draw : Draws)
 		{
-			ItemsToConsume.Add({MatchedIndex, Ingredient->Amount});
+			UsedIndices.Add(Draw.ItemIndex);
+			if (Ingredient->bConsumeOnCraft && Draw.Amount > 0)
+			{
+				ItemsToConsume.Add({Draw.ItemIndex, Draw.Amount});
+			}
 		}
 	}
 
@@ -169,7 +190,7 @@ bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
 			return A.Key > B.Key;
 		});
 
-		for (const auto& Pair : ItemsToConsume)
+		for (const TPair<int32, int32>& Pair : ItemsToConsume)
 		{
 			FArcItemSpec& Spec = Items[Pair.Key];
 			if (Spec.Amount <= static_cast<uint16>(Pair.Value))
@@ -187,527 +208,184 @@ bool FArcCraftItemSource::MatchAndConsumeFromSpecs(
 	{
 		*OutMatchedItems = MoveTemp(MatchedIngredients);
 	}
-	if (OutQualityMults)
+	if (OutSlotRaritySteps)
 	{
-		*OutQualityMults = MoveTemp(QualityMultipliers);
+		*OutSlotRaritySteps = MoveTemp(SlotRaritySteps);
+	}
+	if (OutSlotFilled)
+	{
+		*OutSlotFilled = MoveTemp(SlotFilled);
 	}
 
 	return true;
 }
 
-bool FArcCraftItemSource::MatchAndConsumeFromStore(
-	UArcItemsStoreComponent* ItemsStore,
-	const UArcRecipeDefinition* Recipe,
-	bool bConsume,
-	TArray<FArcItemSpec>* OutMatchedItems,
-	TArray<float>* OutQualityMults)
+// -------------------------------------------------------------------
+// ArcCraftStationInputXfer — shared deposit/withdraw helpers
+// -------------------------------------------------------------------
+
+namespace ArcCraftStationInputXfer
 {
-	if (!ItemsStore || !Recipe)
+	static bool DepositToStationInput(
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		const UScriptStruct* StoreType,
+		FArcItemId ItemId,
+		int32 Stacks)
 	{
-		return false;
-	}
-
-	UArcQualityTierTable* TierTable = nullptr;
-	if (!Recipe->QualityTierTable.IsNull())
-	{
-		TierTable = Recipe->QualityTierTable.LoadSynchronous();
-	}
-
-	TArray<TPair<FArcItemId, int32>> ItemsToConsume;
-	TSet<FArcItemId> UsedItemIds;
-
-	TArray<FArcItemSpec> MatchedIngredients;
-	TArray<float> QualityMultipliers;
-	MatchedIngredients.SetNum(Recipe->Ingredients.Num());
-	QualityMultipliers.SetNum(Recipe->Ingredients.Num());
-
-	const TArray<const FArcItemData*> AllItems = ItemsStore->GetItems();
-
-	for (int32 SlotIdx = 0; SlotIdx < Recipe->Ingredients.Num(); ++SlotIdx)
-	{
-		const FArcRecipeIngredient* Ingredient = Recipe->GetIngredientBase(SlotIdx);
-		if (!Ingredient)
+		if (!EntityManager.IsEntityActive(StationEntity) || !EntityManager.IsEntityActive(InstigatorEntity))
+		{
+			return false;
+		}
+		if (!ItemId.IsValid() || Stacks <= 0)
+		{
+			return false;
+		}
+		if (StoreType == nullptr || !StoreType->IsChildOf(FArcMassItemStoreFragment::StaticStruct()))
 		{
 			return false;
 		}
 
-		const FArcItemData* MatchedItem = nullptr;
-		for (const FArcItemData* ItemData : AllItems)
-		{
-			if (!ItemData || UsedItemIds.Contains(ItemData->GetItemId()))
-			{
-				continue;
-			}
-
-			const FArcItemSpec ItemSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
-			if (!Ingredient->DoesItemSatisfy(ItemSpec, TierTable))
-			{
-				continue;
-			}
-
-			if (ItemData->GetStacks() < static_cast<uint16>(Ingredient->Amount))
-			{
-				continue;
-			}
-
-			MatchedItem = ItemData;
-			break;
-		}
-
-		if (!MatchedItem)
+		FArcCraftInputFragment* InputFrag =
+			EntityManager.GetFragmentDataPtr<FArcCraftInputFragment>(StationEntity);
+		if (InputFrag == nullptr)
 		{
 			return false;
 		}
 
-		const FArcItemSpec MatchedSpec = FArcItemCopyContainerHelper::ToSpec(MatchedItem);
-		MatchedIngredients[SlotIdx] = MatchedSpec;
-		QualityMultipliers[SlotIdx] = Ingredient->GetItemQualityMultiplier(MatchedSpec, TierTable);
-
-		UsedItemIds.Add(MatchedItem->GetItemId());
-
-		if (Ingredient->bConsumeOnCraft)
+		const FArcItemData* ItemData = ArcMassItems::FindItemById(EntityManager, InstigatorEntity, StoreType, ItemId);
+		if (ItemData == nullptr || static_cast<int32>(ItemData->GetStacks()) < Stacks)
 		{
-			ItemsToConsume.Add({MatchedItem->GetItemId(), Ingredient->Amount});
+			return false;
 		}
-	}
 
-	if (bConsume)
-	{
-		for (const auto& Pair : ItemsToConsume)
+		const bool bSplit = Stacks < static_cast<int32>(ItemData->GetStacks());
+		FArcItemSpec DepositSpec = ItemData->Spec;
+		DepositSpec.Amount = static_cast<uint16>(Stacks);
+		DepositSpec.SetItemId(bSplit ? FArcItemId::Generate() : ItemId);
+
+		if (!ArcMassItems::RemoveItem(EntityManager, InstigatorEntity, StoreType, ItemId, Stacks))
 		{
-			ItemsStore->RemoveItem(Pair.Key, Pair.Value, true);
+			return false;
 		}
+
+		InputFrag->InputItems.Add(DepositSpec);
+		return true;
 	}
 
-	if (OutMatchedItems)
+	/**
+	 * Move up to Stacks of ItemId from StationEntity's FArcCraftInputFragment::InputItems
+	 * back into InstigatorEntity's FArcMassItemStoreFragment via a deferred Set command.
+	 * Returns true = deferred command queued (NOT "stacks fully moved").
+	 * Withdraw partial-caps StacksToWithdraw = min(Stacks, Available) inside the deferred
+	 * lambda — a request exceeding available stacks silently transfers only what exists.
+	 */
+	static bool WithdrawFromStationInput(
+		FMassEntityManager& EntityManager,
+		FMassEntityHandle StationEntity,
+		FMassEntityHandle InstigatorEntity,
+		FArcItemId ItemId,
+		int32 Stacks)
 	{
-		*OutMatchedItems = MoveTemp(MatchedIngredients);
-	}
-	if (OutQualityMults)
-	{
-		*OutQualityMults = MoveTemp(QualityMultipliers);
-	}
-
-	return true;
-}
-
-// -------------------------------------------------------------------
-// FArcCraftItemSource_InstigatorStore
-// -------------------------------------------------------------------
-
-UArcItemsStoreComponent* FArcCraftItemSource_InstigatorStore::GetItemsStore(const UObject* Instigator) const
-{
-	const AActor* OwnerActor = Cast<AActor>(Instigator);
-	if (!OwnerActor)
-	{
-		return nullptr;
-	}
-	return Arcx::Utils::GetComponent(OwnerActor, ItemsStoreClass);
-}
-
-TArray<FArcItemSpec> FArcCraftItemSource_InstigatorStore::GetAvailableItems(
-	const UArcCraftStationComponent* Station,
-	const UObject* Instigator) const
-{
-	UArcItemsStoreComponent* Store = GetItemsStore(Instigator);
-	if (!Store)
-	{
-		return {};
-	}
-
-	TArray<FArcItemSpec> Specs;
-	const TArray<const FArcItemData*> Items = Store->GetItems();
-	Specs.Reserve(Items.Num());
-	for (const FArcItemData* ItemData : Items)
-	{
-		if (ItemData)
+		// Synchronous pre-validation: both entities must be active.
+		if (!EntityManager.IsEntityActive(StationEntity) || !EntityManager.IsEntityActive(InstigatorEntity))
 		{
-			Specs.Add(FArcItemCopyContainerHelper::ToSpec(ItemData));
+			return false;
 		}
-	}
-	return Specs;
-}
-
-bool FArcCraftItemSource_InstigatorStore::CanSatisfyRecipe(
-	const UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator) const
-{
-	UArcItemsStoreComponent* Store = GetItemsStore(Instigator);
-	return MatchAndConsumeFromStore(Store, Recipe, false);
-}
-
-bool FArcCraftItemSource_InstigatorStore::ConsumeIngredients(
-	UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator,
-	TArray<FArcItemSpec>& OutMatchedItems,
-	TArray<float>& OutQualityMults) const
-{
-	UArcItemsStoreComponent* Store = GetItemsStore(Instigator);
-	return MatchAndConsumeFromStore(Store, Recipe, true, &OutMatchedItems, &OutQualityMults);
-}
-
-bool FArcCraftItemSource_InstigatorStore::DepositItem(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& Item,
-	const UObject* Instigator)
-{
-	// Instigator store doesn't support deposit — items are already in the player's inventory.
-	return false;
-}
-
-bool FArcCraftItemSource_InstigatorStore::WithdrawItem(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
-{
-	// Instigator store doesn't support withdrawal — items are in the player's inventory, not the station.
-	return false;
-}
-
-// -------------------------------------------------------------------
-// FArcCraftItemSource_StationStore
-// -------------------------------------------------------------------
-
-UArcItemsStoreComponent* FArcCraftItemSource_StationStore::GetStationStore(
-	const UArcCraftStationComponent* Station) const
-{
-	if (!Station)
-	{
-		return nullptr;
-	}
-
-	AActor* Owner = Station->GetOwner();
-	if (!Owner)
-	{
-		return nullptr;
-	}
-
-	return Arcx::Utils::GetComponent(Owner, ItemsStoreClass);
-}
-
-TArray<FArcItemSpec> FArcCraftItemSource_StationStore::GetAvailableItems(
-	const UArcCraftStationComponent* Station,
-	const UObject* Instigator) const
-{
-	UArcItemsStoreComponent* Store = GetStationStore(Station);
-	if (!Store)
-	{
-		return {};
-	}
-
-	TArray<FArcItemSpec> Specs;
-	const TArray<const FArcItemData*> Items = Store->GetItems();
-	Specs.Reserve(Items.Num());
-	for (const FArcItemData* ItemData : Items)
-	{
-		if (ItemData)
+		if (!ItemId.IsValid() || Stacks <= 0)
 		{
-			Specs.Add(FArcItemCopyContainerHelper::ToSpec(ItemData));
+			return false;
 		}
-	}
-	return Specs;
-}
 
-bool FArcCraftItemSource_StationStore::CanSatisfyRecipe(
-	const UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator) const
-{
-	UArcItemsStoreComponent* Store = GetStationStore(Station);
-	return MatchAndConsumeFromStore(Store, Recipe, false);
-}
-
-bool FArcCraftItemSource_StationStore::ConsumeIngredients(
-	UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator,
-	TArray<FArcItemSpec>& OutMatchedItems,
-	TArray<float>& OutQualityMults) const
-{
-	UArcItemsStoreComponent* Store = GetStationStore(Station);
-	return MatchAndConsumeFromStore(Store, Recipe, true, &OutMatchedItems, &OutQualityMults);
-}
-
-bool FArcCraftItemSource_StationStore::DepositItem(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& Item,
-	const UObject* Instigator)
-{
-	UArcItemsStoreComponent* Store = GetStationStore(Station);
-	if (!Store)
-	{
-		return false;
-	}
-
-	Store->AddItem(Item, FArcItemId::InvalidId);
-	return true;
-}
-
-bool FArcCraftItemSource_StationStore::WithdrawItem(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
-{
-	UArcItemsStoreComponent* Store = GetStationStore(Station);
-	if (!Store)
-	{
-		return false;
-	}
-
-	const TArray<const FArcItemData*> Items = Store->GetItems();
-	if (!Items.IsValidIndex(ItemIndex))
-	{
-		return false;
-	}
-
-	const FArcItemData* ItemData = Items[ItemIndex];
-	if (!ItemData)
-	{
-		return false;
-	}
-
-	const int32 ItemStacks = static_cast<int32>(ItemData->GetStacks());
-	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= ItemStacks) ? ItemStacks : Stacks;
-
-	OutSpec = FArcItemCopyContainerHelper::ToSpec(ItemData);
-	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
-
-	if (StacksToWithdraw >= ItemStacks)
-	{
-		Store->DestroyItem(ItemData->GetItemId());
-	}
-	else
-	{
-		Store->RemoveItem(ItemData->GetItemId(), StacksToWithdraw);
-	}
-
-	return true;
-}
-
-// -------------------------------------------------------------------
-// FArcCraftItemSource_EntityStore
-// -------------------------------------------------------------------
-
-UArcCraftVisEntityComponent* FArcCraftItemSource_EntityStore::GetVisComponent(
-	const UArcCraftStationComponent* Station) const
-{
-	if (!Station || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-	return Station->GetOwner()->FindComponentByClass<UArcCraftVisEntityComponent>();
-}
-
-FArcCraftInputFragment* FArcCraftItemSource_EntityStore::GetInputFragment(
-	const UArcCraftStationComponent* Station) const
-{
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp)
-	{
-		return nullptr;
-	}
-
-	const FMassEntityHandle Entity = VisComp->GetEntityHandle();
-	if (!Entity.IsValid())
-	{
-		return nullptr;
-	}
-
-	UWorld* World = Station->GetWorld();
-	if (!World)
-	{
-		return nullptr;
-	}
-
-	UMassEntitySubsystem* MassSubsystem = World->GetSubsystem<UMassEntitySubsystem>();
-	if (!MassSubsystem)
-	{
-		return nullptr;
-	}
-
-	FMassEntityManager& EntityManager = MassSubsystem->GetMutableEntityManager();
-	if (!EntityManager.IsEntityValid(Entity))
-	{
-		return nullptr;
-	}
-
-	return EntityManager.GetFragmentDataPtr<FArcCraftInputFragment>(Entity);
-}
-
-UArcItemsStoreComponent* FArcCraftItemSource_EntityStore::GetMirrorInputStore(
-	const UArcCraftStationComponent* Station) const
-{
-	UArcCraftVisEntityComponent* VisComp = GetVisComponent(Station);
-	if (!VisComp || !VisComp->InputStoreClass || !Station->GetOwner())
-	{
-		return nullptr;
-	}
-
-	TArray<UArcItemsStoreComponent*> Stores;
-	Station->GetOwner()->GetComponents<UArcItemsStoreComponent>(Stores);
-	for (UArcItemsStoreComponent* Store : Stores)
-	{
-		if (Store && Store->IsA(VisComp->InputStoreClass))
-		{
-			return Store;
-		}
-	}
-	return nullptr;
-}
-
-TArray<FArcItemSpec> FArcCraftItemSource_EntityStore::GetAvailableItems(
-	const UArcCraftStationComponent* Station,
-	const UObject* Instigator) const
-{
-	const FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
-	if (InputFrag)
-	{
-		return InputFrag->InputItems;
-	}
-	return {};
-}
-
-bool FArcCraftItemSource_EntityStore::CanSatisfyRecipe(
-	const UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator) const
-{
-	const FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
-	if (!InputFrag)
-	{
-		return false;
-	}
-
-	// Match against a copy — don't modify the fragment for a check
-	TArray<FArcItemSpec> ItemsCopy = InputFrag->InputItems;
-	return MatchAndConsumeFromSpecs(ItemsCopy, Recipe, false);
-}
-
-bool FArcCraftItemSource_EntityStore::ConsumeIngredients(
-	UArcCraftStationComponent* Station,
-	const UArcRecipeDefinition* Recipe,
-	const UObject* Instigator,
-	TArray<FArcItemSpec>& OutMatchedItems,
-	TArray<float>& OutQualityMults) const
-{
-	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
-	if (!InputFrag)
-	{
-		return false;
-	}
-
-	// Consume directly from the entity fragment (source of truth)
-	if (!MatchAndConsumeFromSpecs(InputFrag->InputItems, Recipe, true, &OutMatchedItems, &OutQualityMults))
-	{
-		return false;
-	}
-
-	// Mirror to actor-side store if alive (for UI)
-	UArcItemsStoreComponent* MirrorStore = GetMirrorInputStore(Station);
-	if (MirrorStore)
-	{
-		// Re-sync the entire mirror store from the fragment
-		// Remove all items from the store and re-add from fragment
-		const TArray<const FArcItemData*> StoreItems = MirrorStore->GetItems();
-		for (const FArcItemData* ItemData : StoreItems)
-		{
-			if (ItemData)
+		// Push a deferred Set; the actual mutation happens on the game thread.
+		EntityManager.Defer().PushCommand<FMassDeferredCommand<EMassCommandOperationType::Set>>(
+			[StationEntity, InstigatorEntity, ItemId, Stacks](FMassEntityManager& Mgr)
 			{
-				MirrorStore->RemoveItem(ItemData->GetItemId(), ItemData->GetStacks(), true);
-			}
-		}
-		for (const FArcItemSpec& Spec : InputFrag->InputItems)
-		{
-			MirrorStore->AddItem(Spec, FArcItemId::InvalidId);
-		}
+				if (!Mgr.IsEntityActive(StationEntity) || !Mgr.IsEntityActive(InstigatorEntity))
+				{
+					return;
+				}
+
+				FArcCraftInputFragment* InputFrag =
+					Mgr.GetFragmentDataPtr<FArcCraftInputFragment>(StationEntity);
+				if (InputFrag == nullptr)
+				{
+					return;
+				}
+
+				// Locate the spec in the station input by ItemId.
+				const int32 InputIndex = InputFrag->InputItems.IndexOfByKey(ItemId);
+				if (InputIndex == INDEX_NONE)
+				{
+					return;
+				}
+
+				FArcItemSpec& InputSpec = InputFrag->InputItems[InputIndex];
+				const int32 Available = static_cast<int32>(InputSpec.Amount);
+				const int32 StacksToWithdraw = (Stacks >= Available) ? Available : Stacks;
+
+				// Build the withdrawn spec.
+				FArcItemSpec WithdrawnSpec = InputSpec;
+				WithdrawnSpec.Amount = static_cast<uint16>(StacksToWithdraw);
+				WithdrawnSpec.SetItemId(StacksToWithdraw < Available ? FArcItemId::Generate() : ItemId);
+
+				// Add-to-bag FIRST: deliver to the instigator (bag-aware spilling, or a plain store add
+				// when bag-less). DeliverSpecToInstigator touches only the instigator's stores, so the
+				// InputSpec reference / InputIndex into the station array stay valid below.
+				const int32 Placed = ArcCraftStationXfer::DeliverSpecToInstigator(Mgr, InstigatorEntity, WithdrawnSpec);
+				if (Placed <= 0)
+				{
+					// Nothing seated on the instigator — leave the station untouched, nothing lost.
+					return;
+				}
+
+				// Decrement or remove from station input by the placed count ONLY (never the request) so
+				// a partial/full-bag fill leaves the unplaced remainder in the station.
+				if (Placed >= Available)
+				{
+					InputFrag->InputItems.RemoveAt(InputIndex);
+				}
+				else
+				{
+					InputSpec.Amount = static_cast<uint16>(Available - Placed);
+				}
+
+				if (UWorld* World = Mgr.GetWorld())
+				{
+					if (UMassSignalSubsystem* Sig = World->GetSubsystem<UMassSignalSubsystem>())
+					{
+						Sig->SignalEntity(ArcCraftSignals::InputChanged, StationEntity);
+					}
+				}
+			});
+
+		return true;
 	}
+} // namespace ArcCraftStationInputXfer
 
-	return true;
-}
+// -------------------------------------------------------------------
+// FArcCraftItemSource_EntityStore — DepositItem_Mass / WithdrawItem_Mass
+// -------------------------------------------------------------------
 
-bool FArcCraftItemSource_EntityStore::DepositItem(
-	UArcCraftStationComponent* Station,
-	const FArcItemSpec& Item,
-	const UObject* Instigator)
+bool FArcCraftItemSource_EntityStore::DepositItem_Mass(
+	FMassEntityManager& EntityManager,
+	FMassEntityHandle StationEntity,
+	FMassEntityHandle InstigatorEntity,
+	const UScriptStruct* StoreType,
+	FArcItemId ItemId,
+	int32 Stacks) const
 {
-	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
-	if (!InputFrag)
-	{
-		return false;
-	}
-
-	// Add to entity fragment (source of truth)
-	InputFrag->InputItems.Add(Item);
-
-	// Mirror to actor-side store if alive (for UI)
-	UArcItemsStoreComponent* MirrorStore = GetMirrorInputStore(Station);
-	if (MirrorStore)
-	{
-		MirrorStore->AddItem(Item, FArcItemId::InvalidId);
-	}
-
-	return true;
+	return ArcCraftStationInputXfer::DepositToStationInput(EntityManager, StationEntity, InstigatorEntity, StoreType, ItemId, Stacks);
 }
 
-bool FArcCraftItemSource_EntityStore::WithdrawItem(
-	UArcCraftStationComponent* Station,
-	int32 ItemIndex,
-	int32 Stacks,
-	FArcItemSpec& OutSpec,
-	const UObject* Instigator)
+bool FArcCraftItemSource_EntityStore::WithdrawItem_Mass(
+	FMassEntityManager& EntityManager,
+	FMassEntityHandle StationEntity,
+	FMassEntityHandle InstigatorEntity,
+	FArcItemId ItemId,
+	int32 Stacks) const
 {
-	FArcCraftInputFragment* InputFrag = GetInputFragment(Station);
-	if (!InputFrag)
-	{
-		return false;
-	}
-
-	if (!InputFrag->InputItems.IsValidIndex(ItemIndex))
-	{
-		return false;
-	}
-
-	FArcItemSpec& SourceSpec = InputFrag->InputItems[ItemIndex];
-	const int32 AvailableStacks = static_cast<int32>(SourceSpec.Amount);
-	const int32 StacksToWithdraw = (Stacks <= 0 || Stacks >= AvailableStacks) ? AvailableStacks : Stacks;
-
-	// Build the output spec
-	OutSpec = SourceSpec;
-	OutSpec.Amount = static_cast<uint16>(StacksToWithdraw);
-
-	// Remove from entity fragment (source of truth)
-	if (StacksToWithdraw >= AvailableStacks)
-	{
-		InputFrag->InputItems.RemoveAt(ItemIndex);
-	}
-	else
-	{
-		SourceSpec.Amount = static_cast<uint16>(AvailableStacks - StacksToWithdraw);
-	}
-
-	// Re-sync mirror store from fragment
-	UArcItemsStoreComponent* MirrorStore = GetMirrorInputStore(Station);
-	if (MirrorStore)
-	{
-		const TArray<const FArcItemData*> StoreItems = MirrorStore->GetItems();
-		for (const FArcItemData* ItemData : StoreItems)
-		{
-			if (ItemData)
-			{
-				MirrorStore->RemoveItem(ItemData->GetItemId(), ItemData->GetStacks(), true);
-			}
-		}
-		for (const FArcItemSpec& Spec : InputFrag->InputItems)
-		{
-			MirrorStore->AddItem(Spec, FArcItemId::InvalidId);
-		}
-	}
-
-	return true;
+	return ArcCraftStationInputXfer::WithdrawFromStationInput(EntityManager, StationEntity, InstigatorEntity, ItemId, Stacks);
 }
+

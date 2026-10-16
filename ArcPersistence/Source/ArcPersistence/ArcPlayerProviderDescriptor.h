@@ -29,7 +29,7 @@
  * from its parent via ResolveFunc.
  *
  * Interior nodes (e.g., PlayerState) resolve actors.
- * Leaf nodes (e.g., UArcItemsStoreComponent) resolve serializable objects.
+ * Leaf nodes resolve serializable objects.
  * Domain path is built by concatenating DomainSegment along the chain.
  */
 struct ARCPERSISTENCE_API FArcPlayerProviderDescriptor
@@ -37,7 +37,7 @@ struct ARCPERSISTENCE_API FArcPlayerProviderDescriptor
 	/** The UClass this provider resolves to. */
 	UClass* TargetClass = nullptr;
 
-	/** Path segment for this level (e.g., "PlayerState", "UArcItemsStoreComponent"). */
+	/** Path segment for this level (e.g., "PlayerState"). */
 	FString DomainSegment;
 
 	/** Parent's TargetClass. nullptr = root (resolves directly from PlayerController). */
@@ -74,14 +74,14 @@ public:
 
 	/**
 	 * Build the parent chain from a leaf descriptor to root.
-	 * Returns descriptors ordered root-first: [PlayerState, ItemsStoreComponent].
+	 * Returns descriptors ordered root-first.
 	 */
 	TArray<const FArcPlayerProviderDescriptor*> BuildChain(
 		const FArcPlayerProviderDescriptor& Leaf) const;
 
 	/**
 	 * Build the full domain path for a descriptor by walking its parent chain.
-	 * Example: "PlayerState/UArcItemsStoreComponent"
+	 * Example: "PlayerState/SomeLeafProvider"
 	 */
 	FString BuildDomainPath(const FArcPlayerProviderDescriptor& Leaf) const;
 
@@ -110,7 +110,7 @@ public:
 /**
  * Header macro — declares the auto-registration delegate for a provider.
  *
- * @param TargetType  The UClass this provider resolves (e.g., UArcItemsStoreComponent)
+ * @param TargetType  The UClass this provider resolves
  * @param Api         Module API macro (e.g., ARCCORE_API)
  */
 #define UE_ARC_DECLARE_PLAYER_PROVIDER(TargetType, Api) \

@@ -5,7 +5,7 @@
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeQuery.h"
 #include "ArcKnowledgeFilter.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "Engine/World.h"
 
 void FArcTQSGenerator_KnowledgeEntries::GenerateItems(
@@ -26,11 +26,11 @@ void FArcTQSGenerator_KnowledgeEntries::GenerateItems(
 
 	// Build knowledge query context
 	FArcKnowledgeQueryContext KnowledgeContext;
-	KnowledgeContext.QueryOrigin = QueryContext.QuerierLocation;
+	KnowledgeContext.QueryOrigin = Center;
 	KnowledgeContext.World = World;
 	KnowledgeContext.CurrentTime = World->GetTimeSeconds();
 	KnowledgeContext.EntityManager = QueryContext.EntityManager;
-	KnowledgeContext.QuerierEntity = QueryContext.QuerierEntity;
+	KnowledgeContext.QuerierEntity = Querier;
 
 	// Build knowledge query
 	FArcKnowledgeQuery Query;

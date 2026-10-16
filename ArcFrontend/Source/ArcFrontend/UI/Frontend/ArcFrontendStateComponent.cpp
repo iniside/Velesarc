@@ -29,9 +29,9 @@
 #include "Core/ArcCoreAssetManager.h"
 #include "GameFeatureAction.h"
 #include "GameFeaturesSubsystemSettings.h"
-#include "GameMode/ArcExperienceManager.h"
-#include "GameMode/ArcExperienceManagerComponent.h"
-#include "GameMode/ArcExperienceDefinition.h"
+#include "Experience/ArcMassExperienceManager.h"
+#include "Experience/ArcMassExperienceManagerComponent.h"
+#include "Experience/ArcMassExperienceDefinition.h"
 #include "TimerManager.h"
 #include "NativeGameplayTags.h"
 #include "ControlFlowManager.h"
@@ -68,9 +68,9 @@ void UArcFrontendStateComponent::BeginPlay()
 
 	// Listen for the experience load to complete
 	AGameStateBase* GameState = GetGameStateChecked<AGameStateBase>();
-	UArcExperienceManagerComponent* ExperienceComponent = GameState->FindComponentByClass<UArcExperienceManagerComponent>();
+	UArcMassExperienceManagerComponent* ExperienceComponent = GameState->FindComponentByClass<UArcMassExperienceManagerComponent>();
 	check(ExperienceComponent);
-	ExperienceComponent->CallOrRegister_OnExperienceLoaded_HighPriority(FOnArcExperienceLoaded::FDelegate::CreateUObject(this, &ThisClass::OnExperienceLoaded));
+	ExperienceComponent->CallOrRegister_OnExperienceLoaded(FOnArcMassExperienceLoaded::FDelegate::CreateUObject(this, &ThisClass::OnExperienceLoaded));
 	
 }
 
@@ -100,7 +100,7 @@ bool UArcFrontendStateComponent::ShouldShowLoadingScreen(FString& OutReason) con
 	return false;
 }
 
-void UArcFrontendStateComponent::OnExperienceLoaded(const UArcExperienceDefinition* Experience)
+void UArcFrontendStateComponent::OnExperienceLoaded(const UArcMassExperienceDefinition* Experience)
 {
 	FControlFlow& Flow = FControlFlowStatics::Create(this, TEXT("FrontendFlow"))
 		//.QueueStep(TEXT("Wait For User Initialization"), this, &ThisClass::FlowStep_WaitForUserInitialization)

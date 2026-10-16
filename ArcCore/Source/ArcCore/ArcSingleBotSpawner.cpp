@@ -22,12 +22,9 @@
 #include "ArcSingleBotSpawner.h"
 
 #include "AIController.h"
-#include "AbilitySystem/ArcAttributeSet.h"
-#include "AbilitySystemInterface.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
-#include "AbilitySystem/ArcCoreAbilitySystemComponent.h"
 #include "Components/StateTreeAIComponent.h"
 #include "Components/StateTreeComponent.h"
 
@@ -63,95 +60,7 @@ void FArcBotRunStateTree::GiveFragment(class APawn* InPawn
 	Comp->StartLogic();
 }
 
-void FArcBotGiveAttributeSet::GiveFragment(APawn* InPawn
-										   , AAIController* InController) const
-{
-	IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(InPawn);
-	if (ASI == nullptr)
-	{
-		return;
-	}
-
-	UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent());
-
-	for (int32 SetIndex = 0; SetIndex < AttributeSets.Num(); ++SetIndex)
-	{
-		const FArcBotAttributeSet& SetToGrant = AttributeSets[SetIndex];
-
-		if (!IsValid(SetToGrant.AttributeSetClass))
-		{
-			// UE_LOG(LogArcAbilitySet, Error, TEXT("GrantedAttributes[%d] on ability set
-			// [%s] is not valid"), SetIndex, *GetNameSafe(this));
-			continue;
-		}
-
-		UArcAttributeSet* NewSet = NewObject<UArcAttributeSet>(InPawn
-			, SetToGrant.AttributeSetClass);
-		ASC->AddAttributeSetSubobject(NewSet);
-		ASC->InitStats(SetToGrant.AttributeSetClass
-			, SetToGrant.AttributeMetaData.Get());
-	}
-	ASC->InitializeAttributeSets();
-}
-
-void FArcBotGiveAbilities::GiveFragment(APawn* InPawn
-										, AAIController* InController) const
-{
-	IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(InPawn);
-	if (ASI == nullptr)
-	{
-		return;
-	}
-
-	UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent());
-
-	for (int32 AbilityIndex = 0; AbilityIndex < Abilities.Num(); ++AbilityIndex)
-	{
-		const TSubclassOf<class UGameplayAbility>& AbilityToGrant = Abilities[AbilityIndex];
-
-		if (!IsValid(AbilityToGrant))
-		{
-			// UE_LOG(LogArcAbilitySet, Error, TEXT("GrantedGameplayAbilities [%d] on
-			// ability set [%s] is not valid."), AbilityIndex, *GetNameSafe(this));
-			continue;
-		}
-
-		UGameplayAbility* AbilityCDO = AbilityToGrant->GetDefaultObject<UGameplayAbility>();
-
-		FGameplayAbilitySpec AbilitySpec(AbilityCDO
-			, 0);
-		AbilitySpec.SourceObject = InPawn;
-
-		ASC->GiveAbility(AbilitySpec);
-	}
-}
-
-void FArcBotGiveEffects::GiveFragment(class APawn* InPawn
-	, class AAIController* InController) const
-{
-	IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(InPawn);
-	if (ASI == nullptr)
-	{
-		return;
-	}
-
-	UArcCoreAbilitySystemComponent* ASC = Cast<UArcCoreAbilitySystemComponent>(ASI->GetAbilitySystemComponent());
-	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
-	
-	for (int32 AbilityIndex = 0; AbilityIndex < GameplayEffects.Num(); ++AbilityIndex)
-	{
-		const TSubclassOf<class UGameplayEffect>& AbilityToGrant = GameplayEffects[AbilityIndex];
-
-		if (!IsValid(AbilityToGrant))
-		{
-			// UE_LOG(LogArcAbilitySet, Error, TEXT("GrantedGameplayAbilities [%d] on
-			// ability set [%s] is not valid."), AbilityIndex, *GetNameSafe(this));
-			continue;
-		}
-
-		ASC->ApplyGameplayEffectToSelf(AbilityToGrant->GetDefaultObject<UGameplayEffect>(), 1, ContextHandle);
-	}
-}
+// FArcBotGiveAttributeSet / FArcBotGiveAbilities / FArcBotGiveEffects retired with GAS keystone (Bucket D 7).
 
 #if WITH_EDITOR
 EDataValidationResult UArcBotData::IsDataValid(class FDataValidationContext& Context) const

@@ -3,7 +3,7 @@
 #include "ArcPlanFeasibilityDebugger.h"
 
 #include "imgui.h"
-#include "DrawDebugHelpers.h"
+#include "ArcPlanFeasibilityDebuggerDrawComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Kismet/GameplayStatics.h"
@@ -51,6 +51,7 @@ void FArcPlanFeasibilityDebugger::Initialize()
 
 void FArcPlanFeasibilityDebugger::Uninitialize()
 {
+	DestroyDrawActor();
 	InitialTagsWidget.Uninitialize();
 	RequiredTagsWidget.Uninitialize();
 	bHasResults = false;
@@ -66,6 +67,7 @@ void FArcPlanFeasibilityDebugger::Draw()
 	if (!ImGui::Begin("Plan Feasibility Debugger", &bShow))
 	{
 		ImGui::End();
+		if (DrawComponent.IsValid()) { DrawComponent->ClearShapes(); }
 		return;
 	}
 
@@ -76,7 +78,6 @@ void FArcPlanFeasibilityDebugger::Draw()
 	ImGui::End();
 
 	// World-space drawing (after ImGui::End)
-	DrawSearchRadiusInWorld();
 	DrawSelectedPlanInWorld();
 }
 
@@ -337,106 +338,118 @@ void FArcPlanFeasibilityDebugger::OnPlannerResponse(const FArcSmartObjectPlanRes
 // World Drawing
 // =============================================================================
 
-void FArcPlanFeasibilityDebugger::DrawSearchRadiusInWorld()
-{
-	UWorld* World = GetFeasibilityDebugWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	const FVector Origin = GetSearchOrigin();
-
-	// Draw circle on ground showing search radius
-	DrawDebugCircle(World, Origin, SearchRadius, 64, FColor(100, 200, 255, 128),
-		false, -1.f, 0, 2.f, FVector::RightVector, FVector::ForwardVector, false);
-
-	// Small sphere at origin
-	DrawDebugSphere(World, Origin + FVector(0, 0, 50.f), 20.f, 8, FColor::Cyan, false, -1.f, 0, 2.f);
-}
-
 void FArcPlanFeasibilityDebugger::DrawSelectedPlanInWorld()
 {
-	if (!bHasResults || SelectedPlanIndex == INDEX_NONE || !LastResponse.Plans.IsValidIndex(SelectedPlanIndex))
-	{
-		return;
-	}
-
 	UWorld* World = GetFeasibilityDebugWorld();
 	if (!World)
 	{
+		if (DrawComponent.IsValid())
+		{
+			DrawComponent->UpdatePlanData(FArcPlanFeasibilityDebugDrawData());
+		}
 		return;
 	}
 
-	FMassEntityManager* Manager = GetFeasibilityEntityManager();
+	FArcPlanFeasibilityDebugDrawData DrawData;
+	DrawData.SearchOrigin = GetSearchOrigin();
+	DrawData.SearchRadius = SearchRadius;
+	DrawData.bHasSelectedPlan = bHasResults && SelectedPlanIndex != INDEX_NONE && LastResponse.Plans.IsValidIndex(SelectedPlanIndex);
 
-	const FArcSmartObjectPlanContainer& Plan = LastResponse.Plans[SelectedPlanIndex];
-	if (Plan.Items.Num() == 0)
+	if (DrawData.bHasSelectedPlan)
 	{
-		return;
-	}
+		FMassEntityManager* Manager = GetFeasibilityEntityManager();
+		const FArcSmartObjectPlanContainer& Plan = LastResponse.Plans[SelectedPlanIndex];
+		const int32 LastIdx = Plan.Items.Num() - 1;
 
-	const FVector Origin = GetSearchOrigin();
-	constexpr float ZOffset = 100.f;
-	constexpr float SphereRadius = 35.f;
-	static const FColor FirstStepColor = FColor::Green;
-	static const FColor MidStepColor = FColor::Yellow;
-	static const FColor LastStepColor = FColor::Red;
-	static const FColor ArrowColor = FColor(255, 140, 0); // Orange
+		DrawData.Steps.Reserve(Plan.Items.Num());
 
-	// Arrow from origin to first step
-	{
-		FVector StartLoc = Origin + FVector(0, 0, ZOffset);
-		FVector EndLoc = Plan.Items[0].Location + FVector(0, 0, ZOffset);
-		DrawDebugDirectionalArrow(World, StartLoc, EndLoc, 40.f, FColor::Cyan, false, -1.f, 0, 3.f);
-	}
-
-	const int32 LastIdx = Plan.Items.Num() - 1;
-
-	for (int32 StepIdx = 0; StepIdx < Plan.Items.Num(); StepIdx++)
-	{
-		const FArcSmartObjectPlanStep& Step = Plan.Items[StepIdx];
-		FVector StepLoc = Step.Location + FVector(0, 0, ZOffset);
-
-		// Color: green for first, red for last, yellow for mid
-		FColor StepColor = MidStepColor;
-		if (StepIdx == 0)
+		for (int32 StepIdx = 0; StepIdx < Plan.Items.Num(); ++StepIdx)
 		{
-			StepColor = FirstStepColor;
-		}
-		else if (StepIdx == LastIdx)
-		{
-			StepColor = LastStepColor;
-		}
+			const FArcSmartObjectPlanStep& Step = Plan.Items[StepIdx];
 
-		// Sphere
-		DrawDebugSphere(World, StepLoc, SphereRadius, 12, StepColor, false, -1.f, 0, 2.f);
+			FArcPlanFeasibilityDebugStep DebugStep;
+			DebugStep.Location = Step.Location;
 
-		// Text label: step number + provides/requires
-		FString Label = FString::Printf(TEXT("Step %d"), StepIdx);
-		if (Manager && Step.EntityHandle.IsSet() && Manager->IsEntityActive(Step.EntityHandle))
-		{
-			const FArcMassGoalPlanInfoSharedFragment* GoalInfo =
-				Manager->GetConstSharedFragmentDataPtr<FArcMassGoalPlanInfoSharedFragment>(Step.EntityHandle);
-			if (GoalInfo && !GoalInfo->Provides.IsEmpty())
+			// Color: green for first, red for last, yellow for mid
+			if (StepIdx == 0)
 			{
-				Label += FString::Printf(TEXT("\nProvides: %s"), *GoalInfo->Provides.ToStringSimple());
+				DebugStep.Color = FColor::Green;
 			}
-		}
-		if (!Step.Requires.IsEmpty())
-		{
-			Label += FString::Printf(TEXT("\nRequires: %s"), *Step.Requires.ToStringSimple());
-		}
+			else if (StepIdx == LastIdx)
+			{
+				DebugStep.Color = FColor::Red;
+			}
+			else
+			{
+				DebugStep.Color = FColor::Yellow;
+			}
 
-		DrawDebugString(World, StepLoc + FVector(0, 0, 50.f), Label, nullptr, FColor::White, -1.f, true, 1.0f);
+			// Label: step number + provides/requires
+			DebugStep.Label = FString::Printf(TEXT("Step %d"), StepIdx);
+			if (Manager && Step.EntityHandle.IsSet() && Manager->IsEntityActive(Step.EntityHandle))
+			{
+				const FArcMassGoalPlanInfoSharedFragment* GoalInfo =
+					Manager->GetConstSharedFragmentDataPtr<FArcMassGoalPlanInfoSharedFragment>(Step.EntityHandle);
+				if (GoalInfo && !GoalInfo->Provides.IsEmpty())
+				{
+					DebugStep.Label += FString::Printf(TEXT("\nProvides: %s"), *GoalInfo->Provides.ToStringSimple());
+				}
+			}
+			if (!Step.Requires.IsEmpty())
+			{
+				DebugStep.Label += FString::Printf(TEXT("\nRequires: %s"), *Step.Requires.ToStringSimple());
+			}
 
-		// Arrow to next step
-		if (StepIdx < LastIdx)
-		{
-			FVector NextLoc = Plan.Items[StepIdx + 1].Location + FVector(0, 0, ZOffset);
-			DrawDebugDirectionalArrow(World, StepLoc, NextLoc, 40.f, ArrowColor, false, -1.f, 0, 3.f);
+			DrawData.Steps.Add(MoveTemp(DebugStep));
 		}
 	}
+
+	EnsureDrawActor(World);
+	if (DrawComponent.IsValid())
+	{
+		DrawComponent->UpdatePlanData(DrawData);
+	}
+}
+
+// =============================================================================
+// Draw Actor Management
+// =============================================================================
+
+void FArcPlanFeasibilityDebugger::EnsureDrawActor(UWorld* World)
+{
+	if (DrawActor.IsValid())
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags = RF_Transient;
+	AActor* NewActor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+	if (!NewActor)
+	{
+		return;
+	}
+
+#if WITH_EDITOR
+	NewActor->SetActorLabel(TEXT("PlanFeasibilityDebuggerDraw"));
+#endif
+
+	UArcPlanFeasibilityDebuggerDrawComponent* NewComponent = NewObject<UArcPlanFeasibilityDebuggerDrawComponent>(NewActor, UArcPlanFeasibilityDebuggerDrawComponent::StaticClass());
+	NewComponent->RegisterComponent();
+	NewActor->AddInstanceComponent(NewComponent);
+
+	DrawActor = NewActor;
+	DrawComponent = NewComponent;
+}
+
+void FArcPlanFeasibilityDebugger::DestroyDrawActor()
+{
+	if (DrawActor.IsValid())
+	{
+		DrawActor->Destroy();
+	}
+	DrawActor.Reset();
+	DrawComponent.Reset();
 }
 
 // =============================================================================

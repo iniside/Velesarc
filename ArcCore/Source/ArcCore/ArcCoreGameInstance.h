@@ -28,7 +28,6 @@
 #include "Engine/DeveloperSettings.h"
 #include "ArcCoreGameInstance.generated.h"
 
-class UArcExperienceDefinition;
 /**
  *
  */
@@ -43,19 +42,7 @@ protected:
 
 	UPROPERTY()
 	FUniqueNetIdRepl MyNetId;
-	
-	/**
-	 * Currently selected game experience. This should be set from frontend menus.
-	 * And then be used when starting new game, either single player or when calling backend services.
-	 *
-	 * Can be used to custom menus per game experience (item in shop, characters etc).
-	 */
-	UPROPERTY()
-	mutable TSoftObjectPtr<UArcExperienceDefinition> SelectedGameExperience;
 
-	UPROPERTY()
-	mutable FPrimaryAssetId SelectedGameExperienceId;
-	
 public:
 	UArcCoreGameInstance(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
@@ -67,18 +54,6 @@ protected:
 	virtual void Shutdown() override;
 
 public:
-	const FPrimaryAssetId& GetSelectedGameExperienceId() const
-	{
-		return SelectedGameExperienceId;
-	}
-	
-	const TSoftObjectPtr<UArcExperienceDefinition>& GetSelectedGameExperience() const;
-
-	void SetSelectedGameExperience(const TSoftObjectPtr<UArcExperienceDefinition>& InSelectedGameExperience)
-	{
-		SelectedGameExperience = InSelectedGameExperience;
-	}
-
 	FGuid GetAvatarId() const;
 
 	const FUniqueNetIdRepl& GetMyNetId() const
@@ -148,7 +123,7 @@ protected:
 	// Maps player account id to selected avatar id
 	UPROPERTY()
 	TMap<FString, FGuid> PlayerToAvatarMap;
-	
+
 	UPROPERTY()
 	TArray<FArcCoreAvatarEntry> Avatars;
 
@@ -158,7 +133,7 @@ public:
 	FGuid GetSelectedAvatarId(const FString& PlayerId) const;
 
 	TArray<FArcCoreAvatarEntry> GetAvatarsForExperience(const FPrimaryAssetId& ExperienceId) const;
-	
+
 	void SetSelectedAvatarId(const FGuid& InId);
 };
 

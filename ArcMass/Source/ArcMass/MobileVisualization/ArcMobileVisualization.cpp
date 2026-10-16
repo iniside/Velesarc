@@ -5,6 +5,47 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Components/InstancedSkinnedMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Chaos/ChaosUserEntity.h"
+#include "PhysicsEngine/BodyInstance.h"
+#include "ArcMass/Physics/ArcMassPhysicsEntityLink.h"
+
+namespace ArcMobileVisSubsystemPrivate
+{
+	using FBodyList = TArray<FBodyInstance*, TInlineAllocator<32>>;
+
+	void AddLinkableBody(FBodyInstance* Body, FBodyList& OutBodies)
+	{
+		if (!Body || !Body->IsValidBodyInstance() || Body->WeldParent)
+		{
+			return;
+		}
+
+		const FPhysicsActorHandle ActorHandle = Body->GetPhysicsActor();
+		const bool bSameParticle = OutBodies.ContainsByPredicate([ActorHandle](const FBodyInstance* Other)
+		{
+			return Other->GetPhysicsActor() == ActorHandle;
+		});
+		if (!bSameParticle)
+		{
+			OutBodies.Add(Body);
+		}
+	}
+
+	void CollectLinkableBodies(UPrimitiveComponent& Component, FBodyList& OutBodies)
+	{
+		if (USkeletalMeshComponent* SkeletalMesh = Cast<USkeletalMeshComponent>(&Component))
+		{
+			for (FBodyInstance* Body : SkeletalMesh->Bodies)
+			{
+				AddLinkableBody(Body, OutBodies);
+			}
+		}
+
+		AddLinkableBody(&Component.BodyInstance, OutBodies);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // UArcMobileVisSubsystem
@@ -26,6 +67,14 @@ void UArcMobileVisSubsystem::Deinitialize()
 		}
 	}
 	RegionManagers.Empty();
+
+	for (TPair<FObjectKey, FLinkedComponent>& Pair : LinkedComponents)
+	{
+		DetachComponentLinks(Pair.Value);
+	}
+	LinkedComponents.Empty();
+	EntityLinkedComponents.Empty();
+
 	EntityCells.Empty();
 	SourceCellPositions.Empty();
 
@@ -163,7 +212,7 @@ EArcMobileVisLOD UArcMobileVisSubsystem::EvaluateEntityLOD(
 		? ActorRadiusCellsLeave
 		: ActorRadiusCells;
 
-	const int32 EffectiveISMRadius = (CurrentLOD == EArcMobileVisLOD::Actor || CurrentLOD == EArcMobileVisLOD::StaticMesh)
+	const int32 EffectiveISMRadius = (CurrentLOD == EArcMobileVisLOD::Actor || CurrentLOD == EArcMobileVisLOD::InstancedMesh)
 		? ISMRadiusCellsLeave
 		: ISMRadiusCells;
 
@@ -173,7 +222,7 @@ EArcMobileVisLOD UArcMobileVisSubsystem::EvaluateEntityLOD(
 	}
 	if (MinDist <= EffectiveISMRadius)
 	{
-		return EArcMobileVisLOD::StaticMesh;
+		return EArcMobileVisLOD::InstancedMesh;
 	}
 	return EArcMobileVisLOD::None;
 }
@@ -193,6 +242,32 @@ void UArcMobileVisSubsystem::GetEntityCellsInRadius(const FIntVector& Center, in
 			OutCells.Add(Cell);
 		}
 	}
+}
+
+bool UArcMobileVisSubsystem::EvaluateEntityPhysics(
+	const FIntVector& EntityCell,
+	int32 PhysicsRadiusCells,
+	int32 PhysicsRadiusCellsLeave,
+	bool bCurrentlyHasPhysics) const
+{
+	if (SourceCellPositions.IsEmpty())
+	{
+		return false;
+	}
+
+	int32 MinDist = TNumericLimits<int32>::Max();
+	for (const auto& Pair : SourceCellPositions)
+	{
+		const FIntVector& SourceCell = Pair.Value;
+		const int32 DX = FMath::Abs(EntityCell.X - SourceCell.X);
+		const int32 DY = FMath::Abs(EntityCell.Y - SourceCell.Y);
+		const int32 DZ = FMath::Abs(EntityCell.Z - SourceCell.Z);
+		const int32 Dist = FMath::Max3(DX, DY, DZ);
+		MinDist = FMath::Min(MinDist, Dist);
+	}
+
+	const int32 EffectiveRadius = bCurrentlyHasPhysics ? PhysicsRadiusCellsLeave : PhysicsRadiusCells;
+	return MinDist <= EffectiveRadius;
 }
 
 // ---------------------------------------------------------------------------
@@ -382,6 +457,8 @@ void UArcMobileVisSubsystem::UpdateISMTransform(
 	int32 InstanceId,
 	const FTransform& NewTransform)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisUpdateISMTransform);
+
 	if (!Mesh || InstanceId == INDEX_NONE)
 	{
 		return;
@@ -403,4 +480,326 @@ void UArcMobileVisSubsystem::UpdateISMTransform(
 
 	UInstancedStaticMeshComponent* ISMC = *Found;
 	ISMC->UpdateInstanceTransform(InstanceId, NewTransform, true, true, true);
+}
+
+// ---------------------------------------------------------------------------
+// ISKM component management
+// ---------------------------------------------------------------------------
+
+UInstancedSkinnedMeshComponent* UArcMobileVisSubsystem::GetOrCreateISKMComponent(
+	FRegionManager& Manager,
+	USkinnedAsset* Asset,
+	UTransformProviderData* Provider,
+	const TArray<TObjectPtr<UMaterialInterface>>& Materials,
+	bool bCastShadows)
+{
+	if (!Asset || !Manager.ManagerActor)
+	{
+		return nullptr;
+	}
+
+	const FObjectKey Key(Asset);
+	if (TObjectPtr<UInstancedSkinnedMeshComponent>* Existing = Manager.ISKMComponents.Find(Key))
+	{
+		return *Existing;
+	}
+
+	UInstancedSkinnedMeshComponent* NewISKMC = NewObject<UInstancedSkinnedMeshComponent>(Manager.ManagerActor);
+	NewISKMC->SetSkinnedAssetAndUpdate(Asset, true);
+	NewISKMC->SetCastShadow(bCastShadows);
+	NewISKMC->SetMobility(EComponentMobility::Movable);
+	NewISKMC->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	if (Provider)
+	{
+		NewISKMC->SetTransformProvider(Provider);
+	}
+
+	for (int32 i = 0; i < Materials.Num(); i++)
+	{
+		if (Materials[i])
+		{
+			NewISKMC->SetMaterial(i, Materials[i]);
+		}
+	}
+
+	NewISKMC->RegisterComponent();
+	Manager.ManagerActor->AddInstanceComponent(NewISKMC);
+
+	Manager.ISKMComponents.Add(Key, NewISKMC);
+
+	return NewISKMC;
+}
+
+// ---------------------------------------------------------------------------
+// ISKM instance management
+// ---------------------------------------------------------------------------
+
+FPrimitiveInstanceId UArcMobileVisSubsystem::AddISKMInstance(
+	const FIntVector& RegionCoord,
+	TSubclassOf<AActor> ManagerClass,
+	USkinnedAsset* Asset,
+	UTransformProviderData* Provider,
+	const TArray<TObjectPtr<UMaterialInterface>>& Materials,
+	bool bCastShadows,
+	const FTransform& Transform,
+	int32 AnimationIndex,
+	FMassEntityHandle OwnerEntity)
+{
+	FRegionManager& Manager = GetOrCreateRegionManager(RegionCoord, ManagerClass);
+	UInstancedSkinnedMeshComponent* ISKMC = GetOrCreateISKMComponent(Manager, Asset, Provider, Materials, bCastShadows);
+	if (!ISKMC)
+	{
+		return FPrimitiveInstanceId();
+	}
+
+	const FPrimitiveInstanceId NewId = ISKMC->AddInstance(Transform, AnimationIndex, true);
+
+	const FObjectKey Key(Asset);
+	Manager.ISKMInstanceOwners.FindOrAdd(Key).Add(NewId.GetAsIndex(), OwnerEntity);
+
+	return NewId;
+}
+
+void UArcMobileVisSubsystem::RemoveISKMInstance(
+	const FIntVector& RegionCoord,
+	TSubclassOf<AActor> ManagerClass,
+	USkinnedAsset* Asset,
+	FPrimitiveInstanceId InstanceId,
+	FMassEntityManager& EntityManager)
+{
+	if (!Asset || !InstanceId.IsValid())
+	{
+		return;
+	}
+
+	const FRegionKey Key{RegionCoord, ManagerClass.Get()};
+	FRegionManager* Manager = RegionManagers.Find(Key);
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FObjectKey AssetKey(Asset);
+	TObjectPtr<UInstancedSkinnedMeshComponent>* Found = Manager->ISKMComponents.Find(AssetKey);
+	if (!Found || !*Found)
+	{
+		return;
+	}
+
+	UInstancedSkinnedMeshComponent* ISKMC = *Found;
+	ISKMC->RemoveInstance(InstanceId);
+
+	TMap<int32, FMassEntityHandle>* Owners = Manager->ISKMInstanceOwners.Find(AssetKey);
+	if (Owners)
+	{
+		Owners->Remove(InstanceId.GetAsIndex());
+	}
+}
+
+void UArcMobileVisSubsystem::UpdateISKMTransform(
+	const FIntVector& RegionCoord,
+	TSubclassOf<AActor> ManagerClass,
+	USkinnedAsset* Asset,
+	FPrimitiveInstanceId InstanceId,
+	const FTransform& NewTransform,
+	int32 AnimationIndex)
+{
+	if (!Asset || !InstanceId.IsValid())
+	{
+		return;
+	}
+
+	const FRegionKey Key{RegionCoord, ManagerClass.Get()};
+	FRegionManager* Manager = RegionManagers.Find(Key);
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FObjectKey AssetKey(Asset);
+	TObjectPtr<UInstancedSkinnedMeshComponent>* Found = Manager->ISKMComponents.Find(AssetKey);
+	if (!Found || !*Found)
+	{
+		return;
+	}
+
+	UInstancedSkinnedMeshComponent* ISKMC = *Found;
+	ISKMC->SetInstanceTransform(InstanceId, NewTransform, true);
+}
+
+// ---------------------------------------------------------------------------
+// Actor body entity links
+// ---------------------------------------------------------------------------
+
+void UArcMobileVisSubsystem::LinkActorBodies(AActor& Actor, FMassEntityHandle Entity)
+{
+	TArray<FObjectKey>& ComponentKeys = EntityLinkedComponents.FindOrAdd(Entity);
+
+	TInlineComponentArray<UPrimitiveComponent*> Primitives(&Actor);
+	for (UPrimitiveComponent* Primitive : Primitives)
+	{
+		if (!Primitive || !Primitive->IsCollisionEnabled())
+		{
+			continue;
+		}
+
+		const FObjectKey Key(Primitive);
+		if (LinkedComponents.Contains(Key))
+		{
+			continue;
+		}
+
+		FLinkedComponent& Linked = LinkedComponents.Add(Key);
+		Linked.Component = Primitive;
+		Linked.Entity = Entity;
+		ComponentKeys.Add(Key);
+
+		Primitive->OnComponentPhysicsStateChanged.AddDynamic(this, &UArcMobileVisSubsystem::HandleComponentPhysicsStateChanged);
+		if (USkeletalMeshComponent* SkeletalMesh = Cast<USkeletalMeshComponent>(Primitive))
+		{
+			Linked.SkeletalPhysicsCreatedHandle = SkeletalMesh->RegisterOnPhysicsCreatedDelegate(
+				FOnSkelMeshPhysicsCreated::CreateUObject(this, &UArcMobileVisSubsystem::HandleSkeletalMeshPhysicsCreated, TWeakObjectPtr<USkeletalMeshComponent>(SkeletalMesh)));
+		}
+
+		LinkComponentBodies(*Primitive, Linked);
+	}
+}
+
+void UArcMobileVisSubsystem::DetachActorBodies(FMassEntityHandle Entity)
+{
+	TArray<FObjectKey> ComponentKeys;
+	if (!EntityLinkedComponents.RemoveAndCopyValue(Entity, ComponentKeys))
+	{
+		return;
+	}
+
+	for (const FObjectKey& Key : ComponentKeys)
+	{
+		FLinkedComponent Linked;
+		if (LinkedComponents.RemoveAndCopyValue(Key, Linked))
+		{
+			DetachComponentLinks(Linked);
+		}
+	}
+}
+
+void UArcMobileVisSubsystem::HandleComponentPhysicsStateChanged(UPrimitiveComponent* ChangedComponent, EComponentPhysicsStateChange StateChange)
+{
+	if (!ChangedComponent)
+	{
+		return;
+	}
+
+	FLinkedComponent* Linked = LinkedComponents.Find(FObjectKey(ChangedComponent));
+	if (!Linked)
+	{
+		return;
+	}
+
+	// Destroyed broadcasts after TermBody; non-skeletal appends were already deleted by the engine (PrimitiveComponent.cpp:1158-1175).
+	if (StateChange == EComponentPhysicsStateChange::Destroyed)
+	{
+		FreeComponentLinks(*Linked);
+	}
+	else
+	{
+		LinkComponentBodies(*ChangedComponent, *Linked);
+	}
+}
+
+void UArcMobileVisSubsystem::HandleSkeletalMeshPhysicsCreated(TWeakObjectPtr<USkeletalMeshComponent> WeakComponent)
+{
+	USkeletalMeshComponent* SkeletalMesh = WeakComponent.Get();
+	if (!SkeletalMesh)
+	{
+		return;
+	}
+
+	FLinkedComponent* Linked = LinkedComponents.Find(FObjectKey(SkeletalMesh));
+	if (Linked)
+	{
+		LinkComponentBodies(*SkeletalMesh, *Linked);
+	}
+}
+
+void UArcMobileVisSubsystem::LinkComponentBodies(UPrimitiveComponent& Component, FLinkedComponent& Linked)
+{
+	ArcMobileVisSubsystemPrivate::FBodyList Bodies;
+	ArcMobileVisSubsystemPrivate::CollectLinkableBodies(Component, Bodies);
+
+	const bool bIsSkeletalMesh = Component.IsA<USkeletalMeshComponent>();
+
+	for (FBodyInstance* Body : Bodies)
+	{
+		FChaosUserEntityAppend* Existing = ArcMassPhysicsEntityLink::FindAttached(*Body);
+		const bool bAlreadyLinked = Existing && Linked.Links.ContainsByPredicate([Existing](const FActorBodyLink& Link)
+		{
+			return Link.Append == Existing;
+		});
+		if (bAlreadyLinked)
+		{
+			continue;
+		}
+
+		FChaosUserEntityAppend* Append = ArcMassPhysicsEntityLink::Attach(*Body, Linked.Entity);
+		if (!Append)
+		{
+			continue;
+		}
+
+		FActorBodyLink& Link = Linked.Links.AddDefaulted_GetRef();
+		Link.Append = Append;
+		Link.UserEntity = Append->UserDefinedEntity;
+		Link.bAppendFreedWithPhysicsState = !bIsSkeletalMesh && Body == &Component.BodyInstance;
+	}
+}
+
+void UArcMobileVisSubsystem::DetachComponentLinks(FLinkedComponent& Linked)
+{
+	if (UPrimitiveComponent* Component = Linked.Component.Get())
+	{
+		Component->OnComponentPhysicsStateChanged.RemoveDynamic(this, &UArcMobileVisSubsystem::HandleComponentPhysicsStateChanged);
+		if (USkeletalMeshComponent* SkeletalMesh = Cast<USkeletalMeshComponent>(Component))
+		{
+			SkeletalMesh->UnregisterOnPhysicsCreatedDelegate(Linked.SkeletalPhysicsCreatedHandle);
+		}
+
+		ArcMobileVisSubsystemPrivate::FBodyList Bodies;
+		ArcMobileVisSubsystemPrivate::CollectLinkableBodies(*Component, Bodies);
+
+		for (FBodyInstance* Body : Bodies)
+		{
+			FChaosUserEntityAppend* Attached = ArcMassPhysicsEntityLink::FindAttached(*Body);
+			if (!Attached)
+			{
+				continue;
+			}
+
+			FActorBodyLink* Link = Linked.Links.FindByPredicate([Attached](const FActorBodyLink& Candidate)
+			{
+				return Candidate.Append == Attached;
+			});
+			if (!Link)
+			{
+				continue;
+			}
+
+			ArcMassPhysicsEntityLink::Detach(*Body, Attached);
+			Link->Append = nullptr;
+			Link->UserEntity = nullptr;
+			Link->bAppendFreedWithPhysicsState = false;
+		}
+	}
+
+	FreeComponentLinks(Linked);
+}
+
+void UArcMobileVisSubsystem::FreeComponentLinks(FLinkedComponent& Linked)
+{
+	for (const FActorBodyLink& Link : Linked.Links)
+	{
+		ArcMassPhysicsEntityLink::FreeTerminated(Link.bAppendFreedWithPhysicsState ? nullptr : Link.Append, Link.UserEntity);
+	}
+	Linked.Links.Reset();
 }

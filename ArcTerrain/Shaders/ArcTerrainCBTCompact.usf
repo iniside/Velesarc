@@ -1,0 +1,243 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTCompact.usf — the drawn list, culled to one view and planar radius.
+
+	One thread per live bisector against the PUBLISHED heap: decode the ordinal to a
+	pool slot, reject footprints wholly beyond the configured physical terrain-plane
+	radius, ask ArcTerrainTessellationPredicate.ush whether the triangle is outside the
+	widened frustum, and append the slot to the visible list if it is not. The
+	vertex factory then resolves SV_InstanceID through that list instead of decoding
+	the occupancy heap, so a culled triangle never reaches a vertex shader.
+
+	WHY HERE AND NOT IN CLASSIFY. Classify decides against the FROZEN snapshot of state
+	N, and the apply passes then allocate and free slots — an ordinal resolved there
+	names a different bisector once the topology lands. This runs after the reduction
+	that makes the live count final and after the batch pass that publishes it, so
+	ordinal, slot and drawn instance are the same three things.
+
+	The append cursor IS the visible block's InstanceCount, so the list and the count
+	it is drawn with cannot disagree.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainLEB.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainTessellationPredicate.ush"
+
+ByteAddressBuffer CBTHeapRead;
+ByteAddressBuffer BisectorPoolRead;
+RWByteAddressBuffer RWVisibleBisectors;
+RWBuffer<uint> RWDrawArgs;
+RWBuffer<uint> PoolCounters;
+#if ARC_CBT_LATENCY_AUDIT
+RWBuffer<uint> LatencyCounters;
+#endif
+
+uint PoolDepth;
+uint NumFaces;
+/** Diagnostics only (arc.Terrain.CBT.Stats): the drawn and culled tallies CBTStats/A reads back. */
+uint StatsEnabled;
+uint DistanceCullEnabled;
+float DistanceCullRadiusSq;
+float3 DistanceCullMetric;
+int2 DistanceCullCameraTexel;
+float2 DistanceCullCameraTexelFrac;
+
+float ArcTerrain_DistanceMetricDot(float2 A, float2 B)
+{
+	return A.x * (DistanceCullMetric.x * B.x + DistanceCullMetric.z * B.y)
+		+ A.y * (DistanceCullMetric.z * B.x + DistanceCullMetric.y * B.y);
+}
+
+float ArcTerrain_DistanceMetricSq(float2 P)
+{
+	const float DistanceSq = ArcTerrain_DistanceMetricDot(P, P);
+	return isfinite(DistanceSq) ? max(DistanceSq, 0.0f) : 0.0f;
+}
+
+float ArcTerrain_DistanceSegmentSq(float2 A, float2 B)
+{
+	const float2 Edge = B - A;
+	const float Denominator = ArcTerrain_DistanceMetricDot(Edge, Edge);
+	// A non-positive/non-finite denominator can only be a degenerate segment or bad arithmetic. Returning
+	// zero is deliberately conservative: this triangle remains drawn instead of becoming a false reject.
+	if (!(Denominator > 0.0f) || !isfinite(Denominator))
+	{
+		return 0.0f;
+	}
+
+	const float Numerator = -ArcTerrain_DistanceMetricDot(A, Edge);
+	if (!isfinite(Numerator))
+	{
+		return 0.0f;
+	}
+	return ArcTerrain_DistanceMetricSq(A + saturate(Numerator / Denominator) * Edge);
+}
+
+bool ArcTerrain_DistanceOriginInside(float2 A, float2 B, float2 C)
+{
+	const float2 AB = B - A;
+	const float2 BC = C - B;
+	const float2 CA = A - C;
+	const float AreaTwice = AB.x * (C.y - A.y) - AB.y * (C.x - A.x);
+	const float EdgeScaleSq = max(max(dot(AB, AB), dot(BC, BC)), dot(CA, CA));
+	const float AreaGuard = EdgeScaleSq * (16.0f * 1.192092896e-7f);
+	if (!isfinite(AreaTwice) || !isfinite(AreaGuard) || abs(AreaTwice) <= AreaGuard)
+	{
+		return false;
+	}
+
+	const float S0 = AB.x * -A.y - AB.y * -A.x;
+	const float S1 = BC.x * -B.y - BC.y * -B.x;
+	const float S2 = CA.x * -C.y - CA.y * -C.x;
+	if (!isfinite(S0) || !isfinite(S1) || !isfinite(S2))
+	{
+		return true;
+	}
+
+	// Both windings use the same test. The guard retains points on, or numerically indistinguishable from,
+	// an edge; a distance cull may overdraw at its boundary but must never cut a crossing triangle.
+	const float SideScale = max(max(abs(S0), abs(S1)), abs(S2));
+	const float SideGuard = SideScale * (16.0f * 1.192092896e-7f);
+	const bool bHasNegative = min(min(S0, S1), S2) < -SideGuard;
+	const bool bHasPositive = max(max(S0, S1), S2) > SideGuard;
+	return !(bHasNegative && bHasPositive);
+}
+
+bool ArcTerrain_DistanceCullTriangle(uint Face, float2 C0, float2 C1, float2 C2)
+{
+	if (DistanceCullEnabled == 0u)
+	{
+		return false;
+	}
+
+	const float2 P0 = ArcTerrainTess_ResolvePlanarPoint(
+		Face, C0, DistanceCullCameraTexel, DistanceCullCameraTexelFrac).PlanarCm;
+	const float2 P1 = ArcTerrainTess_ResolvePlanarPoint(
+		Face, C1, DistanceCullCameraTexel, DistanceCullCameraTexelFrac).PlanarCm;
+	const float2 P2 = ArcTerrainTess_ResolvePlanarPoint(
+		Face, C2, DistanceCullCameraTexel, DistanceCullCameraTexelFrac).PlanarCm;
+
+	if (ArcTerrain_DistanceOriginInside(P0, P1, P2))
+	{
+		return false;
+	}
+
+	const float D0 = ArcTerrain_DistanceSegmentSq(P0, P1);
+	const float D1 = ArcTerrain_DistanceSegmentSq(P1, P2);
+	const float D2 = ArcTerrain_DistanceSegmentSq(P2, P0);
+	const float MinDistanceSq = min(min(D0, D1), D2);
+	const float MagnitudeSq = max(max(max(ArcTerrain_DistanceMetricSq(P0),
+		ArcTerrain_DistanceMetricSq(P1)), ArcTerrain_DistanceMetricSq(P2)), DistanceCullRadiusSq);
+	const float GuardSq = MagnitudeSq * (64.0f * 1.192092896e-7f);
+	const float CullThresholdSq = DistanceCullRadiusSq + GuardSq;
+	if (!isfinite(MinDistanceSq) || !isfinite(CullThresholdSq))
+	{
+		return false;
+	}
+
+	return MinDistanceSq > CullThresholdSq;
+}
+
+[numthreads(ARC_CBT_COMPACT_THREADS, 1, 1)]
+void CompactCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	const uint LiveCount = cbt_NodeCount_RO(CBTHeapRead, 0u, Depth);
+#if ARC_CBT_LATENCY_AUDIT
+	if (DispatchThreadId.x == 0u)
+	{
+		LatencyCounters[ARC_CBT_LATENCY_LIVE_BISECTORS] = LiveCount;
+	}
+#endif
+	if (DispatchThreadId.x >= LiveCount)
+	{
+		return;
+	}
+
+	const uint Slot = arc_DecodeSlot(CBTHeapRead, Depth, DispatchThreadId.x);
+	const uint2 NodeID = arc_LoadNodeIDRO(BisectorPoolRead, Slot);
+	const uint Face = arc_LoadFieldRO(BisectorPoolRead, Slot, ARC_BISECTOR_FACE);
+
+	uint Ignored = 0u;
+
+	// A slot the heap counts but whose record names no face is the one state the vertex factory collapses
+	// to a degenerate; dropping it here costs nothing and keeps the atlas samples below in range.
+	const bool bNodeValid = NodeID.y != 0u || NodeID.x >= 2u;
+	bool bCulled = !bNodeValid || Face >= NumFaces;
+	if (!bCulled)
+	{
+		const FLEBNode Node = leb_CreateNode(NodeID, (int)arc_NodeDepth(NodeID));
+		const FLEBTriangle Tri = leb_DecodeNodeCorners(Node);
+		if (ArcTerrain_DistanceCullTriangle(Face, Tri.Corners[0], Tri.Corners[1], Tri.Corners[2]))
+		{
+			if (StatsEnabled != 0u)
+			{
+				InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_DISTANCE_CULLED], 1u, Ignored);
+			}
+			// Distance culling is draw-only: exit before height sampling, latency audit and every draw write.
+			return;
+		}
+		bCulled = ArcTerrain_FrustumCullTriangle(Face, Tri.Corners[0], Tri.Corners[1], Tri.Corners[2]);
+	}
+
+	if (bCulled)
+	{
+		if (StatsEnabled != 0u)
+		{
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_FRUSTUM_CULLED], 1u, Ignored);
+		}
+		return;
+	}
+
+#if ARC_CBT_LATENCY_AUDIT
+	// This leaf is in the compacted draw list. Reclassify the POST-UPDATE topology while bypassing the
+	// predictive tessellation frustum: the question is whether geometry actually visible to the draw is
+	// still too coarse, not whether the policy would normally stop preparing it outside a wider margin.
+	const FLEBNode AuditNode = leb_CreateNode(NodeID, (int)arc_NodeDepth(NodeID));
+	const FLEBTriangle AuditTri = leb_DecodeNodeCorners(AuditNode);
+	float AreaPixels;
+	float ErrorPixels;
+	float ErrorCm;
+	float DistanceCm;
+	float EffectiveTargetPixels;
+	FArcTerrainTessProbe AuditProbe;
+	const int AuditVerdict = ArcTerrain_ClassifyVisibleTriangleDiag(Face, (uint)AuditNode.Depth,
+		AuditTri.Corners[0], AuditTri.Corners[1], AuditTri.Corners[2], AreaPixels, ErrorPixels,
+		ErrorCm, DistanceCm, EffectiveTargetPixels, AuditProbe);
+	if (AuditVerdict == ARC_TESS_TOO_COARSE)
+	{
+		const float AreaRatio = min(AreaPixels / max(EffectiveTargetPixels, 1.0f), 3.402823e+38f);
+		const float ErrorRatio = min(ErrorPixels / max(TargetErrorPixels, 1.0f), 3.402823e+38f);
+		const float EdgeRatio = min(
+			AuditProbe.EdgePixels / max(AuditProbe.EffectiveMaxEdgePixels, 1.0f), 3.402823e+38f);
+		const bool bCapped = (uint)AuditNode.Depth >= AuditProbe.LeafCapDepth;
+		if (bCapped)
+		{
+			const uint Tier = min(AuditProbe.LeafTier, 3u);
+			InterlockedAdd(LatencyCounters[ARC_CBT_LATENCY_CAPPED_TIER0 + Tier], 1u, Ignored);
+		}
+		else
+		{
+			InterlockedAdd(LatencyCounters[ARC_CBT_LATENCY_VISIBLE_SPLITTABLE], 1u, Ignored);
+			InterlockedMax(LatencyCounters[ARC_CBT_LATENCY_WORST_AREA_RATIO_BITS], asuint(AreaRatio), Ignored);
+			InterlockedMax(LatencyCounters[ARC_CBT_LATENCY_WORST_ERROR_RATIO_BITS], asuint(ErrorRatio), Ignored);
+			InterlockedMax(LatencyCounters[ARC_CBT_LATENCY_WORST_EDGE_RATIO_BITS], asuint(EdgeRatio), Ignored);
+			// A split often halves projected triangle area, so ceil(log2(ratio)) is a useful trend signal.
+			// It is explicitly an estimate, not a bound: perspective, relief and conformance all break that model.
+			const uint AreaLevelEstimate = (uint)ceil(log2(max(AreaRatio, 1.0f)));
+			InterlockedMax(LatencyCounters[ARC_CBT_LATENCY_AREA_LEVEL_ESTIMATE], AreaLevelEstimate, Ignored);
+		}
+	}
+#endif
+
+	uint WriteIndex = 0u;
+	InterlockedAdd(RWDrawArgs[ARC_CBT_DRAWARGS_VISIBLE_COUNT], 1u, WriteIndex);
+	RWVisibleBisectors.Store(WriteIndex << 2u, Slot);
+
+	if (StatsEnabled != 0u)
+	{
+		InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_DRAWN_BISECTORS], 1u, Ignored);
+	}
+}

@@ -55,7 +55,6 @@ public class ArcCore : ModuleRules
 				, "Slate"
 				, "SlateCore"
 				, "NetCore"
-				, "GameplayAbilities"
 				, "GameplayTasks"
 				, "GameplayTags"
 				, "GameplayDebugger"
@@ -83,8 +82,6 @@ public class ArcCore : ModuleRules
 				, "MovieScene"
 				, "MovieSceneTracks"
 				, "TemplateSequence"
-				, "Mover"
-				, "ChaosMover"
 				, "DaySequence"
 				, "PoseSearch"
 				, "ChaosClothAssetEngine"
@@ -106,7 +103,6 @@ public class ArcCore : ModuleRules
 			{
 				"AIModule"
 				, "NavigationSystem"
-				, "ArcJson"
 				, "StateTreeModule"
 				, "MassAIBehavior"
 				, "MassSignals"
@@ -118,11 +114,12 @@ public class ArcCore : ModuleRules
 			{
 				"NetCore"
 			});
-		
+
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
 				"ArcPersistence"
+				, "ArcJson"
 			});
 		
 		PublicDependencyModuleNames.AddRange(
@@ -134,9 +131,8 @@ public class ArcCore : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"MassEntity", "AIModule", "MassCommon", "StateTreeModule", "SmartObjectsModule",
-				"GameplayInteractionsModule", "MassActors", "MassSpawner", "MassLOD", "MassRepresentation", "InstancedActors",
-				"ArcMass"
+				"MassEntity", "MassCore", "AIModule", "MassCommon", "StateTreeModule", "SmartObjectsModule",
+				"GameplayInteractionsModule", "MassActors", "MassSpawner", "MassLOD", "MassRepresentation"
 			});
 
 		PublicDependencyModuleNames.AddRange(
@@ -175,7 +171,7 @@ public class ArcCore : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject", "Json", "JsonUtilities"
+				"CoreUObject", "Json", "JsonUtilities", "Projects"
 
 				// ... add private dependencies that you statically link with here ...	
 			}

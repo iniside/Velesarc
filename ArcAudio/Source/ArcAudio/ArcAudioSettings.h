@@ -53,6 +53,8 @@ class ARCAUDIO_API UArcAudioSettings : public UDeveloperSettings
 
 public:
 
+	virtual FName GetCategoryName() const override { return FName(TEXT("Arc Game")); }
+
 	/** The Default Base Control Bus Mix */
 	UPROPERTY(config, EditAnywhere, Category = MixSettings, meta = (AllowedClasses = "/Script/AudioModulation.SoundControlBusMix"))
 	FSoftObjectPath DefaultControlBusMix;

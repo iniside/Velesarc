@@ -5,7 +5,7 @@
 #include "imgui.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
 #include "MassActorSubsystem.h"
 #include "MassEntitySubsystem.h"
 #include "GameFramework/Pawn.h"
@@ -277,7 +277,7 @@ void FArcSpatialHashMinimapDebugger::DrawGrid()
 		DrawList->AddRectFilled(ScreenMin, ScreenMax, CellColorByCount(Entities.Num()));
 
 		// Cell border
-		DrawList->AddRect(ScreenMin, ScreenMax, GridLineColor, 0.0f, 0, 1.0f);
+		DrawList->AddRect(ScreenMin, ScreenMax, GridLineColor, 0.0f, 1.0f);
 
 		// Entity count label (only if cell is big enough on screen)
 		const float CellScreenSize = (ScreenMax.x - ScreenMin.x);

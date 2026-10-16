@@ -2,8 +2,9 @@
 
 #include "ArcMassPerception.h"
 #include "MassCommonFragments.h"
-#include "MassExecutionContext.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
+#include "Fragments/ArcOwnedTagsFragment.h"
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_AI_Perception_Sense_Sight, "AI.Perception.Sense.Sight");
 UE_DEFINE_GAMEPLAY_TAG(TAG_AI_Perception_Sense_Hearing, "AI.Perception.Sense.Hearing");
@@ -22,14 +23,14 @@ bool ArcPerception::PassesFilters(
 {
 	if (!Config.RequiredTags.IsEmpty() || !Config.IgnoredTags.IsEmpty())
 	{
-		const FArcMassGameplayTagContainerFragment* TagFragment = EntityManager.GetFragmentDataPtr<FArcMassGameplayTagContainerFragment>(Entity);
+		const FArcOwnedTagsFragment* TagFragment = EntityManager.GetFragmentDataPtr<FArcOwnedTagsFragment>(Entity);
 
 		if (!TagFragment)
 		{
 			return Config.RequiredTags.IsEmpty();
 		}
 
-		const FGameplayTagContainer& EntityTags = TagFragment->Tags;
+		const FGameplayTagContainer& EntityTags = TagFragment->GetTags().GetTagContainer();
 
 		if (!Config.IgnoredTags.IsEmpty() && EntityTags.HasAny(Config.IgnoredTags))
 		{

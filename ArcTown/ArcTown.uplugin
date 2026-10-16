@@ -1,0 +1,32 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Arc Town",
+	"Description": "Simulated settlement generation on top of ArcTerrain.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"CanContainVerse": false,
+	"IsExperimentalVersion": true,
+	"EnabledByDefault": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ArcTown",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name": "ArcTownEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcTerrain", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "GeometryProcessing", "Enabled": true },
+		{ "Name": "DebugDraw", "Enabled": true }
+	]
+}

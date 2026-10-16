@@ -23,6 +23,7 @@
 
 #include "ArcAnimNodeLibrary.h"
 
+#include "Animation/AnimNodeBase.h"
 #include "Chooser.h"
 #include "BlendStack/BlendStackAnimNodeLibrary.h"
 
@@ -35,16 +36,4 @@ FChooserPlayerAnimNodeReference UArcAnimNodeLibrary::ConvertToChoosePlayerNode(c
 void UArcAnimNodeLibrary::SetChooser(const FAnimNodeReference& Node
 	, UChooserTable* ChooserTable)
 {
-	if (FAnimNode_ChooserPlayer* BlendStackInput = Node.GetAnimNodePtr<FAnimNode_ChooserPlayer>())
-	{
-		if (FEvaluateChooser* Existing = BlendStackInput->Chooser.GetMutablePtr<FEvaluateChooser>())
-		{
-			Existing->Chooser = ChooserTable;
-		}
-		else
-		{
-			BlendStackInput->Chooser = FInstancedStruct::Make<FEvaluateChooser>(ChooserTable);	
-		}
-		
-	}
 }

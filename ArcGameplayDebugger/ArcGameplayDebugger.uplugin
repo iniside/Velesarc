@@ -37,6 +37,14 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ArcMassGameplayFramework",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
 			"Name": "ArcGun",
 			"Enabled": true
 		},
@@ -57,6 +65,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ArcTactics",
+			"Enabled": true
+		},
+		{
 			"Name": "MassAI",
 			"Enabled": true
 		},
@@ -70,6 +82,30 @@
 		},
 		{
 			"Name": "ArcMass",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcTargetQuery",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcTargeting",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcWorldSim",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcWeather",
+			"Enabled": true
+		},
+		{
+			"Name": "GameFeatures",
 			"Enabled": true
 		}
 	]

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSStep.h"
+#include "ArcTQSStep.h"
 #include "ArcTQSStep_KnowledgeRelevance.generated.h"
 
 /**
@@ -18,4 +18,5 @@ struct ARCKNOWLEDGE_API FArcTQSStep_KnowledgeRelevance : public FArcTQSStep
 	FArcTQSStep_KnowledgeRelevance() { StepType = EArcTQSStepType::Score; }
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Knowledge; }
 };

@@ -23,4 +23,3 @@
 
 
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FArcExperienceTileClicked, class UArcExperienceTileWidget*, class UArcUserFacingExperienceDefinition*);

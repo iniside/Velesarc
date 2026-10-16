@@ -46,14 +46,12 @@ public class ArcGunEditor : ModuleRules
                 , "SlateCore"
                 , "GameplayTags"
                 , "GameplayTasks"
-                , "GameplayAbilities"
                 , "UnrealEd"
                 , "PropertyEditor"
                 , "SceneOutliner"
                 , "AssetTools"
                 , "AssetRegistry"
                 , "ContentBrowser"
-                , "GameplayAbilitiesEditor"
                 , "MainFrame"
                 , "GameplayTags"
                 , "GameplayTagsEditor"
@@ -74,10 +72,10 @@ public class ArcGunEditor : ModuleRules
 				, "ArcCore"
 				, "Projects"
 				, "ApplicationCore"
-				, "KismetCompiler"
 				, "StructUtilsEditor"
 				, "ArcGun"
-				//dependencies that you statically link with here ...	
+				, "AssetDefinition"
+				//dependencies that you statically link with here ...
 			}
 			);
 		

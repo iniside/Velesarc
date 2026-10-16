@@ -1,0 +1,78 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+// Per-volume forest field sampler for the GPU foliage kernels. Loose globals below mirror
+// FArcEcotopeFoliageFieldParameters 1:1 by name.
+
+#pragma once
+
+#include "/Engine/Private/LargeWorldCoordinates.ush"
+
+// R is canopy occupancy rasterized from the committed simulation snapshot; G/B/A are the baked site's
+// Moisture, Fertility and ground-cover suppression.
+Texture2D<float4> ArcEcotopeFieldTexture;
+SamplerState      ArcEcotopeFieldSampler;
+
+uint     ArcEcotopeFieldValid;
+float4x4 ArcEcotopeFieldWorldToLocal;
+float3   ArcEcotopeFieldLWCTile;
+float2   ArcEcotopeFieldOriginLocal;
+float2   ArcEcotopeFieldInvSizeLocal;
+
+struct FArcEcotopeFieldSample
+{
+	float Occupancy;
+	float Moisture;
+	float Fertility;
+	float GroundCoverSuppression;
+};
+
+/**
+ * A volume with no valid snapshot binds no field, and a position outside the baked site is not
+ * described by one, so both answer with an unshaded, unlimited site: the plant then follows the terrain
+ * rules alone.
+ */
+FArcEcotopeFieldSample SampleArcEcotopeField(float3 InWorldPos)
+{
+	FArcEcotopeFieldSample Result;
+	Result.Occupancy = 0.0f;
+	Result.Moisture = 1.0f;
+	Result.Fertility = 1.0f;
+	// Channel A carries suppression, not sun: 0 is the permissive value, 1 culls.
+	Result.GroundCoverSuppression = 0.0f;
+
+	if (ArcEcotopeFieldValid == 0u)
+	{
+		return Result;
+	}
+
+	const float3 PositionTile = (float3)0;
+	const FLWCVector4 LwcWorldPos = MakeLWCVector4(PositionTile, float4(InWorldPos, 1.0f));
+	const FLWCInverseMatrix LwcWorldToLocal = MakeLWCInverseMatrix(ArcEcotopeFieldLWCTile, ArcEcotopeFieldWorldToLocal);
+	const float3 LocalPos = LWCMultiply(LwcWorldPos, LwcWorldToLocal).xyz;
+
+	const float2 UV = (LocalPos.xy - ArcEcotopeFieldOriginLocal) * ArcEcotopeFieldInvSizeLocal;
+	if (any(UV < 0.0f) || any(UV > 1.0f))
+	{
+		return Result;
+	}
+
+	const float4 Texel = ArcEcotopeFieldTexture.SampleLevel(ArcEcotopeFieldSampler, UV, 0);
+	Result.Occupancy = Texel.r;
+	Result.Moisture = Texel.g;
+	Result.Fertility = Texel.b;
+	Result.GroundCoverSuppression = Texel.a;
+	return Result;
+}
+
+/**
+ * Acceptance weight in [0, 1] from the canopy. Beer-Lambert light through the occupancy, then a signed
+ * preference: positive picks shade, negative picks light, and the product of strength and magnitude is
+ * the lerp alpha, so either one at zero leaves the plant indifferent to the canopy.
+ */
+float ArcEcotopeShadeFit(float InOccupancy, float InUnderstoryShade, float InShadePreference, float InShadeStrength)
+{
+	const float Light = exp(-InUnderstoryShade * InOccupancy);
+	const float Shade = 1.0f - Light;
+	const float Alpha = saturate(InShadeStrength * abs(InShadePreference));
+	return lerp(1.0f, InShadePreference > 0.0f ? Shade : Light, Alpha);
+}

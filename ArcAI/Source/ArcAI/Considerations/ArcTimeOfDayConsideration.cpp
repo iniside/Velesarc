@@ -35,13 +35,12 @@ float FArcTimeOfDayConsideration::GetScore(FStateTreeExecutionContext& Context) 
 	const float TimeOfDay = DayActor->GetTimeOfDay();
 	InstanceData.TimeOfDay = TimeOfDay;
 
-	// Normalize hours to [0,1] for the response curve (matches FArcMassNeedConsideration pattern).
 	// Curve X axis: 0.0 = midnight, 0.25 = 6:00, 0.5 = noon, 0.75 = 18:00, 1.0 = midnight.
 	const float Score = ResponseCurve.Evaluate(TimeOfDay / 24.0f);
 
 #if ENABLE_VISUAL_LOG
-	UE_VLOG_UELOG(Context.GetOwner(), LogArcConsiderationScore, VeryVerbose,
-		TEXT("State %s TimeOfDay: %.1fh Score: %.3f"), *Context.GetActiveStateName(), TimeOfDay, Score);
+	UE_VLOG_UELOGF(Context.GetOwner(), LogArcConsiderationScore, VeryVerbose,
+		"State %ls TimeOfDay: %.1fh Score: %.3f", *Context.GetActiveStateName(), TimeOfDay, Score);
 #endif
 	
 	return Score;

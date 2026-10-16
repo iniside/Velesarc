@@ -1,0 +1,148 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "SmartObjectTypes.h"
+#include "StructUtils/PropertyBag.h"
+#include "ArcTQSTypes.generated.h"
+
+UENUM(BlueprintType)
+enum class EArcTQSTargetType : uint8
+{
+	None,
+	MassEntity,
+	Actor,
+	Location,
+	Object,
+	SmartObject
+};
+
+UENUM(BlueprintType)
+enum class EArcTQSQueryStatus : uint8
+{
+	Pending,
+	Generating,
+	Processing,
+	Selecting,
+	Completed,
+	Failed,
+	Aborted
+};
+
+UENUM(BlueprintType)
+enum class EArcTQSSelectionMode : uint8
+{
+	HighestScore,
+	TopN,
+	AllPassing,
+	RandomWeighted,
+
+	// Random uniform pick from top 5% of scored items
+	RandomFromTop5Percent,
+	// Random uniform pick from top 25% of scored items
+	RandomFromTop25Percent,
+	// Random uniform pick from top N% of scored items (uses TopPercent)
+	RandomFromTopPercent,
+
+	// Weighted random (skewed toward higher scores) from top 5%
+	WeightedRandomFromTop5Percent,
+	// Weighted random (skewed toward higher scores) from top 25%
+	WeightedRandomFromTop25Percent,
+	// Weighted random (skewed toward higher scores) from top N% (uses TopPercent)
+	WeightedRandomFromTopPercent
+};
+
+UENUM(meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
+enum class EArcTQSWorldRequirements : uint8
+{
+	None = 0 UMETA(Hidden),
+	Navigation = 1 << 0,
+	Collision = 1 << 1,
+	SmartObjects = 1 << 2,
+	Areas = 1 << 3,
+	Knowledge = 1 << 4,
+	Perception = 1 << 5,
+	Actors = 1 << 6,
+	WorldConditions = 1 << 7
+};
+ENUM_CLASS_FLAGS(EArcTQSWorldRequirements);
+
+USTRUCT(BlueprintType)
+struct ARCTARGETQUERY_API FArcTQSTargetItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	EArcTQSTargetType TargetType = EArcTQSTargetType::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FMassEntityHandle EntityHandle;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TWeakObjectPtr<AActor> Actor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TWeakObjectPtr<UObject> Object;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector Location = FVector::ZeroVector;
+
+	// Smart object handles (valid when TargetType == SmartObject)
+	FSmartObjectHandle SmartObjectHandle;
+	FSmartObjectSlotHandle SlotHandle;
+
+	// Running score — starts at 1.0 for multiplicative model
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	float Score = 1.0f;
+
+	// Whether this item passed all filters so far
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	bool bValid = true;
+
+	/** Generator-specific metadata as a property bag.
+	  * The generator declares its output schema via GetOutputSchema().
+	  * Filters/scorers access properties by name. */
+	FInstancedPropertyBag ItemData;
+
+	// Resolve the world location regardless of target type
+	FVector GetLocation(const FMassEntityManager* EntityManager = nullptr) const;
+
+	// Resolve the actor (from entity if needed)
+	AActor* GetActor(const FMassEntityManager* EntityManager = nullptr) const;
+
+	// Resolve entity handle (from actor if needed)
+	FMassEntityHandle GetEntityHandle(const FMassEntityManager* EntityManager = nullptr) const;
+};
+
+USTRUCT(BlueprintType)
+struct ARCTARGETQUERY_API FArcTQSQueryContext
+{
+	GENERATED_BODY()
+
+	// The entity that initiated this query
+	FMassEntityHandle QuerierEntity;
+
+	// Querier's location (cached at query start)
+	FVector QuerierLocation = FVector::ZeroVector;
+
+	// Querier's forward direction
+	FVector QuerierForward = FVector::ForwardVector;
+
+	// The world
+	TWeakObjectPtr<UWorld> World;
+
+	// Entity manager reference
+	FMassEntityManager* EntityManager = nullptr;
+
+	// Optional querier actor (if entity has actor fragment)
+	TWeakObjectPtr<AActor> QuerierActor;
+
+	const FRandomStream* RandomStream = nullptr;
+
+	EArcTQSWorldRequirements UnavailableRequirements = EArcTQSWorldRequirements::None;
+};
+

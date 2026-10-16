@@ -84,20 +84,3 @@ public:
 									  , const FString& PluginURL) override;
 };
 
-// checked
-UCLASS()
-class UArcGameFeature_AddGameplayCuePaths
-		: public UObject
-		, public IGameFeatureStateChangeObserver
-{
-	GENERATED_BODY()
-
-public:
-	virtual void OnGameFeatureRegistering(const UGameFeatureData* GameFeatureData
-										  , const FString& PluginName
-										  , const FString& PluginURL) override;
-
-	virtual void OnGameFeatureUnregistering(const UGameFeatureData* GameFeatureData
-											, const FString& PluginName
-											, const FString& PluginURL) override;
-};

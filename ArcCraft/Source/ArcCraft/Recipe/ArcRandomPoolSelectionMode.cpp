@@ -21,7 +21,8 @@
 
 #include "ArcCraft/Recipe/ArcRandomPoolSelectionMode.h"
 
-#include "ArcCraft/Recipe/ArcRandomPoolDefinition.h"
+#include "ArcCraft/Recipe/ArcRandomPoolDefinitionData.h"
+#include "Math/RandomStream.h"
 
 // -------------------------------------------------------------------
 // FArcRandomPoolSelectionMode (base)
@@ -55,7 +56,7 @@ int32 FArcRandomPoolSelectionMode::WeightedRandomPick(
 		return INDEX_NONE;
 	}
 
-	const float Roll = FMath::FRandRange(0.0f, TotalWeight);
+	const float Roll = Context.Stream.FRand() * TotalWeight;
 	float Accumulator = 0.0f;
 
 	for (int32 i = 0; i < Context.EligibleIndices.Num(); ++i)
@@ -100,9 +101,9 @@ void FArcRandomPoolSelection_SimpleRandom::Select(
 	}
 
 	int32 TotalSelections = MaxSelections;
-	if (bQualityAffectsSelections && QualityBonusThreshold > 0.0f)
+	if (bRAffectsSelections && RBonusThreshold > 0.0f)
 	{
-		const int32 BonusSelections = FMath::FloorToInt32(Context.AverageQuality / QualityBonusThreshold);
+		const int32 BonusSelections = FMath::FloorToInt32(Context.AverageR / RBonusThreshold);
 		TotalSelections += BonusSelections;
 	}
 
@@ -138,7 +139,7 @@ void FArcRandomPoolSelection_Budget::Select(
 		return;
 	}
 
-	float RemainingBudget = BaseBudget + FMath::Max(0.0f, Context.AverageQuality - 1.0f) * BudgetPerQuality;
+	float RemainingBudget = BaseBudget + FMath::Max(0.0f, Context.AverageR - 1.0f) * BudgetPerR;
 	int32 SelectionCount = 0;
 
 	TSet<int32> AlreadySelected;
@@ -183,7 +184,8 @@ void FArcRandomPoolSelection_Budget::Select(
 			Context.Entries,
 			AffordableIndices,
 			AffordableWeights,
-			Context.AverageQuality
+			Context.AverageR,
+			Context.Stream
 		};
 
 		const TSet<int32> EmptySet;

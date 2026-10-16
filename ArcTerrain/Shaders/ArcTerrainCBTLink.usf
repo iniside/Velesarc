@@ -1,0 +1,69 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTLink.usf — halfedge fixup and twin validation.
+
+	LinkCS redirects every live bisector's three references through the slots that
+	changed hands this frame: a split target resolves to the child that inherited the
+	named edge, a merged target to its parent, a departed target to no twin at all, and
+	a slot a merge kept for its parent to the edge the promote table names. One hop
+	suffices because no slot retires twice in one frame and this pass runs after every
+	topology write, so no reference survives the frame pointing at a retired slot.
+
+	ValidateCS is the mirror of the reference implementation's ValidateBisector: for
+	each reference it checks that the target's own reference at the named edge points
+	back, and counts the failures. Bidirectional twin consistency is exactly what the
+	welded v1 kept getting wrong, and it is one dispatch behind a cvar.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+
+ByteAddressBuffer CBTHeapRead;
+RWByteAddressBuffer BisectorPool;
+RWByteAddressBuffer BisectorNeighbors;
+RWBuffer<uint> BisectorPromote;
+RWBuffer<uint> PoolCounters;
+
+uint PoolDepth;
+
+[numthreads(ARC_CBT_LINK_THREADS, 1, 1)]
+void LinkCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	if (DispatchThreadId.x >= cbt_NodeCount_RO(CBTHeapRead, 0u, Depth))
+	{
+		return;
+	}
+
+	const uint Slot = arc_DecodeSlot(CBTHeapRead, Depth, DispatchThreadId.x);
+	arc_FixupRefs(BisectorPool, BisectorNeighbors, BisectorPromote, Slot);
+}
+
+[numthreads(ARC_CBT_LINK_THREADS, 1, 1)]
+void ValidateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	if (DispatchThreadId.x >= cbt_NodeCount_RO(CBTHeapRead, 0u, Depth))
+	{
+		return;
+	}
+
+	const uint Slot = arc_DecodeSlot(CBTHeapRead, Depth, DispatchThreadId.x);
+
+	for (uint Edge = 0u; Edge < 3u; ++Edge)
+	{
+		const uint Ref = arc_LoadNeighbor(BisectorNeighbors, Slot, Edge);
+		if (!arc_RefValid(Ref))
+		{
+			continue;
+		}
+
+		const uint Back = arc_LoadNeighbor(BisectorNeighbors, arc_RefIndex(Ref), arc_RefEdge(Ref));
+		if (!arc_RefValid(Back) || arc_RefIndex(Back) != Slot || arc_RefEdge(Back) != Edge)
+		{
+			uint Ignored = 0u;
+			InterlockedAdd(PoolCounters[ARC_CBT_COUNTER_NON_MUTUAL_REFS], 1u, Ignored);
+		}
+	}
+}

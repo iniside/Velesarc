@@ -3,81 +3,33 @@
 #include "ArcProjectileSpawning.h"
 
 #include "ArcProjectileFragments.h"
+#include "ArcMass/Config/ArcMassEntityConfigAsset.h"
+#include "ArcMass/Spawner/ArcMassSpawnerSubsystem.h"
 
-#include "MassCommonFragments.h"
-#include "MassEntityConfigAsset.h"
-#include "MassEntityManager.h"
-#include "MassExecutionContext.h"
-#include "MassSpawnerSubsystem.h"
 #include "Engine/World.h"
+#include "MassEntityTemplate.h"
+#include "StructUtils/SharedStruct.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcProjectileSpawning)
 
-// ---------------------------------------------------------------------------
-// Spawn processor
-// ---------------------------------------------------------------------------
-
-UArcProjectileSpawnProcessor::UArcProjectileSpawnProcessor()
-	: EntityQuery(*this)
+namespace ArcProjectileSpawningPrivate
 {
-	bAutoRegisterWithProcessingPhases = false;
-}
-
-void UArcProjectileSpawnProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
-{
-	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery.AddRequirement<FArcProjectileFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery.AddRequirement<FArcProjectileCollisionFilterFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery.AddTagRequirement<FArcProjectileTag>(EMassFragmentPresence::All);
-}
-
-void UArcProjectileSpawnProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
-{
-	if (!ensure(Context.ValidateAuxDataType<FArcProjectileSpawnData>()))
+	template<typename T>
+	T GetInitialFragmentValue(const FMassEntityTemplate& EntityTemplate)
 	{
-		return;
+		const FInstancedStruct* InitialValue = EntityTemplate.GetInitialFragmentValues().FindByPredicate(
+			FStructTypeEqualOperator(T::StaticStruct()));
+		return InitialValue ? InitialValue->Get<T>() : T();
 	}
 
-	FArcProjectileSpawnData& SpawnData = Context.GetMutableAuxData().GetMutable<FArcProjectileSpawnData>();
-
-	const int32 NumTransforms = SpawnData.Transforms.Num();
-	const int32 NumVelocities = SpawnData.Velocities.Num();
-	const int32 NumInstigators = SpawnData.Instigators.Num();
-	const int32 NumIgnoredActors = SpawnData.IgnoredActors.Num();
-
-	int32 NextIndex = 0;
-
-	EntityQuery.ForEachEntityChunk(Context, [&](FMassExecutionContext& Ctx)
+	const FArcTargetedProjectileConfigFragment* GetTargetedConfig(const FMassEntityTemplate& EntityTemplate)
 	{
-		TArrayView<FTransformFragment> Transforms = Ctx.GetMutableFragmentView<FTransformFragment>();
-		TArrayView<FArcProjectileFragment> Projectiles = Ctx.GetMutableFragmentView<FArcProjectileFragment>();
-		TArrayView<FArcProjectileCollisionFilterFragment> Filters = Ctx.GetMutableFragmentView<FArcProjectileCollisionFilterFragment>();
-
-		for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
-		{
-			const int32 Idx = NextIndex++;
-
-			if (Idx < NumTransforms)
-			{
-				Transforms[EntityIt].GetMutableTransform() = SpawnData.Transforms[Idx];
-			}
-
-			if (Idx < NumVelocities)
-			{
-				Projectiles[EntityIt].Velocity = SpawnData.Velocities[Idx];
-			}
-
-			if (Idx < NumInstigators)
-			{
-				Projectiles[EntityIt].Instigator = SpawnData.Instigators[Idx];
-			}
-
-			if (Idx < NumIgnoredActors)
-			{
-				Filters[EntityIt].IgnoredActors = SpawnData.IgnoredActors[Idx];
-			}
-		}
-	});
+		const FConstSharedStruct* SharedValue = EntityTemplate.GetSharedFragmentValues().GetConstSharedFragments().FindByPredicate(
+			FStructTypeEqualOperator(FArcTargetedProjectileConfigFragment::StaticStruct()));
+		return SharedValue && SharedValue->IsValid()
+			? &SharedValue->Get<const FArcTargetedProjectileConfigFragment>()
+			: nullptr;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +38,7 @@ void UArcProjectileSpawnProcessor::Execute(FMassEntityManager& EntityManager, FM
 
 void UE::ArcMass::Projectile::BatchSpawnProjectiles(
 	UWorld* World,
-	UMassEntityConfigAsset* EntityConfig,
+	UArcMassEntityConfigAsset* EntityConfig,
 	const FArcProjectileSpawnData& SpawnData,
 	TArray<FMassEntityHandle>& OutEntities)
 {
@@ -95,13 +47,13 @@ void UE::ArcMass::Projectile::BatchSpawnProjectiles(
 		return;
 	}
 
-	UMassSpawnerSubsystem* SpawnerSubsystem = World->GetSubsystem<UMassSpawnerSubsystem>();
+	UArcMassSpawnerSubsystem* SpawnerSubsystem = World->GetSubsystem<UArcMassSpawnerSubsystem>();
 	if (!SpawnerSubsystem)
 	{
 		return;
 	}
 
-	const FMassEntityTemplate& EntityTemplate = EntityConfig->GetOrCreateEntityTemplate(*World);
+	const FMassEntityTemplate& EntityTemplate = EntityConfig->GetConfig().GetOrCreateEntityTemplate(*World);
 	if (!EntityTemplate.IsValid())
 	{
 		return;
@@ -113,11 +65,57 @@ void UE::ArcMass::Projectile::BatchSpawnProjectiles(
 		return;
 	}
 
-	SpawnerSubsystem->SpawnEntities(
-		EntityTemplate.GetTemplateID(),
-		static_cast<uint32>(Count),
-		FConstStructView::Make(SpawnData),
-		UArcProjectileSpawnProcessor::StaticClass(),
-		OutEntities
-	);
+	const FArcTargetedProjectileConfigFragment* TargetedConfig = ArcProjectileSpawningPrivate::GetTargetedConfig(EntityTemplate);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		TArray<FInstancedStruct, TInlineAllocator<4>> Overrides;
+
+		if (SpawnData.Velocities.IsValidIndex(Index) || SpawnData.Instigators.IsValidIndex(Index))
+		{
+			FArcProjectileFragment Projectile = ArcProjectileSpawningPrivate::GetInitialFragmentValue<FArcProjectileFragment>(EntityTemplate);
+			if (SpawnData.Velocities.IsValidIndex(Index))
+			{
+				Projectile.Velocity = SpawnData.Velocities[Index];
+			}
+			if (SpawnData.Instigators.IsValidIndex(Index))
+			{
+				Projectile.Instigator = SpawnData.Instigators[Index];
+			}
+			Overrides.Add(FInstancedStruct::Make(Projectile));
+		}
+
+		if (SpawnData.IgnoredActors.IsValidIndex(Index))
+		{
+			FArcProjectileCollisionFilterFragment Filter =
+				ArcProjectileSpawningPrivate::GetInitialFragmentValue<FArcProjectileCollisionFilterFragment>(EntityTemplate);
+			Filter.IgnoredActors = SpawnData.IgnoredActors[Index];
+			Overrides.Add(FInstancedStruct::Make(Filter));
+		}
+
+		if (SpawnData.TargetEntities.IsValidIndex(Index))
+		{
+			FArcTargetedProjectileFragment TargetedProjectile =
+				ArcProjectileSpawningPrivate::GetInitialFragmentValue<FArcTargetedProjectileFragment>(EntityTemplate);
+			TargetedProjectile.TargetEntity = SpawnData.TargetEntities[Index];
+			TargetedProjectile.RemainingDuration = TargetedConfig
+				&& TargetedConfig->MovementMode == EArcTargetedProjectileMovementMode::FixedDuration
+				? TargetedConfig->FixedDuration
+				: 0.f;
+			Overrides.Add(FInstancedStruct::Make(TargetedProjectile));
+		}
+
+		if (SpawnData.ActionFragments.IsValidIndex(Index))
+		{
+			Overrides.Add(FInstancedStruct::Make(SpawnData.ActionFragments[Index]));
+		}
+
+		const FMassEntityHandle Entity = SpawnerSubsystem->SpawnEntityWithOverrides(
+			EntityConfig,
+			SpawnData.Transforms[Index],
+			Overrides);
+		if (Entity.IsValid())
+		{
+			OutEntities.Add(Entity);
+		}
+	}
 }

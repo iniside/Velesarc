@@ -4,13 +4,12 @@
 
 #include "CoreMinimal.h"
 
-/** Record of a step definition (name, type, weight). */
+/** Record of a step definition (name, type). */
 struct FArcTQSTraceStepRecord
 {
 	int32 StepIndex = INDEX_NONE;
 	FString StepName;
 	uint8 StepKind = 0; // 0=Filter, 1=Score
-	float Weight = 1.0f;
 };
 
 /** Record of a single item in the final query state. */
@@ -33,7 +32,6 @@ struct FArcTQSTraceQueryRecord
 	int32 QueryId = INDEX_NONE;
 	FVector QuerierLocation = FVector::ZeroVector;
 	FVector QuerierForward = FVector::ForwardVector;
-	TArray<FVector> ContextLocations;
 	FString GeneratorName;
 	int32 GeneratedItemCount = 0;
 

@@ -38,8 +38,7 @@ void FArcPlayerMassFragmentSerializer::Save(
 	const FMassEntityHandle Entity = Source.GetEntityHandle();
 	if (!Entity.IsValid())
 	{
-		UE_LOG(LogArcPlayerMassPersistence, Log,
-			TEXT("Save: No valid entity on MassAgentComponent '%s' — skipping"),
+		UE_LOGF(LogArcPlayerMassPersistence, Log,"Save: No valid entity on MassAgentComponent '%ls' — skipping",
 			*Source.GetName());
 		return;
 	}
@@ -81,9 +80,8 @@ void FArcPlayerMassFragmentSerializer::Load(
 	const FMassEntityHandle Entity = Target.GetEntityHandle();
 	if (!Entity.IsValid())
 	{
-		UE_LOG(LogArcPlayerMassPersistence, Log,
-			TEXT("Load: No valid entity on MassAgentComponent '%s' — "
-			     "data stays in cache for deferred apply"),
+		UE_LOGF(LogArcPlayerMassPersistence, Log,"Load: No valid entity on MassAgentComponent '%ls' — "
+			     "data stays in cache for deferred apply",
 			*Target.GetName());
 		return;
 	}
@@ -109,7 +107,6 @@ void FArcPlayerMassFragmentSerializer::Load(
 	FArcMassFragmentSerializer::LoadEntityFragments(
 		EntityManager, Entity, Ar, World);
 
-	UE_LOG(LogArcPlayerMassPersistence, Log,
-		TEXT("Load: Applied fragment data to entity on '%s'"),
+	UE_LOGF(LogArcPlayerMassPersistence, Log,"Load: Applied fragment data to entity on '%ls'",
 		*Target.GetName());
 }

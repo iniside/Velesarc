@@ -29,13 +29,16 @@ public class ArcWeather : ModuleRules
 				"Engine",
 				"CoreUObject",
 				"MassEntity",
+				"MassCore",
 				"MassCommon",
 				"MassSimulation",
 				"MassSignals",
 				"MassSpawner",
 				"ArcMass",
-				"ArcConditionEffects",
-				"GameplayTags"
+				"ArcMassAbilities",
+				"ArcMassMechanics",
+				"GameplayTags",
+				"DeveloperSettings"
 			}
 			);
 			

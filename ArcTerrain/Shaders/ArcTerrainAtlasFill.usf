@@ -1,0 +1,30 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+// ArcTerrainAtlasFill.usf — sector-slice fill passes of the height+weight tile atlas.
+// C++ side: Source/ArcTerrain/Render/ArcTerrainTileAtlas.{h,cpp}.
+
+#include "/Engine/Private/Common.ush"
+
+#if defined (__INTELLISENSE__)
+//#define ATLAS_ROUTE_WEIGHT 1
+#endif
+
+// Texel index of the destination sub-rect's texel (0,0) inside the slice. The pass renders under a
+// viewport equal to that sub-rect, so SV_Position is in SLICE space and the source is addressed at
+// SV_Position - InDestOrigin (1:1, no filtering — the atlas raster equals the tile raster).
+int2 InDestOrigin;
+
+#if ATLAS_ROUTE_WEIGHT
+
+Texture2DArray<float> InSourceWeight;
+uint InSourceSlice;
+
+// One PF_G8 source slice -> one component of the BGRA8 atlas slice. The component is selected by the
+// pass's colour-write mask, not here, so all four outputs carry the same value.
+void RouteWeightPS(in float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	const int2 SourcePos = int2(floor(SvPosition.xy)) - InDestOrigin;
+	const float Weight = InSourceWeight.Load(int4(SourcePos, InSourceSlice, 0));
+	OutColor = float4(Weight, Weight, Weight, Weight);
+}
+
+#endif // ATLAS_ROUTE_WEIGHT

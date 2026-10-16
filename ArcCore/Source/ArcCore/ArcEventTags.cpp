@@ -29,12 +29,8 @@ namespace Arcx
 	{
 		void InitializeNativeEventTagsBase()
 		{
-			GameplayEvent_Death = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("GameplayEvent.Death")
+			GameplayEvent_Death = UGameplayTagsManager::Get().AddNativeGameplayTag(FName("ArcEvent.Death")
 				, FString(TEXT("(Native) ")) + FString("Move input."));
 		}
 	} // namespace EventTags
-	namespace Tags
-	{
-		UE_DEFINE_GAMEPLAY_TAG(GameplayEffect_Death_Persistent, "GameplayEffect.Death.Persistent");
-	}
 }

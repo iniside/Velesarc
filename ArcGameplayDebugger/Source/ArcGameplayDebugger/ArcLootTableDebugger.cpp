@@ -3,8 +3,8 @@
 #include "ArcLootTableDebugger.h"
 
 #include "imgui.h"
-#include "ArcCore/Items/Loot/ArcLootTable.h"
-#include "ArcCore/Items/Loot/ArcLootDropSubsystem.h"
+#include "Items/Loot/ArcLootTable.h"
+#include "Items/Loot/ArcLootDropSubsystem.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -310,7 +310,7 @@ void FArcLootTableDebugger::DrawSpawnControls(const UArcLootTable* Table)
 			const FVector SpawnLocation = Pawn->GetActorLocation() + Forward * 200.0f;
 
 			FArcLootContext Context;
-			Context.RequestingActor = Pawn;
+			Context.InstigatorActor = Pawn;
 
 			LootSubsystem->DropLoot(
 				Table,

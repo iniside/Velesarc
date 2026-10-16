@@ -11,10 +11,12 @@
 #include "ArcBuildSnappingMethod.h"
 #include "ArcBuildResourceConsumption.h"
 #include "ArcBuildRequirement.h"
+#include "ArcBuildPostPlaceAction.h"
 
 #include "ArcBuildingDefinition.generated.h"
 
-class UMassEntityConfigAsset;
+class UArcMassEntityConfigAsset;
+class UArcTargetingPreset;
 
 USTRUCT()
 struct ARCBUILDER_API FArcBuildSocketInfo
@@ -31,8 +33,7 @@ public:
 
 /**
  * Primary data asset defining a building piece.
- * Identified by a GUID-based primary asset ID, following the same
- * pattern as UArcRecipeDefinition and UArcLootTable.
+ * Identified by a GUID-based primary asset ID.
  */
 UCLASS(BlueprintType, meta = (LoadBehavior = "LazyOnDemand"))
 class ARCBUILDER_API UArcBuildingDefinition : public UDataAsset
@@ -51,6 +52,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Building")
 	FText DisplayName;
 
+	// Short UI description shown in build menus.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Building")
+	FText Description;
+
+	// Menu icon; UObject so both UTexture2D and ArcSvg assets work (same convention as FArcItemFragment_Icon).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Building")
+	TSoftObjectPtr<UObject> Icon;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Building")
 	FGameplayTagContainer BuildingTags;
 
@@ -62,7 +71,7 @@ public:
 
 	/** Mass entity config. If set, PlaceObject() spawns a Mass VisEntity instead of an actor. */
 	UPROPERTY(EditAnywhere, Category = "Building|Spawning", meta = (DisplayThumbnail = false))
-	TObjectPtr<UMassEntityConfigAsset> MassEntityConfig;
+	TObjectPtr<UArcMassEntityConfigAsset> MassEntityConfig;
 
 	// ---- Visual / Preview ----
 
@@ -96,10 +105,21 @@ public:
 
 	/**
 	 * Strategy for checking and consuming building resources.
-	 * Default: FArcBuildResourceConsumption_ItemStore (looks for UArcItemsStoreComponent on owner).
+	 * Base struct = free placement; FArcBuildResourceConsumption_MassStore draws
+	 * ingredients from an FArcMassItemStoreFragment on the instigator entity.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Building|Consumption")
 	TInstancedStruct<FArcBuildResourceConsumption> ResourceConsumption;
+
+	// ---- Targeting ----
+
+	/**
+	 * Per-building override for the placement targeting pipeline. When set, the
+	 * builder subsystem seeds its placement loop with this preset; otherwise it
+	 * falls back to the subsystem's DefaultPlacementPreset.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Building|Targeting")
+	TObjectPtr<UArcTargetingPreset> PlacementTargetingPreset;
 
 	// ---- Snapping ----
 
@@ -113,6 +133,18 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Building|Requirements",
 		meta = (ExcludeBaseStruct))
 	TArray<TInstancedStruct<FArcBuildRequirement>> BuildRequirements;
+
+	// ---- Post-Place Actions ----
+
+	/**
+	 * Actions the server place command runs around entity spawn: BuildSpawnOverrides
+	 * before SpawnEntityWithOverrides, PostPlaced after (see FArcBuildPostPlaceAction).
+	 * E.g. FArcBuildPostPlaceAction_IngredientStats transfers consumed-item stats onto
+	 * the placed entity's attributes.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Building|PostPlace",
+		meta = (ExcludeBaseStruct))
+	TArray<TInstancedStruct<FArcBuildPostPlaceAction>> PostPlaceActions;
 
 	// ---- Primary Asset ----
 
@@ -134,8 +166,11 @@ public:
 
 	/**
 	 * Resolve an actor class for preview placement.
-	 * Tries ActorClass first, then falls back to the MassEntityConfig's visualization trait actor class.
-	 * Returns nullptr if neither provides a valid actor class.
+	 * Tries ActorClass first, then falls back to the MassEntityConfig's engine
+	 * UMassVisualizationTrait (HighResTemplateActor). Returns nullptr if neither provides a class.
+	 * Note: this only covers the class-based path. Ghosts built from the Arc visualization traits
+	 * (mesh/skinned/composite/unified) are assembled component-wise by ArcBuilderGhostPreview,
+	 * which calls this first and falls through to trait extraction when it returns nullptr.
 	 */
 	UClass* ResolvePreviewActorClass() const;
 };

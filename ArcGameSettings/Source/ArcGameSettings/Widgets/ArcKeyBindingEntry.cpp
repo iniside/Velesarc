@@ -43,7 +43,7 @@ FReply UArcKeyBindingEntry::NativeOnKeyDown(const FGeometry& InGeometry, const F
 {
 	if (bIsCapturing)
 	{
-		OnBindingChanged(InKeyEvent.GetKey(), bCapturingPrimarySlot);
+		OnKeyBindingChanged(InKeyEvent.GetKey(), bCapturingPrimarySlot);
 		bIsCapturing = false;
 		return FReply::Handled();
 	}

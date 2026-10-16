@@ -23,20 +23,16 @@
 
 
 #include "CommonLazyImage.h"
-#include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Blueprint/UserWidget.h"
-#include "GameplayAbilitySpecHandle.h"
 #include "Components/Image.h"
 #include "Types/TargetingSystemTypes.h"
 
 #include "ArcReticleWidget.generated.h"
 
-class UGameplayAbility;
 class UArcTargetingObject;
 class UTargetingPreset;
 
 struct FArcTargetRequest;
-struct FGameplayAbilityTargetDataHandle;
 struct FArcSelectedGun;
 struct FArcGunShotInfo;
 
@@ -52,8 +48,6 @@ protected:
 	FDelegateHandle WeaponEquippedDelegate;
 
 	FDelegateHandle WeaponSwaydDelegate;
-	
-	FDelegateHandle GunStateComponentBeginPlayDelegate;
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<UTargetingPreset> TargetingPreset;
@@ -82,18 +76,10 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent)
 	void OnSwayChanged(float CurrentSway);
 	
-	//void HandleOnWeaponFireHit(UGameplayAbility* InAbility
-	//						   , const FArcSelectedGun& SelectedGun
-	//						   , const FGameplayAbilityTargetDataHandle& InHits
-	//						   , UArcTargetingObject* InTrace
-	//						   , const FGameplayAbilitySpecHandle& RequestHandle);
-
 	void HandleOnWeaponFireHit(const FArcGunShotInfo& ShotInfo);
-	
+
 	UFUNCTION(BlueprintImplementableEvent)
 	void OnWeaponFireHit(const FVector& WorldLocation);
-
-	void HandleGunStateComponentBeginPlay(UActorComponent* InComponent);
 };
 
 UCLASS()

@@ -11,7 +11,7 @@
  * Trait that configures a Mass entity as a knowledge member (NPC).
  * Adds the member fragment, config shared fragment, and the member tag.
  */
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Knowledge Member"))
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Knowledge Member", Category = "Knowledge"))
 class ARCKNOWLEDGE_API UArcKnowledgeMemberTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

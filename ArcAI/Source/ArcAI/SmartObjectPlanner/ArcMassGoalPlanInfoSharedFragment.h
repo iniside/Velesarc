@@ -3,7 +3,7 @@
 #pragma once
 #include "ArcSmartObjectPlanConditionEvaluator.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/EntityElementTypes.h"
 #include "MassEntityTraitBase.h"
 #include "StructUtils/InstancedStruct.h"
 
@@ -34,7 +34,9 @@ public:
 //	};
 //};
 
-UCLASS(MinimalAPI)
+/** Trait that adds goal plan info to a Mass entity for SmartObject planning.
+ *  Configures what the entity provides/requires and custom plan conditions for goal selection. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Goal Plan Info", Category = "AI"))
 class UArcMassGoalPlanInfoTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

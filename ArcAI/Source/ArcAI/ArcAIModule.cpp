@@ -26,8 +26,6 @@
 #include "Misc/CoreDelegates.h"
 #include "Perception/GameplayDebuggerCategory_ArcPerception.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlannerSubsystem.h"
-#include "TargetQuery/GameplayDebuggerCategory_ArcTQS.h"
-
 #if WITH_GAMEPLAY_DEBUGGER
 #include "GameplayDebugger.h"
 #endif
@@ -43,29 +41,11 @@ void FArcAIModule::StartupModule()
 		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_SmartObjectPlanner::MakeInstance)
 		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
 
-	GameplayDebuggerModule.RegisterCategory("Arc TQS"
-		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcTQS::MakeInstance)
-		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
-
 	GameplayDebuggerModule.RegisterCategory("Arc Perception"
 		, IGameplayDebugger::FOnGetCategory::CreateStatic(&FGameplayDebuggerCategory_ArcPerception::MakeInstance)
 		, EGameplayDebuggerCategoryState::EnabledInGameAndSimulate);
 
 	GameplayDebuggerModule.NotifyCategoriesChanged();
-#endif
-	
-	//AIDebuggerWindow 
-	
-#if WITH_EDITOR
-	FWorldDelegates::OnPIEMapReady.AddLambda([this](UGameInstance* GameInstace)
-		{
-			AIDebuggerWindow.DebuggerWidget.World = GameInstace->GetWorld();
-		});
-	
-	FWorldDelegates::OnPIEEnded.AddLambda([this](UGameInstance* GameInstace)
-		{
-			AIDebuggerWindow.DebuggerWidget.OnPieEnd();
-		});
 #endif
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 }
@@ -77,7 +57,6 @@ void FArcAIModule::ShutdownModule()
 	{
 		IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
 		GameplayDebuggerModule.UnregisterCategory("Arc Planner");
-		GameplayDebuggerModule.UnregisterCategory("Arc TQS");
 		GameplayDebuggerModule.UnregisterCategory("Arc Perception");
 		GameplayDebuggerModule.NotifyCategoriesChanged();
 	}

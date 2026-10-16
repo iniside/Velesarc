@@ -1,7 +1,8 @@
 ﻿#pragma once
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassSmartObjectRequest.h"
+#include "ArcKnowledgeTypes.h"
 
 #include "ArcPotentialEntity.generated.h"
 
@@ -16,4 +17,5 @@ struct FArcPotentialEntity
 	FGameplayTagContainer Requires;
 	TArray<FConstStructView> CustomConditions;
 	FMassSmartObjectCandidateSlots FoundCandidateSlots;
+	FArcKnowledgeHandle KnowledgeHandle;
 };

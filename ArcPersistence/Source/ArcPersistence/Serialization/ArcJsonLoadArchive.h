@@ -22,7 +22,9 @@
 #pragma once
 
 #include "ArcLoadArchive.h"
-#include "ArcJsonIncludes.h"
+
+struct yyjson_doc;
+struct yyjson_val;
 
 /**
  * JSON-backed implementation of FArcLoadArchive.
@@ -31,8 +33,13 @@
 class ARCPERSISTENCE_API FArcJsonLoadArchive : public FArcLoadArchive
 {
 public:
-	FArcJsonLoadArchive() = default;
-	virtual ~FArcJsonLoadArchive() override = default;
+	FArcJsonLoadArchive();
+	virtual ~FArcJsonLoadArchive() override;
+
+	FArcJsonLoadArchive(FArcJsonLoadArchive&&);
+	FArcJsonLoadArchive& operator=(FArcJsonLoadArchive&&);
+	FArcJsonLoadArchive(const FArcJsonLoadArchive&) = delete;
+	FArcJsonLoadArchive& operator=(const FArcJsonLoadArchive&) = delete;
 
 	// ── Initialization ──────────────────────────────────────────────────
 
@@ -83,17 +90,22 @@ public:
 	virtual void EndArrayElement() override;
 	virtual void EndArray() override;
 
-	// ── Public accessor (testing) ───────────────────────────────────────
-
-	const nlohmann::json& GetJsonObject() const { return Root; }
-
 private:
-	/** Returns the current read target: top of ScopeStack, or &Root if stack is empty. */
-	nlohmann::json* Current();
+	struct FDocDeleter
+	{
+		void operator()(yyjson_doc* InDoc) const;
+	};
 
-	/** The parsed "data" object from the envelope. */
-	nlohmann::json Root;
+	struct FScope
+	{
+		yyjson_val* Value = nullptr;
+		yyjson_val* CursorElement = nullptr;
+		int32 CursorIndex = INDEX_NONE;
+	};
 
-	/** Stack of pointers into the JSON tree for nested struct/array scoping. */
-	TArray<nlohmann::json*> ScopeStack;
+	yyjson_val* Current() const;
+
+	TUniquePtr<yyjson_doc, FDocDeleter> Doc;
+	yyjson_val* Root = nullptr;
+	TArray<FScope> ScopeStack;
 };

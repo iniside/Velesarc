@@ -21,7 +21,6 @@
 
 #pragma once
 
-#include "ArcAIDebugger.h"
 #include "Modules/ModuleManager.h"
 
 class FArcAIModule : public IModuleInterface
@@ -31,6 +30,4 @@ public:
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
-	
-	FArcAIDebuggerWindowWidget AIDebuggerWindow = FArcAIDebuggerWindowWidget(TEXT("ArcAI.ShowDebugger"), TEXT("Toggles the Arc AI Debugger window"));;
 };

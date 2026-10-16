@@ -4,9 +4,10 @@
 #include "Mass/ArcKnowledgeFragments.h"
 #include "ArcKnowledgeSubsystem.h"
 #include "ArcKnowledgeEntry.h"
-#include "MassEntityFragments.h"
-#include "MassEntityView.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityFragments.h"
+#include "Mass/EntityView.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 
 // ====================================================================
 // Add Observer
@@ -15,7 +16,7 @@
 UArcKnowledgeMemberAddObserver::UArcKnowledgeMemberAddObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcKnowledgeMemberTag::StaticStruct();
+	ObservedTypes.Add(FArcKnowledgeMemberTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -36,6 +37,8 @@ void UArcKnowledgeMemberAddObserver::Execute(FMassEntityManager& EntityManager, 
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcKnowledgeMemberAdd);
+
 	ObserverQuery.ForEachEntityChunk(Context, [Subsystem, &EntityManager](FMassExecutionContext& Ctx)
 	{
 		TArrayView<FArcKnowledgeMemberFragment> MemberFragments = Ctx.GetMutableFragmentView<FArcKnowledgeMemberFragment>();
@@ -52,19 +55,6 @@ void UArcKnowledgeMemberAddObserver::Execute(FMassEntityManager& EntityManager, 
 			if (Config.Definition)
 			{
 				Subsystem->RegisterFromDefinition(Config.Definition, Location, EntityHandle, Member.RegisteredKnowledgeHandles);
-			}
-
-			// Register each capability tag as a knowledge entry
-			for (const FGameplayTag& Tag : Config.CapabilityTags)
-			{
-				FArcKnowledgeEntry Entry;
-				Entry.Tags.AddTag(Tag);
-				Entry.Location = Location;
-				Entry.SourceEntity = EntityHandle;
-				Entry.Relevance = 1.0f;
-
-				const FArcKnowledgeHandle KnowledgeHandle = Subsystem->RegisterKnowledge(Entry);
-				Member.RegisteredKnowledgeHandles.Add(KnowledgeHandle);
 			}
 
 			// Register the role if set
@@ -90,7 +80,7 @@ void UArcKnowledgeMemberAddObserver::Execute(FMassEntityManager& EntityManager, 
 UArcKnowledgeMemberRemoveObserver::UArcKnowledgeMemberRemoveObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcKnowledgeMemberTag::StaticStruct();
+	ObservedTypes.Add(FArcKnowledgeMemberTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -109,6 +99,8 @@ void UArcKnowledgeMemberRemoveObserver::Execute(FMassEntityManager& EntityManage
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcKnowledgeMemberRemove);
+
 	ObserverQuery.ForEachEntityChunk(Context, [Subsystem](FMassExecutionContext& Ctx)
 	{
 		TArrayView<FArcKnowledgeMemberFragment> MemberFragments = Ctx.GetMutableFragmentView<FArcKnowledgeMemberFragment>();
@@ -120,7 +112,7 @@ void UArcKnowledgeMemberRemoveObserver::Execute(FMassEntityManager& EntityManage
 			// Remove all knowledge entries registered by this entity
 			for (const FArcKnowledgeHandle& Handle : Member.RegisteredKnowledgeHandles)
 			{
-				Subsystem->RemoveKnowledge(Handle);
+				Subsystem->ForceRemoveKnowledge(Handle);
 			}
 			Member.RegisteredKnowledgeHandles.Empty();
 		}

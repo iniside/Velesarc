@@ -1,0 +1,51 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+// ArcTerrainNodeVersion.ush — shader-map cache-buster for the ArcTerrain material expression nodes.
+//
+// The ArcTerrain material nodes (UMaterialExpressionArcTerrainHeight / ...LayerWeight) emit their UV
+// texel-center remap through C++ translator ops (see ArcTerrainMaterialExpressions.cpp CompileSliceUV /
+// BuildSliceUV). Because that emission is pure C++, a change to the remap MATH does NOT alter the
+// material graph and therefore does NOT change FMaterialShaderMapId — a material using these nodes would
+// reload a STALE compiled shader from the DDC and sample the tile shifted by a texel.
+//
+// This file is NOT #included by any shader. Both nodes declare it via
+// UMaterialExpression::GetIncludeFilePaths(), which routes its CONTENT hash into
+// FMaterialShaderMapId::ExpressionIncludesHash (MaterialShader.cpp GetExpressionIncludesHash ->
+// GetShaderFileHash). Any edit to this file's bytes changes that hash, forcing every material using an
+// ArcTerrain node to retranslate — automatically, on next material use / editor start, with no manual
+// resave and without bumping any global engine material DDC version.
+//
+// PROCEDURE when you change the C++ translator math of an ArcTerrain node: bump ARC_TERRAIN_NODE_VERSION.
+//
+// ARC_TERRAIN_NODE_VERSION history:
+//   1 — initial texel-center remap: UV*(1 - InvRes) + 0.5*InvRes,  InvRes = 1/(Quads+1)
+//   2 — 1-texel apron remap:        UV*(1 - 3*InvRes) + 1.5*InvRes, InvRes = 1/(Quads+3)  (Step 2, VF plan)
+//   3 — weight-specific InvRes:      weight node remaps with ArcTerrainWeightInvRes (weight tiles now
+//                                    composite at an independent WeightQuads resolution — weightmap-decouple
+//                                    Stage 1 Step 2); height node unchanged.
+//   4 — cooked weight-array node:    NEW UMaterialExpressionArcTerrainLayerWeightArray samples a per-cell
+//                                    weight UTexture2DArray at (cell-local UV, slice), unpacking the 5-bit
+//                                    channel->slice table from CustomPrimitiveData (weightmap-decouple
+//                                    Stage 2 Step 6). Preview RGBA8 node + height node unchanged.
+//   5 — height node emits the raw R channel: the tile stores terrain-local cm, so the
+//                                    ArcTerrainHeightScale/Bias scalar parameters are gone.
+//   6 — tile atlas: every node samples a Texture2DArray at a slice the VERTEX FACTORY resolved per
+//                                    leaf and delivered in UV2 (x = height slice, y = weight slice).
+//                                    Height reads "ArcTerrainHeightAtlas" at UV1 (face-local); weights
+//                                    read "ArcTerrainWeights{ChannelIndex/4}" at UV0 (weight-group
+//                                    local), component ChannelIndex%4. The CustomPrimitiveData slice
+//                                    table and the RT/array Lerp are gone with the per-cell MID.
+//   7 — height samples at an EXPLICIT mip 0 (TMVM_MipLevel) instead of DDX/DDY derivatives: the node
+//                                    compiles in the vertex shader for world-position offset, where
+//                                    derivatives do not exist. Weight node unchanged (pixel shader only,
+//                                    keeps derivative-based filtering).
+//   8 — every compiler-generated parameter is created inside a PushParameterOwner/PopParameterOwner
+//                                    scope, matching FHLSLMaterialTranslator::StaticTerrainLayerWeight.
+//   9 — weight node samples every "ArcTerrainWeights{i}" array with a shared sampler and selects the
+//                                    channel by NAME: ArcTerrainWeightMask_<Channel> (one-hot RGBA) picks
+//                                    the component and ArcTerrainWeightArray_<Channel> (scalar array
+//                                    index) picks the array, composed through a six-argument If chain with
+//                                    a 0.5 threshold. The node no longer resolves or bakes a channel's
+//                                    array/component position at material-compile time.
+//  10 — MIR Build parity for height, named weight, and layer blend nodes. Compiler-generated ArcTerrain
+//                                    uniforms remain global even inside material layer/blend subgraphs.
+#define ARC_TERRAIN_NODE_VERSION 11

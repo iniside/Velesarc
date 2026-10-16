@@ -1,0 +1,29 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcMassGameFramework Tests",
+	"Description": "CQTest module covering ArcMassGameplayFramework experiences.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcMassGameFrameworkTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcMassGameplayFramework", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "ArcAI", "Enabled": true },
+		{ "Name": "ArcCoreTest", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

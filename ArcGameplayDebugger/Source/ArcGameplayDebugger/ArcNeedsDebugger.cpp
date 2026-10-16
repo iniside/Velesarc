@@ -5,15 +5,13 @@
 #include "CoreMinimal.h"
 #include "imgui.h"
 #include "MassActorSubsystem.h"
-#include "MassDebugger.h"
-#include "MassEntityElementTypes.h"
+#include "Mass/Debugger.h"
+#include "MassDebuggerWorld.h"
+#include "Mass/EntityElementTypes.h"
 #include "MassEntitySubsystem.h"
-#include "AbilitySystemComponent.h"
-#include "Attributes/ArcNeedsSurvivalAttributeSet.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Fragments/ArcNeedFragment.h"
-#include "Player/ArcHeroComponentBase.h"
 
 namespace Arcx::GameplayDebugger::Needs
 {
@@ -330,64 +328,6 @@ void FArcNeedsDebugger::DrawDetailPanel()
 		}
 	}
 
-	ImGui::Spacing();
-
-	// Survival Attributes section
-	{
-		const FArcCoreAbilitySystemFragment* ASCFrag =
-			Manager->GetFragmentDataPtr<FArcCoreAbilitySystemFragment>(Entity);
-
-		if (ASCFrag && ASCFrag->AbilitySystem.IsValid())
-		{
-			UArcCoreAbilitySystemComponent* ASC = ASCFrag->AbilitySystem.Get();
-
-			const UArcNeedsSurvivalAttributeSet* SurvivalSet = nullptr;
-			for (const UAttributeSet* AttrSet : ASC->GetSpawnedAttributes())
-			{
-				SurvivalSet = Cast<UArcNeedsSurvivalAttributeSet>(AttrSet);
-				if (SurvivalSet)
-				{
-					break;
-				}
-			}
-
-			if (SurvivalSet)
-			{
-				ImGui::SeparatorText("Survival Attributes");
-
-				constexpr ImGuiTableFlags AttrTableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_SizingStretchProp;
-				if (ImGui::BeginTable("SurvivalAttribTable", 2, AttrTableFlags))
-				{
-					ImGui::TableSetupColumn("Attribute", ImGuiTableColumnFlags_WidthFixed, 160.f);
-					ImGui::TableSetupColumn("Value",     ImGuiTableColumnFlags_WidthStretch);
-					ImGui::TableHeadersRow();
-
-					struct FAttrRow { const char* Name; float Value; };
-					FAttrRow AttrRows[] = {
-						{ "AddHunger",    SurvivalSet->GetAddHunger()    },
-						{ "RemoveHunger", SurvivalSet->GetRemoveHunger() },
-						{ "AddThirst",    SurvivalSet->GetAddThirst()    },
-						{ "RemoveThirst", SurvivalSet->GetRemoveThirst() },
-						{ "AddFatigue",   SurvivalSet->GetAddFatigue()   },
-						{ "RemoveFatigue",SurvivalSet->GetRemoveFatigue()},
-						{ "Fatigue",      SurvivalSet->GetFatigue()      },
-					};
-
-					for (const FAttrRow& AR : AttrRows)
-					{
-						ImGui::TableNextRow();
-						ImGui::TableSetColumnIndex(0);
-						ImGui::Text("%s", AR.Name);
-						ImGui::TableSetColumnIndex(1);
-						ImGui::Text("%.4f", AR.Value);
-					}
-
-					ImGui::EndTable();
-				}
-
-				ImGui::TextDisabled("Add/Remove attributes are meta-attributes that drain to zero immediately.");
-			}
-		}
-	}
+	// GAS Survival Attributes panel retired; Mass-side need fragment view above is the canonical source.
 #endif
 }

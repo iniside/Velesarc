@@ -24,64 +24,34 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
+#include "ArcCraft/Recipe/ArcRandomPoolDefinitionData.h"
 
 #include "ArcMaterialPropertyRule.generated.h"
 
-class UArcQualityBandPreset;
-
-/**
- * A quality band defines a range of quality values and the modifiers that apply when selected.
- * Multiple bands can be eligible for a given quality -- selection is weighted random,
- * so higher quality makes better bands more likely but doesn't guarantee them.
- *
- * Effective weight formula:
- *   BaseWeight * (1 + (max(0, BandEligibilityQuality - MinQuality) + BandWeightBonus) * QualityWeightBias)
- */
-USTRUCT(BlueprintType)
-struct ARCCRAFT_API FArcMaterialQualityBand
+UENUM(BlueprintType)
+enum class EArcMaterialRuleMatch : uint8
 {
-	GENERATED_BODY()
-
-public:
-	/** Display name for editor and debugging. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band")
-	FText BandName;
-
-	/** Minimum quality value to be eligible for this band (inclusive).
-	 *  Quality below this threshold means this band cannot be selected.
-	 *  Compared against BandEligibilityQuality (NOT boosted by extra same-quality items). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band", meta = (ClampMin = "0.0"))
-	float MinQuality = 0.0f;
-
-	/** Base selection weight. Higher = more likely to be selected among eligible bands. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band|Selection", meta = (ClampMin = "0.001"))
-	float BaseWeight = 1.0f;
-
-	/** How much quality above MinQuality (plus BandWeightBonus) boosts this band's selection weight.
-	 *  Formula: EffectiveWeight = BaseWeight * (1 + (max(0, Quality - MinQuality) + BandWeightBonus) * QualityWeightBias)
-	 *  0.0 = quality has no effect on weight. Higher values make this band increasingly
-	 *  likely when quality exceeds MinQuality or when extra ingredients add weight bonus. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band|Selection")
-	float QualityWeightBias = 0.0f;
-
-	/** Terminal modifiers to apply when this band is selected.
-	 *  Only Stats, Abilities, and Effects modifiers are allowed here. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Band|Modifiers",
-		meta = (BaseStruct = "/Script/ArcCraft.ArcCraftModifier", ExcludeBaseStruct))
-	TArray<FInstancedStruct> Modifiers;
+	Union UMETA(Tooltip = "TagQuery matches the union of all slot tags; the share counts every slot holding a required tag."),
+	SingleIngredient UMETA(Tooltip = "TagQuery must match one ingredient slot's own tags; MatchedTags and the share count only those slots.")
 };
 
 /**
- * Maps a tag pattern to quality bands.
- * When the per-slot ingredient tags match the TagQuery, this rule's bands
- * become eligible for selection.
+ * Maps a tag pattern to a set of modifiers that all fire when the rule matches
+ * and the R gate is cleared.
+ *
+ * When the per-slot ingredient tags match the TagQuery and AverageR >= MinAverageR,
+ * every modifier in Modifiers[] whose MinR is also met fires.
+ * Use multiple rules (same TagQuery, different MinAverageR, different Modifiers[]) to
+ * express "at R>=1.5 add damage; at R>=2 also add proc chance".
  *
  * Supports full boolean tag expressions via FGameplayTagQuery:
  *   - "Resource.Metal" -- fires if any ingredient slot has metal tags
  *   - "Resource.Metal AND Resource.Gem" -- fires if metal + gem tags exist across slots
  *   - "Resource.Metal.Iron OR Resource.Metal.Steel" -- fires for either
+ * With Match = SingleIngredient the whole query must hold on one slot:
+ *   - "Material.Property.Magic AND Enchant.Element.Fire" -- fires only when one ingredient carries both
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Maps a tag pattern to a set of modifiers that all fire when the rule's TagQuery matches and the AverageR >= MinAverageR gate is cleared."))
 struct ARCCRAFT_API FArcMaterialPropertyRule
 {
 	GENERATED_BODY()
@@ -91,40 +61,37 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule")
 	FText RuleName;
 
-	/** Tag query that must match against the combined per-slot ingredient tags.
+	/** Tag query matched against the ingredient slot tags as Match decides.
 	 *  Supports AND, OR, NOT, and hierarchical tag matching. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Matching")
 	FGameplayTagQuery TagQuery;
 
-	/** If non-empty, the rule only fires if the recipe has ALL of these tags.
-	 *  Allows rules to be scoped to specific recipe families
-	 *  (e.g., "Recipe.Weapon.Sword"). */
+	/** Whether TagQuery matches the union of the slot tags or one slot's own tags. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Matching")
-	FGameplayTagContainer RequiredRecipeTags;
+	EArcMaterialRuleMatch Match = EArcMaterialRuleMatch::Union;
 
-	/** Priority for rule ordering. Higher priority rules are evaluated first.
-	 *  When MaxActiveRules is set on the table, higher priority rules take precedence. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Matching")
-	int32 Priority = 0;
+	/** Minimum average R required for this rule to fire (inclusive).
+	 *  R below this threshold means the rule is skipped entirely.
+	 *  Default 0 = always fires when TagQuery matches. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Matching", meta = (ClampMin = "0.0"))
+	float MinAverageR = 0.0f;
 
-	/** Quality bands defined inline on this rule.
-	 *  Ignored if QualityBandPreset is set and loadable.
-	 *  Use GetEffectiveQualityBands() to resolve the active bands. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Bands")
-	TArray<FArcMaterialQualityBand> QualityBands;
+	/** Base weight of the rule among the matched rules competing for chairs. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Weight", meta = (ClampMin = "0.0"))
+	float Weight = 1.0f;
 
-	/** Optional shared quality band preset. If set, overrides inline QualityBands.
-	 *  Use this to share identical band definitions across multiple rules. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Bands")
-	TSoftObjectPtr<UArcQualityBandPreset> QualityBandPreset;
+	/** Tag-conditional weight modifiers matched against the combined ingredient tags, as on pool entries. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Weight")
+	TArray<FArcRandomPoolWeightModifier> WeightModifiers;
 
-	/** Tags added to the output item when this rule fires.
-	 *  Used for tracking which material properties were applied (for UI, post-craft, etc.)
-	 *  and for routing evaluations to modifier slot configs. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Output")
-	FGameplayTagContainer OutputTags;
+	/** How much the average R scales the weight: Weight *= (1 + (R - 1) * RWeightScaling). 0 = R has no effect. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Weight")
+	float RWeightScaling = 0.0f;
 
-	/** Get the effective quality bands for this rule.
-	 *  Returns bands from QualityBandPreset if set and loadable, otherwise inline QualityBands. */
-	const TArray<FArcMaterialQualityBand>& GetEffectiveQualityBands() const;
+	/** Terminal modifiers to apply when this rule fires.
+	 *  All modifiers whose MinR is cleared by AverageR fire simultaneously.
+	 *  Only Stats, Abilities, Effects, and AttributeModifier subtypes are allowed here. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Modifiers",
+		meta = (BaseStruct = "/Script/ArcCraft.ArcCraftModifier", ExcludeBaseStruct))
+	TArray<FInstancedStruct> Modifiers;
 };

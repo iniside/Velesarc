@@ -1,0 +1,83 @@
+{
+  "ItemId": "163744194C14642C861A9BBF1A322BBC",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_Tags",
+      "ItemTags": [
+        "ArcRPG.WeaponType.OneHanded"
+      ],
+      "AssetTags": [],
+      "GrantedTags": [],
+      "RequiredTags": [],
+      "DenyTags": []
+    },
+    {
+      "_structType": "ArcRPGItemFragment_SkillScaling",
+      "Skill": {
+        "FragmentType": "/Script/ArcRPGMechanics.ArcAttributeSet_RPGSkills",
+        "PropertyName": "OneHanded"
+      },
+      "Scaling": {
+        "_structType": "ArcValueScaling"
+      },
+      "Attribute": {
+        "FragmentType": "/Script/ArcRPGMechanics.ArcAttributeSet_RPGSkills",
+        "PropertyName": "TwoHanded"
+      },
+      "K": 0.25
+    }
+  ],
+  "ScalableFloatFragmentSet": [
+    {
+      "_structType": "ArcRPGScalableFloatItemFragment_WeaponDamage",
+      "Damage": {
+        "Value": 10.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "Scale": {
+        "Value": 0.0,
+        "Source": "None",
+        "InlineCurve": {
+          "Keys": [],
+          "DefaultValue": 3.4028235e38,
+          "PreInfinityExtrap": "RCCE_Constant",
+          "PostInfinityExtrap": "RCCE_Constant"
+        },
+        "Curve": {
+          "CurveTable": null,
+          "RowName": "None"
+        },
+        "RegistryType": "None",
+        "CustomScaling": {},
+        "MinValue": 0.0,
+        "MaxValue": 0.0,
+        "DataTable": {
+          "DataTable": null,
+          "RowName": "None"
+        },
+        "RangeRowName": "None"
+      },
+      "RegistryType": "None",
+      "DataName": ""
+    }
+  ]
+}

@@ -1,0 +1,564 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainVertexFactory.ush: vertexless heightfield vertex factory.
+
+	One indirect draw per view. One instance = one bisector the draw's args counted, and the two ways an
+	instance resolves to a pool slot are per DRAW, not per shader: a view the compaction culled for reads
+	its slot straight out of ArcTerrainVisibleBisectors, and every other view — shadow depth, scene
+	capture — decodes the ordinal against the pool occupancy heap and so still draws the whole live set.
+	The 32-byte bisector record at that slot carries the LEB node id and the FACE id, which names the
+	face's GLOBAL TEXEL ORIGIN and nothing else. SV_VertexID (0, 1 or 2 from the reference patch IB)
+	picks a corner.
+
+	THE FACE IS TOPOLOGY, THE SLICE IS RESIDENCY, AND THEY ARE LOOKED UP SEPARATELY. A vertex builds the
+	integer global texel index GlobalTexel = FaceTexelOrigin + floor(Corner * FaceQuads), shifts it into
+	a sector key and a weight-group key, and reads a slice out of the matching residency ring. Positions
+	ride DoubleFloat from that same integer, so adjacent sectors weld bit-identically at any distance
+	from the terrain origin.
+
+	Slice convention (1-texel apron): a height slice is (SectorQuads + 3)^2 texels and its texel (0,0) is
+	the apron texel, i.e. the sector's inner grid spans slice texels [1, SectorQuads + 1].
+=============================================================================*/
+
+#include "/Engine/Private/VertexFactoryCommon.ush"
+#include "/Engine/Private/DoubleFloat.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainLEB.ush"      // FLEBNode + leb_DecodeNodeCorners
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush" // arc_DecodeSlot + the read-only record loads
+#include "/Plugin/ArcTerrain/ArcTerrainResidencyRing.ush" // arc_ResidencyRingIndex
+
+/** Per-draw loose parameters (FArcTerrainVFUserData). */
+ByteAddressBuffer CBTHeap;       // pool occupancy heap (frozen for the frame by the compute update)
+ByteAddressBuffer CBTBisectors;  // 32-byte bisector records
+ByteAddressBuffer ArcTerrainVisibleBisectors; // compacted pool slots, one per drawn instance
+Buffer<uint4> ArcTerrainFaceParams; // per face: (asuint(TexelOrigin.xy), padding, padding)
+Buffer<uint> ArcTerrainHeightRing;  // sector key -> height slice
+Buffer<uint> ArcTerrainWeightRing;  // weight-group key -> weight slice
+uint CBTPoolDepth;
+uint ArcTerrainNumFaces;
+uint ArcTerrainUseVisibleList;
+
+/** Per-vertex inputs. No vertex buffers are bound. */
+struct FVertexFactoryInput
+{
+	uint VertexId : SV_VertexID;
+	uint InstanceId : SV_InstanceID;
+	VF_INSTANCED_STEREO_DECLARE_INPUT_BLOCK()
+	VF_MOBILE_MULTI_VIEW_DECLARE_INPUT_BLOCK()
+};
+
+/** Cached intermediates computed once per vertex. */
+struct FVertexFactoryIntermediates
+{
+	float2 ShadeSectorUV; // [0,1]^2 in the CENTROID's sector, saturate-clamped
+	float2 ShadeWeightUV; // [0,1]^2 in the CENTROID's weight group, saturate-clamped
+	float2 SliceIndices;  // x = centroid height slice, y = centroid weight slice
+	float ShadeHeightTier; // height tier the CENTROID resolved to, or NumHeightTiers when none did
+	FDFVector2 LocalXYDF; // TERRAIN-local XY in DoubleFloat — the position-path source of truth
+	float3 LocalPos;      // TERRAIN-local displaced position (float demote)
+	FSceneDataIntermediates SceneData;
+};
+
+FPrimitiveSceneData GetPrimitiveData(FVertexFactoryIntermediates Intermediates)
+{
+	return Intermediates.SceneData.Primitive;
+}
+
+/**
+ * Attributes interpolated from the vertex shader to the pixel shader.
+ * NOTE: pass wrappers (velocity/shadow/depth/hit-proxy/base pass) claim TEXCOORD6-9 and 12+, so only
+ * TEXCOORD10/11 are safely VF-owned. Both slice indices come from the leaf CENTROID, so all three
+ * vertices carry the same value and the interpolation is an identity — an interpolated index would
+ * make the pixel shader sample intermediate layers, and no modifier can fix that, since the same index
+ * also rides Result.TexCoords[2] and a modifier applies to the whole semantic variable.
+ */
+struct FVertexFactoryInterpolantsVSToPS
+{
+#if NUM_TEX_COORD_INTERPOLATORS
+	float4 TexCoords[(NUM_TEX_COORD_INTERPOLATORS + 1) / 2] : TEXCOORD0;
+#endif
+	float4 SectorUVAndSlices : TEXCOORD10; // xy = centroid-sector UV, z = height slice, w = height tier
+};
+
+/** Landscape-style tangent basis from a world normal (rows: TangentX, TangentY, Normal). */
+float3x3 CalcTangentBasisFromWorldNormal(float3 Normal)
+{
+	float3 LocalTangentX = normalize(float3(Normal.z, 0.0f, -Normal.x));
+	float3 LocalTangentY = cross(Normal, LocalTangentX);
+	return float3x3(LocalTangentX, LocalTangentY, Normal);
+}
+
+/** The height atlas stores terrain-local cm directly. */
+float SampleArcTerrainHeightCm(float2 TileUV, float Slice)
+{
+	return ArcTerrainVF.HeightAtlas.SampleLevel(
+		ArcTerrainVF.HeightSamplerBilinear, float3(TileUV, Slice), 0);
+}
+
+/** Sector-local [0,1]^2 -> texel-centered UV into the (SectorQuads + 3)^2 slice. Mirrors the remap the
+ *  material nodes apply (ArcTerrainMaterialExpressions CompileSliceUV), which is why the interpolant
+ *  carries the NORMALISED UV: emitting the remapped one here would apply the remap twice. */
+float2 ArcTerrainSectorTileUV(float2 SectorUV)
+{
+	const float InvRes = ArcTerrainVF.InvTileResolution;
+	return SectorUV * (1.0f - 3.0f * InvRes) + 1.5f * InvRes;
+}
+
+struct FArcTerrainHeightTierHit
+{
+	uint Slice;
+	uint Tier;
+};
+
+FArcTerrainHeightTierHit ArcTerrainResolveHeightTier(int2 GlobalTexel)
+{
+	FArcTerrainHeightTierHit Hit;
+	Hit.Slice = ArcTerrainVF.HeightFillSlice;
+	Hit.Tier = ArcTerrainVF.NumHeightTiers;
+
+	// Literal bound, NumHeightTiers only as the break: a uniform trip count cannot unroll, which leaves
+	// the five ring vectors dynamically indexed on a per-vertex path.
+	UNROLL
+	for (uint T = 0; T < 4u; ++T)
+	{
+		if (T >= ArcTerrainVF.NumHeightTiers)
+		{
+			break;
+		}
+
+		const int Index = arc_HeightRingIndexForTier(
+			GlobalTexel, ArcTerrainVF.SectorQuadsShift, T,
+			ArcTerrainVF.HeightRingOffset, ArcTerrainVF.HeightRingRadius,
+			ArcTerrainVF.HeightRingCenterX, ArcTerrainVF.HeightRingCenterY,
+			ArcTerrainVF.HeightCumulativeShift);
+		if (Index < 0)
+		{
+			continue;
+		}
+
+		const uint Slice = ArcTerrainHeightRing[(uint)Index];
+		if (Slice != ArcTerrainVF.HeightFillSlice)
+		{
+			Hit.Slice = Slice;
+			Hit.Tier = T;
+			break;
+		}
+	}
+
+	return Hit;
+}
+
+/** Tier == NumHeightTiers is the "no tier resolved" answer, and it must never index HeightCumulativeShift
+ *  — that component is past the ones the ladder wrote. */
+int ArcTerrainHeightTierShift(uint Tier)
+{
+	int Shift = 0;
+	UNROLL
+	for (uint T = 0; T < 4u; ++T)
+	{
+		if (T < ArcTerrainVF.NumHeightTiers && T == Tier)
+		{
+			Shift = ArcTerrainVF.HeightCumulativeShift[T];
+		}
+	}
+	return Shift;
+}
+
+/**
+ * The ONE canonical int -> DoubleFloat conversion (identical construction to the composite's
+ * ComputeStamp): High = round-to-nearest float of the integer, Low = the exact small remainder. Both
+ * neighbouring sectors feed the SAME invariant integer for a shared-edge vertex, so the resulting DF
+ * is bit-identical across the edge at any distance.
+ */
+FDFVector2 ArcTerrainGlobalIndexToDF(int2 GlobalIndex)
+{
+	const float2 IndexHigh = float2(GlobalIndex);
+	const float2 IndexLow = float2(GlobalIndex - int2(IndexHigh));
+	return MakeDFVector2(IndexHigh, IndexLow);
+}
+
+/**
+ * TERRAIN-local position with DoubleFloat XY -> translated world. The engine's float3
+ * DFTransformLocalToTranslatedWorld would round the large local XY inside mul() and reintroduce the
+ * far-from-origin quantization, so the XY components ride DF through the linear combination; the z row
+ * and the matrix's residual translation row are small floats and stay float. Assumes an AFFINE
+ * row-vector LocalToWorld (a primitive transform; w column = (0,0,0,1)).
+ */
+float3 ArcTerrainDFTransformLocalToTranslatedWorld(FDFVector2 LocalXY, float LocalZ, FDFMatrix LocalToWorld, FDFVector3 PreViewTranslation)
+{
+	const float4x4 M = LocalToWorld.M;
+	const FDFScalar LocalX = DFGetX(LocalXY);
+	const FDFScalar LocalY = DFGetY(LocalXY);
+	const float3 SmallRows = LocalZ * M[2].xyz + M[3].xyz;
+	const FDFScalar WorldX = DFAdd(DFAdd(DFMultiply(LocalX, M[0].x), DFMultiply(LocalY, M[1].x)), SmallRows.x);
+	const FDFScalar WorldY = DFAdd(DFAdd(DFMultiply(LocalX, M[0].y), DFMultiply(LocalY, M[1].y)), SmallRows.y);
+	const FDFScalar WorldZ = DFAdd(DFAdd(DFMultiply(LocalX, M[0].z), DFMultiply(LocalY, M[1].z)), SmallRows.z);
+	const FDFVector3 WorldPosition = DFAdd(MakeDFVector(WorldX, WorldY, WorldZ), LocalToWorld.PostTranslation);
+	return DFFastToTranslatedWorld(WorldPosition, PreViewTranslation);
+}
+
+/** Compute the intermediates for a given vertex. */
+FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput Input)
+{
+	FVertexFactoryIntermediates Intermediates = (FVertexFactoryIntermediates)0;
+	Intermediates.SceneData = VF_GPUSCENE_GET_INTERMEDIATES(Input);
+
+	// Fixed-depth descent over the occupancy heap. cbt_DecodeNode_RO must NOT be used here: its
+	// variable-depth walk exits at the first internal node holding a single set bit, and occupancy bits
+	// sit at arbitrary leaves, so an isolated live slot would decode to an internal heap id far outside
+	// the pool.
+	const uint Slot = ArcTerrainUseVisibleList != 0u
+		? ArcTerrainVisibleBisectors.Load(Input.InstanceId << 2u)
+		: arc_DecodeSlot(CBTHeap, (int)CBTPoolDepth, Input.InstanceId);
+	const uint2 NodeID = arc_LoadNodeIDRO(CBTBisectors, Slot);
+	const uint Face = arc_LoadFieldRO(CBTBisectors, Slot, ARC_BISECTOR_FACE);
+
+	const uint FaceClamped = min(Face, max(ArcTerrainNumFaces, 1u) - 1u);
+	const uint4 FaceParams = ArcTerrainFaceParams[FaceClamped];
+	const int2 FaceTexelOrigin = int2(asint(FaceParams.x), asint(FaceParams.y));
+
+	// The face grid is static, so "no data" is not a state a face can be in — a leaf whose sector is not
+	// resident reads the fill slice and still draws. The two things that collapse a triangle are a slot
+	// the heap counts but whose record names no face, and the one global teardown state (released atlas
+	// arrays), which is a terrain-wide uniform rather than a per-face flag.
+	const bool bNodeValid = NodeID.y != 0u || NodeID.x >= 2u;
+	const bool bDrawable = bNodeValid && Face < ArcTerrainNumFaces && ArcTerrainVF.bResourcesValid != 0u;
+
+	const FLEBNode Leaf = leb_CreateNodeFromID(bNodeValid ? NodeID : uint2(2u, 0u));
+	const FLEBTriangle Tri = leb_DecodeNodeCorners(Leaf);
+
+	// leb_DecodeTransformationMatrix_Square applies WindingMatrix((Depth ^ 1) & 1), which swaps corners
+	// 0 and 2 at even depths — half the tree comes out with the opposite orientation. Front-facing on
+	// this terrain is CLOCKWISE in terrain-local XY (the convention the sector-to-world map preserves,
+	// since Corner -> XY is a positive scale), so a decode whose signed area is positive has its last
+	// two corners swapped before the corner index is applied.
+	const float SignedArea =
+		(Tri.Corners[1].x - Tri.Corners[0].x) * (Tri.Corners[2].y - Tri.Corners[0].y)
+		- (Tri.Corners[1].y - Tri.Corners[0].y) * (Tri.Corners[2].x - Tri.Corners[0].x);
+	uint CornerOrder[3];
+	CornerOrder[0] = 0u;
+	CornerOrder[1] = SignedArea > 0.0f ? 2u : 1u;
+	CornerOrder[2] = SignedArea > 0.0f ? 1u : 2u;
+
+	float2 Corners[3];
+	Corners[0] = Tri.Corners[0];
+	Corners[1] = Tri.Corners[1];
+	Corners[2] = Tri.Corners[2];
+	const float2 Corner = bDrawable ? Corners[CornerOrder[Input.VertexId % 3u]] : float2(0.0f, 0.0f);
+
+	// Face-local corner -> continuous global texel coordinate, canonicalized on the invariant INTEGER
+	// part. FaceQuads is a power of two, so Corner * FaceQuads reproduces the corner's integer exactly
+	// (a non-power-of-two face would need 29 significant bits at depth 44 and float32 has 24, welding
+	// distinct corners into one index). Splitting into floor + fraction keeps the assembled integer
+	// identical in both sectors sharing an edge.
+	const float2 CornerTexel = Corner * float(ArcTerrainVF.FaceQuads);
+	const int2 CornerWhole = int2(floor(CornerTexel));
+	const float2 CornerFrac = CornerTexel - float2(CornerWhole);
+	const int2 GlobalTexel = FaceTexelOrigin + CornerWhole;
+	const FDFVector2 GlobalTexelDF = DFAdd(ArcTerrainGlobalIndexToDF(GlobalTexel), CornerFrac);
+	const FDFVector2 LocalXYDF = DFMultiply(GlobalTexelDF, ArcTerrainVF.TexelToLocal);
+
+	// POSITION: this vertex's OWN sector. A vertex lying in the neighbouring sector must read the ground
+	// under itself, and the apron makes the two sectors agree on the shared edge. This slice never
+	// leaves the vertex shader. +1 moves past the apron texel at slice texel (0,0).
+	const FArcTerrainHeightTierHit PositionHit = ArcTerrainResolveHeightTier(GlobalTexel);
+	const int PositionShift = ArcTerrainHeightTierShift(PositionHit.Tier);
+	const int2 PositionCoarseTexel = GlobalTexel >> PositionShift;
+	const int2 PositionSectorKey = PositionCoarseTexel >> ArcTerrainVF.SectorQuadsShift;
+	const int2 PositionSectorTexel =
+		PositionCoarseTexel - (PositionSectorKey << ArcTerrainVF.SectorQuadsShift) + 1;
+	// The fine texels the shift truncated come back as the fractional part; dropped, the vertex snaps to
+	// the corner of its coarse texel.
+	const float2 PositionTexelFrac =
+		(CornerFrac + float2(GlobalTexel - (PositionCoarseTexel << PositionShift))) / float(1 << PositionShift);
+	const float2 PositionTileUV =
+		(float2(PositionSectorTexel) + PositionTexelFrac + 0.5f) * ArcTerrainVF.InvTileResolution;
+	const float Height = bDrawable ? SampleArcTerrainHeightCm(PositionTileUV, (float)PositionHit.Slice) : 0.0f;
+
+	// SHADING: both slices and both UVs come from the leaf CENTROID. The slice must, because an
+	// interpolated index samples layers between the two ends; the UV must follow it into the SAME
+	// domain, or a vertex outside the centroid's sector would address the centroid's slice with its own
+	// sector's fraction. Expressed against the centroid's origin all three vertices are linear in one
+	// domain, and a vertex outside it leaves [0,1] and clamps on the apron.
+	const float2 Centroid = (Tri.Corners[0] + Tri.Corners[1] + Tri.Corners[2]) * (1.0f / 3.0f);
+	const int2 CentroidTexel = FaceTexelOrigin + int2(floor(Centroid * float(ArcTerrainVF.FaceQuads)));
+
+	const FArcTerrainHeightTierHit ShadeHit = ArcTerrainResolveHeightTier(CentroidTexel);
+	const int ShadeShift = ArcTerrainHeightTierShift(ShadeHit.Tier);
+	const int2 ShadeSectorKey = CentroidTexel >> (ArcTerrainVF.SectorQuadsShift + ShadeShift);
+	const int2 ShadeCoarseTexel = GlobalTexel >> ShadeShift;
+	const float2 ShadeTexelFrac =
+		(CornerFrac + float2(GlobalTexel - (ShadeCoarseTexel << ShadeShift))) / float(1 << ShadeShift);
+	const float2 ShadeSectorUV = saturate(
+		(float2(ShadeCoarseTexel - (ShadeSectorKey << ArcTerrainVF.SectorQuadsShift)) + ShadeTexelFrac)
+			/ float(ArcTerrainVF.SectorQuads));
+
+	// The weight raster has its own density and its own residency, but its key is derived from the SAME
+	// height-raster texel index — that is the one lattice every scale is expressed in. The tier shift
+	// enters key, subtrahend AND divisor together: a group's texel count is tier-independent.
+	int ShadeWeightTierShift = 0;
+	uint ShadeWeightSlice = ArcTerrainVF.WeightFillSlice;
+	UNROLL
+	for (uint WT = 0; WT < 4u; ++WT)
+	{
+		if (WT >= ArcTerrainVF.NumWeightTiers)
+		{
+			break;
+		}
+
+		const int WeightIndex = arc_WeightRingIndexForTier(
+			CentroidTexel, ArcTerrainVF.WeightQuadsShift, WT,
+			ArcTerrainVF.WeightRingOffset, ArcTerrainVF.WeightRingRadius,
+			ArcTerrainVF.WeightRingCenterX, ArcTerrainVF.WeightRingCenterY,
+			ArcTerrainVF.WeightCumulativeShift);
+		if (WeightIndex < 0)
+		{
+			continue;
+		}
+
+		const uint TierSlice = ArcTerrainWeightRing[(uint)WeightIndex];
+		if (TierSlice != ArcTerrainVF.WeightFillSlice)
+		{
+			ShadeWeightSlice = TierSlice;
+			ShadeWeightTierShift = ArcTerrainVF.WeightCumulativeShift[WT];
+			break;
+		}
+	}
+
+	const int ShadeWeightShift = ArcTerrainVF.WeightQuadsShift + ShadeWeightTierShift;
+	const int2 ShadeWeightKey = CentroidTexel >> ShadeWeightShift;
+	const float2 ShadeWeightUV = saturate(
+		(float2(GlobalTexel - (ShadeWeightKey << ShadeWeightShift)) + CornerFrac)
+			/ float(1 << ShadeWeightShift));
+
+	Intermediates.ShadeSectorUV = ShadeSectorUV;
+	Intermediates.ShadeWeightUV = ShadeWeightUV;
+	Intermediates.SliceIndices = float2((float)ShadeHit.Slice, (float)ShadeWeightSlice);
+	Intermediates.ShadeHeightTier = (float)ShadeHit.Tier;
+	Intermediates.LocalXYDF = LocalXYDF;
+	Intermediates.LocalPos = float3(DFDemote(LocalXYDF), Height);
+
+	return Intermediates;
+}
+
+float3 VertexFactoryGetPreviousInstanceSpacePosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates);
+float3 VertexFactoryGetInstanceSpacePosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates);
+
+/** World-space normal handed to the vertex stage. The surface normal is derived ONCE, per pixel, from
+ *  the atlas gradient (see GetMaterialPixelParameters); the vertex stage only needs a basis, so it
+ *  carries the flat terrain-up normal rather than a second set of height taps. */
+float3 ArcTerrainVertexWorldNormal(FVertexFactoryIntermediates Intermediates)
+{
+	const FPrimitiveSceneData PrimitiveData = Intermediates.SceneData.Primitive;
+	return normalize(RotateLocalToWorld(float3(0.0f, 0.0f, 1.0f), PrimitiveData.LocalToWorld, PrimitiveData.InvNonUniformScale));
+}
+
+/** Converts from vertex factory specific input to a FMaterialVertexParameters. */
+FMaterialVertexParameters GetMaterialVertexParameters(
+	FVertexFactoryInput Input,
+	FVertexFactoryIntermediates Intermediates,
+	float3 WorldPosition,
+	half3x3 TangentToLocal,
+	bool bIsPreviousFrame = false)
+{
+	FMaterialVertexParameters Result = MakeInitializedMaterialVertexParameters();
+
+	Result.SceneData = Intermediates.SceneData;
+
+	Result.WorldPosition = WorldPosition;
+	if (bIsPreviousFrame)
+	{
+		Result.PositionInstanceSpace = VertexFactoryGetPreviousInstanceSpacePosition(Input, Intermediates);
+	}
+	else
+	{
+		Result.PositionInstanceSpace = VertexFactoryGetInstanceSpacePosition(Input, Intermediates);
+	}
+	Result.PositionPrimitiveSpace = Result.PositionInstanceSpace; // No support for instancing, so instance == primitive
+
+	const float3 WorldNormal = ArcTerrainVertexWorldNormal(Intermediates);
+	const float3x3 TangentBasis = CalcTangentBasisFromWorldNormal(WorldNormal);
+	Result.TangentToWorld = TangentBasis;
+
+	Result.PreSkinnedPosition = Intermediates.LocalPos;
+	Result.PreSkinnedNormal = float3(0, 0, 1);
+
+	// UV0 = weight-group-local, UV1 = sector-local, UV2 = (height slice, weight slice), all normalised to
+	// [0,1] — the material nodes apply the apron remap themselves. The slice indices cannot ride a
+	// material parameter because they change per leaf INSIDE one batch.
+#if NUM_MATERIAL_TEXCOORDS_VERTEX
+	UNROLL
+	for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS_VERTEX; CoordinateIndex++)
+	{
+		Result.TexCoords[CoordinateIndex] = Intermediates.ShadeWeightUV;
+	}
+	#if NUM_MATERIAL_TEXCOORDS_VERTEX > 1
+		Result.TexCoords[1] = Intermediates.ShadeSectorUV;
+	#endif
+	#if NUM_MATERIAL_TEXCOORDS_VERTEX > 2
+		Result.TexCoords[2] = Intermediates.SliceIndices;
+	#endif
+#endif // NUM_MATERIAL_TEXCOORDS_VERTEX
+
+	Result.LWCData = MakeMaterialLWCData(Result);
+
+	return Result;
+}
+
+/** No GPUScene support: a single primitive per draw, so the interpolated ID is constant 0. */
+uint GetPrimitiveId(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+	return 0;
+}
+
+uint VertexFactoryGetPrimitiveId(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+	return GetPrimitiveId(Interpolants);
+}
+
+/** Computes the world space position of this vertex. */
+float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	FDFMatrix LocalToWorld = GetPrimitiveData(Intermediates).LocalToWorld;
+	return float4(ArcTerrainDFTransformLocalToTranslatedWorld(
+		Intermediates.LocalXYDF, Intermediates.LocalPos.z, LocalToWorld, ResolvedView.PreViewTranslation), 1.0f);
+}
+
+/** Local position relative to instance (instance == primitive: no instancing). */
+float3 VertexFactoryGetInstanceSpacePosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return Intermediates.LocalPos;
+}
+
+/** Computes the rasterized world space position of this vertex. */
+float4 VertexFactoryGetRasterizedWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float4 InWorldPosition)
+{
+	return InWorldPosition;
+}
+
+/** Computes the world space position used by vertex lighting for this vertex. */
+float3 VertexFactoryGetPositionForVertexLighting(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float3 TranslatedWorldPosition)
+{
+	return TranslatedWorldPosition;
+}
+
+/** Computes the world space position of this vertex last frame (same DF frame as the current-frame
+ *  path so static terrain produces zero-velocity bit-exactly). */
+float4 VertexFactoryGetPreviousWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return float4(ArcTerrainDFTransformLocalToTranslatedWorld(
+		Intermediates.LocalXYDF, Intermediates.LocalPos.z,
+		GetPrimitiveData(Intermediates).PreviousLocalToWorld, ResolvedView.PrevPreViewTranslation), 1.0f);
+}
+
+/** Computes the instance space position of this vertex last frame (instance == primitive). */
+float3 VertexFactoryGetPreviousInstanceSpacePosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return Intermediates.LocalPos;
+}
+
+/** Computes the world space normal of this vertex. */
+float3 VertexFactoryGetWorldNormal(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return ArcTerrainVertexWorldNormal(Intermediates);
+}
+
+/** Tangent basis in local space; the world basis is assembled in GetMaterialVertexParameters. */
+half3x3 VertexFactoryGetTangentToLocal(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+	return half3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+}
+
+/** Get the translated bounding sphere for this primitive. */
+float4 VertexFactoryGetTranslatedPrimitiveVolumeBounds(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+	FPrimitiveSceneData PrimitiveData = GetPrimitiveData(GetPrimitiveId(Interpolants));
+	return float4(DFFastToTranslatedWorld(PrimitiveData.ObjectWorldPosition, ResolvedView.PreViewTranslation), PrimitiveData.ObjectRadius);
+}
+
+#if NUM_TEX_COORD_INTERPOLATORS
+
+void SetUV(inout FVertexFactoryInterpolantsVSToPS Interpolants, uint UVIndex, float2 InValue)
+{
+	FLATTEN
+	if (UVIndex % 2)
+	{
+		Interpolants.TexCoords[UVIndex / 2].zw = InValue;
+	}
+	else
+	{
+		Interpolants.TexCoords[UVIndex / 2].xy = InValue;
+	}
+}
+
+float2 GetUV(FVertexFactoryInterpolantsVSToPS Interpolants, uint UVIndex)
+{
+	float4 UVVector = Interpolants.TexCoords[UVIndex / 2];
+	return UVIndex % 2 ? UVVector.zw : UVVector.xy;
+}
+
+#endif
+
+/** Constructs values that need to be interpolated from the vertex shader to the pixel shader. */
+FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, FMaterialVertexParameters VertexParameters)
+{
+	FVertexFactoryInterpolantsVSToPS Interpolants = (FVertexFactoryInterpolantsVSToPS)0;
+
+#if NUM_TEX_COORD_INTERPOLATORS
+	float2 CustomizedUVs[NUM_TEX_COORD_INTERPOLATORS];
+	GetMaterialCustomizedUVs(VertexParameters, CustomizedUVs);
+	GetCustomInterpolators(VertexParameters, CustomizedUVs);
+
+	UNROLL
+	for (int CoordinateIndex = 0; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
+	{
+		SetUV(Interpolants, CoordinateIndex, CustomizedUVs[CoordinateIndex]);
+	}
+#endif
+
+	Interpolants.SectorUVAndSlices = float4(
+		Intermediates.ShadeSectorUV, Intermediates.SliceIndices.x, Intermediates.ShadeHeightTier);
+
+	return Interpolants;
+}
+
+/** Converts from vertex factory specific interpolants to a FMaterialPixelParameters. */
+FMaterialPixelParameters GetMaterialPixelParameters(FVertexFactoryInterpolantsVSToPS Interpolants, float4 SvPosition)
+{
+	// GetMaterialPixelParameters is responsible for fully initializing the result
+	FMaterialPixelParameters Result = MakeInitializedMaterialPixelParameters();
+
+#if NUM_TEX_COORD_INTERPOLATORS
+	UNROLL
+	for (uint CoordinateIndex = 0; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
+	{
+		Result.TexCoords[CoordinateIndex] = GetUV(Interpolants, CoordinateIndex);
+	}
+#endif // NUM_TEX_COORD_INTERPOLATORS
+
+	// The one surface-normal derivation: 4 bilinear height taps at +-1 texel on the leaf's CENTROID
+	// slice, in that slice's own UV domain. The apron guarantees valid taps at sector borders.
+	const float InvRes = ArcTerrainVF.InvTileResolution;
+	const float2 TileUV = ArcTerrainSectorTileUV(Interpolants.SectorUVAndSlices.xy);
+	const float HeightSlice = Interpolants.SectorUVAndSlices.z;
+	const float HeightXNeg = SampleArcTerrainHeightCm(TileUV + float2(-InvRes, 0), HeightSlice);
+	const float HeightXPos = SampleArcTerrainHeightCm(TileUV + float2(InvRes, 0), HeightSlice);
+	const float HeightYNeg = SampleArcTerrainHeightCm(TileUV + float2(0, -InvRes), HeightSlice);
+	const float HeightYPos = SampleArcTerrainHeightCm(TileUV + float2(0, InvRes), HeightSlice);
+	const int CentroidShift = ArcTerrainHeightTierShift((uint)(Interpolants.SectorUVAndSlices.w + 0.5f));
+	const float2 GradientLocal = float2(HeightXPos - HeightXNeg, HeightYPos - HeightYNeg)
+		/ (2.0f * ArcTerrainVF.TexelToLocal * float(1 << CentroidShift));
+	const float3 LocalNormal = normalize(float3(-GradientLocal, 1.0f));
+
+	const FPrimitiveSceneData PrimitiveData = GetPrimitiveData(GetPrimitiveId(Interpolants));
+	const float3 WorldNormal = normalize(RotateLocalToWorld(LocalNormal, PrimitiveData.LocalToWorld, PrimitiveData.InvNonUniformScale));
+	const float3x3 PerPixelBasis = CalcTangentBasisFromWorldNormal(WorldNormal);
+
+	Result.TangentToWorld = AssembleTangentToWorld(half3(PerPixelBasis[0]), half4(half3(WorldNormal), 1));
+	Result.TwoSidedSign = 1;
+	Result.PrimitiveId = GetPrimitiveId(Interpolants);
+
+	return Result;
+}
+
+#include "/Engine/Private/VertexFactoryDefaultInterface.ush"

@@ -20,7 +20,6 @@
  */
 
 #pragma once
-#include "IDetailCustomization.h"
 #include "IDetailCustomNodeBuilder.h"
 #include "IDetailGroup.h"
 #include "IPropertyTypeCustomization.h"
@@ -65,15 +64,4 @@ public:
 	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> StructPropertyHandle
 								   , class IDetailChildrenBuilder& StructBuilder
 								   , IPropertyTypeCustomizationUtils& StructCustomizationUtils) override;
-};
-
-class FArcItemFragment_MakeLocationInfoDetailCustomization : public IDetailCustomization
-{
-	
-public:
-	/** Makes a new instance of this detail layout class for a specific detail view requesting it */
-	static TSharedRef<IDetailCustomization> MakeInstance();
-
-	/* IDetailsCustomization interface */
-	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
 };

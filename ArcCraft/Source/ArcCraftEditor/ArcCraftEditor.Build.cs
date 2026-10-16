@@ -38,17 +38,32 @@ public class ArcCraftEditor : ModuleRules
 				, "Slate"
 				, "SlateCore"
 				, "UnrealEd"
-				, "AssetTools"
-				, "AssetDefinition"
-				, "EngineAssetDefinitions"
 				, "ContentBrowser"
 				, "ContentBrowserData"
 				, "ToolMenus"
 				, "PropertyEditor"
+				, "Projects"
 				, "ArcCraft"
 				, "ArcCore"
-				, "ArcJson"
+				, "ArcJsonAssetsEditor"
 				, "GameplayTags"
+				, "GameplayTagsEditor"
+				, "EditorWidgets"
+				, "StructViewer"
+				, "InputCore"
+				, "DeveloperSettings"
+				// Required by debug-eval Apply path (FArcItemSpec, item fragment types).
+				// ArcCraft exposes these as public deps but the DLL linker needs them listed
+				// directly so the import lib is added to ArcCraftEditor's link command.
+				, "ArcMassItemsRuntime"
+				, "ArcAbilityKit"
+				, "ArcMassAbilities"
+				// RecipeGraph builder uses IAssetRegistry directly.
+				, "AssetRegistry"
+				// SArcRecipeGraphNode / FArcRecipeGraphNodeFactory (Step 4).
+				, "GraphEditor"
+				// Tab spawner group placement (WorkspaceMenu::GetMenuStructure()).
+				, "WorkspaceMenuStructure"
 			}
 		);
 	}

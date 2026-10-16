@@ -3,8 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityHandle.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 
 class FArcSaveArchive;
 class FArcLoadArchive;
@@ -48,7 +49,8 @@ public:
 	static void SaveFragment(
 		const UScriptStruct* FragmentType,
 		const void* Data,
-		FArcSaveArchive& Ar);
+		FArcSaveArchive& Ar,
+		bool bForceAllProperties = false);
 
 	/** Deserialize a single UScriptStruct fragment. */
 	static void LoadFragment(

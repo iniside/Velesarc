@@ -5,12 +5,16 @@
 #include "CoreMinimal.h"
 #include "AsyncMessageId.h"
 #include "ArcKnowledgeEvent.h"
+#include "NativeGameplayTags.h"
 #include "ArcKnowledgeEventBroadcaster.generated.h"
 
 class FAsyncMessageSystemBase;
 class UArcMassSpatialHashSubsystem;
 class UAsyncMessageWorldSubsystem;
 struct FMassEntityManager;
+
+ARCKNOWLEDGE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameKnowledge_Event_GlobalMessage);
+ARCKNOWLEDGE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameKnowledge_Event_SpatialMessage);
 
 /** Configuration for knowledge event broadcasting. */
 USTRUCT(BlueprintType)
@@ -50,7 +54,7 @@ public:
 	/**
 	 * Broadcast a knowledge event.
 	 * @param Event The event payload.
-	 * @param SpatialRadius Per-entry radius override. 0 = use config default.
+	 * @param SpatialRadius Per-entry radius override. 0 = use config default, negative = no spatial broadcast.
 	 */
 	void BroadcastEvent(const FArcKnowledgeChangedEvent& Event, float SpatialRadius = 0.0f);
 

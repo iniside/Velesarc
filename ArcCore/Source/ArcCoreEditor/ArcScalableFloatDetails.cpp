@@ -20,8 +20,11 @@
  */
 
 #include "ArcScalableFloatDetails.h"
+#include "ArcScalableFloat.h"
 
+#include "Curves/RichCurve.h"
 #include "DataRegistryEditorModule.h"
+#include "SCurveEditor.h"
 #include "DataRegistrySubsystem.h"
 #include "DetailWidgetRow.h"
 #include "IDetailChildrenBuilder.h"
@@ -30,7 +33,9 @@
 #include "PropertyCustomizationHelpers.h"
 #include "Widgets/Input/SSlider.h"
 #include "SlateOptMacros.h"
+#include "Styling/CoreStyle.h"
 #include "Engine/CurveTable.h"
+#include "Engine/DataTable.h"
 #include "Framework/Application/SlateApplication.h"
 
 #define LOCTEXT_NAMESPACE "AttributeDetailsCustomization"
@@ -44,11 +49,23 @@ BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle> StructPropertyHandle, class FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& StructCustomizationUtils )
 {
 	bSourceRefreshQueued = false;
+	bSourceModeResetQueued = false;
 	PropertyUtilities = StructCustomizationUtils.GetPropertyUtilities();
 
 	ValueProperty = StructPropertyHandle->GetChildHandle("Value");
 	CurveTableHandleProperty = StructPropertyHandle->GetChildHandle("Curve");
 	RegistryTypeProperty = StructPropertyHandle->GetChildHandle("RegistryType");
+	SourceProperty = StructPropertyHandle->GetChildHandle("Source");
+
+	// Range-source child handles
+	MinValueProperty = StructPropertyHandle->GetChildHandle("MinValue");
+	MaxValueProperty = StructPropertyHandle->GetChildHandle("MaxValue");
+	DataTableProperty = StructPropertyHandle->GetChildHandle("DataTable");
+	DataTableRowNameProperty = DataTableProperty.IsValid() ? DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, RowName)) : nullptr;
+	RangeRowNameProperty = StructPropertyHandle->GetChildHandle("RangeRowName");
+
+	// Inline curve handle
+	InlineCurveProperty = StructPropertyHandle->GetChildHandle("InlineCurve");
 
 	if (ValueProperty.IsValid() && CurveTableHandleProperty.IsValid() && RegistryTypeProperty.IsValid())
 	{
@@ -61,12 +78,17 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 		RegistryTypeProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::OnCurveSourceChanged));
 		RowNameProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::OnRowNameChanged));
 
+		if (SourceProperty.IsValid())
+		{
+			SourceProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::OnSourceModeChanged));
+		}
+
 		CustomScalingProperty = StructPropertyHandle->GetChildHandle("CustomScaling");
 
 		FDetailWidgetRow StructRow;
 		InstancedStructCustomization = FInstancedStructDetails::MakeInstance();
 		InstancedStructCustomization->CustomizeHeader(CustomScalingProperty.ToSharedRef(), StructRow, StructCustomizationUtils);
-		
+
 		HeaderRow
 			.NameContent()
 			[
@@ -83,15 +105,17 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 				.AutoHeight()
 				[
 					SNew(SHorizontalBox)
+
 					+SHorizontalBox::Slot()
 					.VAlign(VAlign_Center)
 					.HAlign(HAlign_Left)
-					.FillWidth(0.2f)
-					//.AutoWidth()
+					.AutoWidth()
+					.Padding(0.f, 0.f, 4.f, 0.f)
 					[
 						SNew(STextBlock)
 							.Text(this, &FArcScalableFloatDetails::GetRowValuePreviewText)
 							.Justification(ETextJustify::Left)
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 					]
 					+SHorizontalBox::Slot()
 					.FillWidth(0.2f)
@@ -100,7 +124,16 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 					[
 						ValueProperty->CreatePropertyValueWidget()
 					]
-		
+
+					// Source combo — explicit single source of truth
+					+SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.f, 0.f, 4.f, 0.f)
+					[
+						SourceProperty->CreatePropertyValueWidget()
+					]
+
 					+SHorizontalBox::Slot()
 					.FillWidth(0.40f)
 					.HAlign(HAlign_Fill)
@@ -149,66 +182,38 @@ void FArcScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle
 					[
 						CreateRowNameWidget()
 					]
+
+					// Inline curve editor (visible only for InlineCurve source)
+					+SHorizontalBox::Slot()
+					.FillWidth(0.6f)
+					.HAlign(HAlign_Fill)
+					.Padding(2.f, 0.f, 2.f, 0.f)
+					[
+						CreateInlineCurveWidget()
+					]
+
+					// Range widget — Min/Max entry + optional DataTable picker
+					+SHorizontalBox::Slot()
+					.FillWidth(0.6f)
+					.HAlign(HAlign_Fill)
+					.Padding(2.f, 0.f, 2.f, 0.f)
+					[
+						CreateRangeWidget()
+					]
+
 					+SHorizontalBox::Slot()
 					.AutoWidth()
 					.HAlign(HAlign_Fill)
 					.Padding(2.f, 0.f, 0.f, 0.f)
 					[
-						StructRow.ValueWidget.Widget
+						SNew(SBox)
+						.Visibility(this, &FArcScalableFloatDetails::GetCustomScalingVisibility)
+						[
+							StructRow.ValueWidget.Widget
+						]
 					]
 				]
-
-				//+ SVerticalBox::Slot()
-				//.AutoHeight()
-				//.Padding(0.f, 3.f, 0.f, 0.f)
-				//[
-				//	SNew(SHorizontalBox)
-				//	.Visibility(this, &FArcScalableFloatDetails::GetRowNameVisibility)
-				//	
-				//	+SHorizontalBox::Slot()
-				//	.FillWidth(0.4f)
-				//	.HAlign(HAlign_Fill)
-				//	.VAlign(VAlign_Center)
-				//	[
-				//		CreateRowNameWidget()
-				//	]
-				//
-				//	+SHorizontalBox::Slot()
-				//	.FillWidth(0.3f)
-				//	.HAlign(HAlign_Fill)
-				//	.Padding(2.f, 0.f, 2.f, 0.f)
-				//	[
-				//		SNew(SVerticalBox)
-				//		.Visibility(this, &FArcScalableFloatDetails::GetPreviewVisibility)
-				//
-				//		+SVerticalBox::Slot()
-				//		.HAlign(HAlign_Center)
-				//		[
-				//			SNew(STextBlock)
-				//			.Text(this, &FArcScalableFloatDetails::GetRowValuePreviewLabel)
-				//		]
-				//
-				//		+SVerticalBox::Slot()
-				//		.HAlign(HAlign_Center)
-				//		[
-				//			SNew(STextBlock)
-				//			.Text(this, &FArcScalableFloatDetails::GetRowValuePreviewText)
-				//		]
-				//	]
-				//
-				//	+SHorizontalBox::Slot()
-				//	.FillWidth(0.3f)
-				//	.HAlign(HAlign_Fill)
-				//	.Padding(2.f, 0.f, 0.f, 0.f)
-				//	[
-				//		SNew(SSlider)
-				//		.Visibility(this, &FArcScalableFloatDetails::GetPreviewVisibility)
-				//		.ToolTipText(LOCTEXT("LevelPreviewToolTip", "Adjust the preview level."))
-				//		.Value(this, &FArcScalableFloatDetails::GetPreviewLevel)
-				//		.OnValueChanged(this, &FArcScalableFloatDetails::SetPreviewLevel)
-				//	]
-				//]
-			];	
+			];
 	}
 }
 
@@ -254,6 +259,7 @@ TSharedRef<SWidget> FArcScalableFloatDetails::CreateRowNameWidget()
 	return SNew(SBox)
 		.Padding(0.0f)
 		.ToolTipText(this, &FArcScalableFloatDetails::GetRowNameComboBoxContentTooltip)
+		.Visibility(this, &FArcScalableFloatDetails::GetRowNameVisibility)
 		.VAlign(VAlign_Center)
 		[
 			FDataRegistryEditorModule::MakeDataRegistryItemNameSelector(
@@ -262,6 +268,170 @@ TSharedRef<SWidget> FArcScalableFloatDetails::CreateRowNameWidget()
 				FOnSetDataRegistryId::CreateSP(this, &FArcScalableFloatDetails::SetRegistryId),
 				FOnGetCustomDataRegistryItemNames::CreateSP(this, &FArcScalableFloatDetails::GetCustomRowNames),
 				true)
+		];
+}
+
+TSharedRef<SWidget> FArcScalableFloatDetails::CreateRangeWidget()
+{
+	// Vertical stack: [Min | Max] row, then optional DataTable picker row
+	return SNew(SBox)
+		.Visibility(this, &FArcScalableFloatDetails::GetRangeWidgetVisibility)
+		[
+			SNew(SVerticalBox)
+
+			// Inline Min/Max fields (visible for InlineRange; also shown for DataTableRange/DataRegistryRange
+			// as informational labels when no inline data is relevant, but hidden via inner visibility)
+			+SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				SNew(SHorizontalBox)
+				.Visibility(this, &FArcScalableFloatDetails::GetInlineRangeVisibility)
+
+				+SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.f, 0.f, 2.f, 0.f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("RangeMin", "Min"))
+					.Font(FAppStyle::GetFontStyle(TEXT("PropertyWindow.NormalFont")))
+				]
+				+SHorizontalBox::Slot()
+				.FillWidth(0.45f)
+				.HAlign(HAlign_Fill)
+				.Padding(0.f, 0.f, 4.f, 0.f)
+				[
+					MinValueProperty.IsValid()
+						? MinValueProperty->CreatePropertyValueWidget()
+						: SNullWidget::NullWidget
+				]
+				+SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.f, 0.f, 2.f, 0.f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("RangeMax", "Max"))
+					.Font(FAppStyle::GetFontStyle(TEXT("PropertyWindow.NormalFont")))
+				]
+				+SHorizontalBox::Slot()
+				.FillWidth(0.45f)
+				.HAlign(HAlign_Fill)
+				[
+					MaxValueProperty.IsValid()
+						? MaxValueProperty->CreatePropertyValueWidget()
+						: SNullWidget::NullWidget
+				]
+			]
+
+			// DataTableRange: asset picker + row picker on one line (visible for DataTableRange only)
+			+SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.f, 2.f, 0.f, 0.f)
+			[
+				SNew(SHorizontalBox)
+				.Visibility(this, &FArcScalableFloatDetails::GetDataTableRangePickerVisibility)
+
+				+SHorizontalBox::Slot()
+				.FillWidth(0.5f)
+				.HAlign(HAlign_Fill)
+				.Padding(0.f, 0.f, 2.f, 0.f)
+				[
+					SNew(SComboButton)
+					.OnGetMenuContent(this, &FArcScalableFloatDetails::GetDataTableRangePicker)
+					.ContentPadding(FMargin(2.0f, 2.0f))
+					.ButtonContent()
+					[
+						SNew(STextBlock)
+						.Text(this, &FArcScalableFloatDetails::GetDataTableRangeText)
+						.ToolTipText(this, &FArcScalableFloatDetails::GetDataTableRangeTooltip)
+						.Font(FAppStyle::GetFontStyle(TEXT("PropertyWindow.NormalFont")))
+					]
+				]
+				+SHorizontalBox::Slot()
+				.FillWidth(0.5f)
+				.HAlign(HAlign_Fill)
+				[
+					CreateDataTableRangeRowWidget()
+				]
+			]
+
+			// DataRegistryRange: registry type combo + row selector on one line (visible for DataRegistryRange only)
+			+SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.f, 2.f, 0.f, 0.f)
+			[
+				SNew(SHorizontalBox)
+				.Visibility(this, &FArcScalableFloatDetails::GetDataRegistryRangeVisibility)
+
+				+SHorizontalBox::Slot()
+				.FillWidth(0.5f)
+				.HAlign(HAlign_Fill)
+				.Padding(0.f, 0.f, 2.f, 0.f)
+				[
+					CreateRangeRegistryTypeWidget()
+				]
+				+SHorizontalBox::Slot()
+				.FillWidth(0.5f)
+				.HAlign(HAlign_Fill)
+				[
+					CreateRangeRegistryRowWidget()
+				]
+			]
+		];
+}
+
+TSharedRef<SWidget> FArcScalableFloatDetails::CreateRangeRegistryTypeWidget()
+{
+	// Filter registries to those whose item struct is FArcScalableFloatRange.
+	static FName RangeStructName = FName("ArcScalableFloatRange");
+
+	return SNew(SBox)
+		.Padding(0.0f)
+		.ToolTipText(LOCTEXT("PickRangeRegistryTooltip", "Select a DataRegistry whose item struct is FArcScalableFloatRange (Min/Max)"))
+		.Visibility(this, &FArcScalableFloatDetails::GetDataRegistryRangeVisibility)
+		.VAlign(VAlign_Center)
+		[
+			PropertyCustomizationHelpers::MakePropertyComboBox(RegistryTypeProperty,
+			FOnGetPropertyComboBoxStrings::CreateStatic(&FDataRegistryEditorModule::GenerateDataRegistryTypeComboBoxStrings, true, RangeStructName),
+			FOnGetPropertyComboBoxValue::CreateSP(this, &FArcScalableFloatDetails::GetRegistryTypeValueString))
+		];
+}
+
+TSharedRef<SWidget> FArcScalableFloatDetails::CreateRangeRegistryRowWidget()
+{
+	FPropertyAccess::Result* OutResult = nullptr;
+
+	return SNew(SBox)
+		.Padding(0.0f)
+		.ToolTipText(LOCTEXT("PickRangeRegistryRowTooltip", "Select the FArcScalableFloatRange row to roll Min..Max from"))
+		.Visibility(this, &FArcScalableFloatDetails::GetDataRegistryRangeVisibility)
+		.VAlign(VAlign_Center)
+		[
+			FDataRegistryEditorModule::MakeDataRegistryItemNameSelector(
+				FOnGetDataRegistryDisplayText::CreateSP(this, &FArcScalableFloatDetails::GetRangeRegistryRowText),
+				FOnGetDataRegistryId::CreateSP(this, &FArcScalableFloatDetails::GetRangeRegistryId, OutResult),
+				FOnSetDataRegistryId::CreateSP(this, &FArcScalableFloatDetails::SetRangeRegistryId),
+				FOnGetCustomDataRegistryItemNames(),
+				true)
+		];
+}
+
+TSharedRef<SWidget> FArcScalableFloatDetails::CreateDataTableRangeRowWidget()
+{
+	if (!DataTableRowNameProperty.IsValid())
+	{
+		return SNullWidget::NullWidget;
+	}
+
+	return SNew(SBox)
+		.Visibility(this, &FArcScalableFloatDetails::GetDataTableRangePickerVisibility)
+		.VAlign(VAlign_Center)
+		[
+			PropertyCustomizationHelpers::MakePropertyComboBox(
+				DataTableRowNameProperty,
+				FOnGetPropertyComboBoxStrings::CreateSP(this, &FArcScalableFloatDetails::GetDataTableRangeRowStrings),
+				FOnGetPropertyComboBoxValue::CreateSP(this, &FArcScalableFloatDetails::GetDataTableRangeRowValueString))
 		];
 }
 
@@ -295,9 +465,6 @@ void FArcScalableFloatDetails::OnSelectCurveTable(const FAssetData& AssetData)
 	UObject* SelectedTable = AssetData.GetAsset();
 
 	CurveTableProperty->SetValue(SelectedTable);
-	
-	// Also clear type
-	RegistryTypeProperty->SetValueFromFormattedString(FString());
 }
 
 void FArcScalableFloatDetails::OnCloseMenu()
@@ -336,14 +503,18 @@ FText FArcScalableFloatDetails::GetCurveTableTooltip() const
 
 EVisibility FArcScalableFloatDetails::GetCurveTableVisiblity() const
 {
-	FDataRegistryType RegistryType = GetRegistryType();
-	return RegistryType.IsValid() ? EVisibility::Collapsed : EVisibility::Visible;
+	return GetSourceValue() == static_cast<uint8>(EArcScalableFloatSource::CurveTableRow)
+		? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 EVisibility FArcScalableFloatDetails::GetAssetButtonVisiblity() const
 {
+	if (GetSourceValue() != static_cast<uint8>(EArcScalableFloatSource::CurveTableRow))
+	{
+		return EVisibility::Collapsed;
+	}
 	UCurveTable* CurveTable = GetCurveTable();
-	return CurveTable ? EVisibility::Visible : EVisibility::Collapsed;
+	return CurveTable != nullptr ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 void FArcScalableFloatDetails::OnBrowseTo()
@@ -403,10 +574,8 @@ FText FArcScalableFloatDetails::GetRegistryTypeTooltip() const
 
 EVisibility FArcScalableFloatDetails::GetRegistryTypeVisiblity() const
 {
-	UCurveTable* CurveTable = GetCurveTable();
-	FDataRegistryType RegistryType = GetRegistryType();
-	bool bIsSystemEnabled = UDataRegistrySubsystem::Get()->IsConfigEnabled();
-	return RegistryType.IsValid() || (bIsSystemEnabled && !CurveTable) ? EVisibility::Visible : EVisibility::Collapsed;
+	return GetSourceValue() == static_cast<uint8>(EArcScalableFloatSource::DataRegistryRow)
+		? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 void FArcScalableFloatDetails::OnCurveSourceChanged()
@@ -427,6 +596,13 @@ void FArcScalableFloatDetails::OnRowNameChanged()
 
 void FArcScalableFloatDetails::RefreshSourceData()
 {
+	// Range sources own their own Source value; the curve/registry change path must not stomp it.
+	if (IsRangeSource())
+	{
+		bSourceRefreshQueued = false;
+		return;
+	}
+
 	// Set the default value to 1.0 when using a curve source, so the value in the table is used directly. Only do this if the value is currently 0 (default)
 	// Set it back to 0 when setting back. Only do this if the value is currently 1 to go back to the default.
 
@@ -462,6 +638,106 @@ void FArcScalableFloatDetails::RefreshSourceData()
 	bSourceRefreshQueued = false;
 }
 
+void FArcScalableFloatDetails::OnSourceModeChanged()
+{
+	TSharedPtr<IPropertyUtilities> PinnedUtilities = PropertyUtilities.Pin();
+	if (!bSourceModeResetQueued && PinnedUtilities.IsValid())
+	{
+		PinnedUtilities->EnqueueDeferredAction(FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::ApplySourceModeReset));
+		bSourceModeResetQueued = true;
+	}
+}
+
+void FArcScalableFloatDetails::ApplySourceModeReset()
+{
+	const EArcScalableFloatSource Source = static_cast<EArcScalableFloatSource>(GetSourceValue());
+
+	// Determine which handles to keep, clear the rest.
+	// bKeep* == true means the field is USED by this source, so leave it alone.
+	const bool bKeepCurveTable      = (Source == EArcScalableFloatSource::CurveTableRow);
+	// DataRegistryRange deliberately does NOT keep RegistryType: its registry filter is
+	// FArcScalableFloatRange, not RealCurve, so a type carried over from DataRegistryRow is invalid here.
+	const bool bKeepRegistryType    = (Source == EArcScalableFloatSource::DataRegistryRow);
+	const bool bKeepCurveRowName    = (Source == EArcScalableFloatSource::CurveTableRow || Source == EArcScalableFloatSource::DataRegistryRow);
+	const bool bKeepDataTable       = (Source == EArcScalableFloatSource::DataTableRange);
+	const bool bKeepRangeRowName    = (Source == EArcScalableFloatSource::DataRegistryRange);
+	const bool bKeepMinMax          = (Source == EArcScalableFloatSource::InlineRange);
+
+	if (!bKeepCurveTable && CurveTableProperty.IsValid())
+	{
+		CurveTableProperty->SetValue((UObject*)nullptr);
+	}
+
+	if (!bKeepRegistryType && RegistryTypeProperty.IsValid())
+	{
+		RegistryTypeProperty->SetValueFromFormattedString(FString());
+	}
+
+	if (!bKeepCurveRowName && RowNameProperty.IsValid())
+	{
+		RowNameProperty->SetValue(NAME_None);
+	}
+
+	if (!bKeepDataTable && DataTableProperty.IsValid())
+	{
+		TSharedPtr<IPropertyHandle> InnerDataTableHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable));
+		if (InnerDataTableHandle.IsValid())
+		{
+			InnerDataTableHandle->SetValue((UObject*)nullptr);
+		}
+
+		if (DataTableRowNameProperty.IsValid())
+		{
+			DataTableRowNameProperty->SetValue(NAME_None);
+		}
+	}
+
+	if (!bKeepRangeRowName && RangeRowNameProperty.IsValid())
+	{
+		RangeRowNameProperty->SetValue(NAME_None);
+	}
+
+	if (!bKeepMinMax)
+	{
+		if (MinValueProperty.IsValid())
+		{
+			MinValueProperty->SetValue(0.f);
+		}
+		if (MaxValueProperty.IsValid())
+		{
+			MaxValueProperty->SetValue(0.f);
+		}
+	}
+
+	// Value nicety: when switching to a curve-backed source, default Value 0 -> 1
+	// so the curve drives the output directly. Range sources use Value as a multiplier
+	// on the rolled [Min,Max], so they get the same 0 -> 1 default.
+	if (Source == EArcScalableFloatSource::CurveTableRow
+		|| Source == EArcScalableFloatSource::DataRegistryRow
+		|| Source == EArcScalableFloatSource::InlineCurve
+		|| Source == EArcScalableFloatSource::InlineRange
+		|| Source == EArcScalableFloatSource::DataTableRange
+		|| Source == EArcScalableFloatSource::DataRegistryRange)
+	{
+		if (ValueProperty.IsValid())
+		{
+			float CurrentValue = 0.f;
+			if (ValueProperty->GetValue(CurrentValue) == FPropertyAccess::Success && CurrentValue == 0.f)
+			{
+				ValueProperty->SetValue(1.f);
+			}
+		}
+	}
+
+	bSourceModeResetQueued = false;
+
+	TSharedPtr<IPropertyUtilities> PinnedUtilities = PropertyUtilities.Pin();
+	if (PinnedUtilities.IsValid())
+	{
+		PinnedUtilities->ForceRefresh();
+	}
+}
+
 UCurveTable* FArcScalableFloatDetails::GetCurveTable(FPropertyAccess::Result* OutResult) const
 {
 	FPropertyAccess::Result TempResult;
@@ -490,7 +766,7 @@ FDataRegistryType FArcScalableFloatDetails::GetRegistryType(FPropertyAccess::Res
 	{
 		OutResult = &TempResult;
 	}
-	
+
 	FString RegistryString;
 
 	// Bypassing the struct because GetValueAsFormattedStrings doesn't work well on multi select
@@ -508,10 +784,10 @@ FDataRegistryType FArcScalableFloatDetails::GetRegistryType(FPropertyAccess::Res
 
 EVisibility FArcScalableFloatDetails::GetRowNameVisibility() const
 {
-	UCurveTable* CurveTable = GetCurveTable();
-	FDataRegistryType RegistryType = GetRegistryType();
-
-	return (CurveTable || RegistryType.IsValid()) ? EVisibility::Visible : EVisibility::Collapsed;
+	const uint8 Source = GetSourceValue();
+	return (Source == static_cast<uint8>(EArcScalableFloatSource::CurveTableRow)
+		|| Source == static_cast<uint8>(EArcScalableFloatSource::DataRegistryRow))
+		? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 EVisibility FArcScalableFloatDetails::GetPreviewVisibility() const
@@ -543,6 +819,10 @@ FText FArcScalableFloatDetails::GetRowNameComboBoxContentText() const
 		}
 		else
 		{
+			if (GetSourceValue() == static_cast<uint8>(EArcScalableFloatSource::DataRegistryRow))
+			{
+				return LOCTEXT("SelectRow", "Select Row...");
+			}
 			return LOCTEXT("SelectCurve", "Select Curve...");
 		}
 	}
@@ -581,6 +861,118 @@ FText FArcScalableFloatDetails::GetRowValuePreviewLabel() const
 
 FText FArcScalableFloatDetails::GetRowValuePreviewText() const
 {
+	// For range sources: show "Min – Max" from property handles, never evaluate/roll.
+	const uint8 CurrentSource = GetSourceValue();
+	const EArcScalableFloatSource Source = static_cast<EArcScalableFloatSource>(CurrentSource);
+
+	static const FNumberFormattingOptions RangeFormat = FNumberFormattingOptions()
+		.SetMinimumFractionalDigits(2)
+		.SetMaximumFractionalDigits(2);
+
+	// Value multiplies the resolved range bounds at runtime (FArcScalableFloat::GetRangeMultiplier).
+	// Value==0 is treated as 1 so the preview matches the roll for legacy assets.
+	float RangeMult = 1.f;
+	if (ValueProperty.IsValid())
+	{
+		float RawValue = 0.f;
+		if (ValueProperty->GetValue(RawValue) == FPropertyAccess::Success && RawValue != 0.f)
+		{
+			RangeMult = RawValue;
+		}
+	}
+
+	if (Source == EArcScalableFloatSource::InlineRange)
+	{
+		float MinVal = 0.f;
+		float MaxVal = 0.f;
+		if (MinValueProperty.IsValid() && MaxValueProperty.IsValid())
+		{
+			MinValueProperty->GetValue(MinVal);
+			MaxValueProperty->GetValue(MaxVal);
+		}
+
+		return FText::Format(
+			LOCTEXT("InlineRangePreview", "{0} – {1}"),
+			FText::AsNumber(MinVal * RangeMult, &RangeFormat),
+			FText::AsNumber(MaxVal * RangeMult, &RangeFormat));
+	}
+
+	if (Source == EArcScalableFloatSource::DataTableRange)
+	{
+		FName RowName;
+		UDataTable* DataTable = nullptr;
+		if (DataTableProperty.IsValid())
+		{
+			TSharedPtr<IPropertyHandle> DataTableRowNameHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, RowName));
+			if (DataTableRowNameHandle.IsValid())
+			{
+				DataTableRowNameHandle->GetValue(RowName);
+			}
+
+			TSharedPtr<IPropertyHandle> InnerDataTableHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable));
+			if (InnerDataTableHandle.IsValid())
+			{
+				UObject* DataTableObj = nullptr;
+				InnerDataTableHandle->GetValue(DataTableObj);
+				DataTable = Cast<UDataTable>(DataTableObj);
+			}
+		}
+
+		if (RowName.IsNone())
+		{
+			return LOCTEXT("DataTableRangeNoRow", "Pick row...");
+		}
+
+		if (DataTable)
+		{
+			const FArcScalableFloatRange* Row = DataTable->FindRow<FArcScalableFloatRange>(RowName, TEXT("ArcScalableFloatDetails Preview"), /*bWarnIfRowMissing=*/false);
+			if (Row)
+			{
+				// Row name is already shown in the picker — preview just shows the resolved values.
+				return FText::Format(
+					LOCTEXT("DataTableRangeValuePreview", "{0} – {1}"),
+					FText::AsNumber(Row->Min * RangeMult, &RangeFormat),
+					FText::AsNumber(Row->Max * RangeMult, &RangeFormat));
+			}
+		}
+
+		return FText::GetEmpty();
+	}
+
+	if (Source == EArcScalableFloatSource::DataRegistryRange)
+	{
+		FName RowName;
+		if (RangeRowNameProperty.IsValid())
+		{
+			RangeRowNameProperty->GetValue(RowName);
+		}
+
+		if (RowName.IsNone())
+		{
+			return LOCTEXT("DataRegistryRangeNoRow", "Pick registry row...");
+		}
+
+		FDataRegistryId RegistryId = GetRangeRegistryId();
+		if (RegistryId.IsValid())
+		{
+			if (UDataRegistrySubsystem* SubSystem = UDataRegistrySubsystem::Get())
+			{
+				const FArcScalableFloatRange* Item = SubSystem->GetCachedItem<FArcScalableFloatRange>(RegistryId);
+				if (Item)
+				{
+					// Row name is already shown in the picker — preview just shows the resolved values.
+					return FText::Format(
+						LOCTEXT("DataRegistryRangeValuePreview", "{0} – {1}"),
+						FText::AsNumber(Item->Min * RangeMult, &RangeFormat),
+						FText::AsNumber(Item->Max * RangeMult, &RangeFormat));
+				}
+			}
+		}
+
+		return FText::GetEmpty();
+	}
+
+	// Curve path: evaluate using the resolved curve (never rolls)
 	const FRealCurve* FoundCurve = GetRealCurve();
 	if (FoundCurve)
 	{
@@ -747,6 +1139,421 @@ void FArcScalableFloatDetails::CustomizeChildren( TSharedRef<class IPropertyHand
 	{
 		InstancedStructCustomization->CustomizeChildren(CustomScalingProperty.ToSharedRef(), StructBuilder, StructCustomizationUtils);
 	}
+}
+
+//-------------------------------------------------------------------------------------
+// Range source helpers
+
+uint8 FArcScalableFloatDetails::GetSourceValue() const
+{
+	uint8 Value = static_cast<uint8>(EArcScalableFloatSource::None);
+	if (SourceProperty.IsValid())
+	{
+		SourceProperty->GetValue(Value);
+	}
+	return Value;
+}
+
+bool FArcScalableFloatDetails::IsRangeSource() const
+{
+	const EArcScalableFloatSource Source = static_cast<EArcScalableFloatSource>(GetSourceValue());
+	return Source == EArcScalableFloatSource::InlineRange
+		|| Source == EArcScalableFloatSource::DataTableRange
+		|| Source == EArcScalableFloatSource::DataRegistryRange;
+}
+
+EVisibility FArcScalableFloatDetails::GetCustomScalingVisibility() const
+{
+	return !IsRangeSource() ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+EVisibility FArcScalableFloatDetails::GetRangeWidgetVisibility() const
+{
+	return IsRangeSource() ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+EVisibility FArcScalableFloatDetails::GetInlineRangeVisibility() const
+{
+	const EArcScalableFloatSource Source = static_cast<EArcScalableFloatSource>(GetSourceValue());
+	return Source == EArcScalableFloatSource::InlineRange ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+EVisibility FArcScalableFloatDetails::GetDataTableRangePickerVisibility() const
+{
+	const EArcScalableFloatSource Source = static_cast<EArcScalableFloatSource>(GetSourceValue());
+	return Source == EArcScalableFloatSource::DataTableRange ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+TSharedRef<SWidget> FArcScalableFloatDetails::GetDataTableRangePicker()
+{
+	const bool bAllowClear = true;
+	TArray<const UClass*> AllowedClasses;
+	AllowedClasses.Add(UDataTable::StaticClass());
+
+	FAssetData CurrentAssetData;
+
+	// Resolve current DataTable asset from the DataTable child handle (which wraps FDataTableRowHandle)
+	TSharedPtr<IPropertyHandle> InnerDataTableHandle;
+	if (DataTableProperty.IsValid())
+	{
+		InnerDataTableHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable));
+	}
+
+	if (InnerDataTableHandle.IsValid())
+	{
+		UObject* DataTableObj = nullptr;
+		InnerDataTableHandle->GetValue(DataTableObj);
+		if (DataTableObj)
+		{
+			CurrentAssetData = FAssetData(DataTableObj);
+		}
+	}
+
+	return PropertyCustomizationHelpers::MakeAssetPickerWithMenu(
+		CurrentAssetData,
+		bAllowClear,
+		AllowedClasses,
+		PropertyCustomizationHelpers::GetNewAssetFactoriesForClasses(AllowedClasses),
+		FOnShouldFilterAsset::CreateSP(this, &FArcScalableFloatDetails::OnShouldFilterDataTableRangeAsset),
+		FOnAssetSelected::CreateSP(this, &FArcScalableFloatDetails::OnSelectDataTableRange),
+		FSimpleDelegate::CreateSP(this, &FArcScalableFloatDetails::OnCloseMenu));
+}
+
+void FArcScalableFloatDetails::OnSelectDataTableRange(const FAssetData& AssetData)
+{
+	if (!DataTableProperty.IsValid())
+	{
+		return;
+	}
+
+	TSharedPtr<IPropertyHandle> InnerDataTableHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable));
+	if (InnerDataTableHandle.IsValid())
+	{
+		UObject* SelectedAsset = AssetData.GetAsset();
+		InnerDataTableHandle->SetValue(SelectedAsset);
+	}
+
+	// Clear the row name so a stale row from the previous table doesn't linger.
+	if (DataTableRowNameProperty.IsValid())
+	{
+		DataTableRowNameProperty->SetValue(NAME_None);
+	}
+
+	FSlateApplication::Get().DismissAllMenus();
+}
+
+FText FArcScalableFloatDetails::GetDataTableRangeText() const
+{
+	if (!DataTableProperty.IsValid())
+	{
+		return LOCTEXT("PickDataTable", "Pick Range Table...");
+	}
+
+	TSharedPtr<IPropertyHandle> InnerDataTableHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable));
+	if (!InnerDataTableHandle.IsValid())
+	{
+		return LOCTEXT("PickDataTable", "Pick Range Table...");
+	}
+
+	UObject* DataTableObj = nullptr;
+	InnerDataTableHandle->GetValue(DataTableObj);
+
+	if (DataTableObj)
+	{
+		return FText::AsCultureInvariant(DataTableObj->GetName());
+	}
+
+	return LOCTEXT("PickDataTable", "Pick Range Table...");
+}
+
+FText FArcScalableFloatDetails::GetDataTableRangeTooltip() const
+{
+	return LOCTEXT("PickDataTableTooltip", "Select a DataTable whose row struct is FArcScalableFloatRange (Min/Max columns)");
+}
+
+bool FArcScalableFloatDetails::OnShouldFilterDataTableRangeAsset(const FAssetData& AssetData) const
+{
+	// Keep only DataTables whose row struct is FArcScalableFloatRange.
+	// Filter returns true to EXCLUDE the asset.
+	static const FName RowStructureTag = FName("RowStructure");
+	FString RowStructValue;
+	if (!AssetData.GetTagValue(RowStructureTag, RowStructValue))
+	{
+		// Older assets may use "RowStruct" tag name
+		static const FName RowStructTag = FName("RowStruct");
+		AssetData.GetTagValue(RowStructTag, RowStructValue);
+	}
+
+	if (RowStructValue.IsEmpty())
+	{
+		// No row struct tag — exclude
+		return true;
+	}
+
+	const FString ExpectedPath = FArcScalableFloatRange::StaticStruct()->GetPathName();
+
+	// The asset tag stores the short export path, e.g. "ArcScalableFloatRange" or the full class path.
+	// Compare both the full path and the struct name to be resilient.
+	return !RowStructValue.Contains(TEXT("ArcScalableFloatRange"));
+}
+
+EVisibility FArcScalableFloatDetails::GetDataRegistryRangeVisibility() const
+{
+	return GetSourceValue() == static_cast<uint8>(EArcScalableFloatSource::DataRegistryRange)
+		? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+FText FArcScalableFloatDetails::GetRangeRegistryRowText() const
+{
+	FName RowName = NAME_None;
+	if (RangeRowNameProperty.IsValid())
+	{
+		RangeRowNameProperty->GetValue(RowName);
+	}
+
+	if (RowName.IsNone())
+	{
+		return LOCTEXT("PickRegistryRangeRow", "Pick registry row...");
+	}
+
+	return FText::FromName(RowName);
+}
+
+FDataRegistryId FArcScalableFloatDetails::GetRangeRegistryId(FPropertyAccess::Result* OutResult) const
+{
+	FPropertyAccess::Result TempResult;
+	if (OutResult == nullptr)
+	{
+		OutResult = &TempResult;
+	}
+
+	FPropertyAccess::Result NameResult = FPropertyAccess::Fail;
+	FName RowName = NAME_None;
+	if (RangeRowNameProperty.IsValid())
+	{
+		NameResult = RangeRowNameProperty->GetValue(RowName);
+	}
+
+	FDataRegistryType RegistryType = GetRegistryType(OutResult);
+	if (*OutResult == FPropertyAccess::Success)
+	{
+		*OutResult = NameResult;
+	}
+
+	return FDataRegistryId(RegistryType, RowName);
+}
+
+void FArcScalableFloatDetails::SetRangeRegistryId(FDataRegistryId NewId)
+{
+	if (RangeRowNameProperty.IsValid())
+	{
+		RangeRowNameProperty->SetValue(NewId.ItemName);
+	}
+
+	FDataRegistryType CurrentType = GetRegistryType();
+	if (NewId.RegistryType != FDataRegistryType::CustomContextType && NewId.RegistryType != CurrentType)
+	{
+		RegistryTypeProperty->SetValueFromFormattedString(NewId.RegistryType.ToString());
+	}
+}
+
+//-------------------------------------------------------------------------------------
+// DataTableRange row-name combo helpers
+
+void FArcScalableFloatDetails::GetDataTableRangeRowStrings(TArray<TSharedPtr<FString>>& OutStrings, TArray<TSharedPtr<class SToolTip>>& OutToolTips, TArray<bool>& OutRestrictedItems) const
+{
+	if (!DataTableProperty.IsValid())
+	{
+		return;
+	}
+
+	TSharedPtr<IPropertyHandle> InnerDataTableHandle = DataTableProperty->GetChildHandle(GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable));
+	if (!InnerDataTableHandle.IsValid())
+	{
+		return;
+	}
+
+	UObject* DataTableObj = nullptr;
+	InnerDataTableHandle->GetValue(DataTableObj);
+
+	UDataTable* DataTable = Cast<UDataTable>(DataTableObj);
+	if (!DataTable)
+	{
+		return;
+	}
+
+	TArray<FName> RowNames;
+	for (TMap<FName, uint8*>::TConstIterator It(DataTable->GetRowMap()); It; ++It)
+	{
+		RowNames.Add(It.Key());
+	}
+
+	RowNames.Sort(FNameLexicalLess());
+
+	for (const FName& RowName : RowNames)
+	{
+		OutStrings.Add(MakeShared<FString>(RowName.ToString()));
+		OutToolTips.Add(TSharedPtr<SToolTip>());
+		OutRestrictedItems.Add(false);
+	}
+}
+
+FString FArcScalableFloatDetails::GetDataTableRangeRowValueString() const
+{
+	if (!DataTableRowNameProperty.IsValid())
+	{
+		return LOCTEXT("SelectRow", "Select Row...").ToString();
+	}
+
+	FName RowName = NAME_None;
+	DataTableRowNameProperty->GetValue(RowName);
+
+	if (!RowName.IsNone())
+	{
+		return RowName.ToString();
+	}
+
+	return LOCTEXT("SelectRow", "Select Row...").ToString();
+}
+
+//-------------------------------------------------------------------------------------
+// Inline curve widget and FCurveOwnerInterface
+
+FRichCurve* FArcScalableFloatDetails::GetInlineRichCurve() const
+{
+	TArray<void*> RawData;
+	if (InlineCurveProperty.IsValid())
+	{
+		InlineCurveProperty->AccessRawData(RawData);
+	}
+	return RawData.Num() == 1 ? static_cast<FRichCurve*>(RawData[0]) : nullptr;
+}
+
+EVisibility FArcScalableFloatDetails::GetInlineCurveVisibility() const
+{
+	return GetSourceValue() == static_cast<uint8>(EArcScalableFloatSource::InlineCurve)
+		? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+TSharedRef<SWidget> FArcScalableFloatDetails::CreateInlineCurveWidget()
+{
+	CurveOwnerObjects.Reset();
+	TArray<UObject*> Outers;
+	if (InlineCurveProperty.IsValid())
+	{
+		InlineCurveProperty->GetOuterObjects(Outers);
+	}
+	for (UObject* O : Outers)
+	{
+		CurveOwnerObjects.Add(O);
+	}
+
+	SAssignNew(CurveWidget, SCurveEditor)
+		.ViewMinInput(0.f)
+		.ViewMaxInput(MaxPreviewLevel)
+		.ViewMinOutput(0.f)
+		.ViewMaxOutput(1.f)
+		.TimelineLength(MaxPreviewLevel)
+		.DesiredSize(FVector2D(300.f, 150.f))
+		.HideUI(false);
+
+	if (CurveWidget.IsValid())
+	{
+		CurveWidget->SetCurveOwner(this, true);
+		CurveWidget->SetPropertyUtils(PropertyUtilities.Pin());
+		if (InlineCurveProperty.IsValid())
+		{
+			CurveWidget->RegisterToPropertyChangedEvent(InlineCurveProperty);
+		}
+	}
+
+	return SNew(SBox)
+		.Visibility(this, &FArcScalableFloatDetails::GetInlineCurveVisibility)
+		[
+			CurveWidget.IsValid() ? CurveWidget.ToSharedRef() : SNullWidget::NullWidget
+		];
+}
+
+void FArcScalableFloatDetails::GetCurves(TAdderReserverRef<FRichCurveEditInfoConst> Curves) const
+{
+	FRichCurve* C = GetInlineRichCurve();
+	if (C)
+	{
+		Curves.Add(FRichCurveEditInfoConst(C));
+	}
+}
+
+TArray<FRichCurveEditInfo> FArcScalableFloatDetails::GetCurves()
+{
+	TArray<FRichCurveEditInfo> Out;
+	FRichCurve* C = GetInlineRichCurve();
+	if (C)
+	{
+		Out.Add(FRichCurveEditInfo(C));
+	}
+	return Out;
+}
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+TArray<FRichCurveEditInfoConst> FArcScalableFloatDetails::GetCurves() const
+{
+	TArray<FRichCurveEditInfoConst> Out;
+	FRichCurve* C = GetInlineRichCurve();
+	if (C)
+	{
+		Out.Add(FRichCurveEditInfoConst(C));
+	}
+	return Out;
+}
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+void FArcScalableFloatDetails::ModifyOwner()
+{
+	for (TWeakObjectPtr<UObject> Weak : CurveOwnerObjects)
+	{
+		if (UObject* O = Weak.Get())
+		{
+			O->Modify();
+		}
+	}
+}
+
+TArray<const UObject*> FArcScalableFloatDetails::GetOwners() const
+{
+	TArray<const UObject*> Out;
+	for (const TWeakObjectPtr<UObject>& Weak : CurveOwnerObjects)
+	{
+		if (const UObject* O = Weak.Get())
+		{
+			Out.Add(O);
+		}
+	}
+	return Out;
+}
+
+void FArcScalableFloatDetails::MakeTransactional()
+{
+	for (TWeakObjectPtr<UObject> Weak : CurveOwnerObjects)
+	{
+		if (UObject* O = Weak.Get())
+		{
+			O->SetFlags(RF_Transactional);
+		}
+	}
+}
+
+void FArcScalableFloatDetails::OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos)
+{
+	if (InlineCurveProperty.IsValid())
+	{
+		InlineCurveProperty->NotifyPostChange(EPropertyChangeType::ValueSet);
+	}
+}
+
+bool FArcScalableFloatDetails::IsValidCurve(FRichCurveEditInfo CurveInfo)
+{
+	FRichCurve* C = GetInlineRichCurve();
+	return C != nullptr && CurveInfo.CurveToEdit == static_cast<FRealCurve*>(C);
 }
 
 //-------------------------------------------------------------------------------------

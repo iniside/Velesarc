@@ -38,45 +38,6 @@ void FArcCoreGameplayTags::InitializeNativeTags()
 
 void FArcCoreGameplayTags::AddAllTags(UGameplayTagsManager& Manager)
 {
-	AddTag(Ability_ActivateFail_IsDead
-		, "Ability.ActivateFail.IsDead"
-		, "Ability failed to activate because its owner is dead.");
-	AddTag(Ability_ActivateFail_Cooldown
-		, "Ability.ActivateFail.Cooldown"
-		, "Ability failed to activate because it is on cool down.");
-	AddTag(Ability_ActivateFail_Cost
-		, "Ability.ActivateFail.Cost"
-		, "Ability failed to activate because it did not pass the cost checks.");
-	AddTag(Ability_ActivateFail_TagsBlocked
-		, "Ability.ActivateFail.TagsBlocked"
-		, "Ability failed to activate because tags are blocking it.");
-	AddTag(Ability_ActivateFail_TagsMissing
-		, "Ability.ActivateFail.TagsMissing"
-		, "Ability failed to activate because tags are missing.");
-	AddTag(Ability_ActivateFail_Networking
-		, "Ability.ActivateFail.Networking"
-		, "Ability failed to activate because it did not pass the network checks.");
-	AddTag(Ability_ActivateFail_ActivationGroup
-		, "Ability.ActivateFail.ActivationGroup"
-		, "Ability failed to activate because of its activation group.");
-
-	AddTag(Ability_Behavior_SurvivesDeath
-		, "Ability.Behavior.SurvivesDeath"
-		, "An ability with this type tag should not be canceled due to death.");
-
-	AddTag(InitState_Spawned
-		, "InitState.Spawned"
-		, "1: Actor/component has initially spawned and can be extended");
-	AddTag(InitState_DataAvailable
-		, "InitState.DataAvailable"
-		, "2: All required data has been loaded/replicated and is ready for initialization");
-	AddTag(InitState_DataInitialized
-		, "InitState.DataInitialized"
-		, "3: The available data has been initialized for this actor/component, but it is not ready for full gameplay");
-	AddTag(InitState_GameplayReady
-		, "InitState.GameplayReady"
-		, "4: The actor/component is fully ready for active gameplay");
-
 	AddTag(Item_SlotActive
 		, "SlotId.Active"
 		, "Generic tag, which is used to slot item to make it active, when it does matter on which item slot it it.");

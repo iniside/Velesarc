@@ -190,7 +190,7 @@ void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, 
 
 	if (SOUser.InteractionHandle.IsValid())
 	{
-		MASSBEHAVIOR_LOG(VeryVerbose, TEXT("Exiting state with a valid InteractionHandle: stop using the smart object."));
+		MASSBEHAVIOR_LOGF(VeryVerbose, "Exiting state with a valid InteractionHandle: stop using the smart object.");
 
 		USmartObjectSubsystem& SmartObjectSubsystem = Context.GetExternalData(SmartObjectSubsystemHandle);
 		UMassSignalSubsystem& SignalSubsystem = Context.GetExternalData(MassSignalSubsystemHandle);
@@ -199,7 +199,7 @@ void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, 
 	}
 	else
 	{
-		MASSBEHAVIOR_LOG(VeryVerbose, TEXT("Exiting state with an invalid ClaimHandle: nothing to do."));
+		MASSBEHAVIOR_LOGF(VeryVerbose, "Exiting state with an invalid ClaimHandle: nothing to do.");
 	}
 
 	USmartObjectSubsystem* SOSubsystem = Context.GetWorld()->GetSubsystem<USmartObjectSubsystem>();
@@ -209,6 +209,6 @@ void FArcMassUseSmartObjectTask::ExitState(FStateTreeExecutionContext& Context, 
 #if WITH_EDITOR
 FText FArcMassUseSmartObjectTask::GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting) const
 {
-	return NSLOCTEXT("ArcAI", "UseSmartObjectDesc", "Use Smart Object");
+	return NSLOCTEXT("ArcAI", "UseSmartObjectDesc", "Arc Mass Use Smart Object");
 }
 #endif

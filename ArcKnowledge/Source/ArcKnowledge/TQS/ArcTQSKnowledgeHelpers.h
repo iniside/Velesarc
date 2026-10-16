@@ -3,7 +3,7 @@
 #pragma once
 
 #include "ArcKnowledgeTypes.h"
-#include "TargetQuery/ArcTQSTypes.h"
+#include "ArcTQSTypes.h"
 
 namespace ArcTQS::Knowledge
 {
@@ -28,7 +28,7 @@ namespace ArcTQS::Knowledge
 		{
 			return *Result.GetValue();
 		}
-		UE_LOG(LogTemp, Warning, TEXT("ArcTQS::Knowledge::GetHandle — ItemData does not contain '%s'"), *Names::Handle.ToString());
+		UE_LOGF(LogTemp, Warning,"ArcTQS::Knowledge::GetHandle — ItemData does not contain '%ls'", *Names::Handle.ToString());
 		return FArcKnowledgeHandle();
 	}
 }

@@ -25,18 +25,9 @@
 			"Name": "ArcAIEditor",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "ArcAITests",
-			"Type": "DeveloperTool",
-			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
-		{
-			"Name": "GameplayAbilities",
-			"Enabled": true
-		},
 		{
 			"Name": "GameplayTagsEditor",
 			"Enabled": true
@@ -86,7 +77,15 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
 			"Name": "ArcMass",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassAbilities",
 			"Enabled": true
 		},
 		{
@@ -111,6 +110,18 @@
 		},
 		{
 			"Name": "ArcNeeds",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcTargetQuery",
+			"Enabled": true
+		},
+		{
+			"Name": "ZoneGraph",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcKnowledge",
 			"Enabled": true
 		}
 	]

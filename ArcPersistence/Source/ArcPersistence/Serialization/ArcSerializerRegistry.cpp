@@ -43,11 +43,19 @@ FArcSerializerRegistry& FArcSerializerRegistry::Get()
 void FArcSerializerRegistry::Register(FName StructName, const FArcPersistenceSerializerInfo& Info)
 {
 	Serializers.Add(StructName, Info);
+	// A late (un)registration can change how a struct property resolves
+	// (GenericStruct -> RegisteredStruct); flush stale plans. No-op pre-module-load.
+#if WITH_EDITOR || !UE_BUILD_SHIPPING
+	FArcReflectionSerializer::FlushPlanCache();
+#endif
 }
 
 void FArcSerializerRegistry::Unregister(FName StructName)
 {
 	Serializers.Remove(StructName);
+#if WITH_EDITOR || !UE_BUILD_SHIPPING
+	FArcReflectionSerializer::FlushPlanCache();
+#endif
 }
 
 const FArcPersistenceSerializerInfo* FArcSerializerRegistry::Find(const UStruct* Type) const

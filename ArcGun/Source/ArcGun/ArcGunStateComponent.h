@@ -26,23 +26,20 @@
 #include "ArcMacroDefines.h"
 #include "Components/ActorComponent.h"
 #include "ArcGunTypes.h"
-#include "Abilities/GameplayAbility.h"
+#include "Items/ArcItemDefinitionData.h"
+#include "TargetingSystem/TargetingPreset.h"
 #include "ArcGunStateComponent.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogArcGunStateComponent, Log, All);
 
 class UArcTargetingFilterPreset;
-class UArcItemsStoreComponent;
-class UArcItemsStoreComponent;
 class UArcTargetingObject;
 struct FArcEffectSpecItem;
 
 struct FArcItemFragment_GunStats;
 
-class UArcItemAttachmentComponent;
-class AArcCorePlayerController;
+class AArcMassPlayerController;
 class ACharacter;
-class UArcCoreAbilitySystemComponent;
 class APlayerCameraManager;
 class UCameraComponent;
 class UInputAction;
@@ -68,13 +65,6 @@ public:
 	TObjectPtr<UArcTargetingObject> TargetingObject = nullptr;
 
 	
-	UPROPERTY()
-	TObjectPtr<UArcCoreGameplayAbility> SourceAbility;
-	
-	// This is based of ability. Abilties are granted on server. So handl >should< be unique on all connected clients.
-	UPROPERTY()
-	FGameplayAbilitySpecHandle RequestingAbility;
-	
 	FArcGunState()
 		: bIsFiring(false)
 		, StateRep(0)
@@ -93,9 +83,6 @@ class ARCGUN_API UArcGunStateComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-	friend class UArcAT_WaitSwapWeapon;
-	friend class UArcAnimNotify_Holster;
-	friend class UArcAnimNotify_Unholster;
 	friend struct FArcWeaponItemInstance;
 	friend class UArcGunBFL;
 	
@@ -185,9 +172,6 @@ protected:
 	 */
 	FArcSelectedGun OldSelectedGun;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
-	TSubclassOf<UArcItemsStoreComponent> ItemSlotComponentClass;
-
 	UPROPERTY(EditAnywhere, Category = "Weapon")
 	TObjectPtr<UInputAction> AxisInputAction;
 
@@ -199,8 +183,6 @@ public:
 	}
 	
 protected:
-	UPROPERTY()
-	mutable TObjectPtr<UArcItemsStoreComponent> ItemsComponent;
 	/**
 	 * Not fully fledged weapon state, just indicates if weapon is firing or not.
 	 */
@@ -246,11 +228,9 @@ public:
 		return InActor->FindComponentByClass<UArcGunStateComponent>();
 	}
 
-	UArcItemsStoreComponent* GetItemsComponent() const;
-
-	const UArcItemDefinition* GetWeaponItemDef() const
+	const FArcItemDefinitionData* GetWeaponItemDef() const
 	{
-		return SelectedGun.WeaponItemDef;
+		return FArcItemDefinitionData::Find(SelectedGun.WeaponItemDef);
 	}
 	const FArcItemId& GetEquippedWeaponItemId() const
 	{
@@ -290,47 +270,6 @@ protected:
 	
 public:
 	/**
-	 * @brief Handles the selection of a quick slot.
-	 *
-	 * This method is triggered when a quick slot is selected in the gameplay.
-	 * It retrieves the item ID and data from the corresponding quick bar and
-	 * performs further actions based on the item's properties. It resets the
-	 * selected gun, fire mode, gun instance, and gun recoil. If the item ID
-	 * is invalid or the item data is null, the method returns without further
-	 * processing. Otherwise, it retrieves the gun's fire mode, gun instance,
-	 * and gun recoil from the item data. If any of these properties are null,
-	 * it marks the SelectedGun property as dirty and returns. Otherwise, it
-	 * initializes the selected gun instance and stores the item ID, item data,
-	 * and slot ID in the SelectedGun property. It also retrieves the gun actor
-	 * associated with the item ID from the item attachment component and triggers
-	 * the OnGunSelectedDelegate event with the selected gun.
-	 *
-	 * @param BarId      The gameplay tag of the quick bar.
-	 * @param QuickSlotId The gameplay tag of the selected quick slot.
-	 *
-	 * @see Called from FArcQuickSlotHandler_GunChanged
-	 */
-	void HandleQuickSlotSelected(FGameplayTag BarId
-								 , FGameplayTag QuickSlotId);
-
-	void HandleQuickSlotDeselected(FGameplayTag BarId
-		, FGameplayTag QuickSlotId);
-
-	void HandleOnItemRemovedFromSlot(UArcItemsStoreComponent* ItemSlotComponent
-								 , const FGameplayTag& ItemSlot
-								 , const FArcItemData* ItemData);
-	
-	void HandleOnItemAddedToSlot(UArcItemsStoreComponent* ItemSlotComponent
-								 , const FGameplayTag& ItemSlot
-								 , const FArcItemData* ItemData);
-	
-	void HandleOnItemAddedToSocket(UArcItemsStoreComponent* ItemSlotComponent
-								   , const FGameplayTag& ItemSlot
-								   , const FArcItemData*OwnerItemData
-								   , const FGameplayTag&ItemSocketSlot
-								   , const FArcItemData*SocketItemData);
-public:
-	/**
 	 * @brief Starts the firing sequence of the gun.
 	 *
 	 * This method is used to initiate the firing sequence of the gun. It broadcasts the start of the firing event
@@ -345,9 +284,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Arc Gun")
 	void StartFire(
-		UGameplayAbility* SourceAbility
-		, UArcTargetingObject* InTargetingObject
-		, const FGameplayAbilitySpecHandle& TargetRequest);
+		UArcTargetingObject* InTargetingObject);
 	
 	UFUNCTION(BlueprintCallable, Category = "Arc Gun")
 	void StopFire();
@@ -363,17 +300,14 @@ public:
 	 * @param InTrace The arc targeting object used for tracing.
 	 * @param RequestHandle The request handle representing the target request.
 	 */
-	void ShootGun(
-		UGameplayAbility* InAbility
-		, const FGameplayAbilityTargetDataHandle& InHits
-		, class UArcTargetingObject* InTrace);
+	void ShootGun(class UArcTargetingObject* InTrace);
 
 	// This is local only and called from FireMode manually.
 	void BroadcastOnPreShoot(const FArcGunShotInfo& ShotInfo);
 
 	UFUNCTION(Server, Reliable)
-	void ServerFireStart(UArcTargetingObject* InTargetingObject, const FGameplayAbilitySpecHandle& TargetRequest);
-	
+	void ServerFireStart(UArcTargetingObject* InTargetingObject);
+
 	UFUNCTION(Server, Reliable)
 	void ServerFireStop();
 	
@@ -393,8 +327,6 @@ protected:
 	 * for Gameplay Effects. For example from different item than equipped weapon.
 	 * It allows for example, to implement different damage types by switching "ammo" item.
 	 */
-	virtual TArray<const FArcEffectSpecItem*> GetAmmoGameplayEffectSpecs(const FGameplayTag& InTag) const;
-
 public:
 	
 	// We will use this to trace where the gun should be aiming
@@ -434,16 +366,13 @@ public:
 		return SelectedGun;
 	}
 	
-	AArcCorePlayerController* GetPlayerController() const;
+	AArcMassPlayerController* GetPlayerController() const;
 
 	UArcTargetingObject* GetTargetingObject() const;
 	
 protected:
 	UPROPERTY()
-	mutable TObjectPtr<AArcCorePlayerController> ArcPC;
-
-	UPROPERTY()
-	TObjectPtr<UArcCoreAbilitySystemComponent> ArcASC;
+	mutable TObjectPtr<AArcMassPlayerController> ArcPC;
 
 	UPROPERTY()
 	TObjectPtr<APawn> CharacterOwner;
@@ -455,8 +384,6 @@ protected:
 	TObjectPtr<UCameraComponent> Camera;
 	
 public:
-	UArcCoreAbilitySystemComponent* GetArcASC() const;
-
 	FDelegateHandle PreProcessRotationHandle;
 
 public:
@@ -528,6 +455,4 @@ public:
 	virtual class USkeletalMeshComponent* GetAimAttachComponent() const;
 
 	virtual class USceneComponent* GetAttachComponent(const FGameplayTag& InSlot) const;
-
-	virtual class AArcPlayerCameraManager* GetCameraManager();
 };

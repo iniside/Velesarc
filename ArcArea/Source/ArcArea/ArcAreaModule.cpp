@@ -2,6 +2,8 @@
 
 #include "ArcAreaModule.h"
 
+DEFINE_LOG_CATEGORY(LogArcAreaDiag);
+
 #define LOCTEXT_NAMESPACE "FArcAreaModule"
 
 void FArcAreaModule::StartupModule()

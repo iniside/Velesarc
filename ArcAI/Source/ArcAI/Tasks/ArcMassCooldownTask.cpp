@@ -1,14 +1,15 @@
-﻿// Copyright Lukasz Baran. All Rights Reserved.
+// Copyright Lukasz Baran. All Rights Reserved.
 
 #include "ArcMassCooldownTask.h"
 
-#include "MassExecutionContext.h"
+#include "Abilities/ArcAbilityFunctions.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
-#include "MassStateTreeFragments.h"
 #include "StateTreeLinker.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
 #include "Engine/World.h"
+#include "ArcMass/ArcMassDecayingTags.h"
 
 FArcMassCooldownTask::FArcMassCooldownTask()
 {
@@ -17,45 +18,51 @@ FArcMassCooldownTask::FArcMassCooldownTask()
 
 bool FArcMassCooldownTask::Link(FStateTreeLinker& Linker)
 {
-	Linker.LinkExternalData(MassCooldownHandle);
 	Linker.LinkExternalData(MassGameplayTagHandle);
-	
+
 	return true;
 }
 
 void FArcMassCooldownTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
-	Builder.AddReadOnly<FArcMassCooldownTaskFragment>();
-	Builder.AddReadOnly<FArcMassGameplayTagContainerFragment>();
+	Builder.AddReadWrite<FArcOwnedTagsFragment>();
 }
 
 EStateTreeRunStatus FArcMassCooldownTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	const FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
-	
-	FArcMassCooldownTaskFragment* MassCooldown = MassStateTreeContext.GetExternalDataPtr(MassCooldownHandle);
-	FArcMassGameplayTagContainerFragment* MassGameplayTags = MassStateTreeContext.GetExternalDataPtr(MassGameplayTagHandle);
-	
-	if (!MassCooldown || !MassGameplayTags)
+	FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
+
+	FArcOwnedTagsFragment* MassGameplayTags = MassStateTreeContext.GetExternalDataPtr(MassGameplayTagHandle);
+	if (!MassGameplayTags)
 	{
 		return EStateTreeRunStatus::Failed;
 	}
-	
-	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	if (MassCooldown->Cooldowns.ContainsByPredicate([Tag = InstanceData.CooldownTag](const FArcCooldownTaskItem& Item)
+
+	UWorld* World = Context.GetWorld();
+	if (!World)
 	{
-		return Item.CooldownTag == Tag;
-	}))
+		return EStateTreeRunStatus::Failed;
+	}
+
+	UArcMassDecayingTagSubsystem* DecaySys = World->GetSubsystem<UArcMassDecayingTagSubsystem>();
+	if (!DecaySys)
 	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (MassGameplayTags->GetTags().HasTagExact(InstanceData.CooldownTag))
+	{
+		// Already cooling — let the existing decay run to completion.
 		return EStateTreeRunStatus::Running;
 	}
-	
-	MassCooldown->Cooldowns.Add({InstanceData.CooldownTag, InstanceData.Duration, 0.f});
-	MassGameplayTags->Tags.AddTag(InstanceData.CooldownTag);
-	
+
+	DecaySys->RequestAddDecayingTag(MassStateTreeContext.GetEntity(), InstanceData.CooldownTag, InstanceData.Duration);
 	FMassEntityManager& EM = MassStateTreeContext.GetEntityManager();
+	ArcAbilities::AddOwnedTags(EM, MassStateTreeContext.GetEntity(), FGameplayTagContainer(InstanceData.CooldownTag));
 	EM.Defer().AddTag<FArcCooldownTaskTag>(MassStateTreeContext.GetEntity());
-	
+
 	return EStateTreeRunStatus::Running;
 }
 
@@ -77,28 +84,28 @@ FText FArcMassCooldownTask::GetDescription(const FGuid& ID, FStateTreeDataView I
 bool FArcMassIsOnCooldownCondition::Link(FStateTreeLinker& Linker)
 {
 	Linker.LinkExternalData(MassGameplayTagsHandle);
-	
+
 	return true;
 }
 
 void FArcMassIsOnCooldownCondition::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
-	Builder.AddReadOnly<FArcMassGameplayTagContainerFragment>();
+	Builder.AddReadOnly<FArcOwnedTagsFragment>();
 }
 
 bool FArcMassIsOnCooldownCondition::TestCondition(FStateTreeExecutionContext& Context) const
 {
 	const FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
-	
-	FArcMassGameplayTagContainerFragment* MassGameplayTags = MassStateTreeContext.GetExternalDataPtr(MassGameplayTagsHandle);
-	
+
+	FArcOwnedTagsFragment* MassGameplayTags = MassStateTreeContext.GetExternalDataPtr(MassGameplayTagsHandle);
+
 	if (!MassGameplayTags)
 	{
 		return false;
 	}
-	
+
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	const bool bHasTag = MassGameplayTags->Tags.HasTagExact(InstanceData.CooldownTag);
+	const bool bHasTag = MassGameplayTags->GetTags().HasTagExact(InstanceData.CooldownTag);
 	return !bHasTag;
 }
 
@@ -117,64 +124,3 @@ FText FArcMassIsOnCooldownCondition::GetDescription(const FGuid& ID, FStateTreeD
 	return FText::GetEmpty();
 }
 #endif
-
-UArcMassCooldownTaskProcessor::UArcMassCooldownTaskProcessor()
-	: EntityQuery_Conditional(*this)
-{
-}
-
-void UArcMassCooldownTaskProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
-{
-	EntityQuery_Conditional.AddRequirement<FArcMassCooldownTaskFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery_Conditional.AddRequirement<FArcMassGameplayTagContainerFragment>(EMassFragmentAccess::ReadWrite);
-	
-	EntityQuery_Conditional.AddTagRequirement<FArcCooldownTaskTag>(EMassFragmentPresence::All);
-	EntityQuery_Conditional.AddSubsystemRequirement<UMassStateTreeSubsystem>(EMassFragmentAccess::ReadWrite);
-	EntityQuery_Conditional.RegisterWithProcessor(*this);
-}
-
-void UArcMassCooldownTaskProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& MassEntityManager)
-{
-	Super::InitializeInternal(Owner, MassEntityManager);
-	
-	MassStateTreeSubsystem = UWorld::GetSubsystem<UMassStateTreeSubsystem>(Owner.GetWorld());
-}
-
-void UArcMassCooldownTaskProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
-{
-	if (!MassStateTreeSubsystem)
-	{
-		return;
-	}
-	
-	EntityQuery_Conditional.ForEachEntityChunk(Context, [this](FMassExecutionContext& MyContext)
-	{
-		const TArrayView<FArcMassCooldownTaskFragment> CooldownList = MyContext.GetMutableFragmentView<FArcMassCooldownTaskFragment>();
-		const TArrayView<FArcMassGameplayTagContainerFragment> GameplayTagsList = MyContext.GetMutableFragmentView<FArcMassGameplayTagContainerFragment>();
-			
-		const float WorldDeltaTime = MyContext.GetDeltaTimeSeconds();
-			
-		for (FMassExecutionContext::FEntityIterator EntityIt = MyContext.CreateEntityIterator(); EntityIt; ++EntityIt)
-		{
-			const FMassEntityHandle Entity = MyContext.GetEntity(EntityIt);
-			
-			FArcMassCooldownTaskFragment& CooldownTaskFragment = CooldownList[EntityIt];
-			FArcMassGameplayTagContainerFragment& GameplayTagFragment = GameplayTagsList[EntityIt];
-			for (int32 Idx = CooldownTaskFragment.Cooldowns.Num() - 1; Idx >= 0; --Idx)
-			{
-				FArcCooldownTaskItem& CooldownItem = CooldownTaskFragment.Cooldowns[Idx];
-				CooldownItem.CurrentDuration += WorldDeltaTime;
-				if (CooldownItem.CurrentDuration >= CooldownItem.CooldownDuration)
-				{
-					GameplayTagFragment.Tags.RemoveTag(CooldownItem.CooldownTag);
-					CooldownTaskFragment.Cooldowns.RemoveAtSwap(Idx);
-				}
-			}
-			
-			if (CooldownTaskFragment.Cooldowns.IsEmpty())
-			{
-				MyContext.Defer().RemoveTag<FArcCooldownTaskTag>(Entity);
-			}
-		}
-	});
-}

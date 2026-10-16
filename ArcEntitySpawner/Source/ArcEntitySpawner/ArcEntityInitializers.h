@@ -20,7 +20,7 @@ public:
 
 protected:
 	/** Fragment values to set on each spawned entity. Each entry should be a fragment struct type. */
-	UPROPERTY(EditAnywhere, Category = "Mass|Spawn", meta = (BaseStruct = "/Script/MassEntity.MassFragment"))
+	UPROPERTY(EditAnywhere, Category = "Mass|Spawn", meta = (BaseStruct = "/Script/MassCore.MassFragment"))
 	TArray<FInstancedStruct> FragmentValues;
 };
 
@@ -38,6 +38,6 @@ public:
 
 protected:
 	/** Tag struct types to add to each spawned entity (must derive from FMassTag). */
-	UPROPERTY(EditAnywhere, Category = "Mass|Spawn", meta = (BaseStruct = "/Script/MassEntity.MassTag"))
+	UPROPERTY(EditAnywhere, Category = "Mass|Spawn", meta = (BaseStruct = "/Script/MassCore.MassTag"))
 	TArray<FInstancedStruct> Tags;
 };

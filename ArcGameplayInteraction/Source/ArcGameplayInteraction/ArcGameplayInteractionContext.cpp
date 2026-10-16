@@ -2,12 +2,15 @@
 
 #include "ArcGameplayInteractionContext.h"
 
+#include "ArcGameplayInteractionStateTreeBases.h"
 #include "GameplayInteractionContext.h"
 #include "GameplayInteractionSmartObjectBehaviorDefinition.h"
 #include "Engine/World.h"
-#include "MassEntityTypes.h"
-#include "MassEntityView.h"
-#include "MassExecutionContext.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "Mass/EntityView.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassStateTreeExecutionContext.h"
 #include "MassStateTreeTypes.h"
 #include "StateTree.h"
@@ -332,6 +335,7 @@ bool FArcGameplayInteractionContext::SetContextRequirements(FStateTreeExecutionC
 	StateTreeContext.SetContextDataByName(TEXT("ContextEntityHandle"), FStateTreeDataView(FStructView::Make(ContextEntity)));
 	StateTreeContext.SetContextDataByName(TEXT("SmartObjectEntityHandle"), FStateTreeDataView(FStructView::Make(SmartObjectEntity)));
 	StateTreeContext.SetContextDataByName(TEXT("SlotTransform"), FStateTreeDataView(FStructView::Make(SlotTransform)));
+	StateTreeContext.SetContextDataByName(TEXT("InteractionOptionTag"), FStateTreeDataView(FStructView::Make(OptionTag)));
 
 	UObject* EffectiveOwner = GetOwner();
 	checkf(EffectiveOwner != nullptr, TEXT("Should never reach this point with an invalid Owner since IsValid() is checked before."));
@@ -444,16 +448,34 @@ UArcGameplayInteractionStateTreeSchema::UArcGameplayInteractionStateTreeSchema()
 	ContextDataDescs.Add({ TEXT("ContextEntityHandle"), FMassEntityHandle::StaticStruct(), FGuid("1c514052-47d0-4c8b-8308-056175ddaa5e")});
 	ContextDataDescs.Add({ TEXT("SmartObjectEntityHandle"), FMassEntityHandle::StaticStruct(), FGuid("f640404a-c5b8-4c45-a6e4-a2707254fa5a")});
 	ContextDataDescs.Add({ TEXT("SlotTransform"), TBaseStructure<FTransform>::Get(), FGuid("a3e17c84-5f92-4d1b-b8a3-6c4d2e9f0a15")});
+	ContextDataDescs.Add({ TEXT("InteractionOptionTag"), TBaseStructure<FGameplayTag>::Get(), FGuid("b7d2e3f1-8a64-4c92-9e15-3f8a7c6b1d40")});
+
+	for (FStateTreeExternalDataDesc& DataDesc : ContextDataDescs)
+	{
+		if (DataDesc.Name == UE::GameplayInteraction::Names::SmartObjectActor
+			|| DataDesc.Name == FName(TEXT("InteractionOptionTag")))
+		{
+			DataDesc.Requirement = EStateTreeExternalDataRequirement::Optional;
+		}
+	}
 }
 
 bool UArcGameplayInteractionStateTreeSchema::IsStructAllowed(const UScriptStruct* InScriptStruct) const
 {
-	// Allow everything the parent GameplayInteraction schema allows, plus Mass node types
-	return Super::IsStructAllowed(InScriptStruct)
-		|| InScriptStruct->IsChildOf(FMassStateTreeEvaluatorBase::StaticStruct())
-		|| InScriptStruct->IsChildOf(FMassStateTreeTaskBase::StaticStruct())
-		|| InScriptStruct->IsChildOf(FMassStateTreeConditionBase::StaticStruct())
-		|| InScriptStruct->IsChildOf(FStateTreePropertyFunctionBase::StaticStruct());
+	return InScriptStruct->IsChildOf(FStateTreeConditionCommonBase::StaticStruct())
+		|| InScriptStruct->IsChildOf(FStateTreeTaskCommonBase::StaticStruct())
+		|| InScriptStruct->IsChildOf(FStateTreeEvaluatorCommonBase::StaticStruct())
+		|| InScriptStruct->IsChildOf(FStateTreePropertyFunctionBase::StaticStruct())
+		|| InScriptStruct->IsChildOf(FGameplayInteractionStateTreeTask::StaticStruct())
+		|| InScriptStruct->IsChildOf(FGameplayInteractionStateTreeCondition::StaticStruct())
+		|| InScriptStruct->IsChildOf(FArcGameplayInteractionMassTaskBase::StaticStruct())
+		|| InScriptStruct->IsChildOf(FArcGameplayInteractionMassConditionBase::StaticStruct())
+		|| InScriptStruct->IsChildOf(FArcGameplayInteractionMassEvaluatorBase::StaticStruct());
+}
+
+bool UArcGameplayInteractionStateTreeSchema::IsClassAllowed(const UClass* InClass) const
+{
+	return false;
 }
 
 bool UArcGameplayInteractionStateTreeSchema::IsExternalItemAllowed(const UStruct& InStruct) const

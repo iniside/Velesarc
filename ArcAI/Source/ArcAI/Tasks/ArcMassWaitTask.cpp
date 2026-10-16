@@ -1,9 +1,10 @@
 ﻿#include "ArcMassWaitTask.h"
 
-#include "MassCommands.h"
+#include "Mass/Commands.h"
 #include "MassCommonTypes.h"
 #include "MassEntitySubsystem.h"
-#include "MassExecutionContext.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassNavigationTypes.h"
 #include "MassSignalSubsystem.h"
 #include "MassStateTreeExecutionContext.h"
@@ -104,6 +105,8 @@ void UArcMassWaitTaskProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMassWaitTask);
 
 	TArray<FMassEntityHandle> EntitiesToSignalPathDone;
 

@@ -83,7 +83,7 @@ void UArcSettingsCategoryList::BuildList()
         const TSubclassOf<UUserWidget>* WidgetClassPtr = SettingsAsset->WidgetMapping.Find(VM->GetClass());
         if (!WidgetClassPtr || !*WidgetClassPtr)
         {
-            UE_LOG(LogTemp, Warning, TEXT("ArcSettingsCategoryList: No widget mapping for ViewModel class '%s' (setting '%s')"),
+            UE_LOGF(LogTemp, Warning,"ArcSettingsCategoryList: No widget mapping for ViewModel class '%ls' (setting '%ls')",
                 *VM->GetClass()->GetName(), *Tag.ToString());
             continue;
         }

@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "StateTreeConsiderationBase.h"
-#include "Considerations/StateTreeCommonConsiderations.h"
+#include "Math/ArcResponseCurve.h"
 #include "ArcTimeOfDayConsideration.generated.h"
 
 USTRUCT()
@@ -37,7 +37,7 @@ protected:
 public:
 	/** Maps normalized time-of-day [0,1] to a [0,1] score. X: 0.0=midnight, 0.25=6:00, 0.5=noon, 0.75=18:00, 1.0=midnight. */
 	UPROPERTY(EditAnywhere, Category = "Default")
-	FStateTreeConsiderationResponseCurve ResponseCurve;
+	FArcResponseCurve ResponseCurve;
 
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;

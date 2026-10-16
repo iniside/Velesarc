@@ -3,7 +3,7 @@
 #include "ArcMassTickStateTreeTask.h"
 
 #include "ArcMassStateTreeTickProcessor.h"
-#include "MassCommands.h"
+#include "Mass/Commands.h"
 #include "MassStateTreeExecutionContext.h"
 
 FArcMassTickStateTreeTask::FArcMassTickStateTreeTask()

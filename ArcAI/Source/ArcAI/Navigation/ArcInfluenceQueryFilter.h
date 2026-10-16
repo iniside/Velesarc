@@ -12,6 +12,7 @@
 #include "ArcInfluenceQueryFilter.generated.h"
 
 class UArcInfluenceMappingSubsystem;
+struct FArcInfluenceTiledGrid;
 
 // ---------------------------------------------------------------------------
 // FArcInfluenceRecastQueryFilter
@@ -33,7 +34,10 @@ public:
 
 	// -- Configuration (set before pathfinding) ------------------------------
 
-	/** The influence map subsystem to sample. Must outlive the query. */
+	/**
+	 * The influence map subsystem to sample. A path retains its query filter for as long as the
+	 * path lives, so this must outlive every path built with it, not merely the FindPath call.
+	 */
 	const UArcInfluenceMappingSubsystem* InfluenceSubsystem = nullptr;
 
 	/** Which influence grid index to sample (matches project settings order). */
@@ -41,6 +45,16 @@ public:
 
 	/** Which channel within the grid to sample. */
 	int32 Channel = 0;
+
+	/**
+	 * Tiled visibility grid, resolved when the query starts. When set it replaces the subsystem
+	 * channel sample. Same lifetime rule as InfluenceSubsystem — it points into the subsystem's
+	 * grid array, which is sized once and stable for the world's lifetime.
+	 */
+	const FArcInfluenceTiledGrid* TiledGrid = nullptr;
+
+	/** Team of the entity requesting the path. Only bitplanes keyed by a different team penalise a cell. */
+	int32 QuerierTeamId = INDEX_NONE;
 
 	/** Multiplier applied to the sampled influence value before adding to cost.
 	 *  Final cost = BaseCost * (1 + SampledInfluence * CostMultiplier).

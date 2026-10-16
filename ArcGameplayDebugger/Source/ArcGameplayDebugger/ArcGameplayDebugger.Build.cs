@@ -8,11 +8,7 @@ public class ArcGameplayDebugger : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		SetupIrisSupport(Target);
-		PublicIncludePaths.AddRange(
-			new string[] {
-				// ... add public include paths required here ...
-			}
-			);
+		PublicIncludePaths.Add(ModuleDirectory);
 				
 		
 		PrivateIncludePaths.AddRange(
@@ -31,7 +27,6 @@ public class ArcGameplayDebugger : ModuleRules
 				"ArcGun",
 				"ArcCraft",
 				"GameplayTags",
-				"GameplayAbilities",
 				"ImGui",
 				"InputCore",
 				"EnhancedInput",
@@ -39,7 +34,10 @@ public class ArcGameplayDebugger : ModuleRules
 				"UMG",
 				"ArcBuilder",
 				"ArcAI",
+				"ArcTactics",
 				"MassEntity",
+				"MassCore",
+				"MassSimulation",
 				"MassSpawner",
 				"MassCommon",
 				"MassActors",
@@ -49,16 +47,32 @@ public class ArcGameplayDebugger : ModuleRules
 				"MassMovement",
 				"StateTreeModule",
 				"ArcMass",
+				"ArcMassRender",
 				"ArcKnowledge",
 				"ArcArea",
 				"SmartObjectsModule",
-				"StructUtils",
+				"MassSmartObjects",
 				"ArcPersistence",
 				"AsyncMessageSystem",
 				"MassSignals",
 				"ArcGameplayInteraction",
-				"ArcConditionEffects",
-				"ArcNeeds"
+				"ArcNeeds",
+				"ArcWeather",
+				"MassEngine",
+				"InteractableInterface",
+				"PhysicsCore",
+				"ArcTargetQuery",
+				"ArcTargeting",
+				"DebugDraw",
+				"ArcWorldSim",
+				"ArcMassAbilities",
+				"ArcAbilityKit",
+				"ArcMassGameplayFramework",
+				"ArcMassItemsRuntime",
+				"NavigationSystem",
+				"AssetRegistry",
+				"GameplayBehaviorsModule",
+				"GameFeatures"
 
 				// ... add other public dependencies that you statically link with here ...
 			}
@@ -77,10 +91,22 @@ public class ArcGameplayDebugger : ModuleRules
 				"SlateCore",
 				"SlateIM",
 				"ArcCore",
-				"ArcGun"
-				// ... add private dependencies that you statically link with here ...	
+				"ArcGun",
+				"TraceLog",
+				"Json"
+				// ... add private dependencies that you statically link with here ...
 			}
 			);
+
+		if (Target.bBuildDeveloperTools)
+		{
+			PrivateDependencyModuleNames.Add("TraceAnalysis");
+			PrivateDefinitions.Add("WITH_ARC_TACTICS_TRACE_ANALYSIS=1");
+		}
+		else
+		{
+			PrivateDefinitions.Add("WITH_ARC_TACTICS_TRACE_ANALYSIS=0");
+		}
 
 		if (Target.Type == TargetRules.TargetType.Editor)
 		{

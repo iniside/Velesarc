@@ -1,7 +1,7 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "UtilityAI/Considerations/ArcUtilityConsideration_Need.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "Fragments/ArcNeedFragment.h"
 
 static float ReadNeedValue(const FMassEntityManager* EntityManager, FMassEntityHandle EntityHandle, const UScriptStruct* NeedType, float MaxNeedValue)
@@ -31,12 +31,12 @@ static float ReadNeedValue(const FMassEntityManager* EntityManager, FMassEntityH
 	return FMath::Clamp(NeedFragment->CurrentValue / MaxNeedValue, 0.0f, 1.0f);
 }
 
-float FArcUtilityConsideration_TargetNeed::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+FArcUtilityConsiderationResult FArcUtilityConsideration_TargetNeed::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
-	return ReadNeedValue(Context.EntityManager, Target.EntityHandle, NeedType, MaxNeedValue);
+	return FArcUtilityConsiderationResult::Accept(ReadNeedValue(Context.EntityManager, Target.EntityHandle, NeedType, MaxNeedValue));
 }
 
-float FArcUtilityConsideration_OwnerNeed::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+FArcUtilityConsiderationResult FArcUtilityConsideration_OwnerNeed::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
-	return ReadNeedValue(Context.EntityManager, Context.QuerierEntity, NeedType, MaxNeedValue);
+	return FArcUtilityConsiderationResult::Accept(ReadNeedValue(Context.EntityManager, Context.QuerierEntity, NeedType, MaxNeedValue));
 }

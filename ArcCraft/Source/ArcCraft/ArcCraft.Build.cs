@@ -40,7 +40,6 @@ public class ArcCraft : ModuleRules
 				"ArcCore",
 				"InteractableInterface",
 				"GameplayTags",
-				"GameplayAbilities",
 				"GameplayTasks",
 				"InputCore",
 				"Engine",
@@ -48,14 +47,19 @@ public class ArcCraft : ModuleRules
 				"SlateCore",
 				"IrisCore",
 				"Iris",
-				"StructUtils",
-				"Chooser",
-				"ArcJson",
 				"SlateIM",
 				"MassEntity",
+				"MassCore",
 				"MassCommon",
+				"MassSignals",
 				"ArcMass",
-				"MassSpawner"
+				"MassSpawner",
+				"ArcMassItemsRuntime",
+				"ArcMassAbilities",
+				"ArcAbilityKit",
+				"ArcMassGameplayFramework",
+				"ArcMassReplicationRuntime",
+				"DeveloperSettings"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

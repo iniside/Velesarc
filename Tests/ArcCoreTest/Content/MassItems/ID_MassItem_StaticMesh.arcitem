@@ -1,0 +1,10 @@
+{
+  "ItemId": "5A02BBB9474AFFDC340449BC3EAF0181",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_StaticMeshAttachment",
+      "AttachTags": [],
+      "StaticMeshAttachClass": "/Game/Fab/VFX/___LinkChainVFX/Demo/Geometry/Meshes/1M_Cube.1M_Cube"
+    }
+  ]
+}

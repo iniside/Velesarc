@@ -26,6 +26,7 @@
 #include "ArcRandomPoolSelectionMode.generated.h"
 
 struct FArcRandomPoolEntry;
+struct FRandomStream;
 
 /**
  * Context data passed to selection mode implementations.
@@ -43,8 +44,11 @@ struct FArcRandomPoolSelectionContext
 	/** Effective weight for each eligible entry (parallel to EligibleIndices). */
 	const TArray<float>& EffectiveWeights;
 
-	/** Average quality across all ingredient slots. */
-	float AverageQuality = 1.0f;
+	/** Average R across all ingredient slots. */
+	float AverageR = 1.0f;
+
+	/** The craft's stream; every pick draws from it. */
+	const FRandomStream& Stream;
 };
 
 /**
@@ -52,20 +56,20 @@ struct FArcRandomPoolSelectionContext
  * Subclasses implement Select() to determine which entries are chosen.
  * Uses instanced struct polymorphism for extensibility.
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (Tooltip = "Base struct for random pool selection strategies; subclasses implement Select() to determine which entries are chosen."))
 struct ARCCRAFT_API FArcRandomPoolSelectionMode
 {
 	GENERATED_BODY()
 
 public:
-	/** If false, the same entry cannot be selected more than once per evaluation. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection",
+		meta = (Tooltip = "If false, the same entry cannot be selected more than once per evaluation."))
 	bool bAllowDuplicates = false;
 
 	/**
 	 * Select entries from the pool based on the given context.
 	 *
-	 * @param Context        Pre-computed eligibility, weights, and quality data.
+	 * @param Context        Pre-computed eligibility, weights, and R data.
 	 * @param OutSelectedIndices   Output: indices into Context.Entries of selected entries.
 	 */
 	virtual void Select(
@@ -90,28 +94,27 @@ protected:
 /**
  * Simple weighted random selection.
  * Rolls a configurable number of times, each time picking one entry by weight.
- * Quality can grant bonus selections.
+ * R can grant bonus selections.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Simple Random"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Simple Random", Tooltip = "Simple weighted random selection; rolls a configurable number of times, each time picking one entry by weight."))
 struct ARCCRAFT_API FArcRandomPoolSelection_SimpleRandom : public FArcRandomPoolSelectionMode
 {
 	GENERATED_BODY()
 
 public:
-	/** Number of entries to select. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection",
-		meta = (ClampMin = 1))
+		meta = (ClampMin = 1, Tooltip = "Number of entries to select."))
 	int32 MaxSelections = 1;
 
-	/** If true, quality above QualityBonusThreshold grants additional selections. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection|Quality")
-	bool bQualityAffectsSelections = false;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection|R",
+		meta = (Tooltip = "If true, R above RBonusThreshold grants additional selections."))
+	bool bRAffectsSelections = false;
 
 	/** Each full multiple of this threshold adds one bonus selection.
-	 *  BonusSelections = floor(AverageQuality / QualityBonusThreshold). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection|Quality",
-		meta = (EditCondition = "bQualityAffectsSelections", ClampMin = "0.01"))
-	float QualityBonusThreshold = 2.0f;
+	 *  BonusSelections = floor(AverageR / RBonusThreshold). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection|R",
+		meta = (EditCondition = "bRAffectsSelections", ClampMin = "0.01"))
+	float RBonusThreshold = 2.0f;
 
 	virtual void Select(
 		const FArcRandomPoolSelectionContext& Context,
@@ -120,25 +123,24 @@ public:
 
 /**
  * Budget-based selection.
- * A point budget is derived from quality. Entries are selected by weighted random
+ * A point budget is derived from R. Entries are selected by weighted random
  * as long as their cost fits within the remaining budget.
  */
-USTRUCT(BlueprintType, meta = (DisplayName = "Budget"))
+USTRUCT(BlueprintType, meta = (DisplayName = "Budget", Tooltip = "Budget-based selection; a point budget is derived from R and entries are selected by weighted random until budget is exhausted."))
 struct ARCCRAFT_API FArcRandomPoolSelection_Budget : public FArcRandomPoolSelectionMode
 {
 	GENERATED_BODY()
 
 public:
-	/** Base budget points available for entry selection. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection|Budget",
-		meta = (ClampMin = "0.0"))
+		meta = (ClampMin = "0.0", Tooltip = "Base budget points available for entry selection."))
 	float BaseBudget = 3.0f;
 
-	/** Additional budget per unit of average quality above 1.0.
-	 *  TotalBudget = BaseBudget + max(0, AverageQuality - 1.0) * BudgetPerQuality. */
+	/** Additional budget per unit of average R above 1.0.
+	 *  TotalBudget = BaseBudget + max(0, AverageR - 1.0) * BudgetPerR. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Selection|Budget",
 		meta = (ClampMin = "0.0"))
-	float BudgetPerQuality = 1.0f;
+	float BudgetPerR = 1.0f;
 
 	/** Maximum number of entries that can be selected regardless of remaining budget.
 	 *  0 = unlimited. */

@@ -4,14 +4,16 @@
 
 #if WITH_GAMEPLAY_DEBUGGER
 
-#include "ArcMassEntityVisualization.h"
-#include "ArcMassLifecycle.h"
+#include "ArcMass/Visualization/ArcMassEntityVisualization.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
+#include "ArcMass/Lifecycle/ArcMassLifecycle.h"
 #include "CanvasItem.h"
 #include "GameFramework/PlayerController.h"
 #include "MassCommonFragments.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "MassEntitySubsystem.h"
-#include "MassExecutionContext.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -19,24 +21,21 @@
 namespace ArcMassDebugColors
 {
 	// Cell states
-	static const FColor CellActive     = FColor(50, 200, 50, 180);   // green – actor vis
-	static const FColor CellInactive   = FColor(200, 200, 50, 140);  // yellow – ISM vis
-	static const FColor CellEmpty      = FColor(120, 120, 120, 80);  // grey – entities but no vis
-	static const FColor CellFloorActive   = FColor(30, 140, 30, 40);
-	static const FColor CellFloorInactive = FColor(140, 140, 30, 30);
-	static const FColor CellFloorEmpty    = FColor(80, 80, 80, 20);
+	static const FColor CellActive       = FColor(50, 200, 50, 180);   // green – mesh + physics active
+	static const FColor CellHysteresis   = FColor(100, 180, 200, 160); // cyan – in hysteresis gap (keeping current state)
+	static const FColor CellInactive     = FColor(200, 200, 50, 140);  // yellow – outside deactivation range
+	static const FColor CellEmpty        = FColor(120, 120, 120, 80);  // grey – entities but no vis
+	static const FColor CellFloorActive     = FColor(30, 140, 30, 40);
+	static const FColor CellFloorHysteresis = FColor(40, 100, 120, 30);
+	static const FColor CellFloorInactive   = FColor(140, 140, 30, 30);
+	static const FColor CellFloorEmpty      = FColor(80, 80, 80, 20);
 
 	// Entity shapes
 	static const FColor EntityActor    = FColor(80, 180, 255);       // blue – actor representation
-	static const FColor EntityISM      = FColor(255, 160, 40);       // orange – ISM representation
+	static const FColor EntityMesh     = FColor(255, 160, 40);       // orange – MassEngine mesh representation
 	static const FColor EntityNoVis    = FColor(180, 180, 180);      // grey – no vis
+	static const FColor PhysicsActive  = FColor(50, 255, 50);        // green – physics body attached
 
-	// Lifecycle
-	static const FColor PhaseStart     = FColor(200, 200, 200);
-	static const FColor PhaseGrowing   = FColor(100, 220, 100);
-	static const FColor PhaseGrown     = FColor(50, 180, 50);
-	static const FColor PhaseDying     = FColor(220, 120, 50);
-	static const FColor PhaseDead      = FColor(200, 40, 40);
 }
 
 // ---------------------------------------------------------------------------
@@ -44,30 +43,24 @@ namespace ArcMassDebugColors
 // ---------------------------------------------------------------------------
 namespace
 {
-	const TCHAR* LifecyclePhaseName(EArcLifecyclePhase Phase)
+	FString LifecyclePhaseName(uint8 Phase)
 	{
-		switch (Phase)
-		{
-		case EArcLifecyclePhase::Start:   return TEXT("Start");
-		case EArcLifecyclePhase::Growing: return TEXT("Growing");
-		case EArcLifecyclePhase::Grown:   return TEXT("Grown");
-		case EArcLifecyclePhase::Dying:   return TEXT("Dying");
-		case EArcLifecyclePhase::Dead:    return TEXT("Dead");
-		default:                          return TEXT("?");
-		}
+		return FString::Printf(TEXT("Phase %d"), Phase);
 	}
 
-	FColor GetLifecycleColor(EArcLifecyclePhase Phase)
+	FColor GetLifecycleColor(uint8 Phase)
 	{
-		switch (Phase)
-		{
-		case EArcLifecyclePhase::Start:   return ArcMassDebugColors::PhaseStart;
-		case EArcLifecyclePhase::Growing: return ArcMassDebugColors::PhaseGrowing;
-		case EArcLifecyclePhase::Grown:   return ArcMassDebugColors::PhaseGrown;
-		case EArcLifecyclePhase::Dying:   return ArcMassDebugColors::PhaseDying;
-		case EArcLifecyclePhase::Dead:    return ArcMassDebugColors::PhaseDead;
-		default:                          return FColor::White;
-		}
+		static const FColor Palette[] = {
+			FColor(180, 180, 180), // grey
+			FColor(100, 200, 100), // green
+			FColor(100, 200, 100), // green
+			FColor(220, 200, 50),  // yellow
+			FColor(220, 80, 80),   // red
+			FColor(150, 150, 255), // blue
+			FColor(200, 150, 255), // purple
+		};
+		static const int32 PaletteSize = UE_ARRAY_COUNT(Palette);
+		return Palette[Phase % PaletteSize];
 	}
 }
 
@@ -122,24 +115,28 @@ void FGameplayDebuggerCategory_ArcMass::CollectData(APlayerController* OwnerPC, 
 
 	if (VisSub)
 	{
-		const FArcVisualizationGrid& Grid = VisSub->GetGrid();
-		const int32 TotalCells = Grid.CellEntities.Num();
-		const float CellSize = Grid.CellSize;
-		const FIntVector PlayerCell = VisSub->GetLastPlayerCell();
-		const int32 SwapRadiusCells = VisSub->GetSwapRadiusCells();
+		const FArcVisualizationGrid& MeshGrid = VisSub->GetMeshGrid();
+		const int32 TotalCells = MeshGrid.CellEntities.Num();
+		const float CellSize = MeshGrid.CellSize;
+		const FIntVector PlayerCell = VisSub->GetLastMeshPlayerCell();
+		const int32 ActivationRadiusCells = VisSub->GetMeshActivationRadiusCells();
 
-		AddTextLine(FString::Printf(TEXT("{green}Grid Cells: {white}%d  {green}Cell Size: {white}%.0f"), TotalCells, CellSize));
-		AddTextLine(FString::Printf(TEXT("{green}Player Cell: {white}(%d, %d, %d)  {green}Swap Radius: {white}%.0f ({white}%d cells)"),
-			PlayerCell.X, PlayerCell.Y, PlayerCell.Z, VisSub->GetSwapRadius(), SwapRadiusCells));
+		const int32 DeactivationRadiusCells = VisSub->GetMeshDeactivationRadiusCells();
+
+		AddTextLine(FString::Printf(TEXT("{green}Mesh Grid Cells: {white}%d  {green}Cell Size: {white}%.0f"), TotalCells, CellSize));
+		AddTextLine(FString::Printf(TEXT("{green}Mesh Player Cell: {white}(%d, %d, %d)  {green}Activation: {white}%.0f (%d cells)  {cyan}Deactivation: {white}%.0f (%d cells)"),
+			PlayerCell.X, PlayerCell.Y, PlayerCell.Z,
+			VisSub->GetMeshActivationRadius(), ActivationRadiusCells,
+			VisSub->GetMeshDeactivationRadius(), DeactivationRadiusCells));
 
 		// Count active / inactive / empty cells
 		int32 ActiveCells = 0;
 		int32 InactiveCells = 0;
 		int32 EmptyCells = 0;
 
-		for (const auto& CellPair : Grid.CellEntities)
+		for (const TPair<FIntVector, TArray<FMassEntityHandle>>& CellPair : MeshGrid.CellEntities)
 		{
-			const bool bIsActive = VisSub->IsActiveCellCoord(CellPair.Key);
+			const bool bIsActive = VisSub->IsMeshActiveCellCoord(CellPair.Key);
 			const int32 EntityCount = CellPair.Value.Num();
 
 			if (EntityCount == 0)
@@ -165,11 +162,12 @@ void FGameplayDebuggerCategory_ArcMass::CollectData(APlayerController* OwnerPC, 
 		{
 			CollectCellData(*VisSub, EntityManager, ViewLocation);
 
-			// --- Swap radius rings around player ---
-			// The swap radius is the distance at which entities switch between
-			// actor (close) and ISM (far) representation. Draw concentric
-			// circles on the ground plane so the boundary is clearly visible.
-			const float SwapRadius = VisSub->GetSwapRadius();
+			// --- Activation/deactivation radius rings around player ---
+			// The activation radius is the distance at which cells are enabled (actor representation).
+			// The deactivation radius is the hysteresis boundary beyond which cells are disabled.
+			// Draw concentric circles on the ground plane so the boundaries are clearly visible.
+			const float ActivationRadius = VisSub->GetMeshActivationRadius();
+			const float DeactivationRadius = VisSub->GetMeshDeactivationRadius();
 			const FVector PlayerWorldPos(
 				PlayerCell.X * CellSize + CellSize * 0.5f,
 				PlayerCell.Y * CellSize + CellSize * 0.5f,
@@ -177,13 +175,13 @@ void FGameplayDebuggerCategory_ArcMass::CollectData(APlayerController* OwnerPC, 
 			constexpr float RingZ = 5.f;
 			const FVector RingCenter = FVector(PlayerWorldPos.X, PlayerWorldPos.Y, ViewLocation.Z + RingZ);
 
-			// Inner ring: swap radius (actor ↔ ISM boundary)
-			AddShape(FGameplayDebuggerShape::MakeCircle(RingCenter, FVector::UpVector, SwapRadius, 3.f,
-				FColor(50, 200, 50, 200), TEXT("Actor Vis")));
+			// Inner ring: activation radius (mesh + physics enabled inside)
+			AddShape(FGameplayDebuggerShape::MakeCircle(RingCenter, FVector::UpVector, ActivationRadius, 3.f,
+				FColor(50, 200, 50, 200), TEXT("Activation")));
 
-			// Outer ring at 1.5× swap radius for context
-			AddShape(FGameplayDebuggerShape::MakeCircle(RingCenter, FVector::UpVector, SwapRadius * 1.5f, 2.f,
-				FColor(200, 200, 50, 140), TEXT("ISM Vis")));
+			// Outer ring: deactivation radius (hysteresis boundary — entities keep state between rings)
+			AddShape(FGameplayDebuggerShape::MakeCircle(RingCenter, FVector::UpVector, DeactivationRadius, 2.f,
+				FColor(100, 180, 200, 180), TEXT("Deactivation")));
 
 			// Small center marker at player cell
 			AddShape(FGameplayDebuggerShape::MakePoint(RingCenter, 12.f, FColor(255, 255, 255, 220)));
@@ -209,8 +207,8 @@ void FGameplayDebuggerCategory_ArcMass::CollectCellData(
 	FMassEntityManager& EntityManager,
 	const FVector& ViewLocation)
 {
-	const FArcVisualizationGrid& Grid = VisSub.GetGrid();
-	const float CellSize = Grid.CellSize;
+	const FArcVisualizationGrid& MeshGrid = VisSub.GetMeshGrid();
+	const float CellSize = MeshGrid.CellSize;
 	constexpr float MaxDrawDistance = 30000.f;
 	const float MaxDrawDistanceSq = MaxDrawDistance * MaxDrawDistance;
 	constexpr float CornerPostHeight = 250.f;
@@ -218,7 +216,7 @@ void FGameplayDebuggerCategory_ArcMass::CollectCellData(
 	constexpr float EdgeThickness = 3.f;
 	constexpr float CornerPostThickness = 4.f;
 
-	for (const auto& CellPair : Grid.CellEntities)
+	for (const TPair<FIntVector, TArray<FMassEntityHandle>>& CellPair : MeshGrid.CellEntities)
 	{
 		const FIntVector& CellCoord = CellPair.Key;
 		const TArray<FMassEntityHandle>& Entities = CellPair.Value;
@@ -237,7 +235,14 @@ void FGameplayDebuggerCategory_ArcMass::CollectCellData(
 			continue;
 		}
 
-		const bool bIsActive = VisSub.IsActiveCellCoord(CellCoord);
+		const bool bIsActive = VisSub.IsMeshActiveCellCoord(CellCoord);
+		const int32 DX = FMath::Abs(CellCoord.X - VisSub.GetLastMeshPlayerCell().X);
+		const int32 DY = FMath::Abs(CellCoord.Y - VisSub.GetLastMeshPlayerCell().Y);
+		const int32 DZ = FMath::Abs(CellCoord.Z - VisSub.GetLastMeshPlayerCell().Z);
+		const bool bIsOutsideDeactivation = DX > VisSub.GetMeshDeactivationRadiusCells()
+			|| DY > VisSub.GetMeshDeactivationRadiusCells()
+			|| DZ > VisSub.GetMeshDeactivationRadiusCells();
+		const bool bIsInHysteresis = !bIsActive && !bIsOutsideDeactivation;
 		const int32 EntityCount = Entities.Num();
 
 		// --- Determine cell state ---
@@ -259,6 +264,13 @@ void FGameplayDebuggerCategory_ArcMass::CollectCellData(
 			FloorColor = ArcMassDebugColors::CellFloorActive;
 			PostColor  = FColor(30, 180, 30, 200);
 			StateLabel = TEXT("Active");
+		}
+		else if (bIsInHysteresis)
+		{
+			EdgeColor  = ArcMassDebugColors::CellHysteresis;
+			FloorColor = ArcMassDebugColors::CellFloorHysteresis;
+			PostColor  = FColor(60, 140, 160, 180);
+			StateLabel = TEXT("Hysteresis");
 		}
 		else
 		{
@@ -308,12 +320,17 @@ void FGameplayDebuggerCategory_ArcMass::CollectCellData(
 		FString CellInfo;
 		if (bIsActive)
 		{
-			CellInfo = FString::Printf(TEXT("{green}[%d,%d] %s\n{white}%d entities (Actor)"),
+			CellInfo = FString::Printf(TEXT("{green}[%d,%d] %s\n{white}%d entities (Mesh+Phys)"),
+				CellCoord.X, CellCoord.Y, *StateLabel, EntityCount);
+		}
+		else if (bIsInHysteresis && EntityCount > 0)
+		{
+			CellInfo = FString::Printf(TEXT("{cyan}[%d,%d] %s\n{white}%d entities (KeepState)"),
 				CellCoord.X, CellCoord.Y, *StateLabel, EntityCount);
 		}
 		else if (EntityCount > 0)
 		{
-			CellInfo = FString::Printf(TEXT("{yellow}[%d,%d] %s\n{white}%d entities (ISM)"),
+			CellInfo = FString::Printf(TEXT("{yellow}[%d,%d] %s\n{white}%d entities (Hidden)"),
 				CellCoord.X, CellCoord.Y, *StateLabel, EntityCount);
 		}
 		else
@@ -354,12 +371,12 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 
 	FMassExecutionContext Context(EntityManager, 0.f);
 	EntityQuery.ForEachEntityChunk(Context,
-		[this, &ViewLocation, &ViewDirection, MaxEntityDrawDistSq, MinViewDirDot, &VisSub](FMassExecutionContext& ExecContext)
+		[this, &EntityManager, &ViewLocation, &ViewDirection, MaxEntityDrawDistSq, MinViewDirDot, &VisSub](FMassExecutionContext& ExecContext)
 		{
 			const int32 NumEntities = ExecContext.GetNumEntities();
-			const auto TransformList = ExecContext.GetFragmentView<FTransformFragment>();
-			const auto VisRepList = ExecContext.GetFragmentView<FArcVisRepresentationFragment>();
-			const auto LifecycleList = ExecContext.GetFragmentView<FArcLifecycleFragment>();
+			TConstArrayView<FTransformFragment> TransformList = ExecContext.GetFragmentView<FTransformFragment>();
+			TConstArrayView<FArcVisRepresentationFragment> VisRepList = ExecContext.GetFragmentView<FArcVisRepresentationFragment>();
+			TConstArrayView<FArcLifecycleFragment> LifecycleList = ExecContext.GetFragmentView<FArcLifecycleFragment>();
 			const bool bHasLifecycle = LifecycleList.Num() > 0;
 
 			for (int32 i = 0; i < NumEntities; i++)
@@ -381,28 +398,19 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 				}
 
 				const FArcVisRepresentationFragment& VisRep = VisRepList[i];
-				const bool bIsActor = VisRep.bIsActorRepresentation;
 				const FMassEntityHandle Entity = ExecContext.GetEntity(i);
 
 				// --- Shape based on representation type ---
 				constexpr float ShapeSize = 30.f;
 				const FVector ShapePos = EntityLocation + FVector(0.f, 0.f, 20.f);
 
-				if (bIsActor)
+				if (VisRep.bHasMeshRendering)
 				{
-					// Diamond / capsule for actor representation
-					AddShape(FGameplayDebuggerShape::MakeCapsule(
-						ShapePos + FVector(0, 0, ShapeSize),
-						ShapeSize * 0.4f, ShapeSize,
-						ArcMassDebugColors::EntityActor));
-				}
-				else if (VisRep.ISMInstanceId != INDEX_NONE)
-				{
-					// Box for ISM representation
+					// Box for MassEngine mesh representation
 					AddShape(FGameplayDebuggerShape::MakeBox(
 						ShapePos + FVector(0, 0, ShapeSize * 0.5f),
 						FVector(ShapeSize * 0.4f),
-						ArcMassDebugColors::EntityISM));
+						ArcMassDebugColors::EntityMesh));
 				}
 				else
 				{
@@ -411,6 +419,19 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 						ShapePos,
 						8.f,
 						ArcMassDebugColors::EntityNoVis));
+				}
+
+				// Physics body indicator — green ring at entity base
+				const FArcMassPhysicsBodyFragment* PhysBodyFrag = EntityManager.GetFragmentDataPtr<FArcMassPhysicsBodyFragment>(Entity);
+				const bool bHasPhysicsBody = PhysBodyFrag && PhysBodyFrag->Body != nullptr;
+				if (bHasPhysicsBody)
+				{
+					AddShape(FGameplayDebuggerShape::MakeCircle(
+						EntityLocation + FVector(0.f, 0.f, 5.f),
+						FVector::UpVector,
+						ShapeSize * 0.6f,
+						1.5f,
+						ArcMassDebugColors::PhysicsActive));
 				}
 
 				// --- Build label text ---
@@ -425,43 +446,34 @@ void FGameplayDebuggerCategory_ArcMass::CollectEntityData(
 
 				// Entity ID and representation
 				Label += FString::Printf(TEXT("{orange}%s"), *Entity.DebugGetDescription());
-				if (bIsActor)
+				if (VisRep.bHasMeshRendering)
 				{
-					Label += TEXT(" {cyan}[Actor]");
-				}
-				else if (VisRep.ISMInstanceId != INDEX_NONE)
-				{
-					Label += FString::Printf(TEXT(" {yellow}[ISM:%d]"), VisRep.ISMInstanceId);
+					Label += TEXT(" {yellow}[MeshVis]");
 				}
 				else
 				{
 					Label += TEXT(" {grey}[NoVis]");
 				}
 
+				// Physics state
+				if (bHasPhysicsBody)
+				{
+					Label += TEXT(" {green}[Phys]");
+				}
+
 				// Cell coords
 				Label += FString::Printf(TEXT("\n{lightgrey}Cell(%d,%d,%d)"),
-					VisRep.GridCoords.X, VisRep.GridCoords.Y, VisRep.GridCoords.Z);
+					VisRep.MeshGridCoords.X, VisRep.MeshGridCoords.Y, VisRep.MeshGridCoords.Z);
 
 				// Lifecycle info
 				if (bShowLifecycle && bHasLifecycle)
 				{
 					const FArcLifecycleFragment& Lifecycle = LifecycleList[i];
-					const TCHAR* PhaseName = LifecyclePhaseName(Lifecycle.CurrentPhase);
+					const FString PhaseName = LifecyclePhaseName(Lifecycle.CurrentPhase);
 					const FColor PhaseColor = GetLifecycleColor(Lifecycle.CurrentPhase);
 
-					Label += FString::Printf(TEXT("\n{white}Phase: "));
-
-					// Color-code the phase name
-					switch (Lifecycle.CurrentPhase)
-					{
-					case EArcLifecyclePhase::Start:   Label += FString::Printf(TEXT("{lightgrey}%s"), PhaseName); break;
-					case EArcLifecyclePhase::Growing: Label += FString::Printf(TEXT("{green}%s"), PhaseName); break;
-					case EArcLifecyclePhase::Grown:   Label += FString::Printf(TEXT("{green}%s"), PhaseName); break;
-					case EArcLifecyclePhase::Dying:   Label += FString::Printf(TEXT("{yellow}%s"), PhaseName); break;
-					case EArcLifecyclePhase::Dead:    Label += FString::Printf(TEXT("{red}%s"), PhaseName); break;
-					default:                          Label += FString::Printf(TEXT("{white}%s"), PhaseName); break;
-					}
-
+					Label += TEXT("\n{white}Phase: ");
+					Label += FString::Printf(TEXT("{white}%s"), *PhaseName);
 					Label += FString::Printf(TEXT(" {lightgrey}%.1fs"), Lifecycle.PhaseTimeElapsed);
 				}
 
@@ -491,8 +503,8 @@ void FGameplayDebuggerCategory_ArcMass::DrawData(APlayerController* OwnerPC, FGa
 
 	// --- Legend ---
 	CanvasContext.Printf(TEXT(""));
-	CanvasContext.Printf(TEXT("{green}[Active]{white} = Actor vis  {yellow}[Inactive]{white} = ISM vis  {grey}[Empty]{white} = No vis"));
-	CanvasContext.Printf(TEXT("{cyan}Capsule{white} = Actor  {yellow}Box{white} = ISM  {grey}Point{white} = None"));
+	CanvasContext.Printf(TEXT("{green}[Active]{white} = Mesh+Phys  {cyan}[Hysteresis]{white} = Keep state  {yellow}[Inactive]{white} = Hidden  {grey}[Empty]{white} = No entities"));
+	CanvasContext.Printf(TEXT("{cyan}Capsule{white} = Actor  {yellow}Box{white} = Mesh  {grey}Point{white} = None  {green}Ring{white} = Physics"));
 
 	// --- Render world-space labels ---
 	// Sort by distance (closest first = most important)

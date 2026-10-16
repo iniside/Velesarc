@@ -1,5 +1,6 @@
 ﻿#include "ArcMassRemoveGameplayTagsFromEntityTask.h"
 
+#include "Abilities/ArcAbilityFunctions.h"
 #include "MassStateTreeDependency.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeLinker.h"
@@ -20,7 +21,7 @@ bool FArcMassRemoveGameplayTagsFromEntityTask::Link(FStateTreeLinker& Linker)
 
 void FArcMassRemoveGameplayTagsFromEntityTask::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
-	Builder.AddReadWrite<FArcMassGameplayTagContainerFragment>();
+	Builder.AddReadWrite<FArcOwnedTagsFragment>();
 }
 
 EStateTreeRunStatus FArcMassRemoveGameplayTagsFromEntityTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
@@ -28,13 +29,13 @@ EStateTreeRunStatus FArcMassRemoveGameplayTagsFromEntityTask::EnterState(FStateT
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
 	FMassStateTreeExecutionContext& MassCtx = static_cast<FMassStateTreeExecutionContext&>(Context);
-	FArcMassGameplayTagContainerFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
+	FArcOwnedTagsFragment* MassTags = MassCtx.GetExternalDataPtr(MassGameplayTagsHandle);
 	if (!MassTags)
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	MassTags->Tags.RemoveTags(InstanceData.Tags);
+	ArcAbilities::RemoveOwnedTags(MassCtx.GetEntityManager(), MassCtx.GetEntity(), InstanceData.Tags);
 
 	return EStateTreeRunStatus::Succeeded;
 }

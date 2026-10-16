@@ -1,0 +1,28 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcPersistence Tests",
+	"Description": "CQTest module covering ArcPersistence.",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcPersistenceTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor", "Program" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcPersistence", "Enabled": true },
+		{ "Name": "ArcJson", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

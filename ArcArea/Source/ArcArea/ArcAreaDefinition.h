@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
-#include "ArcAreaSlotDefinition.h"
 #include "ArcAreaDefinition.generated.h"
 
 /**
@@ -25,8 +24,4 @@ public:
 	/** Tags describing this area type (e.g., "Area.Forge", "Area.Market"). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Area")
 	FGameplayTagContainer AreaTags;
-
-	/** Slot definitions — each slot is one NPC work position. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Area")
-	TArray<FArcAreaSlotDefinition> Slots;
 };

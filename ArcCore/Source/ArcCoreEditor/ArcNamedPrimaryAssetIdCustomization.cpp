@@ -33,6 +33,10 @@
 #include "AssetThumbnail.h"
 #include "ScopedTransaction.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Input/SSearchableComboBox.h"
+#include "DetailWidgetRow.h"
+#include "PropertyHandle.h"
 
 #define LOCTEXT_NAMESPACE "PrimaryAssetIdCustomization"
 namespace Arcx::Editor
@@ -119,6 +123,22 @@ void FArcNamedPrimaryAssetIdCustomization::CustomizeHeader(TSharedRef<class IPro
 
 			AllowedTypes.Add(*TypeName);
 		}
+	}
+
+	if (HasSourcesForAllowedTypes())
+	{
+		HeaderRow
+		.NameContent()
+		[
+			InStructPropertyHandle->CreatePropertyNameWidget()
+		]
+		.ValueContent()
+		.MinDesiredWidth(250.0f)
+		.MaxDesiredWidth(0.0f)
+		[
+			MakeSourceSelector(StructCustomizationUtils)
+		];
+		return;
 	}
 
 	bool bShowThumbnail = true;
@@ -363,6 +383,247 @@ void FArcNamedPrimaryAssetIdCustomization::OnOpenAssetEditor()
 void FArcNamedPrimaryAssetIdCustomization::OnClear()
 {
 	OnIdSelected(FPrimaryAssetId());
+}
+
+bool FArcNamedPrimaryAssetIdCustomization::HasSourcesForAllowedTypes() const
+{
+	if (AllowedTypes.IsEmpty())
+	{
+		return false;
+	}
+	for (const FPrimaryAssetType& Type : AllowedTypes)
+	{
+		if (ArcPrimaryAssetIdSources::Find(Type) == nullptr)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+TSharedRef<SWidget> FArcNamedPrimaryAssetIdCustomization::MakeSourceSelector(IPropertyTypeCustomizationUtils& StructCustomizationUtils)
+{
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.0f)
+		.VAlign(VAlign_Center)
+		[
+			SAssignNew(SourceComboBox, SSearchableComboBox)
+			.OptionsSource(&SourceOptions)
+			.OnComboBoxOpening(this, &FArcNamedPrimaryAssetIdCustomization::RefreshSourceOptions)
+			.OnGenerateWidget(this, &FArcNamedPrimaryAssetIdCustomization::MakeSourceOptionWidget)
+			.OnSelectionChanged(this, &FArcNamedPrimaryAssetIdCustomization::OnSourceSelectionChanged)
+			.IsEnabled(this, &FArcNamedPrimaryAssetIdCustomization::IsSourceSelectorEditable)
+			[
+				SNew(STextBlock)
+				.Text(this, &FArcNamedPrimaryAssetIdCustomization::GetSourceDisplayText)
+				.ToolTipText(this, &FArcNamedPrimaryAssetIdCustomization::GetDisplayTooltipText)
+				.Font(StructCustomizationUtils.GetRegularFont())
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(2.0f, 0.0f)
+		[
+			SNew(SBox)
+			.Visibility(this, &FArcNamedPrimaryAssetIdCustomization::GetSourceBrowseVisibility)
+			[
+				PropertyCustomizationHelpers::MakeBrowseButton(FSimpleDelegate::CreateSP(this, &FArcNamedPrimaryAssetIdCustomization::OnSourceBrowseTo),
+					LOCTEXT("SourceBrowseToolTip", "Browse to the referenced asset"),
+					TAttribute<bool>::CreateSP(this, &FArcNamedPrimaryAssetIdCustomization::CanSourceBrowse))
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			PropertyCustomizationHelpers::MakeClearButton(FSimpleDelegate::CreateSP(this, &FArcNamedPrimaryAssetIdCustomization::OnSourceClear),
+				LOCTEXT("SourceClearToolTip", "Clear the reference"),
+				TAttribute<bool>::CreateSP(this, &FArcNamedPrimaryAssetIdCustomization::IsSourceSelectorEditable))
+		];
+}
+
+void FArcNamedPrimaryAssetIdCustomization::RefreshSourceOptions()
+{
+	SourceOptions.Reset();
+	SourceOptionEntries.Reset();
+
+	for (const FPrimaryAssetType& Type : AllowedTypes)
+	{
+		const FArcPrimaryAssetIdSource* Source = ArcPrimaryAssetIdSources::Find(Type);
+		if (Source == nullptr)
+		{
+			continue;
+		}
+		TArray<FArcPrimaryAssetIdSourceEntry> Entries = Source->GetEntries.Execute();
+		for (FArcPrimaryAssetIdSourceEntry& Entry : Entries)
+		{
+			if (Entry.Id.IsValid())
+			{
+				SourceOptionEntries.Add(MoveTemp(Entry));
+			}
+		}
+	}
+
+	SourceOptionEntries.Sort([](const FArcPrimaryAssetIdSourceEntry& A, const FArcPrimaryAssetIdSourceEntry& B)
+	{
+		const int32 Compare = A.DisplayName.Compare(B.DisplayName, ESearchCase::IgnoreCase);
+		if (Compare != 0)
+		{
+			return Compare < 0;
+		}
+		return A.Id.LexicalLess(B.Id);
+	});
+
+	for (const FArcPrimaryAssetIdSourceEntry& Entry : SourceOptionEntries)
+	{
+		SourceOptions.Add(MakeShared<FString>(Entry.DisplayName.IsEmpty() ? Entry.Id.ToString() : Entry.DisplayName));
+	}
+
+	CachedDisplayId = FPrimaryAssetId();
+	CachedDisplayName.Reset();
+
+	if (SourceComboBox.IsValid())
+	{
+		SourceComboBox->RefreshOptions();
+	}
+}
+
+TSharedRef<SWidget> FArcNamedPrimaryAssetIdCustomization::MakeSourceOptionWidget(TSharedPtr<FString> Option) const
+{
+	const int32 Index = SourceOptions.IndexOfByKey(Option);
+	const FText TooltipText = SourceOptionEntries.IsValidIndex(Index)
+		? FText::AsCultureInvariant(SourceOptionEntries[Index].Id.ToString())
+		: FText::GetEmpty();
+
+	return SNew(STextBlock)
+		.Text(FText::AsCultureInvariant(Option.IsValid() ? *Option : FString()))
+		.ToolTipText(TooltipText);
+}
+
+void FArcNamedPrimaryAssetIdCustomization::OnSourceSelectionChanged(TSharedPtr<FString> Selection, ESelectInfo::Type SelectInfo)
+{
+	if (!Selection.IsValid() || SelectInfo == ESelectInfo::Direct)
+	{
+		return;
+	}
+	const int32 Index = SourceOptions.IndexOfByKey(Selection);
+	if (!SourceOptionEntries.IsValidIndex(Index))
+	{
+		return;
+	}
+	const FArcPrimaryAssetIdSourceEntry Entry = SourceOptionEntries[Index];
+	SetIdWithDisplayName(Entry.Id, Entry.DisplayName);
+}
+
+void FArcNamedPrimaryAssetIdCustomization::SetIdWithDisplayName(const FPrimaryAssetId& AssetId, const FString& DisplayName)
+{
+	if (!AssetIdPropertyHandle.IsValid() || !AssetIdPropertyHandle->IsValidHandle())
+	{
+		return;
+	}
+
+	FScopedTransaction Transaction(LOCTEXT("SetPrimaryAssetIdFromSource", "Set Primary Asset Id"));
+	if (NamePropertyHandle.IsValid() && NamePropertyHandle->IsValidHandle())
+	{
+		NamePropertyHandle->SetValue(DisplayName);
+	}
+	AssetIdPropertyHandle->SetValueFromFormattedString(AssetId.ToString());
+
+	CachedDisplayId = AssetId;
+	CachedDisplayName = DisplayName;
+}
+
+FText FArcNamedPrimaryAssetIdCustomization::GetSourceDisplayText() const
+{
+	if (!AssetIdPropertyHandle.IsValid() || !AssetIdPropertyHandle->IsValidHandle())
+	{
+		return FText::GetEmpty();
+	}
+
+	FString IdString;
+	const FPropertyAccess::Result Result = AssetIdPropertyHandle->GetValueAsFormattedString(IdString);
+	if (Result == FPropertyAccess::MultipleValues)
+	{
+		return LOCTEXT("SourceMultipleValues", "Multiple Values");
+	}
+
+	const FPrimaryAssetId CurrentId(IdString);
+	if (!CurrentId.IsValid())
+	{
+		return LOCTEXT("SourceNone", "None");
+	}
+
+	if (CurrentId != CachedDisplayId)
+	{
+		CachedDisplayId = CurrentId;
+		CachedDisplayName.Reset();
+		const FArcPrimaryAssetIdSource* Source = ArcPrimaryAssetIdSources::Find(CurrentId.PrimaryAssetType);
+		if (Source != nullptr)
+		{
+			const TArray<FArcPrimaryAssetIdSourceEntry> Entries = Source->GetEntries.Execute();
+			for (const FArcPrimaryAssetIdSourceEntry& Entry : Entries)
+			{
+				if (Entry.Id == CurrentId)
+				{
+					CachedDisplayName = Entry.DisplayName;
+					break;
+				}
+			}
+		}
+	}
+
+	return FText::AsCultureInvariant(CachedDisplayName.IsEmpty() ? IdString : CachedDisplayName);
+}
+
+bool FArcNamedPrimaryAssetIdCustomization::IsSourceSelectorEditable() const
+{
+	return StructPropertyHandle.IsValid() && StructPropertyHandle->IsEditable();
+}
+
+bool FArcNamedPrimaryAssetIdCustomization::CanSourceBrowse() const
+{
+	const FPrimaryAssetId CurrentId = GetCurrentPrimaryAssetId();
+	if (!CurrentId.IsValid())
+	{
+		return false;
+	}
+	const FArcPrimaryAssetIdSource* Source = ArcPrimaryAssetIdSources::Find(CurrentId.PrimaryAssetType);
+	return Source != nullptr && Source->BrowseTo.IsBound();
+}
+
+EVisibility FArcNamedPrimaryAssetIdCustomization::GetSourceBrowseVisibility() const
+{
+	for (const FPrimaryAssetType& Type : AllowedTypes)
+	{
+		const FArcPrimaryAssetIdSource* Source = ArcPrimaryAssetIdSources::Find(Type);
+		if (Source != nullptr && Source->BrowseTo.IsBound())
+		{
+			return EVisibility::Visible;
+		}
+	}
+	return EVisibility::Collapsed;
+}
+
+void FArcNamedPrimaryAssetIdCustomization::OnSourceBrowseTo()
+{
+	const FPrimaryAssetId CurrentId = GetCurrentPrimaryAssetId();
+	if (!CurrentId.IsValid())
+	{
+		return;
+	}
+	const FArcPrimaryAssetIdSource* Source = ArcPrimaryAssetIdSources::Find(CurrentId.PrimaryAssetType);
+	if (Source != nullptr && Source->BrowseTo.IsBound())
+	{
+		const FArcBrowseToPrimaryAssetId BrowseTo = Source->BrowseTo;
+		BrowseTo.Execute(CurrentId);
+	}
+}
+
+void FArcNamedPrimaryAssetIdCustomization::OnSourceClear()
+{
+	SetIdWithDisplayName(FPrimaryAssetId(), FString());
 }
 
 FReply FArcNamedPrimaryAssetIdCustomization::OnAssetThumbnailDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent)

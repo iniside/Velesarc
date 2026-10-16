@@ -1,0 +1,15 @@
+{
+  "ItemId": "6EB7BA7A4B425EF1CDFC9E81715F55D8",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_GrantedMassAbilities",
+      "Abilities": [
+        {
+          "AbilityDefinition": "/ArcCoreTest/MassItems/AD_Mass_TestAbility.AD_Mass_TestAbility",
+          "InputTag": ""
+        }
+      ],
+      "bCreateInstance": true
+    }
+  ]
+}

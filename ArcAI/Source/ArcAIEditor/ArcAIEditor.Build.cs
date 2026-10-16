@@ -10,7 +10,8 @@ public class ArcAIEditor : ModuleRules
             new string[]
             {
                 "Core",
-                "ArcAI"
+                "ArcAI",
+                "ArcTargetQuery"
             }
         );
 
@@ -69,7 +70,6 @@ public class ArcAIEditor : ModuleRules
 		        "RewindDebuggerInterface",
 		        "DetailCustomizations",
 		        "AppFramework",
-		        "KismetCompiler",
 		        "ArcEditorTools"
 		        , "TraceLog"
 		        , "TraceAnalysis"

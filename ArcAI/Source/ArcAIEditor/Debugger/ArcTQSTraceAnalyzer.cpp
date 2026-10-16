@@ -52,22 +52,6 @@ bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventC
 		Record.EndTimestamp = Timestamp;
 		Record.Timestamp = Timestamp - static_cast<double>(Record.ExecutionTimeMs) / 1000.0;
 
-		// Deserialize context locations
-		TArrayView<const uint8> CtxBlob = EventData.GetArrayView<uint8>("ContextLocationsBlob");
-		if (CtxBlob.Num() > 0)
-		{
-			FMemoryReaderView CtxReader(MakeArrayView(CtxBlob.GetData(), CtxBlob.Num()));
-			int32 CtxCount = 0;
-			CtxReader << CtxCount;
-			Record.ContextLocations.Reserve(CtxCount);
-			for (int32 i = 0; i < CtxCount; ++i)
-			{
-				float X, Y, Z;
-				CtxReader << X << Y << Z;
-				Record.ContextLocations.Emplace(X, Y, Z);
-			}
-		}
-
 		// Deserialize steps
 		TArrayView<const uint8> StepsBlob = EventData.GetArrayView<uint8>("StepsBlob");
 		if (StepsBlob.Num() > 0)
@@ -82,7 +66,6 @@ bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventC
 				Step.StepIndex = i;
 				StepsReader << Step.StepName;
 				StepsReader << Step.StepKind;
-				StepsReader << Step.Weight;
 				Record.Steps.Add(MoveTemp(Step));
 			}
 		}
@@ -136,7 +119,7 @@ bool FArcTQSTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventC
 			Provider.SetInstanceDisplayName(InstanceId, QuerierName);
 		}
 
-		UE_LOG(LogArcTQSAnalyzer, Log, TEXT("[TQS Analyzer] QueryCompleted: QueryId=%d InstanceId=%llu Status=%d Items=%d Results=%d Time=[%.4f..%.4f]"),
+		UE_LOGF(LogArcTQSAnalyzer, Log, "[TQS Analyzer] QueryCompleted: QueryId=%d InstanceId=%llu Status=%d Items=%d Results=%d Time=[%.4f..%.4f]",
 			Record.QueryId, InstanceId, Record.Status, Record.FinalItems.Num(), Record.ResultIndices.Num(),
 			Record.Timestamp, Record.EndTimestamp);
 

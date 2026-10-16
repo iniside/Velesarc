@@ -1,0 +1,47 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+#pragma once
+
+#define ARC_TERRAIN_ATLAS_PARAM(Name) ArcOceanVF.Seabed##Name
+#include "/Plugin/ArcTerrain/ArcTerrainAtlasSample.ush"
+
+float ArcOcean_ShorewardStepCm()
+{
+	const float TerrainTexelCm = ARC_TERRAIN_ATLAS_PARAM(CellSizeCm)
+		/ max(ARC_TERRAIN_ATLAS_PARAM(HeightQuads), 1.0f);
+	const float ShortestWavelengthCm = ArcOceanVF.WaveCount > 0
+		? ArcOceanVF.Waves[max(ArcOceanVF.WaveCount - 1, 0) * 2].z
+		: 0.0f;
+
+	return max(0.5f * ShortestWavelengthCm, 4.0f * TerrainTexelCm);
+}
+
+void ArcOcean_SampleSeabed(FDFVector3 AbsWorldPos, float StepCm, out float OutDepthCm, out float2 OutShoreward)
+{
+	OutDepthCm = ArcOceanVF.DeepDepthCm;
+	OutShoreward = float2(0.0f, 0.0f);
+
+	float CentreWorldZCm = 0.0f;
+	if (!ArcTerrainAtlas_SampleHeightWorldZ(AbsWorldPos, CentreWorldZCm))
+	{
+		return;
+	}
+
+	OutDepthCm = DFDemote(AbsWorldPos).z - CentreWorldZCm;
+
+	float EastWorldZCm = 0.0f;
+	float NorthWorldZCm = 0.0f;
+	// One gate over all three taps: a miss substitutes the constant DeepDepthCm, and feeding that constant into a difference fabricates a cliff at every atlas residency edge.
+	if (!ArcTerrainAtlas_SampleHeightWorldZ(DFAdd(AbsWorldPos, float3(StepCm, 0.0f, 0.0f)), EastWorldZCm)
+		|| !ArcTerrainAtlas_SampleHeightWorldZ(DFAdd(AbsWorldPos, float3(0.0f, StepCm, 0.0f)), NorthWorldZCm))
+	{
+		return;
+	}
+
+	const float2 Gradient = float2(EastWorldZCm - CentreWorldZCm, NorthWorldZCm - CentreWorldZCm);
+	const float GradientLength = length(Gradient);
+	if (GradientLength > 0.0f)
+	{
+		OutShoreward = Gradient / GradientLength;
+	}
+}

@@ -25,10 +25,10 @@
 
 #include "ArcGunStateComponent.h"
 
-#include "Items/ArcItemDefinition.h"
+#include "Items/ArcItemDefinitionData.h"
 #include "Items/ArcItemData.h"
 
-bool FArcGunFireMode_FullAuto::FireStart(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent)
+bool FArcGunFireMode_FullAuto::FireStart(UArcGunStateComponent* InGunComponent)
 {
 	FArcGunInstanceBase* Extension = InGunComponent->GetGunInstance<FArcGunInstanceBase>();
 	ElapsedTime = 0;
@@ -48,12 +48,12 @@ bool FArcGunFireMode_FullAuto::FireStart(const FGameplayAbilitySpecHandle& Targe
 	return true;
 }
 
-void FArcGunFireMode_FullAuto::FireStop(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent)
+void FArcGunFireMode_FullAuto::FireStop(UArcGunStateComponent* InGunComponent)
 {
 	
 }
 
-bool FArcGunFireMode_FullAuto::FireUpdate(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent, float DeltaTime)
+bool FArcGunFireMode_FullAuto::FireUpdate(UArcGunStateComponent* InGunComponent, float DeltaTime)
 {
 	float Scale = ShootScaleCurve != nullptr ? ShootScaleCurve->GetFloatValue(ShootCount) : 1.0f;
 	
@@ -87,7 +87,7 @@ bool FArcGunFireMode_FullAuto::FireUpdate(const FGameplayAbilitySpecHandle& Targ
 	return false;
 }
 
-bool FArcGunFireMode_Single::FireStart(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent)
+bool FArcGunFireMode_Single::FireStart(UArcGunStateComponent* InGunComponent)
 {
 	FArcGunInstanceBase* Extension = InGunComponent->GetGunInstance<FArcGunInstanceBase>();
 	float TriggerCooldown = Extension->GetTriggerCooldown(InGunComponent->GetSelectedGun().GunItemPtr, InGunComponent);
@@ -115,12 +115,12 @@ bool FArcGunFireMode_Single::FireStart(const FGameplayAbilitySpecHandle& TargetR
 	return true;
 }
 
-void FArcGunFireMode_Single::FireStop(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent)
+void FArcGunFireMode_Single::FireStop(UArcGunStateComponent* InGunComponent)
 {
 	
 }
 
-bool FArcGunFireMode_Single::FireUpdate(const FGameplayAbilitySpecHandle& TargetRequest, UArcGunStateComponent* InGunComponent, float DeltaTime)
+bool FArcGunFireMode_Single::FireUpdate(UArcGunStateComponent* InGunComponent, float DeltaTime)
 {
 	InGunComponent->StopFire();
 	return false;

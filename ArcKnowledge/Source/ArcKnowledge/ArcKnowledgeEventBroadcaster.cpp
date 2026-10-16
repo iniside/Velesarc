@@ -4,18 +4,24 @@
 #include "AsyncMessageSystemBase.h"
 #include "AsyncMessageWorldSubsystem.h"
 #include "AsyncGameplayMessageSystem.h"
-#include "ArcMass/ArcMassSpatialHashSubsystem.h"
-#include "ArcMass/ArcMassAsyncMessageEndpointFragment.h"
-#include "MassEntityManager.h"
+#include "ArcMass/Spatial/ArcMassSpatialHashSubsystem.h"
+#include "ArcMass/Messaging/ArcMassAsyncMessageEndpointFragment.h"
+#include "Mass/EntityManager.h"
 #include "MassEntitySubsystem.h"
 #include "Engine/World.h"
 #include "StructUtils/StructView.h"
+
+UE_DEFINE_GAMEPLAY_TAG(TAG_GameKnowledge_Event_GlobalMessage, "ArcKnowledge.Event.GlobalMessage");
+UE_DEFINE_GAMEPLAY_TAG(TAG_GameKnowledge_Event_SpatialMessage, "ArcKnowledge.Event.SpatialMessage");
 
 void FArcKnowledgeEventBroadcaster::Initialize(UAsyncMessageWorldSubsystem* AsyncMessage, const FArcKnowledgeEventBroadcastConfig& InConfig)
 {
 
 	Config = InConfig;
 
+	Config.GlobalMessageId = FAsyncMessageId(TAG_GameKnowledge_Event_GlobalMessage);
+	Config.SpatialMessageId = FAsyncMessageId(TAG_GameKnowledge_Event_SpatialMessage);
+	
 	if (!AsyncMessage)
 	{
 		return;
@@ -43,6 +49,13 @@ void FArcKnowledgeEventBroadcaster::Shutdown()
 void FArcKnowledgeEventBroadcaster::BroadcastEvent(const FArcKnowledgeChangedEvent& Event, float SpatialRadius)
 {
 	BroadcastGlobal(Event);
+
+	// FArcKnowledgeEntry::SuppressSpatialBroadcast: a negative radius opts the entry out of the
+	// population-wide QuerySphere. 0 keeps meaning "use the config default".
+	if (SpatialRadius < 0.0f)
+	{
+		return;
+	}
 
 	if (!Event.Location.IsZero())
 	{

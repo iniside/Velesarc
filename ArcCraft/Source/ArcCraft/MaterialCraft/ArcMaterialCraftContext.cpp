@@ -21,44 +21,38 @@
 
 #include "ArcCraft/MaterialCraft/ArcMaterialCraftContext.h"
 
-#include "Items/ArcItemData.h"
-#include "Items/ArcItemsHelpers.h"
-#include "Items/Fragments/ArcItemFragment_Tags.h"
+#include "ArcCraft/Shared/ArcCraftItemTags.h"
 
 FArcMaterialCraftContext FArcMaterialCraftContext::Build(
 	const TArray<FArcItemSpec>& ConsumedIngredients,
-	const TArray<float>& QualityMultipliers,
-	float InAverageQuality,
-	const FGameplayTagContainer& InRecipeTags,
+	const TArray<float>& InSlotRaritySteps,
+	float InAverageR,
 	int32 InBaseIngredientCount,
 	float InExtraCraftTimeBonus)
 {
 	FArcMaterialCraftContext Context;
 
-	// Build per-slot tags using FArcItemFragment_Tags::ItemTags (not GetItemAggregatedTags)
-	Context.PerSlotTags.SetNum(ConsumedIngredients.Num());
-	for (int32 Idx = 0; Idx < ConsumedIngredients.Num(); ++Idx)
+	int32 FilledCount = 0;
+	for (const FArcItemSpec& Ingredient : ConsumedIngredients)
 	{
-		const FArcItemSpec& Ingredient = ConsumedIngredients[Idx];
-		const UArcItemDefinition* ItemDef = Ingredient.GetItemDefinition();
-		if (ItemDef)
+		if (Ingredient.GetItemDefinitionId().IsValid())
 		{
-			const FArcItemFragment_Tags* TagsFragment =
-				ArcItemsHelper::GetFragment<FArcItemFragment_Tags>(const_cast<UArcItemDefinition*>(ItemDef));
-			if (TagsFragment)
-			{
-				Context.PerSlotTags[Idx] = (TagsFragment->ItemTags);
-			}
+			++FilledCount;
 		}
 	}
 
-	Context.RecipeTags = InRecipeTags;
-	Context.IngredientQualityMultipliers = QualityMultipliers;
-	Context.AverageQuality = InAverageQuality;
-	Context.BandEligibilityQuality = InAverageQuality; // Adjusted by evaluator
+	Context.PerSlotTags.SetNum(ConsumedIngredients.Num());
+	for (int32 Idx = 0; Idx < ConsumedIngredients.Num(); ++Idx)
+	{
+		Context.PerSlotTags[Idx] = ArcCraftItemTags::GetCraftTags(ConsumedIngredients[Idx]);
+	}
+
+	Context.SlotRaritySteps = InSlotRaritySteps;
+	Context.AverageR = InAverageR;
+	Context.BandEligibilityR = InAverageR; // Adjusted by evaluator
 	Context.BandWeightBonus = 0.0f; // Computed by evaluator
-	Context.IngredientCount = ConsumedIngredients.Num();
-	Context.BaseIngredientCount = InBaseIngredientCount > 0 ? InBaseIngredientCount : ConsumedIngredients.Num();
+	Context.IngredientCount = FilledCount;
+	Context.BaseIngredientCount = InBaseIngredientCount > 0 ? InBaseIngredientCount : FilledCount;
 	Context.ExtraCraftTimeBonus = InExtraCraftTimeBonus;
 
 	return Context;

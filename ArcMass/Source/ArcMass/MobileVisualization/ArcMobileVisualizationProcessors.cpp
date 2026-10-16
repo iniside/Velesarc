@@ -5,12 +5,69 @@
 #include "ArcMobileVisualization.h"
 #include "MassActorSubsystem.h"
 #include "MassCommonFragments.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityView.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassSignalSubsystem.h"
+#include "MassSpawnerSubsystem.h"
+#include "Mesh/ArcRenderMeshFragments.h"
+#include "ArcMass/Physics/ArcMassPhysicsBody.h"
+#include "ArcMass/Physics/ArcMassPhysicsBodyConfig.h"
+#include "ArcMass/Physics/ArcMassPhysicsSimulation.h"
+#include "Components/PrimitiveComponent.h"
+#include "MoverMassTranslators.h"
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+namespace ArcMobileVisPrivate
+{
+	void RunObjectFragmentInitializers(FMassEntityManager& EntityManager, FMassEntityHandle Entity, AActor& Actor, const FMassEntityTemplateID& TemplateID)
+	{
+		UWorld* World = EntityManager.GetWorld();
+		if (!World)
+		{
+			return;
+		}
+
+		UMassSpawnerSubsystem* SpawnerSubsystem = World->GetSubsystem<UMassSpawnerSubsystem>();
+		if (!SpawnerSubsystem)
+		{
+			return;
+		}
+
+		const FMassEntityTemplate* Template = SpawnerSubsystem->GetMassEntityTemplate(TemplateID);
+		if (!Template)
+		{
+			return;
+		}
+
+		TConstArrayView<FMassEntityTemplateData::FObjectFragmentInitializerFunction> Initializers = Template->GetObjectFragmentInitializers();
+		if (Initializers.IsEmpty())
+		{
+			return;
+		}
+
+		FMassEntityView EntityView(EntityManager, Entity);
+		for (const FMassEntityTemplateData::FObjectFragmentInitializerFunction& Initializer : Initializers)
+		{
+			Initializer(Actor, EntityView, EMassTranslationDirection::MassToActor);
+		}
+	}
+
+	// Matches UNavMoverComponent::GetFeetLocation (NavMoverComponent.cpp:143), so entity feet round-trip unchanged.
+	void RaiseActorAboveFeet(AActor& Actor)
+	{
+		const USceneComponent* RootComponent = Actor.GetRootComponent();
+		if (!RootComponent)
+		{
+			return;
+		}
+
+		Actor.AddActorWorldOffset(FVector(0.0, 0.0, RootComponent->Bounds.BoxExtent.Z), /*bSweep*/ false, nullptr, ETeleportType::TeleportPhysics);
+	}
+}
 
 namespace
 {
@@ -20,6 +77,8 @@ namespace
 		int32 ISMRadiusCells;
 		int32 ActorRadiusCellsLeave;
 		int32 ISMRadiusCellsLeave;
+		int32 PhysicsRadiusCells;
+		int32 PhysicsRadiusCellsLeave;
 	};
 
 	FMobileVisRadii ComputeRadii(const FArcMobileVisDistanceConfigFragment& DistConfig, float CellSize)
@@ -30,6 +89,8 @@ namespace
 		const float HystMult = 1.f + DistConfig.HysteresisPercent / 100.f;
 		R.ActorRadiusCellsLeave = FMath::CeilToInt(DistConfig.ActorRadius * HystMult / CellSize);
 		R.ISMRadiusCellsLeave = FMath::CeilToInt(DistConfig.ISMRadius * HystMult / CellSize);
+		R.PhysicsRadiusCells = FMath::CeilToInt(DistConfig.PhysicsRadius / CellSize);
+		R.PhysicsRadiusCellsLeave = FMath::CeilToInt(DistConfig.PhysicsRadius * HystMult / CellSize);
 		return R;
 	}
 }
@@ -42,8 +103,10 @@ UArcMobileVisSourceTrackingProcessor::UArcMobileVisSourceTrackingProcessor()
 	: EntityQuery{*this}
 {
 	bAutoRegisterWithProcessingPhases = true;
-	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	// DuringPhysics, off the game thread: reads settled transforms + writes the subsystem cell
+	// grid, so it overlaps the async physics solve AND frees GT wall-clock. Worker-safe because
+	// it's the only DuringPhysics toucher of SourceCellPositions and the signal emit is deferred.
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::AllNetModes);
 }
 
@@ -72,6 +135,8 @@ void UArcMobileVisSourceTrackingProcessor::Execute(FMassEntityManager& EntityMan
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisSourceTracking);
 
 	const float CellSize = Subsystem->GetCellSize();
 	constexpr int32 SearchRadiusCells = 30;
@@ -139,7 +204,9 @@ void UArcMobileVisSourceTrackingProcessor::Execute(FMassEntityManager& EntityMan
 
 	if (EntitiesToSignal.Num() > 0)
 	{
-		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::MobileVisEntityCellChanged, EntitiesToSignal);
+		// Deferred: SignalEntities is ThreadSafeWrite=false. The deferred variant copies into the
+		// per-context command buffer and broadcasts on the GT at phase-end flush — worker-safe.
+		SignalSubsystem->SignalEntitiesDeferred(Context, UE::ArcMass::Signals::MobileVisEntityCellChanged, EntitiesToSignal);
 	}
 }
 
@@ -151,8 +218,10 @@ UArcMobileVisEntityCellUpdateProcessor::UArcMobileVisEntityCellUpdateProcessor()
 	: EntityQuery{*this}
 {
 	bAutoRegisterWithProcessingPhases = true;
-	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
+	// DuringPhysics, off the game thread: ExecuteAfter the source-tracking processor serializes
+	// the two workers, so this is the sole writer of EntityCells while it runs. Signal emit is
+	// deferred for worker safety. Reads transforms, writes only rep fragments + the cell grid.
+	ProcessingPhase = EMassProcessingPhase::DuringPhysics;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::AllNetModes);
 	ExecutionOrder.ExecuteAfter.Add(UArcMobileVisSourceTrackingProcessor::StaticClass()->GetFName());
 }
@@ -184,6 +253,8 @@ void UArcMobileVisEntityCellUpdateProcessor::Execute(FMassEntityManager& EntityM
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityCellUpdate);
 
 	const float CellSize = Subsystem->GetCellSize();
 	const float HalfCellSizeSq = (CellSize * 0.5f) * (CellSize * 0.5f);
@@ -239,7 +310,9 @@ void UArcMobileVisEntityCellUpdateProcessor::Execute(FMassEntityManager& EntityM
 
 	if (ChangedEntities.Num() > 0)
 	{
-		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::MobileVisEntityCellChanged, ChangedEntities);
+		// Deferred: SignalEntities is ThreadSafeWrite=false. The deferred variant copies into the
+		// per-context command buffer and broadcasts on the GT at phase-end flush — worker-safe.
+		SignalSubsystem->SignalEntitiesDeferred(Context, UE::ArcMass::Signals::MobileVisEntityCellChanged, ChangedEntities);
 	}
 }
 
@@ -250,6 +323,7 @@ void UArcMobileVisEntityCellUpdateProcessor::Execute(FMassEntityManager& EntityM
 UArcMobileVisEntityCellChangedProcessor::UArcMobileVisEntityCellChangedProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
+	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	bRequiresGameThreadExecution = true;
 }
 
@@ -263,9 +337,10 @@ void UArcMobileVisEntityCellChangedProcessor::InitializeInternal(UObject& Owner,
 
 void UArcMobileVisEntityCellChangedProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
-	EntityQuery.AddRequirement<FArcMobileVisRepFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FArcMobileVisRepFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FArcMobileVisLODFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisDistanceConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -289,62 +364,85 @@ void UArcMobileVisEntityCellChangedProcessor::SignalEntities(FMassEntityManager&
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityCellChanged);
+
 	const float CellSize = Subsystem->GetCellSize();
 
 	TArray<FMassEntityHandle> UpgradeToActorEntities;
 	TArray<FMassEntityHandle> DowngradeToISMEntities;
 	TArray<FMassEntityHandle> UpgradeToISMEntities;
 	TArray<FMassEntityHandle> DowngradeToNoneEntities;
+	TArray<FMassEntityHandle> PhysicsRequestEntities;
+	TArray<FMassEntityHandle> PhysicsReleaseEntities;
 
 	EntityQuery.ForEachEntityChunk(Context,
-		[Subsystem, CellSize, &UpgradeToActorEntities, &DowngradeToISMEntities, &UpgradeToISMEntities, &DowngradeToNoneEntities](FMassExecutionContext& Ctx)
+		[Subsystem, CellSize, &UpgradeToActorEntities, &DowngradeToISMEntities, &UpgradeToISMEntities, &DowngradeToNoneEntities, &PhysicsRequestEntities, &PhysicsReleaseEntities](FMassExecutionContext& Ctx)
 		{
-			const TConstArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetFragmentView<FArcMobileVisRepFragment>();
+			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			TArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetMutableFragmentView<FArcMobileVisLODFragment>();
 			const FArcMobileVisDistanceConfigFragment& DistConfig = Ctx.GetConstSharedFragment<FArcMobileVisDistanceConfigFragment>();
+			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
 
 			const FMobileVisRadii Radii = ComputeRadii(DistConfig, CellSize);
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
-				const FArcMobileVisRepFragment& Rep = RepFragments[EntityIt];
+				FArcMobileVisRepFragment& Rep = RepFragments[EntityIt];
 				FArcMobileVisLODFragment& LOD = LODFragments[EntityIt];
+				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
-				const EArcMobileVisLOD DesiredLOD = Subsystem->EvaluateEntityLOD(
+				const EArcMobileVisLOD EvaluatedLOD = Subsystem->EvaluateEntityLOD(
 					Rep.GridCoords,
 					Radii.ActorRadiusCells,
 					Radii.ISMRadiusCells,
 					Radii.ActorRadiusCellsLeave,
 					Radii.ISMRadiusCellsLeave,
 					LOD.CurrentLOD);
+				const EArcMobileVisLOD DesiredLOD = EvaluatedLOD == EArcMobileVisLOD::Actor && !Config.ActorClass
+					? EArcMobileVisLOD::InstancedMesh
+					: EvaluatedLOD;
 
-				if (DesiredLOD == LOD.CurrentLOD)
+				if (DesiredLOD != LOD.CurrentLOD)
 				{
-					continue;
+					const EArcMobileVisLOD PrevLOD = LOD.CurrentLOD;
+					LOD.PrevLOD = PrevLOD;
+					LOD.CurrentLOD = DesiredLOD;
+
+					// Determine which transition signal to send
+					if (DesiredLOD == EArcMobileVisLOD::Actor)
+					{
+						UpgradeToActorEntities.Add(Entity);
+					}
+					else if (DesiredLOD == EArcMobileVisLOD::InstancedMesh && PrevLOD == EArcMobileVisLOD::Actor)
+					{
+						DowngradeToISMEntities.Add(Entity);
+					}
+					else if (DesiredLOD == EArcMobileVisLOD::InstancedMesh && PrevLOD == EArcMobileVisLOD::None)
+					{
+						UpgradeToISMEntities.Add(Entity);
+					}
+					else if (DesiredLOD == EArcMobileVisLOD::None)
+					{
+						DowngradeToNoneEntities.Add(Entity);
+					}
 				}
 
-				const EArcMobileVisLOD PrevLOD = LOD.CurrentLOD;
-				LOD.PrevLOD = PrevLOD;
-				LOD.CurrentLOD = DesiredLOD;
+				const bool bWantsPhysics = LOD.CurrentLOD != EArcMobileVisLOD::Actor
+					&& Subsystem->EvaluateEntityPhysics(
+						Rep.GridCoords,
+						Radii.PhysicsRadiusCells,
+						Radii.PhysicsRadiusCellsLeave,
+						Rep.bHasPhysicsBody);
 
-				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
-
-				// Determine which transition signal to send
-				if (DesiredLOD == EArcMobileVisLOD::Actor)
+				if (bWantsPhysics && !Rep.bHasPhysicsBody)
 				{
-					UpgradeToActorEntities.Add(Entity);
+					Rep.bHasPhysicsBody = true;
+					PhysicsRequestEntities.Add(Entity);
 				}
-				else if (DesiredLOD == EArcMobileVisLOD::StaticMesh && PrevLOD == EArcMobileVisLOD::Actor)
+				else if (!bWantsPhysics && Rep.bHasPhysicsBody)
 				{
-					DowngradeToISMEntities.Add(Entity);
-				}
-				else if (DesiredLOD == EArcMobileVisLOD::StaticMesh && PrevLOD == EArcMobileVisLOD::None)
-				{
-					UpgradeToISMEntities.Add(Entity);
-				}
-				else if (DesiredLOD == EArcMobileVisLOD::None)
-				{
-					DowngradeToNoneEntities.Add(Entity);
+					Rep.bHasPhysicsBody = false;
+					PhysicsReleaseEntities.Add(Entity);
 				}
 			}
 		});
@@ -365,6 +463,14 @@ void UArcMobileVisEntityCellChangedProcessor::SignalEntities(FMassEntityManager&
 	{
 		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::MobileVisDowngradeToNone, DowngradeToNoneEntities);
 	}
+	if (PhysicsRequestEntities.Num() > 0)
+	{
+		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::PhysicsBodyRequested, PhysicsRequestEntities);
+	}
+	if (PhysicsReleaseEntities.Num() > 0)
+	{
+		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::PhysicsBodyReleased, PhysicsReleaseEntities);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +481,7 @@ UArcMobileVisUpgradeToActorProcessor::UArcMobileVisUpgradeToActorProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
+	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 }
 
 void UArcMobileVisUpgradeToActorProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)
@@ -391,6 +498,7 @@ void UArcMobileVisUpgradeToActorProcessor::ConfigureQueries(const TSharedRef<FMa
 	EntityQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	EntityQuery.AddConstSharedRequirement<FArcMobileVisTemplateIDFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
 
@@ -408,6 +516,8 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisUpgradeToActor);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem, World](FMassExecutionContext& Ctx)
 		{
@@ -415,6 +525,10 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMobileVisTemplateIDFragment& TemplateIDConfig = Ctx.GetConstSharedFragment<FArcMobileVisTemplateIDFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
+
+			const bool bHasNavMoverCopyToMassTag = Ctx.DoesArchetypeHaveTag<FMassNavMoverCopyToMassTag>();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -429,16 +543,26 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 
-				// Remove ISM instance if has one
-				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
-				if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
+				// Remove ISM/ISKM instance if has one
+				if (Config.bUseSkinnedMesh && Rep.ISKMInstanceId.IsValid())
 				{
-					Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
-					Rep.ISMInstanceId = INDEX_NONE;
+					Subsystem->RemoveISKMInstance(Rep.RegionCoord, Config.ISMManagerClass, Config.SkinnedAsset, Rep.ISKMInstanceId, EntityManager);
+					Rep.ISKMInstanceId = FPrimitiveInstanceId();
+				}
+				else
+				{
+					UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
+					if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
+					{
+						Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
+						Rep.ISMInstanceId = INDEX_NONE;
+					}
 				}
 				Rep.CurrentISMMesh = nullptr;
 
 				// Spawn actor
+				UE_CLOGF(!Config.ActorClass, LogMass, Warning,"ArcMobileVisUpgradeToActorProcessor: entity [%d/%d] has no ActorClass in its mobile-vis config; no actor will be spawned at Actor LOD.",
+					Entity.Index, Entity.SerialNumber);
 				if (Config.ActorClass)
 				{
 					FActorSpawnParameters SpawnParams;
@@ -448,6 +572,15 @@ void UArcMobileVisUpgradeToActorProcessor::SignalEntities(FMassEntityManager& En
 					AActor* NewActor = World->SpawnActor<AActor>(Config.ActorClass, EntityTransform, SpawnParams);
 					ActorFragment.SetAndUpdateHandleMap(Entity, NewActor, true);
 					NewActor->FinishSpawning(EntityTransform);
+
+					if (bHasNavMoverCopyToMassTag)
+					{
+						ArcMobileVisPrivate::RaiseActorAboveFeet(*NewActor);
+					}
+
+					ArcMobileVisPrivate::RunObjectFragmentInitializers(EntityManager, Entity, *NewActor, TemplateIDConfig.TemplateID);
+
+					Subsystem->LinkActorBodies(*NewActor, Entity);
 				}
 
 				Rep.bIsActorRepresentation = true;
@@ -463,6 +596,7 @@ UArcMobileVisDowngradeToISMProcessor::UArcMobileVisDowngradeToISMProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
 	bRequiresGameThreadExecution = true;
+	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 }
 
 void UArcMobileVisDowngradeToISMProcessor::InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& EntityManager)
@@ -496,13 +630,16 @@ void UArcMobileVisDowngradeToISMProcessor::SignalEntities(FMassEntityManager& En
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisDowngradeToISM);
+
 	EntityQuery.ForEachEntityChunk(Context,
-		[Subsystem, World](FMassExecutionContext& Ctx)
+		[Subsystem](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -514,36 +651,55 @@ void UArcMobileVisDowngradeToISMProcessor::SignalEntities(FMassEntityManager& En
 					continue;
 				}
 
-				// Destroy actor
+				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
+				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
+
+				Subsystem->DetachActorBodies(Entity);
 				if (AActor* Actor = ActorFragment.GetMutable())
 				{
 					Actor->Destroy();
 				}
 				ActorFragment.ResetAndUpdateHandleMap();
 
-				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
-				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
-
 				// Compute region coord from current grid coords
 				const FIntVector RegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
 
-				// Add ISM instance
-				UStaticMesh* MeshToUse = Config.StaticMesh;
-				if (MeshToUse)
+				// Add ISM/ISKM instance
+				if (Config.bUseSkinnedMesh && Config.SkinnedAsset)
 				{
-					Rep.ISMInstanceId = Subsystem->AddISMInstance(
+					Rep.ISKMInstanceId = Subsystem->AddISKMInstance(
 						RegionCoord,
 						Config.ISMManagerClass,
-						MeshToUse,
+						Config.SkinnedAsset,
+						Config.TransformProvider,
 						Config.MaterialOverrides,
 						Config.bCastShadows,
-						EntityTransform,
+						Transforms[EntityIt].GetTransform(),
+						Rep.AnimationIndex,
 						Entity);
+					Rep.RegionCoord = RegionCoord;
+					Rep.CurrentISMMesh = nullptr;
+					Rep.bIsActorRepresentation = false;
 				}
+				else
+				{
+					UStaticMesh* MeshToUse = BaseMesh;
+					if (MeshToUse)
+					{
+						Rep.ISMInstanceId = Subsystem->AddISMInstance(
+							RegionCoord,
+							Config.ISMManagerClass,
+							MeshToUse,
+							Config.MaterialOverrides,
+							Config.bCastShadows,
+							EntityTransform,
+							Entity);
+					}
 
-				Rep.RegionCoord = RegionCoord;
-				Rep.CurrentISMMesh = MeshToUse;
-				Rep.bIsActorRepresentation = false;
+					Rep.RegionCoord = RegionCoord;
+					Rep.CurrentISMMesh = MeshToUse;
+					Rep.bIsActorRepresentation = false;
+				}
 			}
 		});
 }
@@ -555,6 +711,7 @@ void UArcMobileVisDowngradeToISMProcessor::SignalEntities(FMassEntityManager& En
 UArcMobileVisUpgradeToISMProcessor::UArcMobileVisUpgradeToISMProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
+	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	bRequiresGameThreadExecution = true;
 }
 
@@ -588,12 +745,15 @@ void UArcMobileVisUpgradeToISMProcessor::SignalEntities(FMassEntityManager& Enti
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisUpgradeToISM);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[Subsystem](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -608,22 +768,41 @@ void UArcMobileVisUpgradeToISMProcessor::SignalEntities(FMassEntityManager& Enti
 				const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
 				const FIntVector RegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
 
-				UStaticMesh* MeshToUse = Config.StaticMesh;
-				if (MeshToUse)
+				if (Config.bUseSkinnedMesh && Config.SkinnedAsset)
 				{
-					Rep.ISMInstanceId = Subsystem->AddISMInstance(
+					Rep.ISKMInstanceId = Subsystem->AddISKMInstance(
 						RegionCoord,
 						Config.ISMManagerClass,
-						MeshToUse,
+						Config.SkinnedAsset,
+						Config.TransformProvider,
 						Config.MaterialOverrides,
 						Config.bCastShadows,
-						EntityTransform,
+						Transforms[EntityIt].GetTransform(),
+						Rep.AnimationIndex,
 						Entity);
+					Rep.RegionCoord = RegionCoord;
+					Rep.CurrentISMMesh = nullptr;
+					Rep.bIsActorRepresentation = false;
 				}
+				else
+				{
+					UStaticMesh* MeshToUse = BaseMesh;
+					if (MeshToUse)
+					{
+						Rep.ISMInstanceId = Subsystem->AddISMInstance(
+							RegionCoord,
+							Config.ISMManagerClass,
+							MeshToUse,
+							Config.MaterialOverrides,
+							Config.bCastShadows,
+							EntityTransform,
+							Entity);
+					}
 
-				Rep.RegionCoord = RegionCoord;
-				Rep.CurrentISMMesh = MeshToUse;
-				Rep.bIsActorRepresentation = false;
+					Rep.RegionCoord = RegionCoord;
+					Rep.CurrentISMMesh = MeshToUse;
+					Rep.bIsActorRepresentation = false;
+				}
 			}
 		});
 }
@@ -635,6 +814,7 @@ void UArcMobileVisUpgradeToISMProcessor::SignalEntities(FMassEntityManager& Enti
 UArcMobileVisDowngradeToNoneProcessor::UArcMobileVisDowngradeToNoneProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
+	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	bRequiresGameThreadExecution = true;
 }
 
@@ -649,6 +829,7 @@ void UArcMobileVisDowngradeToNoneProcessor::InitializeInternal(UObject& Owner, c
 void UArcMobileVisDowngradeToNoneProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager)
 {
 	EntityQuery.AddRequirement<FArcMobileVisRepFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FMassActorFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
 	EntityQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
 }
@@ -667,24 +848,48 @@ void UArcMobileVisDowngradeToNoneProcessor::SignalEntities(FMassEntityManager& E
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisDowngradeToNone);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
+			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				FArcMobileVisRepFragment& Rep = RepFragments[EntityIt];
 
-				// Remove ISM if has one
-				UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
-				if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
+				if (Rep.bIsActorRepresentation)
 				{
-					Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
+					FMassActorFragment& ActorFragment = ActorFragments[EntityIt];
+					Subsystem->DetachActorBodies(Ctx.GetEntity(EntityIt));
+					if (AActor* Actor = ActorFragment.GetMutable())
+					{
+						Actor->Destroy();
+					}
+					ActorFragment.ResetAndUpdateHandleMap();
 				}
 
-				Rep.ISMInstanceId = INDEX_NONE;
+				// Remove ISM/ISKM if has one
+				if (Config.bUseSkinnedMesh && Rep.ISKMInstanceId.IsValid())
+				{
+					Subsystem->RemoveISKMInstance(Rep.RegionCoord, Config.ISMManagerClass, Config.SkinnedAsset, Rep.ISKMInstanceId, EntityManager);
+					Rep.ISKMInstanceId = FPrimitiveInstanceId();
+				}
+				else
+				{
+					UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
+					if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
+					{
+						Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
+					}
+
+					Rep.ISMInstanceId = INDEX_NONE;
+				}
+
 				Rep.CurrentISMMesh = nullptr;
 				Rep.bIsActorRepresentation = false;
 			}
@@ -727,6 +932,8 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 		return;
 	}
 
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisISMTransformUpdate);
+
 	EntityQuery.ForEachEntityChunk(Context,
 		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
 		{
@@ -734,60 +941,70 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 			const TConstArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetFragmentView<FArcMobileVisLODFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
 				const FArcMobileVisLODFragment& LOD = LODFragments[EntityIt];
-				if (LOD.CurrentLOD != EArcMobileVisLOD::StaticMesh)
+				if (LOD.CurrentLOD != EArcMobileVisLOD::InstancedMesh)
 				{
 					continue;
 				}
 
 				FArcMobileVisRepFragment& Rep = RepFragments[EntityIt];
-				if (Rep.ISMInstanceId == INDEX_NONE)
-				{
-					continue;
-				}
-
 				const FTransform& EntityTransform = Transforms[EntityIt].GetTransform();
-				UStaticMesh* MeshToUse = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
 
-				// Check if entity crossed a region boundary
-				const FIntVector NewRegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
-				if (NewRegionCoord != Rep.RegionCoord)
+				if (Config.bUseSkinnedMesh && Rep.ISKMInstanceId.IsValid())
 				{
-					// Remove from old region
-					if (MeshToUse)
-					{
-						Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToUse, Rep.ISMInstanceId, EntityManager);
-					}
+					Subsystem->UpdateISKMTransform(
+						Rep.RegionCoord,
+						Config.ISMManagerClass,
+						Config.SkinnedAsset,
+						Rep.ISKMInstanceId,
+						EntityTransform,
+						Rep.AnimationIndex);
+				}
+				else if (Rep.ISMInstanceId != INDEX_NONE)
+				{
+					UStaticMesh* MeshToUse = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
 
-					// Add to new region
-					const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
-					if (MeshToUse)
+					// Check if entity crossed a region boundary
+					const FIntVector NewRegionCoord = Subsystem->CellToRegion(Rep.GridCoords);
+					if (NewRegionCoord != Rep.RegionCoord)
 					{
-						Rep.ISMInstanceId = Subsystem->AddISMInstance(
-							NewRegionCoord,
-							Config.ISMManagerClass,
-							MeshToUse,
-							Config.MaterialOverrides,
-							Config.bCastShadows,
-							EntityTransform,
-							Entity);
+						// Remove from old region
+						if (MeshToUse)
+						{
+							Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToUse, Rep.ISMInstanceId, EntityManager);
+						}
+
+						// Add to new region
+						const FMassEntityHandle Entity = Ctx.GetEntity(EntityIt);
+						if (MeshToUse)
+						{
+							Rep.ISMInstanceId = Subsystem->AddISMInstance(
+								NewRegionCoord,
+								Config.ISMManagerClass,
+								MeshToUse,
+								Config.MaterialOverrides,
+								Config.bCastShadows,
+								EntityTransform,
+								Entity);
+						}
+						else
+						{
+							Rep.ISMInstanceId = INDEX_NONE;
+						}
+
+						Rep.RegionCoord = NewRegionCoord;
 					}
 					else
 					{
-						Rep.ISMInstanceId = INDEX_NONE;
-					}
-
-					Rep.RegionCoord = NewRegionCoord;
-				}
-				else
-				{
-					// Same region — just update the transform
-					if (MeshToUse)
-					{
-						Subsystem->UpdateISMTransform(Rep.RegionCoord, Config.ISMManagerClass, MeshToUse, Rep.ISMInstanceId, EntityTransform);
+						// Same region — just update the transform
+						if (MeshToUse)
+						{
+							Subsystem->UpdateISMTransform(Rep.RegionCoord, Config.ISMManagerClass, MeshToUse, Rep.ISMInstanceId, EntityTransform);
+						}
 					}
 				}
 			}
@@ -801,7 +1018,7 @@ void UArcMobileVisISMTransformUpdateProcessor::Execute(FMassEntityManager& Entit
 UArcMobileVisEntityInitObserver::UArcMobileVisEntityInitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMobileVisEntityTag::StaticStruct();
+	ObservedTypes.Add(FArcMobileVisEntityTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Add;
 	bRequiresGameThreadExecution = true;
 }
@@ -813,8 +1030,10 @@ void UArcMobileVisEntityInitObserver::ConfigureQueries(const TSharedRef<FMassEnt
 	ObserverQuery.AddRequirement<FArcMobileVisLODFragment>(EMassFragmentAccess::ReadWrite);
 	ObserverQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	ObserverQuery.AddConstSharedRequirement<FArcMobileVisConfigFragment>(EMassFragmentPresence::All);
+	ObserverQuery.AddConstSharedRequirement<FArcMobileVisTemplateIDFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddConstSharedRequirement<FArcMobileVisDistanceConfigFragment>(EMassFragmentPresence::All);
 	ObserverQuery.AddTagRequirement<FArcMobileVisEntityTag>(EMassFragmentPresence::All);
+	ObserverQuery.AddRequirement<FArcMassPhysicsBodyFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::Optional);
 }
 
 void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -831,17 +1050,31 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 		return;
 	}
 
+	UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
+	if (!SignalSubsystem)
+	{
+		return;
+	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityInit);
+
 	const float CellSize = Subsystem->GetCellSize();
 
+	TArray<FMassEntityHandle> PhysicsRequestEntities;
+
 	ObserverQuery.ForEachEntityChunk(Context,
-		[&EntityManager, Subsystem, CellSize, World](FMassExecutionContext& Ctx)
+		[&EntityManager, Subsystem, CellSize, World, &PhysicsRequestEntities](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			TArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetMutableFragmentView<FArcMobileVisLODFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			const FArcMobileVisTemplateIDFragment& TemplateIDConfig = Ctx.GetConstSharedFragment<FArcMobileVisTemplateIDFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
 			const FArcMobileVisDistanceConfigFragment& DistConfig = Ctx.GetConstSharedFragment<FArcMobileVisDistanceConfigFragment>();
+			const bool bHasPhysicsFragment = Ctx.DoesArchetypeHaveFragment<FArcMassPhysicsBodyFragment>();
+			const bool bHasNavMoverCopyToMassTag = Ctx.DoesArchetypeHaveTag<FMassNavMoverCopyToMassTag>();
 
 			const FMobileVisRadii Radii = ComputeRadii(DistConfig, CellSize);
 
@@ -862,13 +1095,16 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 				Subsystem->RegisterEntity(Entity, GridCoords);
 
 				// Evaluate initial LOD
-				const EArcMobileVisLOD InitialLOD = Subsystem->EvaluateEntityLOD(
+				const EArcMobileVisLOD EvaluatedLOD = Subsystem->EvaluateEntityLOD(
 					GridCoords,
 					Radii.ActorRadiusCells,
 					Radii.ISMRadiusCells,
 					Radii.ActorRadiusCellsLeave,
 					Radii.ISMRadiusCellsLeave,
 					EArcMobileVisLOD::None);
+				const EArcMobileVisLOD InitialLOD = EvaluatedLOD == EArcMobileVisLOD::Actor && !Config.ActorClass
+					? EArcMobileVisLOD::InstancedMesh
+					: EvaluatedLOD;
 
 				LOD.CurrentLOD = InitialLOD;
 				LOD.PrevLOD = EArcMobileVisLOD::None;
@@ -876,6 +1112,8 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 				if (InitialLOD == EArcMobileVisLOD::Actor)
 				{
 					// Spawn actor
+					UE_CLOGF(!Config.ActorClass, LogMass, Warning,"ArcMobileVisEntityInitObserver: entity [%d/%d] has no ActorClass in its mobile-vis config; no actor will be spawned at Actor LOD.",
+						Entity.Index, Entity.SerialNumber);
 					if (Config.ActorClass)
 					{
 						FActorSpawnParameters SpawnParams;
@@ -885,30 +1123,56 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 						AActor* NewActor = World->SpawnActor<AActor>(Config.ActorClass, EntityTransform, SpawnParams);
 						ActorFragment.SetAndUpdateHandleMap(Entity, NewActor, true);
 						NewActor->FinishSpawning(EntityTransform);
+
+						if (bHasNavMoverCopyToMassTag)
+						{
+							ArcMobileVisPrivate::RaiseActorAboveFeet(*NewActor);
+						}
+
+						ArcMobileVisPrivate::RunObjectFragmentInitializers(EntityManager, Entity, *NewActor, TemplateIDConfig.TemplateID);
+
+						Subsystem->LinkActorBodies(*NewActor, Entity);
 					}
 
 					Rep.bIsActorRepresentation = true;
 					Rep.CurrentISMMesh = nullptr;
 				}
-				else if (InitialLOD == EArcMobileVisLOD::StaticMesh)
+				else if (InitialLOD == EArcMobileVisLOD::InstancedMesh)
 				{
 					const FIntVector RegionCoord = Subsystem->CellToRegion(GridCoords);
+					Rep.RegionCoord = RegionCoord;
 
-					UStaticMesh* MeshToUse = Config.StaticMesh;
-					if (MeshToUse)
+					if (Config.bUseSkinnedMesh && Config.SkinnedAsset)
 					{
-						Rep.ISMInstanceId = Subsystem->AddISMInstance(
+						Rep.ISKMInstanceId = Subsystem->AddISKMInstance(
 							RegionCoord,
 							Config.ISMManagerClass,
-							MeshToUse,
+							Config.SkinnedAsset,
+							Config.TransformProvider,
 							Config.MaterialOverrides,
 							Config.bCastShadows,
 							EntityTransform,
+							Rep.AnimationIndex,
 							Entity);
+						Rep.CurrentISMMesh = nullptr;
+					}
+					else
+					{
+						UStaticMesh* MeshToUse = BaseMesh;
+						if (MeshToUse)
+						{
+							Rep.ISMInstanceId = Subsystem->AddISMInstance(
+								RegionCoord,
+								Config.ISMManagerClass,
+								MeshToUse,
+								Config.MaterialOverrides,
+								Config.bCastShadows,
+								EntityTransform,
+								Entity);
+						}
+						Rep.CurrentISMMesh = MeshToUse;
 					}
 
-					Rep.RegionCoord = RegionCoord;
-					Rep.CurrentISMMesh = MeshToUse;
 					Rep.bIsActorRepresentation = false;
 				}
 				else
@@ -917,8 +1181,30 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 					Rep.bIsActorRepresentation = false;
 					Rep.CurrentISMMesh = nullptr;
 				}
+
+				const bool bWantsPhysics = InitialLOD != EArcMobileVisLOD::Actor
+					&& Subsystem->EvaluateEntityPhysics(
+						GridCoords,
+						Radii.PhysicsRadiusCells,
+						Radii.PhysicsRadiusCellsLeave,
+						false);
+
+				if (bWantsPhysics)
+				{
+					Rep.bHasPhysicsBody = true;
+
+					if (bHasPhysicsFragment)
+					{
+						PhysicsRequestEntities.Add(Entity);
+					}
+				}
 			}
 		});
+
+	if (PhysicsRequestEntities.Num() > 0)
+	{
+		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::PhysicsBodyRequested, PhysicsRequestEntities);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -928,7 +1214,7 @@ void UArcMobileVisEntityInitObserver::Execute(FMassEntityManager& EntityManager,
 UArcMobileVisEntityDeinitObserver::UArcMobileVisEntityDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMobileVisEntityTag::StaticStruct();
+	ObservedTypes.Add(FArcMobileVisEntityTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -957,14 +1243,21 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 		return;
 	}
 
+	UMassSignalSubsystem* SignalSubsystem = World->GetSubsystem<UMassSignalSubsystem>();
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisEntityDeinit);
+
+	TArray<FMassEntityHandle> PhysicsReleaseEntities;
+
 	ObserverQuery.ForEachEntityChunk(Context,
-		[&EntityManager, Subsystem](FMassExecutionContext& Ctx)
+		[&EntityManager, Subsystem, &PhysicsReleaseEntities](FMassExecutionContext& Ctx)
 		{
 			TArrayView<FArcMobileVisRepFragment> RepFragments = Ctx.GetMutableFragmentView<FArcMobileVisRepFragment>();
 			const TConstArrayView<FArcMobileVisLODFragment> LODFragments = Ctx.GetFragmentView<FArcMobileVisLODFragment>();
 			TArrayView<FMassActorFragment> ActorFragments = Ctx.GetMutableFragmentView<FMassActorFragment>();
 			const TConstArrayView<FTransformFragment> Transforms = Ctx.GetFragmentView<FTransformFragment>();
 			const FArcMobileVisConfigFragment& Config = Ctx.GetConstSharedFragment<FArcMobileVisConfigFragment>();
+			UStaticMesh* BaseMesh = Config.StaticMesh.Get();
 
 			for (FMassExecutionContext::FEntityIterator EntityIt = Ctx.CreateEntityIterator(); EntityIt; ++EntityIt)
 			{
@@ -974,7 +1267,7 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 
 				if (Rep.bIsActorRepresentation)
 				{
-					// Destroy actor
+					Subsystem->DetachActorBodies(Entity);
 					if (AActor* Actor = ActorFragment.GetMutable())
 					{
 						Actor->Destroy();
@@ -983,18 +1276,36 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 				}
 				else
 				{
-					// Remove ISM instance
-					UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : Config.StaticMesh.Get();
-					if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
+					if (Config.bUseSkinnedMesh && Rep.ISKMInstanceId.IsValid())
 					{
-						Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
-						Rep.ISMInstanceId = INDEX_NONE;
+						Subsystem->RemoveISKMInstance(Rep.RegionCoord, Config.ISMManagerClass, Config.SkinnedAsset, Rep.ISKMInstanceId, EntityManager);
+						Rep.ISKMInstanceId = FPrimitiveInstanceId();
 					}
+					else
+					{
+						UStaticMesh* MeshToRemove = Rep.CurrentISMMesh ? Rep.CurrentISMMesh.Get() : BaseMesh;
+						if (MeshToRemove && Rep.ISMInstanceId != INDEX_NONE)
+						{
+							Subsystem->RemoveISMInstance(Rep.RegionCoord, Config.ISMManagerClass, MeshToRemove, Rep.ISMInstanceId, EntityManager);
+							Rep.ISMInstanceId = INDEX_NONE;
+						}
+					}
+				}
+
+				if (Rep.bHasPhysicsBody)
+				{
+					Rep.bHasPhysicsBody = false;
+					PhysicsReleaseEntities.Add(Entity);
 				}
 
 				Subsystem->UnregisterEntity(Entity, Rep.GridCoords);
 			}
 		});
+
+	if (SignalSubsystem && PhysicsReleaseEntities.Num() > 0)
+	{
+		SignalSubsystem->SignalEntities(UE::ArcMass::Signals::PhysicsBodyReleased, PhysicsReleaseEntities);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1004,7 +1315,7 @@ void UArcMobileVisEntityDeinitObserver::Execute(FMassEntityManager& EntityManage
 UArcMobileVisSourceDeinitObserver::UArcMobileVisSourceDeinitObserver()
 	: ObserverQuery{*this}
 {
-	ObservedType = FArcMobileVisSourceTag::StaticStruct();
+	ObservedTypes.Add(FArcMobileVisSourceTag::StaticStruct());
 	ObservedOperations = EMassObservedOperationFlags::Remove;
 	bRequiresGameThreadExecution = true;
 }
@@ -1028,6 +1339,8 @@ void UArcMobileVisSourceDeinitObserver::Execute(FMassEntityManager& EntityManage
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcMobileVisSourceDeinit);
 
 	ObserverQuery.ForEachEntityChunk(Context,
 		[Subsystem](FMassExecutionContext& Ctx)

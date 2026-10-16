@@ -6,7 +6,9 @@
 #include "ArcMass/Persistence/ArcMassPersistence.h"
 #include "ArcMassPersistenceTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Persistence"))
+/** Trait that opts a Mass entity into the world persistence system.
+ *  Adds persistence config for save/load of entity state across sessions. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Persistence", Category = "Persistence"))
 class ARCMASS_API UArcMassPersistenceTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

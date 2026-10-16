@@ -3,13 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassProcessor.h"
 #include "MassStateTreeTypes.h"
-#include "ArcMass/ArcMassGameplayTagContainerFragment.h"
+#include "Fragments/ArcOwnedTagsFragment.h"
+#include "ArcMass/ArcMassDecayingTags.h"
 #include "ArcMassCooldownTask.generated.h"
-
-struct FArcMassCooldownTaskFragment;
-class UMassStateTreeSubsystem;
 
 /** Instance data for FArcMassCooldownTask. Holds the cooldown tag identifier and duration. */
 USTRUCT()
@@ -23,12 +20,12 @@ struct FArcMassCooldownTaskInstanceData
 
 	/** Duration of the cooldown in seconds. The entity will be considered "on cooldown" for this tag until the duration elapses. */
 	UPROPERTY(EditAnywhere, Category = Parameter)
-	float Duration;
+	float Duration = 0.f;
 };
 
 /**
  * Instant task that starts a cooldown for the entity, identified by a gameplay tag.
- * The cooldown duration is tracked in FArcMassCooldownTaskFragment and ticked down by UArcMassCooldownTaskProcessor.
+ * The cooldown duration is tracked by UArcMassDecayingTagSubsystem and ticked down by UArcMassDecayingTagDecayProcessor.
  * Use FArcMassIsOnCooldownCondition to check whether the entity is still on cooldown for a given tag.
  */
 USTRUCT(meta = (DisplayName = "Arc Mass Cooldown Task", Category = "Arc|Common", ToolTip = "Instant task. Starts a tag-based cooldown on the entity for the specified duration."))
@@ -56,10 +53,8 @@ protected:
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
 #endif
 
-	/** Handle to the entity's cooldown fragment, which stores all active cooldowns. */
-	TStateTreeExternalDataHandle<FArcMassCooldownTaskFragment> MassCooldownHandle;
-	/** Handle to the entity's Mass gameplay tag container, used to add/remove cooldown indicator tags. */
-	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagHandle;
+	/** Handle to the entity's owned tag fragment, used to add/remove cooldown indicator tags. */
+	TStateTreeExternalDataHandle<FArcOwnedTagsFragment> MassGameplayTagHandle;
 };
 
 /** Instance data for FArcMassIsOnCooldownCondition. Holds the cooldown tag to check. */
@@ -93,81 +88,11 @@ public:
 	virtual void GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const override;
 	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
 	
-	/** Handle to the entity's Mass gameplay tag container, used to check for cooldown indicator tags. */
-	TStateTreeExternalDataHandle<FArcMassGameplayTagContainerFragment> MassGameplayTagsHandle;
+	/** Handle to the entity's owned tag fragment, used to check for cooldown indicator tags. */
+	TStateTreeExternalDataHandle<FArcOwnedTagsFragment> MassGameplayTagsHandle;
 
 #if WITH_EDITOR
 	virtual FText GetDescription(const FGuid& ID, FStateTreeDataView InstanceDataView, const IStateTreeBindingLookup& BindingLookup, EStateTreeNodeFormatting Formatting = EStateTreeNodeFormatting::Text) const override;
 #endif
 };
 
-/** Represents a single active cooldown entry on an entity. Tracked inside FArcMassCooldownTaskFragment. */
-USTRUCT()
-struct FArcCooldownTaskItem
-{
-	GENERATED_BODY()
-
-	/** The gameplay tag that identifies this cooldown. */
-	UPROPERTY()
-	FGameplayTag CooldownTag;
-
-	/** The total duration of the cooldown in seconds. */
-	UPROPERTY()
-	float CooldownDuration = 0.0f;
-
-	/** The remaining time in seconds before this cooldown expires. Decremented each tick by UArcMassCooldownTaskProcessor. */
-	UPROPERTY()
-	float CurrentDuration = 0.0f;
-};
-
-/** Mass fragment that stores all active cooldowns for an entity. Processed by UArcMassCooldownTaskProcessor. */
-USTRUCT()
-struct ARCAI_API FArcMassCooldownTaskFragment : public FMassFragment
-{
-	GENERATED_BODY()
-
-public:
-	/** Array of currently active cooldowns on this entity. Entries are removed once their duration expires. */
-	UPROPERTY()
-	TArray<FArcCooldownTaskItem> Cooldowns;
-};
-
-template<>
-struct TMassFragmentTraits<FArcMassCooldownTaskFragment> final
-{
-	enum
-	{
-		AuthorAcceptsItsNotTriviallyCopyable = true
-	};
-};
-
-/** Mass tag added to entities that have at least one active cooldown. Used by UArcMassCooldownTaskProcessor for query filtering. */
-USTRUCT()
-struct ARCAI_API FArcCooldownTaskTag : public FMassTag
-{
-	GENERATED_BODY()
-};
-
-/**
- * Mass processor that ticks down all active cooldowns on entities with FArcMassCooldownTaskFragment.
- * When a cooldown expires, its corresponding gameplay tag is removed and the entry is cleaned up.
- * Removes the FArcCooldownTaskTag from entities with no remaining active cooldowns.
- */
-UCLASS()
-class ARCAI_API UArcMassCooldownTaskProcessor : public UMassProcessor
-{
-	GENERATED_BODY()
-	
-	UArcMassCooldownTaskProcessor();
-
-	virtual void ConfigureQueries(const TSharedRef<FMassEntityManager>& EntityManager) override;
-	virtual void InitializeInternal(UObject& Owner, const TSharedRef<FMassEntityManager>& ) override;
-	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
-
-	/** Entity query for entities with active cooldowns. */
-	FMassEntityQuery EntityQuery_Conditional;
-
-	/** Cached reference to the MassStateTreeSubsystem for signaling StateTree re-evaluation. */
-	UPROPERTY(Transient)
-	TObjectPtr<UMassStateTreeSubsystem> MassStateTreeSubsystem = nullptr;
-};

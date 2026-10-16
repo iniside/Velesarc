@@ -8,8 +8,9 @@
 
 #include "MassCommonFragments.h"
 #include "MassCommonTypes.h"
-#include "MassEntityManager.h"
-#include "MassExecutionContext.h"
+#include "Mass/EntityManager.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassActorSubsystem.h"
 
 #include "Physics/Experimental/PhysScene_Chaos.h"
@@ -71,6 +72,8 @@ void UArcHomingProjectileProcessor::Execute(FMassEntityManager& EntityManager, F
 	{
 		return;
 	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(ArcHomingProjectile);
 
 	FChaosSQAccelerator SQAccelerator(*SpatialAcceleration);
 

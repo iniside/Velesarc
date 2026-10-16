@@ -3,20 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MassEntityTraitBase.h"
-#include "ArcProjectileFragments.h"
+#include "ArcProjectileTraitBase.h"
 
 #include "ArcHomingProjectileTrait.generated.h"
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories)
-class ARCMASS_API UArcHomingProjectileTrait : public UMassEntityTraitBase
+/** Trait that configures a Mass entity as a homing projectile.
+ *  Adds projectile config and homing config for target tracking behavior. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Homing Projectile", Category = "Projectiles"))
+class ARCMASS_API UArcHomingProjectileTrait : public UArcProjectileTraitBase
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
-	FArcProjectileConfigFragment ProjectileConfig;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Homing")
 	FArcProjectileHomingConfigFragment HomingConfig;
 

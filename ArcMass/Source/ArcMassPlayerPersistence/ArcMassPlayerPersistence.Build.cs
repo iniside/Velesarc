@@ -13,6 +13,7 @@ public class ArcMassPlayerPersistence : ModuleRules
 			{
 				"Core",
 				"MassEntity",
+				"MassCore",
 				"ArcMass",
 				"ArcPersistence",
 			}

@@ -77,7 +77,7 @@ struct FArcMassSelectApproachSlotTaskInstanceData
 
 	/** World-space location of the claimed slot. Valid only when bSuccess is true. */
 	UPROPERTY(EditAnywhere, Category = Output)
-	FVector WorldLocation;
+	FVector WorldLocation = FVector::ZeroVector;
 
 	/** True if a slot was successfully claimed, false if no matching slot was available. */
 	UPROPERTY(EditAnywhere, Category = Output)

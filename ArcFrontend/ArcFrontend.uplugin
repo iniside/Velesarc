@@ -56,6 +56,18 @@
 			"Enabled": true
 		},
 		{
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassGameplayFramework",
+			"Enabled": true
+		},
+		{
 			"Name": "ArcAudio",
 			"Enabled": true
 		},

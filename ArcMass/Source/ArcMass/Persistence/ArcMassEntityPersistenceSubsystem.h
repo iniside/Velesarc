@@ -2,8 +2,9 @@
 
 #pragma once
 
-#include "MassEntityHandle.h"
-#include "MassEntityTypes.h"
+#include "Mass/EntityHandle.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ArcMassEntityPersistenceSubsystem.generated.h"
 
@@ -105,6 +106,9 @@ public:
 
 	/** Cells with pending async loads (prevents double-loads). */
 	TSet<FIntVector> PendingCellLoads;
+
+	/** Cells awaiting load completion before save can execute. */
+	TSet<FIntVector> PendingSaveCells;
 
 private:
 	FGuid WorldId;

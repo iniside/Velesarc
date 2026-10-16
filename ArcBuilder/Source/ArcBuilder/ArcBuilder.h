@@ -21,15 +21,15 @@
 
 #pragma once
 
-#include "Debug/ArcBuilderDebugWindow.h"
+#include "HAL/IConsoleManager.h"
 #include "Modules/ModuleManager.h"
+
+/** Log category for the ArcBuilder runtime (placement, ghost preview). */
+DECLARE_LOG_CATEGORY_EXTERN(LogArcBuilder, Log, All);
+
+/** Dev cheat: bypass all building placement requirements and resource costs. */
+extern TAutoConsoleVariable<bool> CVarArcBuilderDisableRequirements;
 
 class FArcBuilderModule : public IModuleInterface
 {
-public:
-	static FArcBuilderDebugWindow GArcBuilderDebugWindow;
-
-	/** IModuleInterface implementation */
-	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
 };

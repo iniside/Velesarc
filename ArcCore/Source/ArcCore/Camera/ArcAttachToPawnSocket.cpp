@@ -13,13 +13,14 @@ namespace UE::Cameras
 		UE_DECLARE_CAMERA_NODE_EVALUATOR(ARCCORE_API, FArcAttachToPawnSocketEvaluator)
 
 	public:
-		FVector TargetLocation;
+		FVector TargetLocation = FVector::ZeroVector;
 		
 	protected:
-		FName SocketName = NAME_Name;
+		FName SocketName = NAME_None;
 		FName ComponentTag = NAME_None;
 		
 		bool bUsePawnBaseEyeHeight = false;
+		bool bHasTargetLocation = false;
 		
 		float LastDampedPushFactor = 0.f;
 		
@@ -99,6 +100,12 @@ namespace UE::Cameras
 					//PivotSocketTransform.SetLocation(ActorLoc);
 				
 				}
+			}
+
+			if (!bHasTargetLocation || Params.bIsFirstFrame)
+			{
+				TargetLocation = OwnerLocation;
+				bHasTargetLocation = true;
 			}
 
 			FCameraValueInterpolationParams InterpParams;

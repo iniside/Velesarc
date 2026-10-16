@@ -1,60 +1,46 @@
 # ArcMCP
 
-Editor-only plugin that provides game-specific MCP commands and tools for the **ECABridge** engine plugin. ECABridge (Epic Code Assistant) is an experimental plugin by Epic Games that exposes an MCP server from the Unreal Editor, allowing AI assistants to interact with the editor through registered commands.
+Editor-only plugin that exposes game-side tools on the engine **ModelContextProtocol** MCP server. `FArcMCPModule` registers `UArcMCPToolset` (a `UToolsetDefinition`) with `UToolsetRegistry::RegisterToolsetClass` during `FCoreDelegates::OnAllModuleLoadingPhasesComplete`. The engine ModelContextProtocol plugin then surfaces the toolset's `UFUNCTION` methods alongside the engine `editor_toolset.toolsets.*` toolsets via the standard `list_toolsets` / `describe_toolset` / `call_tool` protocol.
 
-ArcMCP extends ECABridge with ArcGame-specific commands for StateTree creation, item system management, and asset operations.
+The old ECABridge/`IECACommand` integration is fully removed.
 
-## ECABridge Integration
+## Tools
 
-All commands implement the `IECACommand` interface from ECABridge and auto-register via the `REGISTER_ECA_COMMAND(ClassName)` macro. Parameters and results use `FJsonObject`. The ECABridge plugin handles MCP protocol communication — ArcMCP only provides command implementations.
+### StateTree (Category: "StateTree")
 
-**Key types from ECABridge:**
-- `IECACommand` — base interface (GetName, GetDescription, GetCategory, GetParameters, Execute)
-- `FECACommandResult` — return type with `Success(JsonData)` / `Error(Message)` statics
-- `FECACommandParam` — parameter definition (name, type, description, required flag)
-- `REGISTER_ECA_COMMAND(Class)` — auto-registration macro, use in .cpp files
+| Tool | Purpose |
+|------|---------|
+| `ListStateTreeSchemas` | List all StateTree schema classes with their context data and allowed features |
+| `ListStateTreeNodes` | List node types (tasks, conditions, evaluators, considerations, property functions); filter by Schema, Category, or text Filter |
+| `CreateStateTree` | Create a compiled StateTree asset from a JSON Description string |
+| `ValidateStateTree` | Validate a StateTree JSON Description without creating an asset — returns errors and warnings |
 
-## Commands
+### Records
 
-### StateTree Commands (Category: "StateTree")
+| Tool | Purpose |
+|------|---------|
+| `FindRecordReferencers` | Who references a JSON record id (`Type:Name`, parsed and normalized). `assets`: packages from `IAssetRegistry::GetReferencers` on `FAssetIdentifier(FArcNamedPrimaryAssetId::StaticStruct(), id)`, `EDependencyCategory::SearchableName` (marks written by `FArcNamedPrimaryAssetId::PostSerialize` on save; packages saved earlier are not found until resaved). `records`: every indexed record walked by reflection (structs, arrays, sets, maps, `FInstancedStruct`/`TInstancedStruct`, registered instanced struct wrappers such as `FArcInstancedStruct`) with the property path, e.g. `Ingredients[1](ArcRecipeIngredient_ItemDef).ItemDefinitionId`. `indexed`: whether the id has a record. Errors while the Asset Registry is loading. Bare `FPrimaryAssetId` fields are not searched. |
 
-| Command | Purpose |
-|---------|---------|
-| `create_statetree` | Create a compiled StateTree asset from a JSON description |
-| `validate_statetree` | Validate a StateTree JSON without creating the asset |
-| `list_statetree_schemas` | List all StateTree schema classes with their context data |
-| `list_statetree_nodes` | List available node types (tasks, conditions, evaluators, considerations, property functions) for a schema |
+### Tactics
 
-### Item Commands (Category: "Items")
-
-| Command | Purpose |
-|---------|---------|
-| `describe_fragments` | Get rich descriptions of item fragment types (properties, pairings, prerequisites) |
-| `create_item_from_template` | Create a new UArcItemDefinition from a UArcItemDefinitionTemplate |
-| `template_add_fragment` | Add a fragment type to a template by struct name |
-| `template_remove_fragment` | Remove a fragment type from a template by struct name |
-| `update_items_from_template` | Re-sync all item definitions that reference a given template |
-
-### Asset Commands (Category: "Asset")
-
-| Command | Purpose |
-|---------|---------|
-| `create_data_asset` | Create a new UDataAsset of a specified subclass |
+| Tool | Purpose |
+|------|---------|
+| `ExportTacticsRecording` | Load an ArcTactics `.utrace` recording (empty path = newest in `Saved/ArcTactics/Traces`), write the whole recording as `<trace>.json` next to it, and return a per-entity summary (Write access: it writes a file). Options: `entity`, `fromTime`/`toTime`, `queryItems` all/valid/none. Loading and the format belong to ArcGameplayDebugger (`FArcTacticsTraceLoader::LoadBlocking`, `ArcTacticsRecordingJson::Write`). |
 
 ## Structure
 
 ```
 Source/ArcMCP/
-├── ArcMCPModule.h/.cpp              # Module startup/shutdown
+├── ArcMCPModule.h/.cpp              # Module startup/shutdown — registers UArcMCPToolset
 ├── ArcMCP.Build.cs                  # Build config
-├── Commands/
-│   ├── ArcMCPAssetCommands.h/.cpp          # create_data_asset
-│   ├── ArcMCPCommand_CreateStateTree.h/.cpp
-│   ├── ArcMCPCommand_ListStateTreeNodes.h/.cpp
-│   ├── ArcMCPCommand_ListStateTreeSchemas.h/.cpp
-│   ├── ArcMCPCommand_ValidateStateTree.h/.cpp
-│   ├── ArcMCPDescribeCommands.h/.cpp       # describe_fragments
-│   └── ArcMCPTemplateCommands.h/.cpp       # template CRUD + update propagation
+├── ArcMCPToolset.h                  # UArcMCPToolset : UToolsetDefinition (all UFUNCTION declarations)
+├── ArcMCPToolsetUtils.h             # MakeError / JsonObjToString helpers
+├── ArcMCPToolset_Containers.cpp     # GetStructInContainer / SetStructFieldInContainer / AddStructToContainer / RemoveStructFromContainer
+├── ArcMCPToolset_Records.cpp        # FindRecordReferencers
+├── ArcMCPToolset_Semantic.cpp       # SemanticSearchStart / SemanticSearchResult
+├── ArcMCPToolset_StateTree.cpp      # CreateStateTree / ValidateStateTree / ListStateTreeSchemas / ListStateTreeNodes
+├── ArcMCPToolset_Tactics.cpp        # ExportTacticsRecording
+├── ArcMCPToolset_Trace.cpp          # QueryTrace
 └── StateTree/
     ├── ArcStateTreeBuilder.h/.cpp          # JSON → compiled UStateTree asset
     ├── ArcStateTreeJsonParser.h/.cpp       # JSON parsing + structural validation
@@ -65,15 +51,16 @@ Source/ArcMCP/
 ## Key Patterns
 
 - **F-prefix handling**: UHT strips the `F` prefix from USTRUCT names in reflection. All struct name lookups accept names with or without the prefix (e.g. both `FArcItemFragment_Stacks` and `ArcItemFragment_Stacks` work).
-- **Snake_case aliases**: StateTree node types are aliased from C++ struct names for AI-friendly discovery (e.g. `FStateTreeCompareIntCondition` → `condition_compare_int`). Property functions use `function_` prefix (e.g. `FStateTreeAddFloatPropertyFunction` → `function_add_float`).
-- **Metadata extraction**: Registry captures `DisplayName` and tooltip `Description` from UE reflection for nodes and properties. Property function instance data properties are classified with `Role` ("input"/"output") based on their UPROPERTY Category metadata.
-- **Lazy registry init**: StateTree node registry defers discovery until `FCoreDelegates::OnAllModuleLoadingPhasesComplete`.
-- **Validation before creation**: `validate_statetree` lets AI verify a description before committing to asset creation.
+- **Snake_case aliases**: StateTree node types are aliased from C++ struct names for AI-friendly discovery (e.g. `FStateTreeCompareIntCondition` → `condition_compare_int`). Property functions use `function_` prefix.
+- **Metadata extraction**: Registry captures `DisplayName` and tooltip `Description` from UE reflection. Property function instance data properties are classified with `Role` ("input"/"output") based on their UPROPERTY Category metadata.
+- **Lazy registry init**: `FArcStateTreeNodeRegistry` defers discovery until `FCoreDelegates::OnAllModuleLoadingPhasesComplete` — same delegate used by module registration.
+- **Validate before create**: `ValidateStateTree` lets an AI verify a description before committing to asset creation.
 
 ## Dependencies
 
-- **ECABridge** (public) — command framework
-- **ArcCore** (private) — item definitions, fragments, templates
+- **ToolsetRegistry** (public) — `UToolsetDefinition`, `UToolsetRegistry`
+- **ArcCore, ArcCoreEditor** (private)
 - **StateTreeModule, StateTreeEditorModule** (private) — StateTree API
 - **Json, JsonUtilities** (public) — parameter serialization
 - **UnrealEd, AssetTools, AssetRegistry** (private) — editor asset operations
+- **ArcGameplayDebugger** (private, plugin dependency) — tactics recording load and JSON export

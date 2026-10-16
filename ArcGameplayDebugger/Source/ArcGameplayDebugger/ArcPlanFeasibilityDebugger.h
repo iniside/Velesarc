@@ -7,6 +7,9 @@
 #include "SmartObjectPlanner/ArcSmartObjectPlanRequest.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanResponse.h"
 
+class AActor;
+class UArcPlanFeasibilityDebuggerDrawComponent;
+
 /**
  * ImGui debug window for testing SmartObject plan feasibility.
  *
@@ -30,8 +33,9 @@ private:
 	void DrawResultsPanel();
 
 	// --- World drawing ---
-	void DrawSearchRadiusInWorld();
 	void DrawSelectedPlanInWorld();
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
 
 	// --- Planner interaction ---
 	void RunPlanner();
@@ -58,4 +62,8 @@ private:
 	int32 SelectedPlanIndex = INDEX_NONE;
 	bool bHasResults = false;
 	FString StatusMessage;
+
+	// Draw component
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcPlanFeasibilityDebuggerDrawComponent> DrawComponent;
 };

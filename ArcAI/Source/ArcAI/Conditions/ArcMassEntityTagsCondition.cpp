@@ -14,13 +14,13 @@ bool FArcMassEntityTagsCondition::Link(FStateTreeLinker& Linker)
 
 void FArcMassEntityTagsCondition::GetDependencies(UE::MassBehavior::FStateTreeDependencyBuilder& Builder) const
 {
-	Builder.AddReadOnly<FArcMassGameplayTagContainerFragment>();
+	Builder.AddReadOnly<FArcOwnedTagsFragment>();
 }
 
 bool FArcMassEntityTagsCondition::TestCondition(FStateTreeExecutionContext& Context) const
 {
 	const FMassStateTreeExecutionContext& MassStateTreeContext = static_cast<FMassStateTreeExecutionContext&>(Context);
-	FArcMassGameplayTagContainerFragment* MassTags = MassStateTreeContext.GetExternalDataPtr(MassGameplayTagsHandle);
+	FArcOwnedTagsFragment* MassTags = MassStateTreeContext.GetExternalDataPtr(MassGameplayTagsHandle);
 	if (!MassTags)
 	{
 		return false;
@@ -32,10 +32,10 @@ bool FArcMassEntityTagsCondition::TestCondition(FStateTreeExecutionContext& Cont
 	switch (MatchType)
 	{
 		case EGameplayContainerMatchType::Any:
-			bResult = bExactMatch ? MassTags->Tags.HasAnyExact(InstanceData.TagContainer) : MassTags->Tags.HasAny(InstanceData.TagContainer);
+			bResult = bExactMatch ? MassTags->GetTags().HasAnyExact(InstanceData.TagContainer) : MassTags->GetTags().HasAny(InstanceData.TagContainer);
 			break;
 		case EGameplayContainerMatchType::All:
-			bResult = bExactMatch ? MassTags->Tags.HasAllExact(InstanceData.TagContainer) : MassTags->Tags.HasAll(InstanceData.TagContainer);
+			bResult = bExactMatch ? MassTags->GetTags().HasAllExact(InstanceData.TagContainer) : MassTags->GetTags().HasAll(InstanceData.TagContainer);
 			break;
 		default:
 			ensureMsgf(false, TEXT("Unhandled match type %s."), *UEnum::GetValueAsString(MatchType));
@@ -46,7 +46,7 @@ bool FArcMassEntityTagsCondition::TestCondition(FStateTreeExecutionContext& Cont
 		, *UE::StateTree::DescHelpers::GetGameplayTagContainerAsText(InstanceData.TagContainer).ToString()
 		, *UEnum::GetValueAsString(MatchType)
 		, *UE::StateTree::DescHelpers::GetExactMatchText(bExactMatch, EStateTreeNodeFormatting::Text).ToString()
-		, *UE::StateTree::DescHelpers::GetGameplayTagContainerAsText(MassTags->Tags).ToString());
+		, *UE::StateTree::DescHelpers::GetGameplayTagContainerAsText(MassTags->GetTags().GetTagContainer()).ToString());
 
 	return bResult ^ bInvert;
 }

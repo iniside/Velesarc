@@ -22,20 +22,17 @@
 #pragma once
 
 
-#include "GameplayAbilitySpec.h"
-#include "ArcCore/Items/ArcItemTypes.h"
+#include "GameplayTagContainer.h"
+#include "Items/ArcItemTypes.h"
+#include "UObject/PrimaryAssetId.h"
 #include "Tasks/TargetingTask.h"
 
 #include "ArcGunTypes.generated.h"
 
-class UArcItemDefinition;
 class UArcGunStateComponent;
 class UArcGunFireModePreset;
 class AArcGunActor;
-class UArcCoreGameplayAbility;
 class UArcTargetingObject;
-
-struct FGameplayAbilityTargetDataHandle;
 
 USTRUCT(BlueprintType)
 struct ARCGUN_API FArcSelectedGun
@@ -53,7 +50,7 @@ public:
 	FArcItemId WeaponItemHandle;
 	
 	UPROPERTY()
-	TObjectPtr<const UArcItemDefinition> WeaponItemDef = nullptr;
+	FPrimaryAssetId WeaponItemDef;
 	
 	UPROPERTY()
 	TObjectPtr<UArcGunFireModePreset> FireMode = nullptr;
@@ -89,7 +86,7 @@ public:
 		GunItemPtr = nullptr;
 		ForceUpdate = 0;
 		FireMode = nullptr;
-		WeaponItemDef = nullptr;
+		WeaponItemDef = FPrimaryAssetId();
 	}
 };
 
@@ -102,19 +99,13 @@ struct FArcGunShotInfo
 	TObjectPtr<UArcGunStateComponent> GunStateComponent;
 	
 	UPROPERTY()
-	TObjectPtr<UGameplayAbility> Ability;
-	
-	UPROPERTY()
 	FArcSelectedGun CurrentGun;
 
 	UPROPERTY()
 	TArray<FHitResult> Targets;
-	
+
 	UPROPERTY()
 	TObjectPtr<UArcTargetingObject> TargetingObject;
-	
-	UPROPERTY()
-	FGameplayAbilitySpecHandle TargetRequestHandle;
 
 	UPROPERTY()
 	bool bEnded = false;
@@ -133,7 +124,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FArcGunAmmoChanged, int32)
 DECLARE_MULTICAST_DELEGATE_TwoParams(FArcGunReloadDelegate, const FArcSelectedGun&, float /*ReloadTime*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FArcGunDelegate, const FArcSelectedGun&);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FArcGunWeaponAmmoDelegate, const FArcSelectedGun&, int32);
-DECLARE_MULTICAST_DELEGATE_FiveParams(FArcGunFireHitDelegate, class UGameplayAbility*, const FArcSelectedGun&, const FGameplayAbilityTargetDataHandle&, class UArcTargetingObject*, const FGameplayAbilitySpecHandle&);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FArcGunFireHitDelegate, const FArcSelectedGun&, class UArcTargetingObject*);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FArcMagazineAmmoChanged, const FArcSelectedGun&, float/* CurrentAmmo*/, float/*MaxAmmo*/);
 
 USTRUCT(BlueprintType)

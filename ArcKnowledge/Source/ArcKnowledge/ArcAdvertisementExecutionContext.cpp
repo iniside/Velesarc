@@ -4,9 +4,11 @@
 #include "ArcAdvertisementInstruction_StateTree.h"
 #include "ArcAdvertisementStateTreeSchema.h"
 #include "Engine/World.h"
-#include "MassEntityTypes.h"
-#include "MassEntityView.h"
-#include "MassExecutionContext.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "Mass/EntityView.h"
+#include "Mass/ExecutionContext.h"
+#include "MassSubsystemAccess.h"
 #include "MassStateTreeExecutionContext.h"
 #include "StateTreeExecutionContext.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -59,20 +61,20 @@ bool FArcAdvertisementExecutionContext::Activate(const FArcAdvertisementInstruct
 
 	if (!IsValid())
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to activate advertisement behavior. Context is not properly setup (no Owner)."));
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to activate advertisement behavior. Context is not properly setup (no Owner).");
 		return false;
 	}
 
 	if (StateTree == nullptr)
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to activate advertisement behavior for %s. Instruction doesn't point to a valid StateTree asset."),
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to activate advertisement behavior for %ls. Instruction doesn't point to a valid StateTree asset.",
 			*GetNameSafe(Owner));
 		return false;
 	}
 
 	if (CurrentlyRunningExecContext)
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Reentrant call to %hs is not allowed!"), __FUNCTION__);
+		UE_LOGF(LogArcAdvertisement, Error,"Reentrant call to %s is not allowed!", __FUNCTION__);
 		return false;
 	}
 
@@ -82,7 +84,7 @@ bool FArcAdvertisementExecutionContext::Activate(const FArcAdvertisementInstruct
 
 	if (!StateTreeContext.IsValid())
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to activate advertisement behavior for %s. Unable to initialize StateTree execution context for: %s."),
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to activate advertisement behavior for %ls. Unable to initialize StateTree execution context for: %ls.",
 			*GetNameSafe(Owner), *StateTree->GetFullName());
 		return false;
 	}
@@ -91,7 +93,7 @@ bool FArcAdvertisementExecutionContext::Activate(const FArcAdvertisementInstruct
 	const UArcAdvertisementStateTreeSchema* Schema = Cast<UArcAdvertisementStateTreeSchema>(StateTreeContext.GetStateTree()->GetSchema());
 	if (Schema == nullptr)
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to activate advertisement behavior for %s. Expecting %s schema for StateTree asset: %s."),
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to activate advertisement behavior for %ls. Expecting %ls schema for StateTree asset: %ls.",
 			*GetNameSafe(Owner),
 			*GetNameSafe(UArcAdvertisementStateTreeSchema::StaticClass()),
 			*GetFullNameSafe(StateTreeContext.GetStateTree()));
@@ -101,7 +103,7 @@ bool FArcAdvertisementExecutionContext::Activate(const FArcAdvertisementInstruct
 	// Validate actor class if an actor is provided and the schema specifies a class
 	if (ContextActor && Schema->GetContextActorClass() && !ContextActor->IsA(Schema->GetContextActorClass()))
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to activate advertisement behavior. Expecting Actor of type %s (found %s) for StateTree asset: %s."),
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to activate advertisement behavior. Expecting Actor of type %ls (found %ls) for StateTree asset: %ls.",
 			*GetNameSafe(Schema->GetContextActorClass()),
 			*GetNameSafe(ContextActor->GetClass()),
 			*GetFullNameSafe(StateTreeContext.GetStateTree()));
@@ -110,7 +112,7 @@ bool FArcAdvertisementExecutionContext::Activate(const FArcAdvertisementInstruct
 
 	if (!SetContextRequirements(StateTreeContext, MassContext))
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to activate advertisement behavior for %s. Unable to provide all external data views for StateTree asset: %s."),
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to activate advertisement behavior for %ls. Unable to provide all external data views for StateTree asset: %ls.",
 			*GetNameSafe(Owner), *StateTree->GetFullName());
 		return false;
 	}
@@ -125,7 +127,7 @@ bool FArcAdvertisementExecutionContext::Activate(const FArcAdvertisementInstruct
 	}
 	else
 	{
-		StateTreeContext.Start(&StateTreeReference.GetParameters());
+		StateTreeContext.Start(StateTreeReference.GetParameters().GetValue());
 	}
 
 	return true;
@@ -146,7 +148,7 @@ bool FArcAdvertisementExecutionContext::Tick(const float DeltaTime, FMassExecuti
 
 	if (CurrentlyRunningExecContext)
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Reentrant call to %hs is not allowed!"), __FUNCTION__);
+				UE_LOGF(LogArcAdvertisement, Error,"Reentrant call to %s is not allowed!", __FUNCTION__);
 		return false;
 	}
 
@@ -179,7 +181,7 @@ void FArcAdvertisementExecutionContext::Deactivate(FMassExecutionContext* MassCo
 	const UStateTree* StateTree = ActiveStateTreeReference->GetStateTree();
 	if (StateTree == nullptr)
 	{
-		UE_LOG(LogArcAdvertisement, Error, TEXT("Failed to deactivate advertisement behavior for %s. No valid StateTree asset."),
+		UE_LOGF(LogArcAdvertisement, Error,"Failed to deactivate advertisement behavior for %ls. No valid StateTree asset.",
 			*GetNameSafe(Owner));
 		return;
 	}
@@ -235,6 +237,8 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::ExecutingEntityHandle, FStateTreeDataView(FStructView::Make(ExecutingEntity)));
 	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::SourceEntityHandle, FStateTreeDataView(FStructView::Make(SourceEntity)));
 	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::AdvertisementHandle, FStateTreeDataView(FStructView::Make(AdvertisementHandle)));
+	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::KnowledgeLocation, FStateTreeDataView(FStructView::Make(KnowledgeLocation)));
+	StateTreeContext.SetContextDataByName(UE::ArcKnowledge::Names::SourceEntityLocation, FStateTreeDataView(FStructView::Make(SourceEntityLocation)));
 
 	checkf(Owner != nullptr, TEXT("Should never reach this point with an invalid Owner since IsValid() is checked before."));
 	const UWorld* World = Owner->GetWorld();
@@ -272,7 +276,7 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 					}
 					else if (Desc.Requirement == EStateTreeExternalDataRequirement::Required)
 					{
-						UE_LOG(LogArcAdvertisement, Error, TEXT("Missing Fragment: %s"), *GetNameSafe(ScriptStruct));
+						UE_LOGF(LogArcAdvertisement, Error,"Missing Fragment: %ls", *GetNameSafe(ScriptStruct));
 					}
 				}
 				else if (bHasEntityView && UE::Mass::IsA<FMassSharedFragment>(Desc.Struct))
@@ -286,7 +290,7 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 					}
 					else if (Desc.Requirement == EStateTreeExternalDataRequirement::Required)
 					{
-						UE_LOG(LogArcAdvertisement, Error, TEXT("Missing Shared Fragment: %s"), *GetNameSafe(ScriptStruct));
+						UE_LOGF(LogArcAdvertisement, Error,"Missing Shared Fragment: %ls", *GetNameSafe(ScriptStruct));
 					}
 				}
 				else if (bHasEntityView && UE::Mass::IsA<FMassConstSharedFragment>(Desc.Struct))
@@ -300,7 +304,7 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 					}
 					else if (Desc.Requirement == EStateTreeExternalDataRequirement::Required)
 					{
-						UE_LOG(LogArcAdvertisement, Error, TEXT("Missing Const Shared Fragment: %s"), *GetNameSafe(ScriptStruct));
+						UE_LOGF(LogArcAdvertisement, Error,"Missing Const Shared Fragment: %ls", *GetNameSafe(ScriptStruct));
 					}
 				}
 				// World subsystems
@@ -313,7 +317,7 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 					}
 					else if (Desc.Requirement == EStateTreeExternalDataRequirement::Required)
 					{
-						UE_LOG(LogArcAdvertisement, Error, TEXT("Missing Subsystem: %s"), *GetNameSafe(Desc.Struct));
+						UE_LOGF(LogArcAdvertisement, Error,"Missing Subsystem: %ls", *GetNameSafe(Desc.Struct));
 					}
 				}
 				// Actors
@@ -330,7 +334,7 @@ bool FArcAdvertisementExecutionContext::SetContextRequirements(FStateTreeExecuti
 					}
 					else if (Desc.Requirement == EStateTreeExternalDataRequirement::Required)
 					{
-						UE_LOG(LogArcAdvertisement, Error, TEXT("Missing ActorComponent: %s"), *GetNameSafe(Desc.Struct));
+						UE_LOGF(LogArcAdvertisement, Error,"Missing ActorComponent: %ls", *GetNameSafe(Desc.Struct));
 					}
 				}
 			}

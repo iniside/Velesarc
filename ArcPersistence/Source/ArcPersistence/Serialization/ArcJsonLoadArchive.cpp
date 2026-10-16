@@ -21,17 +21,119 @@
 
 #include "Serialization/ArcJsonLoadArchive.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal helpers
-// ─────────────────────────────────────────────────────────────────────────────
+#include "ArcYyJson.h"
+#include "Misc/StringBuilder.h"
 
-nlohmann::json* FArcJsonLoadArchive::Current()
+#include <type_traits>
+
+namespace ArcJsonLoadArchivePrivate
+{
+	yyjson_val* FindField(const yyjson_val* Obj, FName Key)
+	{
+		TUtf8StringBuilder<FName::StringBufferSize> KeyText;
+		Key.AppendString(KeyText);
+		return yyjson_obj_getn(Obj, reinterpret_cast<const char*>(KeyText.GetData()), static_cast<size_t>(KeyText.Len()));
+	}
+
+	template <typename T>
+	bool GetInteger(const yyjson_val* Val, T& OutValue)
+	{
+		if (yyjson_is_uint(Val))
+		{
+			const uint64 Value = yyjson_get_uint(Val);
+			if (Value > static_cast<uint64>(TNumericLimits<T>::Max()))
+			{
+				return false;
+			}
+			OutValue = static_cast<T>(Value);
+			return true;
+		}
+		if (yyjson_is_sint(Val))
+		{
+			const int64 Value = yyjson_get_sint(Val);
+			if constexpr (std::is_signed_v<T>)
+			{
+				if (Value < static_cast<int64>(TNumericLimits<T>::Min()) || Value > static_cast<int64>(TNumericLimits<T>::Max()))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				if (Value < 0 || static_cast<uint64>(Value) > static_cast<uint64>(TNumericLimits<T>::Max()))
+				{
+					return false;
+				}
+			}
+			OutValue = static_cast<T>(Value);
+			return true;
+		}
+		return false;
+	}
+
+	template <typename T>
+	bool ReadInteger(const yyjson_val* Obj, FName Key, T& OutValue)
+	{
+		return GetInteger(FindField(Obj, Key), OutValue);
+	}
+
+	bool GetNumber(const yyjson_val* Val, double& OutValue)
+	{
+		if (!yyjson_is_num(Val))
+		{
+			return false;
+		}
+		OutValue = yyjson_get_num(Val);
+		return true;
+	}
+
+	bool GetNumberField(const yyjson_val* Obj, const char* Name, double& OutValue)
+	{
+		return GetNumber(yyjson_obj_get(Obj, Name), OutValue);
+	}
+
+	bool GetVector(const yyjson_val* Obj, FVector& OutValue)
+	{
+		double X = 0.0;
+		double Y = 0.0;
+		double Z = 0.0;
+		if (!GetNumberField(Obj, "X", X) || !GetNumberField(Obj, "Y", Y) || !GetNumberField(Obj, "Z", Z))
+		{
+			return false;
+		}
+		OutValue = FVector(X, Y, Z);
+		return true;
+	}
+
+	bool GetString(const yyjson_val* Obj, FName Key, FString& OutValue)
+	{
+		const yyjson_val* Val = FindField(Obj, Key);
+		if (!yyjson_is_str(Val))
+		{
+			return false;
+		}
+		OutValue = ArcJson::ToFString(Val);
+		return true;
+	}
+}
+
+void FArcJsonLoadArchive::FDocDeleter::operator()(yyjson_doc* InDoc) const
+{
+	yyjson_doc_free(InDoc);
+}
+
+FArcJsonLoadArchive::FArcJsonLoadArchive() = default;
+FArcJsonLoadArchive::~FArcJsonLoadArchive() = default;
+FArcJsonLoadArchive::FArcJsonLoadArchive(FArcJsonLoadArchive&&) = default;
+FArcJsonLoadArchive& FArcJsonLoadArchive::operator=(FArcJsonLoadArchive&&) = default;
+
+yyjson_val* FArcJsonLoadArchive::Current() const
 {
 	if (ScopeStack.Num() > 0)
 	{
-		return ScopeStack.Last();
+		return ScopeStack.Last().Value;
 	}
-	return &Root;
+	return Root;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,21 +142,25 @@ nlohmann::json* FArcJsonLoadArchive::Current()
 
 bool FArcJsonLoadArchive::InitializeFromData(const TArray<uint8>& Data)
 {
-	const std::string JsonStr(reinterpret_cast<const char*>(Data.GetData()), Data.Num());
-	nlohmann::json Envelope = nlohmann::json::parse(JsonStr, nullptr, false);
-
-	if (Envelope.is_discarded())
+	ArcJson::FDocPtr Parsed = ArcJson::Parse(Data);
+	if (!Parsed.IsValid())
 	{
 		return false;
 	}
 
-	if (!Envelope.contains("version") || !Envelope.contains("data"))
+	const yyjson_val* Envelope = yyjson_doc_get_root(Parsed.Get());
+	yyjson_val* VersionVal = yyjson_obj_get(Envelope, "version");
+	yyjson_val* DataVal = yyjson_obj_get(Envelope, "data");
+	uint32 ParsedVersion = 0;
+	if (DataVal == nullptr || !ArcJsonLoadArchivePrivate::GetInteger(VersionVal, ParsedVersion))
 	{
 		return false;
 	}
 
-	Version = Envelope["version"].get<uint32>();
-	Root = Envelope["data"];
+	Doc.Reset(Parsed.Release());
+	Root = DataVal;
+	Version = ParsedVersion;
+	ScopeStack.Reset();
 	return true;
 }
 
@@ -64,101 +170,59 @@ bool FArcJsonLoadArchive::InitializeFromData(const TArray<uint8>& Data)
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, bool& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	const yyjson_val* Val = ArcJsonLoadArchivePrivate::FindField(Current(), Key);
+	if (!yyjson_is_bool(Val))
 	{
 		return false;
 	}
-	OutValue = (*Current())[KeyStr].get<bool>();
+	OutValue = yyjson_get_bool(Val);
 	return true;
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, int32& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<int32>();
-	return true;
+	return ArcJsonLoadArchivePrivate::ReadInteger(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, int64& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<int64>();
-	return true;
+	return ArcJsonLoadArchivePrivate::ReadInteger(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, uint8& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<uint8>();
-	return true;
+	return ArcJsonLoadArchivePrivate::ReadInteger(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, uint16& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<uint16>();
-	return true;
+	return ArcJsonLoadArchivePrivate::ReadInteger(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, uint32& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<uint32>();
-	return true;
+	return ArcJsonLoadArchivePrivate::ReadInteger(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, uint64& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<uint64>();
-	return true;
+	return ArcJsonLoadArchivePrivate::ReadInteger(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, float& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	double Value = 0.0;
+	if (!ArcJsonLoadArchivePrivate::GetNumber(ArcJsonLoadArchivePrivate::FindField(Current(), Key), Value))
 	{
 		return false;
 	}
-	OutValue = (*Current())[KeyStr].get<float>();
+	OutValue = static_cast<float>(Value);
 	return true;
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, double& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	OutValue = (*Current())[KeyStr].get<double>();
-	return true;
+	return ArcJsonLoadArchivePrivate::GetNumber(ArcJsonLoadArchivePrivate::FindField(Current(), Key), OutValue);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,37 +231,28 @@ bool FArcJsonLoadArchive::ReadProperty(FName Key, double& OutValue)
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FString& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-	const std::string Str = (*Current())[KeyStr].get<std::string>();
-	OutValue = UTF8_TO_TCHAR(Str.c_str());
-	return true;
+	return ArcJsonLoadArchivePrivate::GetString(Current(), Key, OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FName& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	FString Str;
+	if (!ArcJsonLoadArchivePrivate::GetString(Current(), Key, Str))
 	{
 		return false;
 	}
-	const std::string Str = (*Current())[KeyStr].get<std::string>();
-	OutValue = FName(UTF8_TO_TCHAR(Str.c_str()));
+	OutValue = FName(*Str);
 	return true;
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FText& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	FString Str;
+	if (!ArcJsonLoadArchivePrivate::GetString(Current(), Key, Str))
 	{
 		return false;
 	}
-	const std::string Str = (*Current())[KeyStr].get<std::string>();
-	OutValue = FText::FromString(UTF8_TO_TCHAR(Str.c_str()));
+	OutValue = FText::FromString(MoveTemp(Str));
 	return true;
 }
 
@@ -207,14 +262,13 @@ bool FArcJsonLoadArchive::ReadProperty(FName Key, FText& OutValue)
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FGuid& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	FString Str;
+	if (!ArcJsonLoadArchivePrivate::GetString(Current(), Key, Str))
 	{
 		return false;
 	}
-	const std::string Str = (*Current())[KeyStr].get<std::string>();
 	FGuid ParsedGuid;
-	if (!FGuid::Parse(UTF8_TO_TCHAR(Str.c_str()), ParsedGuid))
+	if (!FGuid::Parse(Str, ParsedGuid))
 	{
 		return false;
 	}
@@ -228,35 +282,43 @@ bool FArcJsonLoadArchive::ReadProperty(FName Key, FGuid& OutValue)
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FGameplayTag& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	FString Str;
+	if (!ArcJsonLoadArchivePrivate::GetString(Current(), Key, Str))
 	{
 		return false;
 	}
-	const std::string Str = (*Current())[KeyStr].get<std::string>();
-	OutValue = FGameplayTag::RequestGameplayTag(FName(UTF8_TO_TCHAR(Str.c_str())));
+	if (Str.IsEmpty() || Str.Equals(TEXT("None"), ESearchCase::CaseSensitive))
+	{
+		OutValue = FGameplayTag::EmptyTag;
+		return true;
+	}
+	OutValue = FGameplayTag::RequestGameplayTag(FName(*Str));
 	return true;
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FGameplayTagContainer& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	yyjson_val* TagArray = ArcJsonLoadArchivePrivate::FindField(Current(), Key);
+	if (!yyjson_is_arr(TagArray))
 	{
 		return false;
 	}
 
-	const nlohmann::json& TagArray = (*Current())[KeyStr];
-	if (!TagArray.is_array())
+	size_t Idx = 0;
+	size_t Max = 0;
+	yyjson_val* TagEntry = nullptr;
+	yyjson_arr_foreach(TagArray, Idx, Max, TagEntry)
 	{
-		return false;
+		if (!yyjson_is_str(TagEntry))
+		{
+			return false;
+		}
 	}
 
 	OutValue.Reset();
-	for (const auto& TagEntry : TagArray)
+	yyjson_arr_foreach(TagArray, Idx, Max, TagEntry)
 	{
-		const std::string TagStr = TagEntry.get<std::string>();
-		OutValue.AddTag(FGameplayTag::RequestGameplayTag(FName(UTF8_TO_TCHAR(TagStr.c_str()))));
+		OutValue.AddTag(FGameplayTag::RequestGameplayTag(FName(*ArcJson::ToFString(TagEntry))));
 	}
 	return true;
 }
@@ -267,95 +329,51 @@ bool FArcJsonLoadArchive::ReadProperty(FName Key, FGameplayTagContainer& OutValu
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FVector& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
-	{
-		return false;
-	}
-
-	const nlohmann::json& Obj = (*Current())[KeyStr];
-	if (!Obj.is_object() || !Obj.contains("X") || !Obj.contains("Y") || !Obj.contains("Z"))
-	{
-		return false;
-	}
-
-	OutValue.X = Obj["X"].get<double>();
-	OutValue.Y = Obj["Y"].get<double>();
-	OutValue.Z = Obj["Z"].get<double>();
-	return true;
+	return ArcJsonLoadArchivePrivate::GetVector(ArcJsonLoadArchivePrivate::FindField(Current(), Key), OutValue);
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FRotator& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	const yyjson_val* Obj = ArcJsonLoadArchivePrivate::FindField(Current(), Key);
+	double Pitch = 0.0;
+	double Yaw = 0.0;
+	double Roll = 0.0;
+	if (!ArcJsonLoadArchivePrivate::GetNumberField(Obj, "Pitch", Pitch)
+		|| !ArcJsonLoadArchivePrivate::GetNumberField(Obj, "Yaw", Yaw)
+		|| !ArcJsonLoadArchivePrivate::GetNumberField(Obj, "Roll", Roll))
 	{
 		return false;
 	}
-
-	const nlohmann::json& Obj = (*Current())[KeyStr];
-	if (!Obj.is_object() || !Obj.contains("Pitch") || !Obj.contains("Yaw") || !Obj.contains("Roll"))
-	{
-		return false;
-	}
-
-	OutValue.Pitch = Obj["Pitch"].get<double>();
-	OutValue.Yaw = Obj["Yaw"].get<double>();
-	OutValue.Roll = Obj["Roll"].get<double>();
+	OutValue = FRotator(Pitch, Yaw, Roll);
 	return true;
 }
 
 bool FArcJsonLoadArchive::ReadProperty(FName Key, FTransform& OutValue)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	const yyjson_val* Obj = ArcJsonLoadArchivePrivate::FindField(Current(), Key);
+	const yyjson_val* RotObj = yyjson_obj_get(Obj, "Rotation");
+
+	double X = 0.0;
+	double Y = 0.0;
+	double Z = 0.0;
+	double W = 0.0;
+	if (!ArcJsonLoadArchivePrivate::GetNumberField(RotObj, "X", X)
+		|| !ArcJsonLoadArchivePrivate::GetNumberField(RotObj, "Y", Y)
+		|| !ArcJsonLoadArchivePrivate::GetNumberField(RotObj, "Z", Z)
+		|| !ArcJsonLoadArchivePrivate::GetNumberField(RotObj, "W", W))
 	{
 		return false;
 	}
 
-	const nlohmann::json& Obj = (*Current())[KeyStr];
-	if (!Obj.is_object() || !Obj.contains("Rotation") || !Obj.contains("Translation") || !Obj.contains("Scale3D"))
+	FVector Translation;
+	FVector Scale3D;
+	if (!ArcJsonLoadArchivePrivate::GetVector(yyjson_obj_get(Obj, "Translation"), Translation)
+		|| !ArcJsonLoadArchivePrivate::GetVector(yyjson_obj_get(Obj, "Scale3D"), Scale3D))
 	{
 		return false;
 	}
 
-	const nlohmann::json& RotObj = Obj["Rotation"];
-	const nlohmann::json& TransObj = Obj["Translation"];
-	const nlohmann::json& ScaleObj = Obj["Scale3D"];
-
-	if (!RotObj.contains("X") || !RotObj.contains("Y") || !RotObj.contains("Z") || !RotObj.contains("W"))
-	{
-		return false;
-	}
-	if (!TransObj.contains("X") || !TransObj.contains("Y") || !TransObj.contains("Z"))
-	{
-		return false;
-	}
-	if (!ScaleObj.contains("X") || !ScaleObj.contains("Y") || !ScaleObj.contains("Z"))
-	{
-		return false;
-	}
-
-	const FQuat Rotation(
-		RotObj["X"].get<double>(),
-		RotObj["Y"].get<double>(),
-		RotObj["Z"].get<double>(),
-		RotObj["W"].get<double>()
-	);
-
-	const FVector Translation(
-		TransObj["X"].get<double>(),
-		TransObj["Y"].get<double>(),
-		TransObj["Z"].get<double>()
-	);
-
-	const FVector Scale3D(
-		ScaleObj["X"].get<double>(),
-		ScaleObj["Y"].get<double>(),
-		ScaleObj["Z"].get<double>()
-	);
-
-	OutValue = FTransform(Rotation, Translation, Scale3D);
+	OutValue = FTransform(FQuat(X, Y, Z, W), Translation, Scale3D);
 	return true;
 }
 
@@ -365,19 +383,13 @@ bool FArcJsonLoadArchive::ReadProperty(FName Key, FTransform& OutValue)
 
 bool FArcJsonLoadArchive::BeginStruct(FName Key)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	yyjson_val* Child = ArcJsonLoadArchivePrivate::FindField(Current(), Key);
+	if (!yyjson_is_obj(Child))
 	{
 		return false;
 	}
 
-	nlohmann::json& Child = (*Current())[KeyStr];
-	if (!Child.is_object())
-	{
-		return false;
-	}
-
-	ScopeStack.Push(&Child);
+	ScopeStack.Add(FScope{Child, nullptr, INDEX_NONE});
 	return true;
 }
 
@@ -393,37 +405,53 @@ void FArcJsonLoadArchive::EndStruct()
 
 bool FArcJsonLoadArchive::BeginArray(FName Key, int32& OutCount)
 {
-	const std::string KeyStr = TCHAR_TO_UTF8(*Key.ToString());
-	if (!Current()->contains(KeyStr))
+	yyjson_val* Child = ArcJsonLoadArchivePrivate::FindField(Current(), Key);
+	if (!yyjson_is_arr(Child))
 	{
 		return false;
 	}
 
-	nlohmann::json& Child = (*Current())[KeyStr];
-	if (!Child.is_array())
-	{
-		return false;
-	}
-
-	OutCount = static_cast<int32>(Child.size());
-	ScopeStack.Push(&Child);
+	OutCount = static_cast<int32>(yyjson_arr_size(Child));
+	ScopeStack.Add(FScope{Child, nullptr, INDEX_NONE});
 	return true;
 }
 
 bool FArcJsonLoadArchive::BeginArrayElement(int32 Index)
 {
-	nlohmann::json* ArrayPtr = Current();
-	if (!ArrayPtr->is_array())
+	FScope* ArrayScope = ScopeStack.Num() > 0 ? &ScopeStack.Last() : nullptr;
+	yyjson_val* Array = ArrayScope != nullptr ? ArrayScope->Value : Root;
+	if (!yyjson_is_arr(Array))
 	{
 		return false;
 	}
 
-	if (Index < 0 || Index >= static_cast<int32>(ArrayPtr->size()))
+	if (Index < 0 || static_cast<size_t>(Index) >= yyjson_arr_size(Array))
 	{
 		return false;
 	}
 
-	ScopeStack.Push(&(*ArrayPtr)[Index]);
+	yyjson_val* Element = nullptr;
+	// The cursor resumes the unsafe_yyjson_get_next walk that yyjson_arr_get restarts from element 0 (yyjson/yyjson.h:5615).
+	if (ArrayScope != nullptr && ArrayScope->CursorElement != nullptr && Index == ArrayScope->CursorIndex + 1)
+	{
+		Element = unsafe_yyjson_get_next(ArrayScope->CursorElement);
+	}
+	else if (ArrayScope != nullptr && ArrayScope->CursorElement != nullptr && Index == ArrayScope->CursorIndex)
+	{
+		Element = ArrayScope->CursorElement;
+	}
+	else
+	{
+		Element = yyjson_arr_get(Array, static_cast<size_t>(Index));
+	}
+
+	if (ArrayScope != nullptr)
+	{
+		ArrayScope->CursorElement = Element;
+		ArrayScope->CursorIndex = Index;
+	}
+
+	ScopeStack.Add(FScope{Element, nullptr, INDEX_NONE});
 	return true;
 }
 

@@ -1,0 +1,64 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTBatch.usf — publish the reduced live count.
+
+	One thread reads the freshly reduced root (the live bisector count) and writes it
+	to the persistent NodeCounter (next frame's dispatch sizing), to the single
+	DrawIndexedInstancedIndirect block, and to the link pass's indirect args.
+
+	DrawArgs layout (D3D12 indexed-indirect order), two blocks of five:
+		[0] IndexCountPerInstance = IndexCount (3 — the {0,1,2} ref patch)
+		[1] InstanceCount         = live bisectors
+		[2] StartIndexLocation    = 0
+		[3] BaseVertexLocation    = 0
+		[4] StartInstanceLocation = 0
+	Block 1 (ARC_CBT_DRAWARGS_VISIBLE) is the same draw over the compacted visible
+	list. Its InstanceCount is left at zero here and raised by the compaction pass,
+	which uses that slot as its append cursor — so a frame whose compaction does not
+	run draws nothing through it rather than a stale count.
+	The DrawArgs UAV is a persistent raw buffer RDG cannot see, so the caller wraps
+	this pass with the IndirectArgs<->UAVCompute transitions.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBT.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBTCounters.ush"
+
+RWByteAddressBuffer CBTHeap;
+RWBuffer<uint> NodeCounter;
+RWBuffer<uint> RWDrawArgs;
+RWBuffer<uint> RWLinkDispatchArgs;
+RWBuffer<uint> PoolCounters;
+
+uint PoolDepth;
+uint IndexCount;
+uint ThreadsPerGroup;
+
+[numthreads(1, 1, 1)]
+void BatchCS()
+{
+	const uint Count = cbt_NodeCount_RW(CBTHeap, 0u, (int)PoolDepth);
+
+	NodeCounter[0] = Count;
+
+	// Diagnostics: the live count rides the counter buffer the CPU already reads back, so "how many
+	// triangles is the terrain drawing" is answerable without a second readback.
+	PoolCounters[ARC_CBT_COUNTER_LIVE_BISECTORS] = Count;
+
+	RWDrawArgs[0] = IndexCount;
+	RWDrawArgs[1] = Count;
+	RWDrawArgs[2] = 0u;
+	RWDrawArgs[3] = 0u;
+	RWDrawArgs[4] = 0u;
+
+	RWDrawArgs[ARC_CBT_DRAWARGS_VISIBLE + 0u] = IndexCount;
+	RWDrawArgs[ARC_CBT_DRAWARGS_VISIBLE + 1u] = 0u;
+	RWDrawArgs[ARC_CBT_DRAWARGS_VISIBLE + 2u] = 0u;
+	RWDrawArgs[ARC_CBT_DRAWARGS_VISIBLE + 3u] = 0u;
+	RWDrawArgs[ARC_CBT_DRAWARGS_VISIBLE + 4u] = 0u;
+
+	RWLinkDispatchArgs[0] = (Count + ThreadsPerGroup - 1u) / ThreadsPerGroup;
+	RWLinkDispatchArgs[1] = 1u;
+	RWLinkDispatchArgs[2] = 1u;
+}

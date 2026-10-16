@@ -3,32 +3,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSGenerator.h"
+#include "ArcTQSGenerator.h"
+#include "Perception/ArcPerceptionTypes.h"
 #include "ArcTQSGenerator_PerceivedEntities.generated.h"
 
 /**
- * Which perception senses to read perceived entities from.
- */
-UENUM(BlueprintType)
-enum class EArcTQSPerceptionSense : uint8
-{
-	Sight,
-	Hearing,
-	/** Merge both sight and hearing results (deduplicates). */
-	Both
-};
-
-/**
- * Generator that produces target items from the querier entity's perception results.
+ * Generator that produces target items from Perceiver's perception results.
  * Reads FArcMassSightPerceptionResult and/or FArcMassHearingPerceptionResult fragments
- * on the querier entity and creates a MassEntity-type target item per perceived entity.
- *
- * Does not use context locations — overrides GenerateItems() directly.
+ * on Perceiver and creates a MassEntity-type target item per perceived entity.
  */
 USTRUCT(DisplayName = "Perceived Entities")
 struct ARCAI_API FArcTQSGenerator_PerceivedEntities : public FArcTQSGenerator
 {
 	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Generator", meta = (ArcTQSRequiredBinding))
+	FMassEntityHandle Perceiver;
 
 	// Which perception sense(s) to read from.
 	UPROPERTY(EditAnywhere, Category = "Generator")
@@ -41,4 +31,5 @@ struct ARCAI_API FArcTQSGenerator_PerceivedEntities : public FArcTQSGenerator
 	bool bUseLastKnownLocation = false;
 
 	virtual void GenerateItems(const FArcTQSQueryContext& QueryContext, TArray<FArcTQSTargetItem>& OutItems) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Perception; }
 };

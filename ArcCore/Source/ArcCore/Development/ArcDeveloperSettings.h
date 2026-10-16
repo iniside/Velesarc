@@ -26,8 +26,6 @@
 #include "GameplayTagContainer.h"
 #include "ArcDeveloperSettings.generated.h"
 
-class UArcExperienceDefinition;
-
 /**
  * Developer settings / editor cheats
  */
@@ -45,15 +43,6 @@ public:
 	//~End of UDeveloperSettings interface
 
 public:
-	// The experience override to use for Play in Editor (if not set, the default for the
-	// world settings of the open map will be used)
-	UPROPERTY(EditDefaultsOnly
-		, BlueprintReadOnly
-		, config
-		, Category = Arc
-		, meta = (AllowedTypes = "ArcExperienceDefinition"))
-	FPrimaryAssetId ExperienceOverride;
-
 	UPROPERTY(BlueprintReadOnly
 		, config
 		, Category = Arc)

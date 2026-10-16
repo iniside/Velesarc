@@ -1,0 +1,28 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "ArcMassReplication E2E Tests",
+    "Description": "Modular Test Framework companion: multi-process server/client tests for ArcMassReplication.",
+    "Category": "ArcX",
+    "CreatedBy": "Lukasz Baran",
+    "CanContainContent": false,
+    "IsExperimentalVersion": true,
+    "Installed": false,
+    "ExplicitlyLoaded": true,
+    "EditorCustomVirtualPath": "Arcx/Tests",
+    "Modules": [
+        {
+            "Name": "ArcMassReplicationE2ETest",
+            "Type": "Runtime",
+            "LoadingPhase": "Default",
+            "TargetAllowList": [ "Editor" ]
+        }
+    ],
+    "Plugins": [
+        { "Name": "ArcMassReplication", "Enabled": true },
+        { "Name": "ArcMassReplicationTest", "Enabled": true },
+        { "Name": "ModularTestFramework", "Enabled": true },
+        { "Name": "ModularTestResolver", "Enabled": true }
+    ]
+}

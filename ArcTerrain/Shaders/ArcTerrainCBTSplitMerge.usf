@@ -1,0 +1,322 @@
+// Copyright Lukasz Baran. All Rights Reserved.
+
+/*=============================================================================
+	ArcTerrainCBTSplitMerge.usf — the topology write pass.
+
+	One thread per live bisector, decoded against the SAME frozen heap the classify
+	pass voted on. No thread writes anything another thread reads to decide with:
+
+	  * every allocation resolves an ordinal from an atomic counter to a FREE slot of
+	    the frozen heap, so two allocators never land on the same slot and a slot
+	    released this frame cannot be handed out until the next (ArcTerrainBisector.ush);
+	  * a split writes only fresh slots plus the retirement stamp of the bisectors it
+	    claimed; a merge allocates nothing;
+	  * the merge set and the split set are disjoint by construction — the merge path
+	    writes a slot only where ArcTerrainMergeStageStatus answers YES for it
+	    (ArcTerrainCBTMergeDiamond.ush).
+
+	A split reaches bisectors it does not own a thread for, because conformance is
+	settled by walking the hypotenuse chain (ArcTerrainCBTSplit.ush). Two chains that
+	meet arbitrate through arc_TryClaimSplit on the retirement word, which nothing
+	reads before the next dispatch.
+
+	SPLIT lives in ArcTerrainCBTSplit.ush, shared with the admission refinement.
+
+	MERGE. The diamond is the four children of a parent pair: b, its sibling across
+	the interior edge, and the pair across the half-hypotenuse. A member whose
+	sibling or half-hypotenuse reference has slot HYP is subdivided one level deeper,
+	which is the classic "all four are leaves" guard. The lowest pool index initiates.
+
+	A parent takes over its EVEN child's slot, so a merge allocates nothing and the
+	only operation that returns slots to the pool works with the pool empty. That slot
+	is a decision input for the other three threads of its diamond, so SplitMergeCS
+	only STAGES the collapse — the retired odd child, the surviving slot's two
+	successor words and the promote entry — and MergeCommitCS rebuilds the parent
+	records one dispatch later, each in its own slot.
+=============================================================================*/
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainBisector.ush"
+
+ByteAddressBuffer CBTHeapSnapshot;
+RWByteAddressBuffer CBTHeap;
+RWByteAddressBuffer BisectorPool;
+RWByteAddressBuffer BisectorNeighbors;
+RWBuffer<uint> BisectorCommands;
+RWBuffer<uint> BisectorPromote;
+RWBuffer<uint> PoolCounters;
+#if ARC_CBT_LATENCY_AUDIT
+RWBuffer<uint> LatencyCounters;
+#endif
+RWBuffer<uint> FaceLiveCount;
+RWBuffer<uint> FaceRoots;
+
+uint PoolDepth;
+uint PoolCapacity;
+uint NumFaces;
+uint MaxSubdivisionDepth;
+uint MergePhaseCount;
+uint MergeFramePhase;
+/** Diagnostics only (arc.Terrain.CBT.Stats): tallies applied topology writes and split deferrals. */
+uint StatsEnabled;
+
+#include "/Plugin/ArcTerrain/ArcTerrainCBTMergeDiamond.ush"
+#include "/Plugin/ArcTerrain/ArcTerrainCBTSplit.ush"
+
+/** Buckets the depth of the partner a merge refusal named against the depth of the attempting bisector.
+ *  A LEB sibling sits at the same depth unless it is itself subdivided, so an EQUAL or SHALLOW reading
+ *  means the halfedge test refused a diamond that was in fact mergeable. */
+void ArcTerrainTallyPartnerDepth(uint SelfDepth, uint Partner)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	const uint PartnerDepth = arc_NodeDepth(arc_LoadNodeID(BisectorPool, Partner));
+	if (PartnerDepth == SelfDepth)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_PARTNER_EQ, 1u);
+	}
+	else if (PartnerDepth < SelfDepth)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_PARTNER_SHAL, 1u);
+	}
+	else if (PartnerDepth == SelfDepth + 1u)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_PARTNER_D1, 1u);
+	}
+	else
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_PARTNER_D2, 1u);
+	}
+}
+
+/** True when any of this bisector's three halfedges points into another face. */
+bool ArcTerrainIsBoundaryBisector(uint Index)
+{
+	const uint Face = arc_LoadField(BisectorPool, Index, ARC_BISECTOR_FACE);
+	bool bBoundary = false;
+	for (uint Edge = 0u; Edge < 3u; ++Edge)
+	{
+		const uint Ref = arc_LoadNeighbor(BisectorNeighbors, Index, Edge);
+		if (arc_RefValid(Ref))
+		{
+			bBoundary = bBoundary
+				|| arc_LoadField(BisectorPool, arc_RefIndex(Ref), ARC_BISECTOR_FACE) != Face;
+		}
+	}
+	return bBoundary;
+}
+
+/** A `Node ^ 1` sibling test compares node ids from ONE LEB tree; each face carries its own tree and its
+ *  own node-id space, so the same mismatch means a different defect on each side of a face boundary. */
+void ArcTerrainTallyMismatch(uint SameFaceCounter, uint DiffFaceCounter, uint Tested, uint Other, uint Thread)
+{
+	if (StatsEnabled == 0u)
+	{
+		return;
+	}
+	const uint TestedFace = arc_LoadField(BisectorPool, Tested, ARC_BISECTOR_FACE);
+	const uint OtherFace = arc_LoadField(BisectorPool, Other, ARC_BISECTOR_FACE);
+	ArcTerrainTallyTopology(TestedFace == OtherFace ? SameFaceCounter : DiffFaceCounter, 1u);
+	if (ArcTerrainIsBoundaryBisector(Thread))
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_BOUNDARY_MISMATCH, 1u);
+	}
+}
+
+/** The refusal the shared gather returned, in the counters that describe it from THIS thread's bisector. */
+void ArcTerrainTallyDiamondRefusal(uint SelfDepth, uint B, FArcMergeDiamond Diamond)
+{
+	ArcTerrainTallyTopology(Diamond.FailCounter, 1u);
+	if (Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_SIB_MISMATCH)
+	{
+		ArcTerrainTallyMismatch(ARC_CBT_COUNTER_SIBMM_SAME_FACE, ARC_CBT_COUNTER_SIBMM_DIFF_FACE,
+			Diamond.FailTested, Diamond.FailPartner, B);
+	}
+	else if (Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_FAR_MISMATCH)
+	{
+		// The far test compares U against its own sibling, so the face pair that decides its validity is
+		// U's, while the boundary attribution stays on this thread's bisector.
+		ArcTerrainTallyMismatch(ARC_CBT_COUNTER_FARMM_SAME_FACE, ARC_CBT_COUNTER_FARMM_DIFF_FACE,
+			Diamond.FailTested, Diamond.FailPartner, B);
+	}
+	else if (arc_RefValid(Diamond.FailPartner))
+	{
+		ArcTerrainTallyPartnerDepth(SelfDepth, Diamond.FailPartner);
+	}
+	else if (Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_SIB_DEEPER)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_SIB_NOREF, 1u);
+	}
+	else if (Diamond.FailCounter == ARC_CBT_COUNTER_MERGE_FARSIB_DEEP)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_FARSIB_NOREF, 1u);
+	}
+}
+
+void ApplyMerge(int Depth, uint B, FArcMergeDiamond Diamond, bool bScheduled)
+{
+	const uint2 BNode = arc_LoadNodeID(BisectorPool, B);
+	if (!Diamond.bComplete)
+	{
+		ArcTerrainTallyDiamondRefusal(arc_NodeDepth(BNode), B, Diamond);
+		return;
+	}
+
+	const uint Sibling = Diamond.Members[1];
+	const uint Count = Diamond.Count;
+
+	// A merge needs the WHOLE diamond to ask for it. Nothing overrides that: the only mechanism that
+	// ever coarsened a diamond against its own vote was the admission collapse, and admission now pays
+	// for conformance by refining the arriving face instead.
+	uint Initiator = ARC_BISECTOR_NULL;
+	for (uint Index = 0u; Index < Count; ++Index)
+	{
+		if (arc_CommandKind(BisectorCommands[Diamond.Members[Index]]) != ARC_CMD_MERGE)
+		{
+			ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_NOT_UNANIM, 1u);
+			return; // the diamond is not unanimous
+		}
+		Initiator = min(Initiator, Diamond.Members[Index]);
+	}
+	if (Initiator != B)
+	{
+		ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_LOST_ELECT, 1u);
+		return;
+	}
+
+	ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_PHASE_CANDIDATE, Count);
+	ArcTerrainTallyTopology(bScheduled ? ARC_CBT_COUNTER_MERGE_PHASE_SELECTED
+		: ARC_CBT_COUNTER_MERGE_PHASE_DEFERRED, Count);
+	if (!bScheduled)
+	{
+		return;
+	}
+
+	const uint Even0 = (BNode.x & 1u) != 0u ? Sibling : B;
+	const uint Odd0 = (BNode.x & 1u) != 0u ? B : Sibling;
+
+	uint Even1 = ARC_BISECTOR_NULL;
+	uint Odd1 = ARC_BISECTOR_NULL;
+	if (Count == 4u)
+	{
+		const uint2 UNode = arc_LoadNodeID(BisectorPool, Diamond.Members[2]);
+		Even1 = (UNode.x & 1u) != 0u ? Diamond.Members[3] : Diamond.Members[2];
+		Odd1 = (UNode.x & 1u) != 0u ? Diamond.Members[2] : Diamond.Members[3];
+	}
+
+	uint Ignored = 0u;
+	ArcTerrainStageMergedPair(Even0, Odd0, Even1);
+	arc_SetLive(CBTHeap, Depth, Odd0, 0u);
+	InterlockedAdd(FaceLiveCount[arc_LoadField(BisectorPool, Even0, ARC_BISECTOR_FACE)], 0xFFFFFFFFu,
+		Ignored);
+
+	if (Count == 4u)
+	{
+		ArcTerrainStageMergedPair(Even1, Odd1, Even0);
+		arc_SetLive(CBTHeap, Depth, Odd1, 0u);
+		InterlockedAdd(FaceLiveCount[arc_LoadField(BisectorPool, Even1, ARC_BISECTOR_FACE)], 0xFFFFFFFFu,
+			Ignored);
+	}
+
+	ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_APPLIED, Count);
+}
+
+[numthreads(ARC_CBT_SM_THREADS, 1, 1)]
+void SplitMergeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	const bool bMergePressureOverride = PoolCounters[ARC_CBT_COUNTER_SPLIT_POOL_FULL] != 0u;
+	if (StatsEnabled != 0u && DispatchThreadId.x == 0u)
+	{
+		PoolCounters[ARC_CBT_COUNTER_MERGE_PHASE_COUNT] = MergePhaseCount;
+		PoolCounters[ARC_CBT_COUNTER_MERGE_FRAME_PHASE] = MergeFramePhase;
+		PoolCounters[ARC_CBT_COUNTER_MERGE_PRESSURE_OVERRIDE] = bMergePressureOverride ? 1u : 0u;
+	}
+	if (DispatchThreadId.x >= cbt_NodeCount_RO(CBTHeapSnapshot, 0u, Depth))
+	{
+		return;
+	}
+
+	const uint Slot = arc_DecodeSlot(CBTHeapSnapshot, Depth, DispatchThreadId.x);
+	const uint Command = arc_CommandKind(BisectorCommands[Slot]);
+	ArcTerrainTallyTopology(ARC_CBT_COUNTER_SM_THREADS, 1u);
+	if (Command == ARC_CMD_SPLIT)      { ArcTerrainTallyTopology(ARC_CBT_COUNTER_SM_SEEN_SPLIT, 1u); }
+	else if (Command == ARC_CMD_MERGE) { ArcTerrainTallyTopology(ARC_CBT_COUNTER_SM_SEEN_MERGE, 1u); }
+	else if (Command == ARC_CMD_KEEP)  { ArcTerrainTallyTopology(ARC_CBT_COUNTER_SM_SEEN_KEEP, 1u); }
+	else                               { ArcTerrainTallyTopology(ARC_CBT_COUNTER_SM_SEEN_OTHER, 1u); }
+	if (Command == ARC_CMD_SPLIT)
+	{
+		ApplySplit(Depth, Slot, bMergePressureOverride);
+	}
+	else if (Command == ARC_CMD_MERGE)
+	{
+		const bool bFastGateRequired = MergePhaseCount > 1u && !bMergePressureOverride;
+		if (!bFastGateRequired && StatsEnabled == 0u)
+		{
+			const FArcMergeDiamond Diamond = ArcTerrainGatherMergeDiamond(Slot);
+			ApplyMerge(Depth, Slot, Diamond, true);
+			return;
+		}
+
+		FArcMergeFastCanonical FastCanonical;
+		FastCanonical.Canonical = ARC_BISECTOR_NULL;
+		FastCanonical.bResolved = false;
+		FastCanonical = ArcTerrainTryFastMergeCanonical(Slot);
+
+		bool bFastSelected = true;
+		if (FastCanonical.bResolved)
+		{
+			bFastSelected = ArcTerrainMergeCanonicalPhaseSelected(FastCanonical.Canonical, bMergePressureOverride);
+			ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_FAST_RESOLVED, 1u);
+			ArcTerrainTallyTopology(bFastSelected ? ARC_CBT_COUNTER_MERGE_FAST_PROJECTED_SELECTED
+				: ARC_CBT_COUNTER_MERGE_FAST_PROJECTED_DEFERRED, 1u);
+		}
+		else
+		{
+			ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_FAST_FALLBACK, 1u);
+		}
+
+		// Stats proves the fast key against the authoritative gather. The production gate only removes work
+		// that the existing scheduler would defer; it never admits a merge.
+		if (bFastGateRequired && FastCanonical.bResolved && !bFastSelected && StatsEnabled == 0u)
+		{
+			return;
+		}
+
+		const FArcMergeDiamond Diamond = ArcTerrainGatherMergeDiamond(Slot);
+		if (StatsEnabled != 0u && Diamond.bComplete
+			&& (!FastCanonical.bResolved
+				|| FastCanonical.Canonical != ArcTerrainMergeCanonicalMember(Diamond)))
+		{
+			ArcTerrainTallyTopology(ARC_CBT_COUNTER_MERGE_FAST_KEY_MISMATCH, 1u);
+		}
+		const bool bScheduled = ArcTerrainMergePhaseSelected(Diamond, bMergePressureOverride);
+		ApplyMerge(Depth, Slot, Diamond, bScheduled);
+	}
+}
+
+/**
+ * Rebuilds the parent record of every slot SplitMergeCS staged, over the same frozen live set. A thread
+ * reads only its own slot and its own retired sibling, which nothing writes, so the pass is
+ * order-independent for the same reason the one before it is. The two depth-1 parents of a face differ
+ * in ParentNode.x's low bit, so the FaceRoots writes cannot collide either.
+ */
+[numthreads(ARC_CBT_SM_THREADS, 1, 1)]
+void MergeCommitCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int Depth = (int)PoolDepth;
+	if (DispatchThreadId.x >= cbt_NodeCount_RO(CBTHeapSnapshot, 0u, Depth))
+	{
+		return;
+	}
+
+	const uint Slot = arc_DecodeSlot(CBTHeapSnapshot, Depth, DispatchThreadId.x);
+	if (BisectorPromote[Slot] == ARC_PROMOTE_NONE)
+	{
+		return;
+	}
+
+	ArcTerrainCommitMergedPair(Slot);
+}

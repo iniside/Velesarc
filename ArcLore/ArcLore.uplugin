@@ -1,0 +1,18 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Arc Lore Source Control",
+    "Description": "Lore source control provider (git backend, Lore backend swap follows)",
+    "Category": "Developer",
+    "CreatedBy": "Arc",
+    "EnabledByDefault": true,
+    "CanContainContent": false,
+    "Modules": [
+        {
+            "Name": "ArcLore",
+            "Type": "Editor",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

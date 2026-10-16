@@ -21,7 +21,6 @@
 
 #include "ArcCoreEditorModule.h"
 #include "EditorStyleSet.h"
-#include "LevelEditor.h"
 #include "Modules/ModuleManager.h"
 #include "PropertyEditorModule.h"
 
@@ -29,9 +28,8 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "ToolMenus.h"
 
-
-#include "Items\ArcAssetDefinition_ArcItemDefinition.h"
 
 #include "DetailWidgetRow.h"
 #include "Engine/AssetManager.h"
@@ -39,8 +37,6 @@
 #include "PropertyCustomizationHelpers.h"
 #include "PropertyEditorModule.h"
 #include "Widgets/Input/SNumericEntryBox.h"
-
-#include "Items/SArcItemsConfigEditor.h"
 
 #include "DataRegistryEditorModule.h"
 #include "DataRegistrySubsystem.h"
@@ -50,42 +46,14 @@
 #include "ArcInstancedStructPin.h"
 #include "ArcNamedPrimaryAssetIdCustomization.h"
 #include "ArcScalableFloatDetails.h"
-#include "ArcScalableCurveFloatDetails.h"
-#include "SArcScalableCurveFloatGraphPin.h"
+#include "ResponseCurve/ArcResponseCurveCustomization.h"
 
 #include "Interfaces/IPluginManager.h"
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateStyleMacros.h"
 #include "Styling/SlateStyleRegistry.h"
 
-#include "ComboSystem/ArcAssetTypeActions_ComboTreeData.h"
-#include "ComboSystem/ArcComboGraphTreeNode.h"
-#include "ComboSystem/SArcComboTreeGraphNode.h"
-#include "Items/ArcItemDefinitionDetailCustomization.h"
 #include "ArcNamedPrimaryAssetIdCustomization.h"
-
-TSharedRef<SDockTab> FArcCoreEditorModule::SpawnItemsConfigEditor(const FSpawnTabArgs& TabArgs)
-{
-	TSharedRef<SArcItemsConfigEditor> NewItemsConfigEditor = SNew(SArcItemsConfigEditor);
-	ItemsConfigEditor = NewItemsConfigEditor;
-	return SAssignNew(ItemsConfigEditorTab
-		, SDockTab).TabRole(ETabRole::NomadTab)[NewItemsConfigEditor];
-}
-
-class FArcAbilityTreeNodeFactory : public FGraphPanelNodeFactory
-{
-private:
-	virtual TSharedPtr<class SGraphNode> CreateNode(UEdGraphNode* Node) const override
-	{
-		if (UArcComboGraphTreeNode* BaseNode = Cast<UArcComboGraphTreeNode>(Node))
-		{
-			return SNew(SArcComboTreeGraphNode
-				, BaseNode);
-		}
-
-		return nullptr;
-	}
-};
 
 EAssetTypeCategories::Type FArcCoreEditorModule::ArcAssetCategory;
 EAssetTypeCategories::Type FArcCoreEditorModule::InputAssetCategory;
@@ -96,21 +64,13 @@ void FArcCoreEditorModule::StartupModule()
 	{
 		return;
 	}
-	FArcItemEditorCommands::Register();
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 	ArcAssetCategory = AssetTools.RegisterAdvancedAssetCategory(FName(TEXT("Arc Core"))
 		, FText::FromString("Arc Core"));
+	AssetTools.RegisterAdvancedAssetCategory(FName(TEXT("Arc Game")), FText::FromString("Arc Game"));
 	InputAssetCategory = AssetTools.FindAdvancedAssetCategory(FName(TEXT("Input")));
-	{
-		RegisterAssetTypeAction(AssetTools
-			, MakeShareable(new FArcAssetTypeActions_QuickBarComponent()));
-		RegisterAssetTypeAction(AssetTools
-			, MakeShareable(new FArcAssetTypeActions_ItemsStoreComponent()));
-	}
-
-	// Register asset types
-	RegisterAssetTypeAction(AssetTools
-		, MakeShareable(new FArcAssetTypeActions_ComboTreeData()));
+	// FArcAssetTypeActions_ItemsStoreComponent registration retired with
+	// UArcItemsStoreComponent (plan step 8c).
 
 	// Register custom graph nodes
 
@@ -125,18 +85,13 @@ void FArcCoreEditorModule::StartupModule()
 	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcScalableFloat"
 		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcScalableFloatDetails::MakeInstance));
 
-	PropertyEditor.RegisterCustomClassLayout("ArcItemDefinition"
-		, FOnGetDetailCustomizationInstance::CreateStatic(&FArcItemDefinitionDetailCustomization::MakeInstance));
-
-	//PropertyEditor.RegisterCustomClassLayout("ArcItemFragment_MakeLocationInfo"
-	//	, FOnGetDetailCustomizationInstance::CreateStatic(&FArcItemFragment_MakeLocationInfoDetailCustomization::MakeInstance));
-	
 	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcNamedPrimaryAssetId"
 		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcNamedPrimaryAssetIdCustomization::MakeInstance));
 
-	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcScalableCurveFloat"
-		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcScalableCurveFloatDetails::MakeInstance));
-	
+	PropertyEditor.RegisterCustomPropertyTypeLayout("ArcResponseCurve"
+		, FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FArcResponseCurveCustomization::MakeInstance));
+
+
 	if (!StyleSet.IsValid())
 	{
 		const FVector2D Icon16x16(16.0f
@@ -164,66 +119,22 @@ void FArcCoreEditorModule::StartupModule()
 		FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
 	}
 	
-	FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
-	MenuExtender = MakeShareable(new FExtender());
-	auto PullDownMenu = [=](class FMenuBuilder& MenuBuilder)
+	// Register the "Arc Game" main-menu pulldown via UToolMenus so other editor
+	// modules (e.g. ArcCraftEditor) can attach entries by extending the menu name
+	// "LevelEditor.MainMenu.ArcGame".
+	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]()
 	{
-		MenuBuilder.BeginSection
-		(
-			"ArcCoreExtension",
-			FText::FromString("Arc")
-		);
-	};
-	
-	auto ExtendMenu = [=](class FMenuBarBuilder& MenuBuilder)
-	{
-		MenuBuilder.AddPullDownMenu
-		(
-			FText::FromString("Arc"),
-			FText::FromString("Arc"),
-			FNewMenuDelegate::CreateLambda(PullDownMenu),
-			"ArcMenu"
-		);
-	};
-	// Add code editor extension to main menu
-	MenuExtender->AddMenuBarExtension(
-		"Actions",
-		EExtensionHook::After,
-		TSharedPtr<FUICommandList>(),
-		FMenuBarExtensionDelegate::CreateLambda(ExtendMenu));
-	
-	LevelEditorModule.GetMenuExtensibilityManager()->AddExtender(MenuExtender);
-	
-	FGlobalTabmanager::Get()->RegisterTabSpawner(FName(TEXT("SArcItemsConfigEditorApp"))
-		, FOnSpawnTab::CreateRaw(this
-			, &FArcCoreEditorModule::SpawnItemsConfigEditor));
-	
-	auto OpenItemsConfigEditor = [=]()
-	{
-		// TryInvokeTab
-		FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("SArcItemsConfigEditorApp")));
-	};
-	auto ItemsPullDownMenu = [=] (class FMenuBuilder& MenuBuilder)
-	{
-		MenuBuilder.AddMenuEntry(FText::FromString("Items Editor")
-			, FText::FromString("Open Editor to configure Items.")
-			, FSlateIcon(FAppStyle::GetAppStyleSetName()
-				, "Profiler.EventGraph.ExpandHotPath16")
-			, FUIAction(FExecuteAction::CreateLambda(OpenItemsConfigEditor))
-			, "ItemsConfigEditor");
-	};
+		UToolMenu* MainMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu");
+		FToolMenuSection& Section = MainMenu->FindOrAddSection("ArcGame");
+		Section.AddSubMenu(
+			"ArcGame",
+			FText::FromString("Arc Game"),
+			FText::FromString("Arc Game tools and editors."),
+			FNewToolMenuChoice());
+	}));
 
-	GetMenuExtender()->AddMenuExtension("ArcCoreExtension"
-		, EExtensionHook::First
-		, TSharedPtr<FUICommandList>()
-		, FMenuExtensionDelegate::CreateLambda(ItemsPullDownMenu));
-
-	
 	//InstancedStructPinFactory = MakeShareable(new FArcInstancedStructPinGraphPinFactory());
 	//FEdGraphUtilities::RegisterVisualPinFactory(InstancedStructPinFactory);
-
-	ScalableCurveFloatPinFactory = MakeShareable(new FArcScalableCurveFloatPinFactory());
-	FEdGraphUtilities::RegisterVisualPinFactory(ScalableCurveFloatPinFactory);
 
 	// This code will execute after your module is loaded into memory; the exact timing is
 	// specified in the .uplugin file per-module
@@ -233,18 +144,8 @@ void FArcCoreEditorModule::ShutdownModule()
 {
 	FPropertyEditorModule& PropertyEditor = FModuleManager::Get().LoadModuleChecked<FPropertyEditorModule>(
 		"PropertyEditor");
-	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcItemDataAttributeContainer");
-	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcItemGameplayCueContainer");
-	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcEquipmentSlotConfigContainer");
-	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcAttribute");
 	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcItemSlot");
-	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcItemGrantedAbility");
-	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcScalableCurveFloat");
-
-	if (ScalableCurveFloatPinFactory.IsValid())
-	{
-		FEdGraphUtilities::UnregisterVisualPinFactory(ScalableCurveFloatPinFactory);
-	}
+	PropertyEditor.UnregisterCustomPropertyTypeLayout("ArcResponseCurve");
 
 	CreatedAssetTypeActions.Empty();
 	// This function may be called during shutdown to clean up your module.  For modules

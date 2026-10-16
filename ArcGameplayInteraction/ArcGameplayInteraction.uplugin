@@ -38,15 +38,15 @@
 			"Enabled": true
 		},
 		{
-			"Name": "GameplayAbilities",
-			"Enabled": true
-		},
-		{
 			"Name": "PropertyBindingUtils",
 			"Enabled": true
 		},
 		{
 			"Name": "ArcMass",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassGameplayFramework",
 			"Enabled": true
 		},
 		{
@@ -59,6 +59,10 @@
 		},
 		{
 			"Name": "ArcCore",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassItems",
 			"Enabled": true
 		},
 		{
@@ -75,6 +79,26 @@
 		},
 		{
 			"Name": "EnhancedInput",
+			"Enabled": true
+		},
+		{
+			"Name": "TargetingSystem",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcAbilityKit",
+			"Enabled": true
+		},
+		{
+			"Name": "AsyncMessageSystem",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcUIModels",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcFrontend",
 			"Enabled": true
 		}
 	]

@@ -3,9 +3,9 @@
 #include "ArcSmartObjectPlanOverlapCondition.h"
 
 #include "CollisionQueryParams.h"
-#include "MassEntityManager.h"
-#include "Engine/World.h"
+#include "Mass/EntityManager.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
+#include "ArcMass/Helpers/ArcCollisionHelpers.h"
 
 bool FArcSmartObjectPlanOverlapCondition::CanUseEntity(
 	const FArcPotentialEntity& Entity,
@@ -18,12 +18,11 @@ bool FArcSmartObjectPlanOverlapCondition::CanUseEntity(
 	}
 
 	const FVector Center = Entity.Location + FVector(0.f, 0.f, HeightOffset);
-	const FCollisionShape Shape = FCollisionShape::MakeSphere(Radius);
 
 	FCollisionQueryParams Params;
 	Params.bTraceComplex = false;
 
-	const bool bHasOverlap = World->OverlapBlockingTestByChannel(Center, FQuat::Identity, CollisionChannel, Shape, Params);
+	const bool bHasOverlap = ArcCollisionHelpers::OverlapBlockingSphere(World, Center, Radius, CollisionChannel, Params);
 
 	return bHasOverlap == bInvert;
 }

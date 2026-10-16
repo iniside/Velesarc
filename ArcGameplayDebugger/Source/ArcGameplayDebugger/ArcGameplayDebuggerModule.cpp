@@ -23,16 +23,26 @@
 
 #include "ArcGameplayDebuggerSubsystem.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CoreDelegates.h"
 
 #define LOCTEXT_NAMESPACE "FArcGameplayDebuggerModule"
 
 void FArcGameplayDebuggerModule::StartupModule()
 {
+#if WITH_EDITOR
 	FWorldDelegates::OnPIEEnded.AddLambda([](UGameInstance* World)
 		{
 			CVarArcDebugDraw->Set(false);
 		});
+#endif
+
+	IConsoleVariable* DuplicateElementsAsWarnings =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mass.template.DuplicateElementsAsWarnings"));
+	if (DuplicateElementsAsWarnings != nullptr)
+	{
+		DuplicateElementsAsWarnings->Set(1, ECVF_SetByCode);
+	}
 }
 
 void FArcGameplayDebuggerModule::ShutdownModule()

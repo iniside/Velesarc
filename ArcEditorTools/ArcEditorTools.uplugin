@@ -16,16 +16,17 @@
 	"Installed": false,
 	"Modules": [
 		{
+			"Name": "ArcTextureGraphTerrain",
+			"Type": "Editor",
+			"LoadingPhase": "PostConfigInit"
+		},
+		{
 			"Name": "ArcEditorTools",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
-		{
-			"Name": "GameplayAbilities",
-			"Enabled": true
-		},
 		{
 			"Name": "EditorScriptingUtilities",
 			"Enabled": true
@@ -40,6 +41,58 @@
 		},
 		{
 			"Name": "AssetManagerEditor",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassDamageSystem",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcCues",
+			"Enabled": true
+		},
+		{
+			"Name": "MeshModelingToolset",
+			"Enabled": true
+		},
+		{
+			"Name": "ZoneGraph",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcMassItems",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcArea",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcTerrain",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcKnowledge",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcNeeds",
+			"Enabled": true
+		},
+		{
+			"Name": "ArcTargetQuery",
+			"Enabled": true
+		},
+		{
+			"Name": "GeometryProcessing",
+			"Enabled": true
+		},
+		{
+			"Name": "TextureGraph",
+			"Enabled": true
+		},
+		{
+			"Name": "PCG",
 			"Enabled": true
 		}
 	]

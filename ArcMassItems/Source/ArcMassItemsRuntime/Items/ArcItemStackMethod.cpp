@@ -1,0 +1,109 @@
+/**
+ * This file is part of Velesarc
+ * Copyright (C) 2025-2025 Lukasz Baran
+ *
+ * Licensed under the European Union Public License (EUPL), Version 1.2 or –
+ * as soon as they will be approved by the European Commission – later versions
+ * of the EUPL (the "License");
+ *
+ * You may not use this work except in compliance with the License.
+ * You may get a copy of the License at:
+ *
+ * https://eupl.eu/
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ * See the License for the specific language governing permissions
+ * and limitations under the License.
+ */
+
+#include "ArcItemStackMethod.h"
+
+#include "Items/ArcItemSpec.h"
+#include "Items/Fragments/ArcItemFragment_Rarity.h"
+
+bool FArcItemStackMethod::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	return false;
+}
+
+bool FArcItemStackMethod_CanNotStack::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	return false;
+}
+
+bool FArcItemStackMethod_CanNotStackUnique::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	const FPrimaryAssetId InDefId = InSpec.GetItemDefinitionId();
+	for (const FArcItemSpec& Existing : ExistingSpecs)
+	{
+		if (Existing.GetItemDefinitionId() == InDefId)
+		{
+			// Duplicate of unique item — reject silently
+			return true;
+		}
+	}
+	return false;
+}
+
+namespace ArcItemStackMethodInternal
+{
+	bool MergeSpecIntoArray(
+		TArray<FArcItemSpec>& ExistingSpecs,
+		FArcItemSpec&& InSpec,
+		int32 MaxStacks)
+	{
+		bool bFoundMatch = false;
+		int32 RemainingAmount = static_cast<int32>(InSpec.Amount);
+
+		for (int32 i = 0; i < ExistingSpecs.Num() && RemainingAmount > 0; ++i)
+		{
+			if (!ArcMassItems::IsSameStackKey(ExistingSpecs[i], InSpec))
+			{
+				continue;
+			}
+
+			bFoundMatch = true;
+
+			const int32 CurrentAmount = static_cast<int32>(ExistingSpecs[i].Amount);
+			if (CurrentAmount >= MaxStacks)
+			{
+				continue;
+			}
+
+			const int32 Space = MaxStacks - CurrentAmount;
+			const int32 ToAdd = FMath::Min(Space, RemainingAmount);
+			ExistingSpecs[i].Amount = static_cast<uint16>(CurrentAmount + ToAdd);
+			RemainingAmount -= ToAdd;
+		}
+
+		if (!bFoundMatch)
+		{
+			return false;
+		}
+
+		if (RemainingAmount > 0)
+		{
+			InSpec.Amount = static_cast<uint16>(RemainingAmount);
+			ExistingSpecs.Add(MoveTemp(InSpec));
+		}
+
+		return true;
+	}
+}
+
+bool FArcItemStackMethod_StackByType::TryStackSpec(TArray<FArcItemSpec>& ExistingSpecs, FArcItemSpec&& InSpec) const
+{
+	const int32 Max = FMath::FloorToInt(MaxStacks.GetValue());
+	return ArcItemStackMethodInternal::MergeSpecIntoArray(ExistingSpecs, MoveTemp(InSpec), Max);
+}
+
+int32 FArcItemStackMethod_StackByType::GetMaxStacksMass(FMassEntityManager& Mgr, FMassEntityHandle Entity, const UScriptStruct* StoreType, const FArcItemData& Item) const
+{
+	// Mirror the MaxStacks evaluation used by TryStackSpec (above) and the Mass
+	// StackCheckMass override: floor the scalable float read with no explicit level
+	// override — identical to every other MaxStacks read in this module.
+	return FMath::FloorToInt(MaxStacks.GetValue());
+}

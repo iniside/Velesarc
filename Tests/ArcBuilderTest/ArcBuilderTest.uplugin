@@ -1,0 +1,33 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ArcBuilder Tests",
+	"Description": "CQTest module covering ArcBuilder (Mass-store consumption, ingredient stats, place-building command gate sequence).",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx/Tests",
+	"Modules": [
+		{
+			"Name": "ArcBuilderTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ArcCoreTest", "Enabled": true },
+		{ "Name": "ArcBuilder", "Enabled": true },
+		{ "Name": "ArcCore", "Enabled": true },
+		{ "Name": "ArcMassItems", "Enabled": true },
+		{ "Name": "ArcMassAbilities", "Enabled": true },
+		{ "Name": "ArcAbilityKit", "Enabled": true },
+		{ "Name": "ArcMass", "Enabled": true },
+		{ "Name": "MassGameplay", "Enabled": true },
+		{ "Name": "CQTest", "Enabled": true }
+	]
+}

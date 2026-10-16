@@ -1,0 +1,33 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "ArcMassAbilities",
+	"Description": "Mass-native attribute and effect system",
+	"Category": "ArcX",
+	"CreatedBy": "Lukasz Baran",
+	"CanContainContent": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EditorCustomVirtualPath": "Arcx",
+	"Modules": [
+		{
+			"Name": "ArcMassAbilities",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "ArcMassAbilitiesEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{"Name": "MassGameplay", "Enabled": true},
+		{"Name": "MassAI", "Enabled": true},
+		{"Name": "StateTree", "Enabled": true},
+		{"Name": "ArcCore", "Enabled": true},
+		{"Name": "ArcMass", "Enabled": true},
+		{"Name": "ArcTargeting", "Enabled": true}
+	]
+}

@@ -3,10 +3,10 @@
 #include "ArcSmartObjectPlanTraceCondition.h"
 
 #include "CollisionQueryParams.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "Engine/HitResult.h"
-#include "Engine/World.h"
 #include "SmartObjectPlanner/ArcPotentialEntity.h"
+#include "ArcMass/Helpers/ArcCollisionHelpers.h"
 
 bool FArcSmartObjectPlanTraceCondition::CanUseEntity(
 	const FArcPotentialEntity& Entity,
@@ -26,7 +26,7 @@ bool FArcSmartObjectPlanTraceCondition::CanUseEntity(
 	Params.bTraceComplex = false;
 
 	FHitResult HitResult;
-	const bool bHit = World->LineTraceSingleByChannel(HitResult, Start, End, TraceChannel, Params);
+	const bool bHit = ArcCollisionHelpers::LineTrace(World, HitResult, Start, End, TraceChannel, Params);
 
 	return bHit == bInvert;
 }

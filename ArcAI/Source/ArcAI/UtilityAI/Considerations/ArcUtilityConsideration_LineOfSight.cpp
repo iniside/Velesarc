@@ -1,16 +1,16 @@
 // Copyright Lukasz Baran. All Rights Reserved.
 
 #include "UtilityAI/Considerations/ArcUtilityConsideration_LineOfSight.h"
-#include "MassEntityManager.h"
-#include "Engine/World.h"
+#include "Mass/EntityManager.h"
 #include "CollisionQueryParams.h"
+#include "ArcMass/Helpers/ArcCollisionHelpers.h"
 
-float FArcUtilityConsideration_LineOfSight::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
+FArcUtilityConsiderationResult FArcUtilityConsideration_LineOfSight::Score(const FArcUtilityTarget& Target, const FArcUtilityContext& Context) const
 {
 	UWorld* World = Context.World.Get();
 	if (!World)
 	{
-		return 0.0f;
+		return FArcUtilityConsiderationResult::Accept(0.0f);
 	}
 
 	const FVector HeightOffset(0.0f, 0.0f, TraceHeightOffset);
@@ -32,7 +32,7 @@ float FArcUtilityConsideration_LineOfSight::Score(const FArcUtilityTarget& Targe
 	}
 
 	FHitResult Hit;
-	const bool bBlocked = World->LineTraceSingleByChannel(Hit, Start, End, TraceChannel, Params);
+	const bool bBlocked = ArcCollisionHelpers::LineTrace(World, Hit, Start, End, TraceChannel, Params);
 
-	return bBlocked ? 0.0f : 1.0f;
+	return FArcUtilityConsiderationResult::Accept(bBlocked ? 0.0f : 1.0f);
 }

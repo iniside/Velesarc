@@ -1,0 +1,18 @@
+{
+  "ItemId": "7F9792AE41187EA29697C4847B68D500",
+  "FragmentSet": [
+    {
+      "_structType": "ArcItemFragment_Tags",
+      "ItemTags": [
+        "Test.Item.Tag"
+      ],
+      "AssetTags": [],
+      "GrantedTags": [],
+      "RequiredTags": [],
+      "DenyTags": []
+    }
+  ],
+  "StackMethod": {
+    "_structType": "ArcMassItemStackMethod_CanNotStackUnique"
+  }
+}

@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include "AITypes.h"
-#include "AttributeSet.h"
 #include "MassActorSubsystem.h"
 #include "MassStateTreeTypes.h"
 
@@ -10,9 +9,6 @@ USTRUCT()
 struct FArcMassActorGameplayAttributeConditionInstanceData
 {
 	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, Category = Parameter)
-	FGameplayAttribute Attribute;
 
 	UPROPERTY(EditAnywhere, Category = Parameter)
 	float Value = 0.f;

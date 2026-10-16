@@ -22,29 +22,30 @@
 #pragma once
 
 #include "Items/ArcItemSpec.h"
+#include "UObject/PrimaryAssetId.h"
 
-class UArcRecipeDefinition;
-struct FGameplayTagContainer;
+struct FArcCraftContext;
+struct FArcRecipeDefinitionData;
 
 /**
- * Static utility for building craft output from recipe + ingredients.
- * Shared between UArcCraftStationComponent (actor path) and UArcCraftTickProcessor (entity path).
+ * Shared output-spec builder used by the Mass craft tick processor.
  */
 struct ARCCRAFT_API FArcCraftOutputBuilder
 {
 	/**
-	 * Build an output FArcItemSpec from a recipe and matched ingredient specs.
-	 * Handles quality calculation, tier evaluation, modifier application (with slot resolution).
+	 * Build one FArcItemSpec per recipe output, in recipe order; an output with an invalid item id is skipped.
+	 * Rarity and modifiers (with slot resolution) apply to the main output (Outputs[0]) only; an output's InstanceTags go on its own spec.
 	 *
-	 * @param Recipe               The recipe definition.
+	 * @param RecipeId             Id of the recipe record; names the family base when Recipe has no BaseRecipe.
+	 * @param Recipe               The recipe record. An upgraded output takes the chairs and selector of the family
+	 *                             member whose start rarity is the output rarity; with none, no slotted result applies.
 	 * @param MatchedIngredients   Matched ingredient specs per slot. Invalid specs are skipped.
-	 * @param QualityMultipliers   Quality multiplier per ingredient slot.
-	 * @param AverageQuality       Average quality across ingredients.
-	 * @return The constructed output spec.
+	 * @param Context              Craft inputs; OutputRarity is decided and written here, and every roll draws from Stream.
+	 * @return The constructed output specs.
 	 */
-	static FArcItemSpec Build(
-		const UArcRecipeDefinition* Recipe,
+	static TArray<FArcItemSpec> Build(
+		const FPrimaryAssetId& RecipeId,
+		const FArcRecipeDefinitionData& Recipe,
 		const TArray<FArcItemSpec>& MatchedIngredients,
-		const TArray<float>& QualityMultipliers,
-		float AverageQuality);
+		FArcCraftContext& Context);
 };

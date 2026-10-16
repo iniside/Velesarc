@@ -5,19 +5,27 @@
 #include "CoreMinimal.h"
 #include "Chaos/ParticleHandleFwd.h"
 #include "Engine/HitResult.h"
+#include "Mass/EntityHandle.h"
 
 namespace UE::ArcMass::Projectile
 {
+	namespace Events
+	{
+		inline const FName ProjectileHit = TEXT("ProjectileHit");
+	}
+
 	// -----------------------------------------------------------------------
 	// Pending hit notification — collected during movement, dispatched after
 	// -----------------------------------------------------------------------
 
 	struct FPendingHitNotification
 	{
+		FMassEntityHandle ProjectileEntity;
 		AActor* VisualizationActor = nullptr;
 		TWeakObjectPtr<UObject> Instigator;
 		FHitResult HitResult;
 		FVector Velocity = FVector::ZeroVector;
+		FMassEntityHandle TargetEntity;
 		bool bExpired = false;
 	};
 

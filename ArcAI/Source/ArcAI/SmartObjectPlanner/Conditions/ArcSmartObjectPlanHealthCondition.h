@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Attributes/ArcAttribute.h"
 #include "SmartObjectPlanner/ArcSmartObjectPlanConditionEvaluator.h"
 
 #include "ArcSmartObjectPlanHealthCondition.generated.h"
@@ -17,13 +18,21 @@ enum class EArcHealthComparison : uint8
 };
 
 /**
- * Tests the candidate entity's health via FArcMassHealthFragment.
+ * Tests the candidate entity's health via designer-configured FArcAttributeRefs.
  * Compares health percentage against a configurable threshold.
  */
 USTRUCT(BlueprintType, DisplayName = "Health Test")
 struct FArcSmartObjectPlanHealthCondition : public FArcSmartObjectPlanConditionEvaluator
 {
 	GENERATED_BODY()
+
+	/** Attribute ref pointing at the entity's current-health attribute. */
+	UPROPERTY(EditAnywhere, Category = "Health")
+	FArcAttributeRef HealthAttribute;
+
+	/** Attribute ref pointing at the entity's max-health attribute. */
+	UPROPERTY(EditAnywhere, Category = "Health")
+	FArcAttributeRef MaxHealthAttribute;
 
 	/** Health percentage threshold (0.0 - 1.0). */
 	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0", ClampMax = "1.0"))

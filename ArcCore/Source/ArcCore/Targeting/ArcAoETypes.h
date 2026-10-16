@@ -41,8 +41,6 @@ enum class EArcAoEBoxAlignment : uint8
 	ShortEdgeFacingSource
 };
 
-struct FArcItemData;
-
 USTRUCT(BlueprintType)
 struct ARCCORE_API FArcAoEShapeData
 {
@@ -59,8 +57,6 @@ struct ARCCORE_API FArcAoEShapeData
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "Shape == EArcAoEShape::Box", EditConditionHides))
 	EArcAoEBoxAlignment BoxAlignment = EArcAoEBoxAlignment::LongEdgeFacingSource;
-
-	static FArcAoEShapeData FromItemData(const FArcItemData* ItemData);
 
 	/**
 	 * Compute box center and rotation from a direction vector (pitch zeroed).

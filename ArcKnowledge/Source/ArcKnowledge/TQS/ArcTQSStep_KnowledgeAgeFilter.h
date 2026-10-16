@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "TargetQuery/ArcTQSStep.h"
+#include "ArcTQSStep.h"
 #include "ArcTQSStep_KnowledgeAgeFilter.generated.h"
 
 /**
@@ -26,4 +26,5 @@ struct ARCKNOWLEDGE_API FArcTQSStep_KnowledgeAgeFilter : public FArcTQSStep
 	float MaxAge = 0.0f;
 
 	virtual float ExecuteStep(const FArcTQSTargetItem& Item, const FArcTQSQueryContext& QueryContext) const override;
+	virtual EArcTQSWorldRequirements GetWorldRequirements() const override { return EArcTQSWorldRequirements::Knowledge; }
 };

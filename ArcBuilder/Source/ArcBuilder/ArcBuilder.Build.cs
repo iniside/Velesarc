@@ -37,14 +37,18 @@ public class ArcBuilder : ModuleRules
 				"Core",
 				"CoreUObject",
 				"GameplayTags",
-				"StructUtils",
-				"TargetingSystem",
 				"MassEntity",
+				"MassCore",
 				"MassActors",
 				"MassSpawner",
 				"MassRepresentation",
 				"ArcCore",
+				"ArcMassItemsRuntime",
 				"ArcMass",
+				"ArcMassAbilities",
+				"ArcAbilityKit",
+				"ArcTargeting",
+				"StateTreeModule",
 			}
 			);
 			
@@ -54,10 +58,7 @@ public class ArcBuilder : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
-				"Slate",
-				"SlateCore",
-				"SlateIM",
-				"AssetRegistry",
+				"DeveloperSettings",
 			}
 			);
 		

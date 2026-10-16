@@ -3,10 +3,10 @@
 #include "ArcSmartObjectInteractionComponent.h"
 
 #include "Interaction/ArcInteractionContextData.h"
-#include "ArcMass/ArcMassSmartObjectFragments.h"
-#include "InstancedActorsComponent.h"
+#include "ArcMass/SmartObject/ArcMassSmartObjectFragments.h"
 #include "MassAgentComponent.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
+#include "MassEntitySubsystem.h"
 #include "SmartObjectSubsystem.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -71,28 +71,24 @@ bool UArcSmartObjectInteractionComponent::StartInteraction(APawn* Interactor)
 	FMassEntityHandle EntityHandle;
 	const FMassEntityManager* EntityManager = nullptr;
 
-	if (UInstancedActorsComponent* IAComp = OwnerActor->FindComponentByClass<UInstancedActorsComponent>())
-	{
-		EntityHandle = IAComp->GetMassEntityHandle();
-		TSharedPtr<FMassEntityManager> EM = IAComp->GetMassEntityManager();
-		EntityManager = EM.Get();
-	}
-	else if (UMassAgentComponent* AgentComp = OwnerActor->FindComponentByClass<UMassAgentComponent>())
+	if (UMassAgentComponent* AgentComp = OwnerActor->FindComponentByClass<UMassAgentComponent>())
 	{
 		EntityHandle = AgentComp->GetEntityHandle();
 	}
-
 	if (!EntityHandle.IsValid())
 	{
 		return false;
 	}
-
+	
+	UMassEntitySubsystem* EntitySubsystem = GetWorld()->GetSubsystem<UMassEntitySubsystem>();
+	
+	const FMassEntityManager& EM = EntitySubsystem->GetEntityManager();
+	
 	// Get smart object handle from the entity's fragment
 	const FArcSmartObjectOwnerFragment* SOFragment = nullptr;
-	if (EntityManager)
-	{
-		SOFragment = EntityManager->GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(EntityHandle);
-	}
+	
+	SOFragment = EM.GetFragmentDataPtr<FArcSmartObjectOwnerFragment>(EntityHandle);
+	
 
 	if (!SOFragment || !SOFragment->SmartObjectHandle.IsValid())
 	{
@@ -129,6 +125,14 @@ bool UArcSmartObjectInteractionComponent::StartInteraction(APawn* Interactor)
 		return false;
 	}
 
+	TOptional<FTransform> SlotTransform = SOSubsystem->GetSlotTransform(ClaimHandle);
+	if (SlotTransform.IsSet())
+	{
+		GameplayInteractionContext.SetSlotTransform(SlotTransform.GetValue());
+	}
+	
+	GameplayInteractionContext.SetSmartObjectActor(GetOwner());
+	
 	// Setup and activate the interaction context
 	GameplayInteractionContext.SetSmartObjectEntity(EntityHandle);
 	GameplayInteractionContext.SetContextActor(Interactor);

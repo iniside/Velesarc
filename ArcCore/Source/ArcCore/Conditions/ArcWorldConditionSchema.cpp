@@ -21,9 +21,10 @@
 
 #include "ArcCore/Conditions/ArcWorldConditionSchema.h"
 #include "ArcCore/Conditions/ArcWorldConditionBase.h"
-#include "MassEntityManager.h"
+#include "Mass/EntityManager.h"
 #include "MassEntitySubsystem.h"
-#include "MassEntityTypes.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
 #include "GameFramework/Actor.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(ArcWorldConditionSchema)
@@ -31,8 +32,8 @@
 UArcWorldConditionSchema::UArcWorldConditionSchema(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SourceEntityRef = AddContextDataDesc(TEXT("SourceEntity"), FMassEntityHandle::StaticStruct(), EWorldConditionContextDataType::Dynamic);
-	SourceActorRef = AddContextDataDesc(TEXT("SourceActor"), AActor::StaticClass(), EWorldConditionContextDataType::Dynamic);
+	SelfEntityRef = AddContextDataDesc(TEXT("SelfEntity"), FMassEntityHandle::StaticStruct(), EWorldConditionContextDataType::Dynamic);
+	SelfActorRef = AddContextDataDesc(TEXT("SelfActor"), AActor::StaticClass(), EWorldConditionContextDataType::Dynamic);
 	MassEntitySubsystemRef = AddContextDataDesc(TEXT("MassEntitySubsystem"), UMassEntitySubsystem::StaticClass(), EWorldConditionContextDataType::Persistent);
 }
 

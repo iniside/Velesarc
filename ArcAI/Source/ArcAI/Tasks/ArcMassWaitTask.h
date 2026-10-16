@@ -1,6 +1,6 @@
 ﻿#pragma once
-#include "MassEntityElementTypes.h"
-#include "MassProcessor.h"
+#include "Mass/EntityElementTypes.h"
+#include "Mass/Processor.h"
 #include "MassStateTreeTypes.h"
 
 #include "ArcMassWaitTask.generated.h"

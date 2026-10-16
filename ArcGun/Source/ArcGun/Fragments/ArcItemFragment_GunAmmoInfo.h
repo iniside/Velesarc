@@ -25,22 +25,17 @@
 
 
 #include "Items/Fragments/ArcItemFragment.h"
+#include "ArcNamedPrimaryAssetId.h"
 
 #include "ArcItemFragment_GunAmmoInfo.generated.h"
-
-class UArcItemDefinition;
 
 USTRUCT(BlueprintType, meta = (DisplayName = "Gun Ammo Info"))
 struct ARCGUN_API FArcItemFragment_GunAmmoInfo : public FArcItemFragment
 {
 	GENERATED_BODY()
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gameplay")
-	TObjectPtr<UArcItemDefinition> AmmoItem;
-
-	FArcItemFragment_GunAmmoInfo()
-		: AmmoItem(nullptr)
-	{}
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gameplay", meta = (AllowedTypes = "ArcItem"))
+	FArcNamedPrimaryAssetId AmmoItem;
 
 	virtual ~FArcItemFragment_GunAmmoInfo() override = default;
 };

@@ -24,9 +24,9 @@
 #include "ArcGunActor.h"
 #include "ArcGunRecoilInstance.h"
 #include "ArcGunStateComponent.h"
-#include "ArcCore/Items/ArcItemDefinition.h"
-#include "ArcCore/Items/ArcItemData.h"
-#include "Player/ArcCorePlayerState.h"
+#include "Items/ArcItemDefinitionData.h"
+#include "Items/ArcItemData.h"
+#include "Player/ArcMassPlayerState.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -79,7 +79,7 @@ void UArcTargetingTask_GunTrace::Execute(const FTargetingRequestHandle& Targetin
 		SetTaskAsyncState(TargetingHandle, ETargetingTaskAsyncState::Completed);
 		return;
 	}
-	AArcCorePlayerState* ArcPS = Cast<AArcCorePlayerState>(Ctx->InstigatorActor.Get());
+	AArcMassPlayerState* ArcPS = Cast<AArcMassPlayerState>(Ctx->InstigatorActor.Get());
 
 	if (ArcPS == nullptr)
 	{

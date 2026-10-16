@@ -12,7 +12,7 @@
  * FArcMassPersistenceConfigFragment for fragment filtering.
  */
 UCLASS(BlueprintType, EditInlineNew, CollapseCategories,
-	meta = (DisplayName = "Player Persistence"))
+	meta = (DisplayName = "Arc Player Persistence", Category = "Persistence"))
 class ARCMASSPLAYERPERSISTENCE_API UArcMassPlayerPersistenceTrait
 	: public UMassEntityTraitBase
 {

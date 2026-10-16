@@ -4,15 +4,30 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "MassEntityHandle.h"
+#include "Mass/EntityHandle.h"
 #include "MassEntityTraitBase.h"
-#include "MassEntityTypes.h"
-#include "MassEntityConcepts.h"
-#include "MassProcessor.h"
+#include "Mass/ArchetypeCompositionTypes.h"
+#include "MassLogging.h"
+#include "MassCoreConcepts.h"
+#include "Mass/Processor.h"
 #include "MassSignalProcessorBase.h"
 #include "Subsystems/WorldSubsystem.h"
 
 #include "ArcMassDecayingTags.generated.h"
+
+// ---------------------------------------------------------------------------
+// Cooldown task marker tag (moved from ArcAI to break circular dep)
+// ---------------------------------------------------------------------------
+
+/** Mass tag added to entities that have at least one active decaying-tag cooldown.
+ *  Queried by UArcMassDecayingTagDecayProcessor to signal StateTree re-evaluation
+ *  when a cooldown expires. Also queried by ArcAI's UArcMassCooldownTagSyncProcessor
+ *  to drain expired tag removals from FArcOwnedTagsFragment. */
+USTRUCT()
+struct ARCMASS_API FArcCooldownTaskTag : public FMassTag
+{
+	GENERATED_BODY()
+};
 
 // ---------------------------------------------------------------------------
 // Signal namespace
@@ -133,8 +148,16 @@ public:
 
 	TArray<FArcMassDecayingTagRequest>& GetPendingRequests() { return PendingRequests; }
 
+	// -- Expiry notification queue (drained by ArcAI sync processor) --------
+
+	/** Pairs of (Entity, ExpiredTag) enqueued by the decay processor each frame.
+	 *  ArcAI's UArcMassCooldownTagSyncProcessor drains this queue to remove the
+	 *  corresponding tags from FArcOwnedTagsFragment and clean up FArcCooldownTaskTag. */
+	TArray<TTuple<FMassEntityHandle, FGameplayTag>>& GetPendingExpiryRemovals() { return PendingExpiryRemovals; }
+
 private:
 	TArray<FArcMassDecayingTagRequest> PendingRequests;
+	TArray<TTuple<FMassEntityHandle, FGameplayTag>> PendingExpiryRemovals;
 };
 
 // ---------------------------------------------------------------------------
@@ -184,7 +207,9 @@ private:
 // Trait — opts entities into the decaying tags system
 // ---------------------------------------------------------------------------
 
-UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Decaying Tags"))
+/** Trait that opts a Mass entity into the decaying tags system.
+ *  Allows tags with automatic time-based expiration to be applied to this entity. */
+UCLASS(BlueprintType, EditInlineNew, CollapseCategories, meta = (DisplayName = "Arc Decaying Tags", Category = "Mass"))
 class ARCMASS_API UArcMassDecayingTagTrait : public UMassEntityTraitBase
 {
 	GENERATED_BODY()

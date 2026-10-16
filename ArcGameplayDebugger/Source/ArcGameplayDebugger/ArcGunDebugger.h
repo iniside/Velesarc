@@ -1,5 +1,10 @@
 ﻿#pragma once
 
+#include "UObject/WeakObjectPtrTemplates.h"
+
+class AActor;
+class UArcGunDebuggerDrawComponent;
+
 class FArcGunDebugger
 {
 public:
@@ -17,9 +22,16 @@ public:
 	float CameraDirectionDrawColor[3]  {0.f, 0.f, 0.f};
 	float CameraDirectionDrawSize = 1.f;
 	float CameraDirectionDrawDistance = 1000.f;
-	
+
 	bool bDrawCameraPoint = false;
 	float CameraPointDrawColor[3]  {0.f, 0.f, 0.f};
 	float CameraPointDrawSize = 1.f;
 	float CameraPointDrawOffset = 200.f;
+
+private:
+	void EnsureDrawActor(UWorld* World);
+	void DestroyDrawActor();
+
+	TWeakObjectPtr<AActor> DrawActor;
+	TWeakObjectPtr<UArcGunDebuggerDrawComponent> DrawComponent;
 };

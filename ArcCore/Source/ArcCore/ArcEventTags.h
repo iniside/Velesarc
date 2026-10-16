@@ -32,8 +32,4 @@ namespace Arcx
 		inline FGameplayTag GameplayEvent_Death;
 	}; // namespace EventTags
 
-	namespace Tags
-	{
-		ARCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayEffect_Death_Persistent);
-	} // namespace Tags
 }
